@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Базовые стили */
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100;
+  }
+}
+
+/* Кастомные стили */
+@layer components {
+  /* Touch-friendly стили */
+  .touch-manipulation {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Перенос длинных наименований на 2 строки */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+  }
+
+  /* Swipe to confirm стили */
+  .swipe-confirm-container {
+    touch-action: pan-x;
+  }
+
+  .swipe-confirm-slider {
+    min-width: 60px;
+  }
+
+  .swipe-confirm-container.swiping .swipe-confirm-text {
+    opacity: 0.5;
+  }
+
+  .swipe-confirm-container.completed .swipe-confirm-slider {
+    background: #10b981;
+  }
+
+  .swipe-confirm-container.completed .swipe-confirm-text {
+    color: white;
+    font-weight: bold;
+  }
+
+  /* Swipe to collect стили */
+  .swipe-collect-track {
+    touch-action: pan-x;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .swipe-collect-slider {
+    transition: width 0.1s linear;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    z-index: 2;
+  }
+
+  .swipe-collect-text {
+    transition: opacity 0.2s, color 0.2s;
+    white-space: nowrap;
+  }
+
+  .swiping-collect .swipe-collect-text {
+    opacity: 0.7;
+  }
+
+  .swiping-collect .swipe-collect-slider {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  .completed-collect .swipe-collect-slider {
+    background: #10b981 !important;
+    width: 100% !important;
+  }
+
+  .completed-collect .swipe-collect-text {
+    color: white !important;
+    font-weight: bold;
+  }
+
+  .swipe-collect-track:active {
+    border-color: #3b82f6;
+  }
+
+  /* Swipe to confirm item стили (для режима подтверждения) */
+  .swipe-confirm-item-track {
+    touch-action: pan-x;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .swipe-confirm-item-slider {
+    transition: width 0.1s linear;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    z-index: 2;
+  }
+
+  .swipe-confirm-item-text {
+    transition: opacity 0.2s, color 0.2s;
+    white-space: nowrap;
+  }
+
+  .swiping-confirm-item .swipe-confirm-item-text {
+    opacity: 0.7;
+  }
+
+  .swiping-confirm-item .swipe-confirm-item-slider {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  .completed-confirm-item .swipe-confirm-item-slider {
+    background: #10b981 !important;
+    width: 100% !important;
+  }
+
+  .completed-confirm-item .swipe-confirm-item-text {
+    color: white !important;
+    font-weight: bold;
+  }
+
+  .swipe-confirm-item-track:active {
+    border-color: #3b82f6;
+  }
+}
+
+/* Медиа запросы для мобильных */
+@layer utilities {
+  @media (max-width: 768px) {
+    /* Улучшенный скролл на мобильных */
+    .overflow-x-auto {
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+    }
+
+    /* Минимальный размер области нажатия для кнопок */
+    button {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    /* Улучшенная работа с input на мобильных */
+    input[type="number"] {
+      font-size: 16px; /* Предотвращает зум на iOS */
+    }
+  }
+}
+
