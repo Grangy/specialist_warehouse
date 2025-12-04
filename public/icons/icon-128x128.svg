@@ -1,0 +1,9 @@
+<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" fill="#1e293b"/>
+  <!-- Основная часть коробки -->
+  <rect x="38.4" y="51.2" width="51.2" height="51.2" fill="#3b82f6"/>
+  <!-- Верх коробки -->
+  <polygon points="38.4,51.2 64,32 89.6,51.2 64,51.2" fill="#2563eb"/>
+  <!-- Боковая сторона -->
+  <polygon points="89.6,51.2 102.4,32 102.4,83.2 89.6,102.4" fill="#1e40af"/>
+</svg>

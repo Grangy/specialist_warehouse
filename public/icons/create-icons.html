@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator</title>
+</head>
+<body>
+  <canvas id="canvas" width="512" height="512"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Фон
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, 0, 512, 512);
+    
+    // Иконка коробки
+    ctx.fillStyle = '#3b82f6';
+    ctx.beginPath();
+    ctx.moveTo(150, 200);
+    ctx.lineTo(362, 200);
+    ctx.lineTo(362, 350);
+    ctx.lineTo(150, 350);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Верх коробки
+    ctx.fillStyle = '#2563eb';
+    ctx.beginPath();
+    ctx.moveTo(150, 200);
+    ctx.lineTo(256, 150);
+    ctx.lineTo(362, 200);
+    ctx.lineTo(256, 200);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Боковая сторона
+    ctx.fillStyle = '#1e40af';
+    ctx.beginPath();
+    ctx.moveTo(362, 200);
+    ctx.lineTo(468, 150);
+    ctx.lineTo(468, 300);
+    ctx.lineTo(362, 350);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Сохраняем в разных размерах
+    const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+    sizes.forEach(size => {
+      const newCanvas = document.createElement('canvas');
+      newCanvas.width = size;
+      newCanvas.height = size;
+      const newCtx = newCanvas.getContext('2d');
+      newCtx.drawImage(canvas, 0, 0, size, size);
+      const link = document.createElement('a');
+      link.download = `icon-${size}x${size}.png`;
+      link.href = newCanvas.toDataURL();
+      link.click();
+    });
+  </script>
+</body>
+</html>

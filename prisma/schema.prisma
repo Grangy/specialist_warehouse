@@ -1,0 +1,134 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  collector
+  checker
+}
+
+enum ShipmentStatus {
+  new
+  pending_confirmation
+  processed
+  confirmed
+}
+
+model User {
+  id        String    @id @default(cuid())
+  login     String    @unique
+  password  String
+  name      String
+  role      UserRole  @default(collector)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  sessions  Session[]
+
+  @@map("users")
+}
+
+model Shipment {
+  id              String          @id @default(cuid())
+  number          String          @unique
+  createdAt       DateTime        @default(now()) @map("created_at")
+  customerName    String          @map("customer_name")
+  destination     String
+  itemsCount      Int             @map("items_count")
+  totalQty        Int             @map("total_qty")
+  weight          Float?
+  comment         String          @default("")
+  status          ShipmentStatus  @default(new)
+  businessRegion  String?         @map("business_region")
+  collectorName   String?         @map("collector_name")
+  lines           ShipmentLine[]
+  tasks           ShipmentTask[]
+  locks           ShipmentLock[]
+
+  @@map("shipments")
+}
+
+model ShipmentLine {
+  id           String            @id @default(cuid())
+  shipmentId   String            @map("shipment_id")
+  sku          String
+  name         String
+  qty          Int
+  uom          String
+  location     String?
+  warehouse    String?           // Склад: "Склад 1", "Склад 2", "Склад 3"
+  collectedQty Int?              @map("collected_qty")
+  checked      Boolean           @default(false)
+  shipment     Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  taskLines    ShipmentTaskLine[]
+
+  @@map("shipment_lines")
+}
+
+model ShipmentLock {
+  id         String   @id @default(cuid())
+  shipmentId String   @map("shipment_id")
+  userId     String   @map("user_id")
+  lockedAt   DateTime @default(now()) @map("locked_at")
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@unique([shipmentId])
+  @@map("shipment_locks")
+}
+
+model ShipmentTask {
+  id           String            @id @default(cuid())
+  shipmentId   String            @map("shipment_id")
+  warehouse    String            // "Склад 1", "Склад 2", "Склад 3"
+  status       ShipmentStatus    @default(new)
+  createdAt    DateTime          @default(now()) @map("created_at")
+  collectorName String?          @map("collector_name")
+  shipment     Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  lines        ShipmentTaskLine[]
+  locks        ShipmentTaskLock[]
+
+  @@map("shipment_tasks")
+}
+
+model ShipmentTaskLine {
+  id             String        @id @default(cuid())
+  taskId         String        @map("task_id")
+  shipmentLineId String        @map("shipment_line_id")
+  qty            Int           // Количество в этом задании
+  collectedQty   Int?           @map("collected_qty")
+  checked        Boolean       @default(false)
+  task           ShipmentTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  shipmentLine   ShipmentLine  @relation(fields: [shipmentLineId], references: [id], onDelete: Cascade)
+
+  @@map("shipment_task_lines")
+}
+
+model ShipmentTaskLock {
+  id         String        @id @default(cuid())
+  taskId     String        @map("task_id")
+  userId     String        @map("user_id")
+  lockedAt   DateTime      @default(now()) @map("locked_at")
+  task       ShipmentTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId])
+  @@map("shipment_task_locks")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
