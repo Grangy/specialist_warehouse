@@ -163,6 +163,64 @@ export default function Home() {
     nameModal.open();
   };
 
+  const handleResetCollectProgress = async () => {
+    if (!collectHook.currentShipment) return;
+    try {
+      const response = await fetch(`/api/shipments/${collectHook.currentShipment.id}/reset-progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'collect' }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Ошибка при сбросе прогресса');
+      }
+      await refreshShipments();
+      collectHook.closeModal();
+    } catch (error: any) {
+      console.error('Ошибка при сбросе прогресса сборки:', error);
+      alert(error.message || 'Ошибка при сбросе прогресса сборки');
+    }
+  };
+
+  const handleResetConfirmProgress = async () => {
+    if (!confirmHook.currentShipment) return;
+    try {
+      const response = await fetch(`/api/shipments/${confirmHook.currentShipment.id}/reset-progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'confirm' }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Ошибка при сбросе прогресса');
+      }
+      await refreshShipments();
+      confirmHook.closeModal();
+    } catch (error: any) {
+      console.error('Ошибка при сбросе прогресса проверки:', error);
+      alert(error.message || 'Ошибка при сбросе прогресса проверки');
+    }
+  };
+
+  const handleDeleteCollection = async (shipment: Shipment) => {
+    try {
+      const response = await fetch(`/api/shipments/${shipment.id}/reset-progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'collect' }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Ошибка при удалении сборки');
+      }
+      await refreshShipments();
+    } catch (error: any) {
+      console.error('Ошибка при удалении сборки:', error);
+      alert(error.message || 'Ошибка при удалении сборки');
+    }
+  };
+
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -185,6 +243,7 @@ export default function Home() {
           onDetails={handleDetails}
           onCollectAll={userRole === 'admin' ? handleCollectAll : undefined}
           onConfirmAll={userRole === 'admin' ? handleConfirmAll : undefined}
+          onDeleteCollection={userRole === 'admin' ? handleDeleteCollection : undefined}
           userRole={userRole}
         />
       </main>

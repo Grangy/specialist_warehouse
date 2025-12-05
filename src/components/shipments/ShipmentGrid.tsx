@@ -13,6 +13,7 @@ interface ShipmentGridProps {
   onDetails: (shipment: Shipment) => void;
   onCollectAll?: (shipment: Shipment) => void;
   onConfirmAll?: (shipment: Shipment) => void;
+  onDeleteCollection?: (shipment: Shipment) => void;
   userRole?: 'admin' | 'collector' | 'checker' | null;
 }
 
@@ -24,6 +25,7 @@ export function ShipmentGrid({
   onDetails,
   onCollectAll,
   onConfirmAll,
+  onDeleteCollection,
   userRole,
 }: ShipmentGridProps) {
   if (isLoading) {
@@ -49,6 +51,7 @@ export function ShipmentGrid({
           onDetails={onDetails}
           onCollectAll={onCollectAll}
           onConfirmAll={onConfirmAll}
+          onDeleteCollection={onDeleteCollection}
           userRole={userRole}
         />
       ))}

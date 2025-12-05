@@ -47,7 +47,7 @@ export function FilterPanel({ shipments, filters, onFiltersChange }: FilterPanel
               placeholder="Поиск по номеру или клиенту..."
               value={filters.search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 h-10 md:h-auto text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
         </div>
@@ -55,7 +55,7 @@ export function FilterPanel({ shipments, filters, onFiltersChange }: FilterPanel
           <select
             value={filters.warehouse}
             onChange={(e) => handleWarehouseChange(e.target.value)}
-            className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 h-10 md:h-auto text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
           >
             <option value="">Все склады</option>
             {warehouses.map((warehouse) => (
