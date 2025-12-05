@@ -347,14 +347,59 @@ export async function GET(request: NextRequest) {
       where.status = { in: allowedStatuses };
     }
 
+    // Если запрошены processed заказы, возвращаем заказы напрямую
+    if (status === 'processed') {
+      const processedShipments = await prisma.shipment.findMany({
+        where: {
+          status: 'processed',
+        },
+        include: {
+          tasks: {
+            include: {
+              collector: {
+                select: {
+                  id: true,
+                  name: true,
+                  login: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      const result = processedShipments.map((shipment) => ({
+        id: shipment.id,
+        shipment_id: shipment.id,
+        shipment_number: shipment.number,
+        number: shipment.number,
+        created_at: shipment.createdAt.toISOString(),
+        customer_name: shipment.customerName,
+        destination: shipment.destination,
+        items_count: shipment.itemsCount,
+        total_qty: shipment.totalQty,
+        weight: shipment.weight,
+        comment: shipment.comment,
+        status: shipment.status,
+        business_region: shipment.businessRegion,
+        collector_name: shipment.collectorName,
+        confirmed_at: shipment.confirmedAt?.toISOString() || null,
+        tasks_count: shipment.tasks.length,
+        warehouses: Array.from(new Set(shipment.tasks.map((t) => t.warehouse))),
+      }));
+
+      return NextResponse.json(result);
+    }
+
     // Получаем задания вместо заказов
     // ВАЖНО: Получаем ВСЕ задания заказа (без фильтрации) для правильного подсчета прогресса
     const shipments = await prisma.shipment.findMany({
       where: {
         // Показываем только заказы со статусами new и pending_confirmation (если не запрошен processed)
-        status: status === 'processed' 
-          ? 'processed' 
-          : { in: ['new', 'pending_confirmation'] },
+        status: { in: ['new', 'pending_confirmation'] },
       },
       include: {
         // Получаем ВСЕ задания заказа для правильного подсчета прогресса

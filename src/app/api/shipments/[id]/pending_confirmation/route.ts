@@ -50,12 +50,27 @@ export async function POST(
       );
     }
 
-    // Обновляем статус задания и имя сборщика
+    // Вычисляем аналитические данные
+    const totalItems = task.lines.length;
+    const totalUnits = task.lines.reduce((sum, line) => sum + line.qty, 0);
+    
+    // Вычисляем время выполнения
+    const now = new Date();
+    const startedAt = task.startedAt || task.createdAt;
+    const timeElapsed = (now.getTime() - startedAt.getTime()) / 1000; // в секундах
+    const timePer100Items = totalItems > 0 ? (timeElapsed / totalItems) * 100 : null;
+
+    // Обновляем статус задания, имя сборщика и аналитические данные
     await prisma.shipmentTask.update({
       where: { id },
       data: {
         status: 'pending_confirmation',
         collectorName: user.name,
+        collectorId: user.id,
+        completedAt: now,
+        totalItems: totalItems,
+        totalUnits: totalUnits,
+        timePer100Items: timePer100Items,
       },
     });
 

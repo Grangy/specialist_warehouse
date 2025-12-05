@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Package, Home, Settings, LogOut } from 'lucide-react';
+import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2 } from 'lucide-react';
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
+import AnalyticsTab from '@/components/admin/AnalyticsTab';
 
-type Tab = 'users' | 'shipments';
+type Tab = 'users' | 'shipments' | 'analytics';
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('users');
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreatingTestOrder, setIsCreatingTestOrder] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -86,8 +88,56 @@ export default function AdminPage() {
             <Package className={`w-5 h-5 transition-transform duration-200 ${activeTab === 'shipments' ? 'scale-110' : 'group-hover:scale-110'}`} />
             <span className="font-medium">Завершенные заказы</span>
           </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`w-full text-left px-4 py-3 rounded-lg transition-all duration-200 flex items-center gap-3 group ${
+              activeTab === 'analytics'
+                ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <TrendingUp className={`w-5 h-5 transition-transform duration-200 ${activeTab === 'analytics' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <span className="font-medium">Аналитика</span>
+          </button>
         </nav>
         <div className="p-4 border-t border-slate-700/50 space-y-2">
+          <button
+            onClick={async () => {
+              setIsCreatingTestOrder(true);
+              try {
+                const res = await fetch('/api/shipments/create-test', {
+                  method: 'POST',
+                });
+                const data = await res.json();
+                if (res.ok) {
+                  alert(`✅ Тестовый заказ успешно создан!\n\nНомер: ${data.shipment.number}\nЗаданий: ${data.shipment.tasks_count}`);
+                  router.push('/');
+                  router.refresh();
+                } else {
+                  alert(`❌ Ошибка: ${data.error || 'Не удалось создать тестовый заказ'}`);
+                }
+              } catch (error) {
+                console.error('Ошибка при создании тестового заказа:', error);
+                alert('❌ Ошибка при создании тестового заказа');
+              } finally {
+                setIsCreatingTestOrder(false);
+              }
+            }}
+            disabled={isCreatingTestOrder}
+            className="w-full px-4 py-3 bg-green-600/90 hover:bg-green-500 text-white rounded-lg transition-all duration-200 flex items-center gap-3 group shadow-md hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isCreatingTestOrder ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="font-medium">Создание...</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                <span className="font-medium">Создать тестовый заказ</span>
+              </>
+            )}
+          </button>
           <button
             onClick={() => router.push('/')}
             className="w-full px-4 py-3 bg-slate-800/90 hover:bg-slate-700 text-slate-200 rounded-lg transition-all duration-200 flex items-center gap-3 group shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
@@ -114,6 +164,7 @@ export default function AdminPage() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'shipments' && <CompletedShipmentsTab />}
+          {activeTab === 'analytics' && <AnalyticsTab />}
         </div>
       </main>
     </div>
