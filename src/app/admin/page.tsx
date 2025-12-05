@@ -112,27 +112,27 @@ export default function AdminPage() {
                 });
                 const data = await res.json();
                 if (res.ok) {
-                  showToast({
-                    type: 'success',
-                    message: `Тестовый заказ создан! Номер: ${data.shipment.number}, заданий: ${data.shipment.tasks_count}`,
-                  });
+                  showToast(
+                    `Тестовый заказ создан! Номер: ${data.shipment.number}, заданий: ${data.shipment.tasks_count}`,
+                    'success'
+                  );
                   // Обновляем страницу через небольшую задержку
                   setTimeout(() => {
                     router.push('/');
                     router.refresh();
                   }, 1000);
                 } else {
-                  showToast({
-                    type: 'error',
-                    message: data.error || 'Не удалось создать тестовый заказ',
-                  });
+                  showToast(
+                    data.error || 'Не удалось создать тестовый заказ',
+                    'error'
+                  );
                 }
               } catch (error) {
                 console.error('Ошибка при создании тестового заказа:', error);
-                showToast({
-                  type: 'error',
-                  message: 'Ошибка при создании тестового заказа',
-                });
+                showToast(
+                  'Ошибка при создании тестового заказа',
+                  'error'
+                );
               } finally {
                 setIsCreatingTestOrder(false);
               }
