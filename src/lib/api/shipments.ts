@@ -92,4 +92,19 @@ export const shipmentsApi = {
       data
     );
   },
+
+  /**
+   * Сохранить прогресс сборки в БД
+   */
+  async saveProgress(
+    shipmentId: string,
+    data: {
+      lines: Array<{ sku: string; collected_qty: number | null }>;
+    }
+  ): Promise<{ success: boolean; progress: { collected: number; total: number } }> {
+    return apiClient.post<{ success: boolean; progress: { collected: number; total: number } }>(
+      `/shipments/${shipmentId}/save-progress`,
+      data
+    );
+  },
 };

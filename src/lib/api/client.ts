@@ -46,21 +46,62 @@ class APIClient {
       const response = await fetch(url, config);
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        let errorData: any = {};
+        try {
+          // Сначала пытаемся получить текст ответа
+          const text = await response.text();
+          console.log('[apiClient] Текст ответа об ошибке:', text);
+          if (text) {
+            try {
+              errorData = JSON.parse(text);
+              console.log('[apiClient] Распарсенные данные ошибки:', errorData);
+            } catch (parseError) {
+              // Если не JSON, используем текст как сообщение
+              console.warn('[apiClient] Не удалось распарсить JSON, используем текст:', parseError);
+              errorData = { message: text };
+            }
+          }
+        } catch (e) {
+          // Если не удалось прочитать ответ, используем пустой объект
+          console.warn('[apiClient] Не удалось прочитать ответ об ошибке:', e);
+        }
+        
+        // Формируем сообщение об ошибке
+        let errorMessage = errorData.message || errorData.error;
+        console.log('[apiClient] Извлеченное сообщение об ошибке:', errorMessage);
+        
+        // Если сообщения нет, формируем стандартное
+        if (!errorMessage) {
+          if (response.status === 409) {
+            errorMessage = 'Задание уже начато другим сборщиком. Только администратор может вмешаться в сборку.';
+          } else {
+            errorMessage = `HTTP error! status: ${response.status}`;
+          }
+        }
+        
         const error: APIError = {
-          message: errorData.message || `HTTP error! status: ${response.status}`,
+          message: errorMessage,
           status: response.status,
         };
+        console.log('[apiClient] Выбрасываем ошибку:', error);
         throw error;
       }
 
       return await response.json();
     } catch (error) {
-      if (error instanceof Error && 'status' in error) {
+      // Если ошибка уже имеет структуру APIError (с полями message и status), просто пробрасываем её
+      if (error && typeof error === 'object' && 'status' in error && 'message' in error) {
         throw error;
       }
+      // Если это обычная ошибка Error, оборачиваем её
+      if (error instanceof Error) {
+        throw {
+          message: error.message,
+        } as APIError;
+      }
+      // В остальных случаях - общая ошибка сети
       throw {
-        message: error instanceof Error ? error.message : 'Network error',
+        message: 'Network error',
       } as APIError;
     } finally {
       // Удаляем запрос из очереди после завершения (только для GET)

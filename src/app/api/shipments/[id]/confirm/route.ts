@@ -80,7 +80,9 @@ export async function POST(
             where: { id: taskLine.id },
             data: { 
               collectedQty: lineData.collected_qty !== undefined ? lineData.collected_qty : taskLine.collectedQty,
-              checked: lineData.checked !== undefined ? lineData.checked : true,
+              // Исправлено: по умолчанию false, а не true
+              // checked должен быть явно передан в запросе для установки в true
+              checked: lineData.checked !== undefined ? lineData.checked : false,
             },
           });
         }

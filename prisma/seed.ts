@@ -79,6 +79,9 @@ async function main() {
   await prisma.shipmentLock.deleteMany();
   await prisma.shipment.deleteMany();
 
+  // Импортируем функцию разбиения на задания
+  const { splitShipmentIntoTasks } = await import('../src/lib/shipmentTasks');
+
   // Создаем заказы из mock данных
   for (const mockShipment of mockShipments) {
     const shipment = await prisma.shipment.create({
@@ -102,13 +105,49 @@ async function main() {
             uom: line.uom,
             location: line.location || null,
             warehouse: (line as any).warehouse || 'Склад 1',
-            collectedQty: line.collected_qty || null,
-            checked: line.checked || false,
+            collectedQty: null, // Всегда null для новых заказов
+            checked: false, // Всегда false для новых заказов
           })),
         },
       },
+      include: {
+        lines: true,
+      },
     });
-    console.log(`Создан заказ: ${shipment.number}`);
+
+    // Разбиваем заказ на задания
+    const tasksToCreate = splitShipmentIntoTasks(
+      shipment.lines.map((line) => ({
+        id: line.id,
+        sku: line.sku,
+        name: line.name,
+        qty: line.qty,
+        uom: line.uom,
+        location: line.location,
+        warehouse: line.warehouse || 'Склад 1',
+      }))
+    );
+
+    // Создаем задания
+    for (const taskInput of tasksToCreate) {
+      await prisma.shipmentTask.create({
+        data: {
+          shipmentId: shipment.id,
+          warehouse: taskInput.warehouse,
+          status: 'new', // Все новые заказы создаются со статусом 'new'
+          lines: {
+            create: taskInput.lines.map((taskLine) => ({
+              shipmentLineId: taskLine.shipmentLineId,
+              qty: taskLine.qty,
+              collectedQty: null,
+              checked: false,
+            })),
+          },
+        },
+      });
+    }
+
+    console.log(`Создан заказ: ${shipment.number} с ${tasksToCreate.length} заданиями`);
   }
 
   // Создаем тестовый заказ на 100 наименований
@@ -181,8 +220,7 @@ async function main() {
     },
   });
 
-  // Разбиваем на задания
-  const { splitShipmentIntoTasks } = await import('../src/lib/shipmentTasks');
+  // Разбиваем на задания (функция уже импортирована выше)
   const tasksToCreate = splitShipmentIntoTasks(
     testShipment.lines.map((line) => ({
       id: line.id,
@@ -205,6 +243,8 @@ async function main() {
           create: taskInput.lines.map((taskLine) => ({
             shipmentLineId: taskLine.shipmentLineId,
             qty: taskLine.qty,
+            collectedQty: null, // Всегда null для новых заданий
+            checked: false, // Всегда false для новых заданий
           })),
         },
       },

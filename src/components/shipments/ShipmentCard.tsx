@@ -2,6 +2,19 @@
 
 import { formatDate, isUrgent, escapeHtml } from '@/lib/utils/helpers';
 import type { Shipment } from '@/types';
+import { 
+  Package, 
+  Clock, 
+  User, 
+  CheckCircle2, 
+  AlertCircle, 
+  Eye, 
+  ShoppingCart,
+  CheckSquare,
+  Warehouse,
+  TrendingUp,
+  AlertTriangle
+} from 'lucide-react';
 
 interface ShipmentCardProps {
   shipment: Shipment;
@@ -65,7 +78,7 @@ export function ShipmentCard({
     }, 0) || 0;
 
   return (
-    <div className={`${bgClass} ${borderClass} rounded-lg p-5 shadow-lg hover:shadow-xl transition-shadow flex flex-col`}>
+    <div className={`${bgClass} ${borderClass} rounded-xl p-5 shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col transform hover:-translate-y-1`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -73,41 +86,48 @@ export function ShipmentCard({
               {shipment.shipment_number || shipment.number || 'N/A'}
             </span>
             {shipment.warehouse && (
-              <span className="text-sm text-blue-400 ml-2">({shipment.warehouse})</span>
+              <span className="text-sm text-blue-400 ml-2 flex items-center gap-1">
+                <Warehouse className="w-3.5 h-3.5" />
+                {shipment.warehouse}
+              </span>
             )}
             {isProcessed ? (
-              <span className="bg-green-600 text-white text-xs font-semibold px-2 py-1 rounded flex items-center gap-1">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+              <span className="bg-green-600 text-white text-xs font-semibold px-2 py-1 rounded flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
                 Обработано
               </span>
             ) : isPendingConfirmation ? (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="bg-yellow-600 text-white text-xs font-semibold px-2 py-1 rounded flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                <span className="bg-yellow-600 text-white text-xs font-semibold px-2 py-1 rounded flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
                   Ожидает подтверждения
                 </span>
                 {shipment.tasks_progress && shipment.tasks_progress.total > 1 && (
-                  <span className="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded">
-                    {shipment.tasks_progress.confirmed}/{shipment.tasks_progress.total} подтверждено
+                  <span className="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded flex items-center gap-1">
+                    <CheckSquare className="w-3 h-3" />
+                    {shipment.tasks_progress.confirmed}/{shipment.tasks_progress.total}
                   </span>
                 )}
               </div>
             ) : (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded">Новый</span>
+                <span className="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5" />
+                  Новый
+                </span>
                 {shipment.tasks_progress && shipment.tasks_progress.total > 1 && shipment.tasks_progress.confirmed > 0 && (
-                  <span className="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded">
-                    {shipment.tasks_progress.confirmed}/{shipment.tasks_progress.total} подтверждено
+                  <span className="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded flex items-center gap-1">
+                    <CheckSquare className="w-3 h-3" />
+                    {shipment.tasks_progress.confirmed}/{shipment.tasks_progress.total}
                   </span>
                 )}
               </div>
             )}
             {urgent && (
-              <span className="bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded">СРОЧНО</span>
+              <span className="bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded flex items-center gap-1.5 animate-pulse">
+                <AlertCircle className="w-3.5 h-3.5" />
+                СРОЧНО
+              </span>
             )}
           </div>
         </div>
@@ -119,21 +139,48 @@ export function ShipmentCard({
       </div>
 
       <div className="flex flex-wrap gap-3 mb-4 text-sm text-slate-400">
-        <div className="flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          {formatDate(shipment.created_at)}
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-4 h-4 text-slate-500" />
+          <span>{formatDate(shipment.created_at)}</span>
         </div>
-        <div>{shipment.items_count} поз.</div>
-        <div>{shipment.total_qty} ед.</div>
-        {shipment.weight && <div>{shipment.weight} кг</div>}
+        <div className="flex items-center gap-1.5">
+          <Package className="w-4 h-4 text-slate-500" />
+          <span>{shipment.items_count} поз.</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <ShoppingCart className="w-4 h-4 text-slate-500" />
+          <span>{shipment.total_qty} ед.</span>
+        </div>
+        {shipment.weight && (
+          <div className="flex items-center gap-1.5">
+            <Package className="w-4 h-4 text-slate-500" />
+            <span>{shipment.weight} кг</span>
+          </div>
+        )}
       </div>
 
-      {isPendingConfirmation && shipment.collector_name && (
-        <div className="mb-3 text-sm">
-          <span className="text-slate-400">Сборщик:</span>
-          <span className="text-slate-200 font-medium ml-1">{shipment.collector_name}</span>
+      {/* Информация о сборщике - показываем для всех статусов, если сборка начата */}
+      {shipment.collector_name && (
+        <div className="mb-3 flex items-center gap-2 p-2 bg-slate-800/50 rounded-lg border border-slate-700/50">
+          <User className="w-4 h-4 text-blue-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-slate-400">Сборку начал</div>
+            <div className="text-sm font-semibold text-blue-300 truncate">{shipment.collector_name}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Прогресс сборки - показываем если есть собранные товары */}
+      {/* ВАЖНО: считаем только позиции с checked = true, так как collected_qty может быть установлен по умолчанию */}
+      {shipment.status === 'new' && shipment.lines && shipment.lines.some(line => line.checked === true) && (
+        <div className="mb-3 p-2 bg-blue-900/20 rounded-lg border border-blue-700/30">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="w-4 h-4 text-blue-400" />
+            <span className="text-xs font-semibold text-blue-300">Прогресс сборки</span>
+          </div>
+          <div className="text-sm text-slate-300">
+            {shipment.lines.filter(line => line.checked === true).length} / {shipment.lines.length} позиций
+          </div>
         </div>
       )}
 
@@ -144,19 +191,11 @@ export function ShipmentCard({
           } border rounded-lg`}
         >
           <div className="flex items-center gap-2 mb-1">
-            <svg
-              className={`w-4 h-4 ${hasZeroItems ? 'text-red-500' : 'text-yellow-500'}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
+            {hasZeroItems ? (
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+            )}
             <span className={`${hasZeroItems ? 'text-red-400' : 'text-yellow-400'} font-semibold text-sm`}>
               {hasZeroItems ? 'Есть не собранные товары' : 'Были корректировки при сборке'}
             </span>
@@ -180,11 +219,9 @@ export function ShipmentCard({
             <>
               <button
                 onClick={() => onConfirm(shipment)}
-                className="flex-1 min-w-[120px] sm:min-w-0 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-2 sm:px-4 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm"
+                className="flex-1 min-w-[120px] sm:min-w-0 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
               >
-                <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                 <span className="truncate">Подтвердить</span>
               </button>
               {userRole === 'admin' && onConfirmAll && (
@@ -204,11 +241,9 @@ export function ShipmentCard({
             <>
               <button
                 onClick={() => onCollect(shipment)}
-                className="flex-1 min-w-[120px] sm:min-w-0 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-2 sm:px-4 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm"
+                className="flex-1 min-w-[120px] sm:min-w-0 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
               >
-                <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
+                <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                 <span className="truncate">Собрать</span>
               </button>
               {userRole === 'admin' && onCollectAll && (
@@ -227,12 +262,9 @@ export function ShipmentCard({
           ) : null}
           <button
             onClick={() => onDetails(shipment)}
-            className="flex-1 min-w-[120px] sm:min-w-0 bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-2 sm:px-4 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm"
+            className="flex-1 min-w-[120px] sm:min-w-0 bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
           >
-            <svg className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
+            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
             <span className="truncate">Подробнее</span>
           </button>
         </div>

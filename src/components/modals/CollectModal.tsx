@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
 import { SwipeConfirmButton } from '@/components/ui/SwipeConfirmButton';
@@ -13,6 +13,7 @@ interface CollectModalProps {
   currentShipment: Shipment | null;
   checklistState: Record<number, CollectChecklistState>;
   editState: Record<number, boolean>;
+  removingItems: Set<number>;
   isOpen: boolean;
   onClose: () => void;
   onUpdateCollected: (lineIndex: number, collected: boolean) => void;
@@ -29,6 +30,7 @@ export function CollectModal({
   currentShipment,
   checklistState,
   editState,
+  removingItems,
   isOpen,
   onClose,
   onUpdateCollected,
@@ -44,12 +46,20 @@ export function CollectModal({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [savedScrollTop, setSavedScrollTop] = useState(0);
   const [selectedLine, setSelectedLine] = useState<{
+    index: number;
     name: string;
     sku: string;
     location: string;
     qty: number;
     collected: number;
+    uom: string;
   } | null>(null);
+  
+  // Определяем количество видимых колонок для правильного colSpan
+  // Всего колонок: 7 (Статус, Наименование, Артикул, Место, Требуется, Собрано, Действия)
+  // При редактировании скрыты: Артикул, Место, Требуется (3 колонки)
+  // Но colSpan должен быть 7, так как все колонки существуют в DOM
+  const totalColumns = 7;
 
   const handleConfirm = async () => {
     try {
@@ -63,12 +73,67 @@ export function CollectModal({
   const handleNameClick = (line: any, index: number) => {
     const state = checklistState[index] || { collected: false, qty: line.qty, collectedQty: line.qty };
     setSelectedLine({
+      index,
       name: line.name,
       sku: line.sku,
       location: line.location || '—',
       qty: line.qty,
       collected: state.collectedQty,
+      uom: line.uom || '',
     });
+  };
+
+  // Функция для перехода к следующему товару
+  const handleNextItem = () => {
+    if (!currentShipment || !selectedLine) return;
+
+    // Находим следующий несобранный товар
+    const currentIndex = selectedLine.index;
+    const sortedIndices = currentShipment.lines
+      .map((_, index) => index)
+      .sort((a, b) => {
+        const aRemoving = removingItems.has(a);
+        const bRemoving = removingItems.has(b);
+        if (aRemoving && !bRemoving) return -1;
+        if (!aRemoving && bRemoving) return 1;
+        const aState = checklistState[a] || { collected: false, qty: currentShipment.lines[a].qty, collectedQty: currentShipment.lines[a].qty };
+        const bState = checklistState[b] || { collected: false, qty: currentShipment.lines[b].qty, collectedQty: currentShipment.lines[b].qty };
+        const aCollected = aState.collected;
+        const bCollected = bState.collected;
+        return aCollected === bCollected ? 0 : aCollected ? 1 : -1;
+      });
+
+    const currentPosition = sortedIndices.indexOf(currentIndex);
+    if (currentPosition === -1) {
+      setSelectedLine(null);
+      return;
+    }
+
+    // Ищем следующий несобранный товар
+    for (let i = currentPosition + 1; i < sortedIndices.length; i++) {
+      const nextIndex = sortedIndices[i];
+      const nextState = checklistState[nextIndex] || { 
+        collected: false, 
+        qty: currentShipment.lines[nextIndex].qty, 
+        collectedQty: currentShipment.lines[nextIndex].qty 
+      };
+      if (!nextState.collected && !removingItems.has(nextIndex)) {
+        const nextLine = currentShipment.lines[nextIndex];
+        setSelectedLine({
+          index: nextIndex,
+          name: nextLine.name,
+          sku: nextLine.sku,
+          location: nextLine.location || '—',
+          qty: nextLine.qty,
+          collected: nextState.collectedQty,
+          uom: nextLine.uom || '',
+        });
+        return;
+      }
+    }
+
+    // Если следующий несобранный товар не найден, закрываем модальное окно
+    setSelectedLine(null);
   };
 
   const handleInfoClick = (line: any, index: number) => {
@@ -81,9 +146,16 @@ export function CollectModal({
   }
 
   const progress = getProgress();
+  // Сортируем индексы, но исключаем товары, которые находятся в процессе удаления
   const sortedIndices = currentShipment.lines
     .map((_, index) => index)
     .sort((a, b) => {
+      // Товары в процессе удаления остаются на своих местах
+      const aRemoving = removingItems.has(a);
+      const bRemoving = removingItems.has(b);
+      if (aRemoving && !bRemoving) return -1;
+      if (!aRemoving && bRemoving) return 1;
+      
       const aCollected = checklistState[a]?.collected || false;
       const bCollected = checklistState[b]?.collected || false;
       return aCollected === bCollected ? 0 : aCollected ? 1 : -1;
@@ -177,31 +249,31 @@ export function CollectModal({
         </div>
         <div
           ref={scrollContainerRef}
-          className="overflow-y-auto max-h-[60vh] border border-slate-700 rounded-lg"
+          className="overflow-y-auto overflow-x-hidden max-h-[60vh] border border-slate-700 rounded-lg"
           onScroll={handleScrollSave}
         >
           <table className="w-full border-collapse">
             <thead className="bg-slate-800 sticky top-0 z-10 hidden md:table-header-group">
               <tr>
-                <th className="px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-10">
+                <th className="px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-12">
                   Статус
                 </th>
-                <th className={`px-2 py-2 text-left text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 ${Object.values(editState).some(Boolean) ? 'w-48' : ''}`} style={{ maxWidth: '200px' }}>
+                <th className="px-2 py-2 text-left text-xs font-semibold text-slate-300 uppercase border-b border-slate-700">
                   Наименование
                 </th>
-                <th className={`px-2 py-2 text-left text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-20 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`}>
+                <th className={`px-2 py-2 text-left text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-28 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`}>
                   Артикул
                 </th>
-                <th className={`px-2 py-2 text-left text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-20 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`}>
+                <th className={`px-2 py-2 text-left text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-24 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`}>
                   Место
                 </th>
-                <th className={`px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-16 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`}>
+                <th className={`px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-20 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`}>
                   Требуется
                 </th>
-                <th className="px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-20">
+                <th className="px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-20 hidden md:table-cell">
                   Собрано
                 </th>
-                <th className="px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-32">
+                <th className="px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-40">
                   Действия
                 </th>
               </tr>
@@ -216,196 +288,209 @@ export function CollectModal({
                 const isZero = state.collectedQty === 0 && isCollected;
                 const isEditing = editState[index];
 
-                return (
-                  <tr
-                    key={index}
-                    className={`${isCollected ? (isZero ? 'bg-red-900/20' : 'bg-green-900/20') : 'bg-slate-900'} hover:bg-slate-800 transition-colors border-b-2 border-slate-700`}
-                  >
-                    {isEditing ? (
-                      // Компактный режим редактирования - все в одной колонке
-                      <td colSpan={7} className="px-2 py-2">
+                const isRemoving = removingItems.has(index);
+                
+                if (isEditing) {
+                  return (
+                    <tr
+                      key={index}
+                      className={`${isCollected ? (isZero ? 'bg-red-900/20' : 'bg-green-900/20') : 'bg-slate-900'} hover:bg-slate-800 transition-all duration-500 border-b border-slate-700 ${
+                        isRemoving ? 'item-removing' : ''
+                      }`}
+                    >
+                      <td colSpan={totalColumns} className="px-2 py-2">
                         <div className="space-y-1.5">
-                          {/* Строка 1: Название (может быть в 2 строки) */}
+                          {/* Строка 1: Название (может быть в 3 строки) */}
                           <div 
-                            className="text-xs leading-tight line-clamp-2 cursor-pointer hover:text-blue-400 transition-colors"
+                            className="text-xs leading-snug cursor-pointer hover:text-blue-400 transition-colors break-words"
                             onClick={() => handleInfoClick(line, index)}
+                            style={{ 
+                              display: '-webkit-box',
+                              WebkitLineClamp: 3,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              wordBreak: 'break-word',
+                              lineHeight: '1.4'
+                            }}
                           >
                             {line.name}
                           </div>
-                          {/* Строка 2: Артикул, Требуется, Собрано */}
-                          <div className="flex items-center gap-2 flex-wrap text-[10px]">
-                            <div 
-                              className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
-                              onClick={() => handleInfoClick(line, index)}
-                            >
-                              Арт: {line.sku}
-                            </div>
-                            <div 
-                              className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
-                              onClick={() => handleInfoClick(line, index)}
-                            >
-                              Треб: <span className="text-slate-300 font-semibold">{line.qty}</span> {line.uom}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-slate-500">Собр:</span>
-                              <button
-                                onClick={() => onUpdateCollectedQty(index, state.collectedQty - 1)}
-                                className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded transition-colors flex items-center justify-center text-[10px] font-bold"
-                                disabled={state.collectedQty <= 0}
+                          {/* Строка 2: Информация слева, управление количеством и кнопки справа */}
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            {/* Левая часть: Артикул, Требуется */}
+                            <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                              <div 
+                                className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
+                                onClick={() => handleInfoClick(line, index)}
                               >
-                                −
-                              </button>
-                              <input
-                                type="number"
-                                min="0"
-                                max={line.qty}
-                                value={state.collectedQty}
-                                onChange={(e) => {
-                                  const value = parseInt(e.target.value) || 0;
-                                  onUpdateCollectedQty(index, Math.max(0, Math.min(value, line.qty)));
-                                }}
-                                onBlur={(e) => {
-                                  const value = parseInt(e.target.value) || 0;
-                                  onUpdateCollectedQty(index, Math.max(0, Math.min(value, line.qty)));
-                                }}
-                                className="w-10 bg-slate-800 border border-slate-600 text-slate-100 rounded px-0.5 py-0.5 text-center text-[10px] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                autoFocus
-                              />
-                              <button
-                                onClick={() => onUpdateCollectedQty(index, state.collectedQty + 1)}
-                                className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded transition-colors flex items-center justify-center text-[10px] font-bold"
-                                disabled={state.collectedQty >= line.qty}
+                                {line.sku}
+                              </div>
+                              <div 
+                                className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
+                                onClick={() => handleInfoClick(line, index)}
                               >
-                                +
-                              </button>
-                              <span className="text-slate-500">{line.uom}</span>
+                                <span className="text-slate-300 font-semibold">{line.qty}</span> {line.uom}
+                              </div>
                             </div>
-                          </div>
-                          {/* Строка 3: Кнопки подтверждения/отмены */}
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => onConfirmEditQty(index)}
-                              className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-semibold rounded transition-colors"
-                            >
-                              ✓
-                            </button>
-                            <button
-                              onClick={() => onCancelEditQty(index)}
-                              className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] font-medium rounded transition-colors"
-                            >
-                              Отмена
-                            </button>
+                            {/* Правая часть: Управление количеством и кнопки в одном месте */}
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <div className="flex items-center gap-1">
+                                <span className="text-slate-500 text-[10px]">Собр:</span>
+                                <button
+                                  onClick={() => onUpdateCollectedQty(index, state.collectedQty - 1)}
+                                  className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded transition-colors flex items-center justify-center text-[10px] font-bold"
+                                  disabled={state.collectedQty <= 0}
+                                >
+                                  −
+                                </button>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={line.qty}
+                                  value={state.collectedQty}
+                                  onChange={(e) => {
+                                    const value = parseInt(e.target.value) || 0;
+                                    onUpdateCollectedQty(index, Math.max(0, Math.min(value, line.qty)));
+                                  }}
+                                  onBlur={(e) => {
+                                    const value = parseInt(e.target.value) || 0;
+                                    onUpdateCollectedQty(index, Math.max(0, Math.min(value, line.qty)));
+                                  }}
+                                  className="w-10 bg-slate-800 border border-slate-600 text-slate-100 rounded px-0.5 py-0.5 text-center text-[10px] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => onUpdateCollectedQty(index, state.collectedQty + 1)}
+                                  className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded transition-colors flex items-center justify-center text-[10px] font-bold"
+                                  disabled={state.collectedQty >= line.qty}
+                                >
+                                  +
+                                </button>
+                                <span className="text-slate-500 text-[10px]">{line.uom}</span>
+                              </div>
+                              {/* Кнопки подтверждения/отмены */}
+                              <div className="flex gap-1">
+                                <button
+                                  onClick={() => onConfirmEditQty(index)}
+                                  className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-semibold rounded transition-colors"
+                                >
+                                  ✓
+                                </button>
+                                <button
+                                  onClick={() => onCancelEditQty(index)}
+                                  className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] font-medium rounded transition-colors"
+                                >
+                                  Отмена
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </td>
-                    ) : (
-                      // Обычный режим - таблица
-                      <>
-                        <td className="px-2 py-2 text-center border-b border-slate-800 align-middle">
-                          {isCollected ? (
-                            isZero ? (
-                              <div className="w-6 h-6 bg-red-600 rounded-full mx-auto flex items-center justify-center">
-                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </div>
-                            ) : (
-                              <div className="w-6 h-6 bg-green-600 rounded-full mx-auto flex items-center justify-center">
-                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              </div>
-                            )
+                    </tr>
+                  );
+                }
+
+                // Обычный режим - таблица: 1 товар = 2 строки
+                const rowClassName = `${isCollected ? (isZero ? 'bg-red-900/20' : 'bg-green-900/20') : 'bg-slate-900'} hover:bg-slate-800 transition-all duration-500 border-b border-slate-700 ${
+                  isRemoving ? 'item-removing' : ''
+                }`;
+
+                return (
+                  <Fragment key={index}>
+                    {/* Первая строка: Название товара (1 столбец на всю ширину) */}
+                    <tr className={rowClassName}>
+                      <td rowSpan={2} className="px-2 py-2 text-center border-b border-slate-800 align-middle hidden md:table-cell w-12">
+                        {isCollected ? (
+                          isZero ? (
+                            <div className="w-6 h-6 bg-red-600 rounded-full mx-auto flex items-center justify-center">
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </div>
                           ) : (
-                            <div className="w-1.5 h-1.5 bg-slate-600 rounded-full mx-auto"></div>
-                          )}
-                        </td>
-                        <td className="px-2 py-2 border-b border-slate-800 align-middle">
-                          <div 
-                            className="text-xs leading-tight line-clamp-2 cursor-pointer hover:text-blue-400 transition-colors"
-                            onClick={() => handleInfoClick(line, index)}
-                          >
-                            {line.name}
-                          </div>
-                          {/* Мобильная версия: информация под названием */}
-                          <div className="md:hidden mt-1 space-y-0.5">
+                            <div className="w-6 h-6 bg-green-600 rounded-full mx-auto flex items-center justify-center">
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </div>
+                          )
+                        ) : (
+                          <div className="w-1.5 h-1.5 bg-slate-600 rounded-full mx-auto"></div>
+                        )}
+                      </td>
+                      <td colSpan={Object.values(editState).some(Boolean) ? 6 : 6} className="px-2 py-2 border-b border-slate-800 align-top">
+                        {/* Название товара (может быть в 3 строки) */}
+                        <div 
+                          className="text-xs md:text-sm leading-snug cursor-pointer hover:text-blue-400 transition-colors break-words"
+                          onClick={() => handleInfoClick(line, index)}
+                          style={{ 
+                            display: '-webkit-box',
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            wordBreak: 'break-word',
+                            lineHeight: '1.4'
+                          }}
+                        >
+                          {line.name}
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Вторая строка: 2 столбца - информация слева, кнопки справа */}
+                    <tr className={rowClassName}>
+                      {/* Мобильная версия */}
+                      <td colSpan={7} className="px-2 py-2 md:hidden">
+                        <div className="flex items-center justify-between gap-2">
+                          {/* Левая часть: информация */}
+                          <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                            {isCollected ? (
+                              isZero ? (
+                                <div className="w-3.5 h-3.5 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="w-3.5 h-3.5 bg-green-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              )
+                            ) : (
+                              <div className="w-3.5 h-3.5 bg-slate-600 rounded-full flex-shrink-0"></div>
+                            )}
                             <div 
                               className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
                               onClick={() => handleInfoClick(line, index)}
                             >
-                              Арт: {line.sku}
+                              {line.sku}
                             </div>
-                            <div 
-                              className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
-                              onClick={() => handleInfoClick(line, index)}
-                            >
-                              Требуется: <span className="text-slate-300 font-semibold">{line.qty}</span> {line.uom} | 
-                              Собрано: <span className="text-slate-300 font-semibold">{state.collectedQty}</span> {line.uom}
-                            </div>
-                          </div>
-                          {/* Десктоп версия: кликабельные элементы */}
-                          <div className="hidden md:block mt-1 space-y-0.5">
                             <div 
                               className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
                               onClick={() => handleInfoClick(line, index)}
                             >
-                              Арт: {line.sku}
+                              {line.location || '—'}
                             </div>
-                            {line.location && (
-                              <div 
-                                className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
-                                onClick={() => handleInfoClick(line, index)}
-                              >
-                                Место: {line.location}
-                              </div>
+                            <div className="text-[10px] text-slate-500 whitespace-nowrap">
+                              <span className="text-slate-300 font-semibold">{line.qty}</span> {line.uom}
+                            </div>
+                            <div className="text-[10px] text-slate-500 whitespace-nowrap">
+                              <span className="text-slate-300 font-semibold">{state.collectedQty}</span> {line.uom}
+                            </div>
+                            {isCollected && isZero && (
+                              <div className="text-[10px] text-red-400 font-semibold">Не собрано</div>
+                            )}
+                            {isCollected && hasShortage && (
+                              <div className="text-[10px] text-yellow-500">Недостаток: {line.qty - state.collectedQty}</div>
                             )}
                           </div>
-                          {isCollected && isZero && (
-                            <div className="text-[10px] text-red-400 font-semibold mt-0.5">Не собрано</div>
-                          )}
-                          {isCollected && hasShortage && (
-                            <div className="text-[10px] text-yellow-500 mt-0.5">Недостаток: {line.qty - state.collectedQty}</div>
-                          )}
-                        </td>
-                        <td className="px-2 py-2 border-b border-slate-800 hidden md:table-cell align-middle">
-                          <div 
-                            className="text-xs text-slate-400 truncate cursor-pointer hover:text-blue-400 transition-colors"
-                            onClick={() => handleInfoClick(line, index)}
-                          >
-                            {line.sku}
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 border-b border-slate-800 hidden md:table-cell align-middle">
-                          <div 
-                            className="text-xs text-slate-400 line-clamp-2 cursor-pointer hover:text-blue-400 transition-colors"
-                            onClick={() => handleInfoClick(line, index)}
-                          >
-                            {line.location || '—'}
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 text-center border-b border-slate-800 hidden md:table-cell align-middle">
-                          <div 
-                            className="flex flex-col items-center justify-center cursor-pointer hover:text-blue-400 transition-colors"
-                            onClick={() => handleInfoClick(line, index)}
-                          >
-                            <div className="text-sm font-semibold text-slate-200">{line.qty}</div>
-                            <div className="text-[10px] text-slate-500">{line.uom}</div>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 text-center border-b border-slate-800 align-middle">
-                          <div 
-                            className="flex flex-col items-center justify-center cursor-pointer hover:text-blue-400 transition-colors"
-                            onClick={() => handleInfoClick(line, index)}
-                          >
-                            <div className="text-xs font-semibold text-slate-200">{state.collectedQty}</div>
-                            <div className="text-[10px] text-slate-500">{line.uom}</div>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 text-center border-b border-slate-800 align-middle">
-                          <div className="flex gap-1 items-center justify-center">
+                          {/* Правая часть: кнопки */}
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
                             <button
                               onClick={() => onStartEditQty(index)}
-                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-medium rounded transition-colors whitespace-nowrap"
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-medium rounded transition-colors"
                             >
                               Ред.
                             </button>
@@ -421,10 +506,64 @@ export function CollectModal({
                               />
                             )}
                           </div>
-                        </td>
-                      </>
-                    )}
-                  </tr>
+                        </div>
+                      </td>
+                      
+                      {/* Десктоп версия: информация слева */}
+                      <td colSpan={4} className="px-2 py-2 border-b border-slate-800 hidden md:table-cell align-middle">
+                        <div className="flex items-center gap-3">
+                          <div 
+                            className="text-xs text-slate-400 truncate cursor-pointer hover:text-blue-400 transition-colors w-28"
+                            onClick={() => handleInfoClick(line, index)}
+                            title={line.sku}
+                          >
+                            {line.sku}
+                          </div>
+                          <div 
+                            className="text-xs text-slate-400 truncate cursor-pointer hover:text-blue-400 transition-colors w-24"
+                            onClick={() => handleInfoClick(line, index)}
+                            title={line.location || '—'}
+                          >
+                            {line.location || '—'}
+                          </div>
+                          <div className="text-xs text-slate-300 font-semibold w-20 text-center">
+                            {line.qty}
+                          </div>
+                          <div className="text-xs text-slate-300 font-semibold w-20 text-center">
+                            {state.collectedQty}
+                            {isCollected && isZero && (
+                              <div className="text-[10px] text-red-400 font-semibold mt-0.5">Не собрано</div>
+                            )}
+                            {isCollected && hasShortage && (
+                              <div className="text-[10px] text-yellow-500 mt-0.5">Недостаток: {line.qty - state.collectedQty}</div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      {/* Десктоп версия: кнопки справа */}
+                      <td colSpan={2} className="px-2 py-2 text-center border-b border-slate-800 hidden md:table-cell align-middle">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => onStartEditQty(index)}
+                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-medium rounded transition-colors whitespace-nowrap"
+                          >
+                            Ред.
+                          </button>
+                          {!isCollected && (
+                            <SwipeButton
+                              trackId={`swipe-collect-track-${index}`}
+                              sliderId={`swipe-collect-slider-${index}`}
+                              textId={`swipe-collect-text-${index}`}
+                              onConfirm={() => onUpdateCollected(index, true)}
+                              label="→ Сдвиньте"
+                              confirmedLabel="✓ Собрано"
+                              className="flex-shrink-0"
+                            />
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -433,15 +572,33 @@ export function CollectModal({
       </Modal>
       
       {/* Модальное окно с деталями товара */}
-      <NameModal
-        isOpen={selectedLine !== null}
-        onClose={() => setSelectedLine(null)}
-        name={selectedLine?.name || ''}
-        sku={selectedLine?.sku || ''}
-        location={selectedLine?.location || ''}
-        qty={selectedLine?.qty || 0}
-        collected={selectedLine?.collected || 0}
-      />
+      {selectedLine !== null && (
+        <NameModal
+          isOpen={true}
+          onClose={() => setSelectedLine(null)}
+          name={selectedLine.name}
+          sku={selectedLine.sku}
+          location={selectedLine.location}
+          qty={selectedLine.qty}
+          collected={selectedLine.collected}
+          uom={selectedLine.uom}
+          lineIndex={selectedLine.index}
+          checklistState={checklistState[selectedLine.index]}
+          isEditing={editState[selectedLine.index] || false}
+          onUpdateCollected={onUpdateCollected}
+          onUpdateCollectedQty={onUpdateCollectedQty}
+          onStartEditQty={onStartEditQty}
+          onConfirmEditQty={onConfirmEditQty}
+          onCancelEditQty={onCancelEditQty}
+          onNextItem={handleNextItem}
+          currentItemNumber={
+            currentShipment
+              ? sortedIndices.indexOf(selectedLine.index) + 1
+              : undefined
+          }
+          totalItems={currentShipment ? sortedIndices.length : undefined}
+        />
+      )}
     </>
   );
 }
