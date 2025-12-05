@@ -27,6 +27,8 @@ interface NameModalProps {
   onNextItem?: () => void;
   currentItemNumber?: number;
   totalItems?: number;
+  // Текст кнопки для десктопа
+  buttonLabel?: string;
 }
 
 export function NameModal({ 
@@ -49,6 +51,7 @@ export function NameModal({
   onNextItem,
   currentItemNumber,
   totalItems,
+  buttonLabel = 'Сборка',
 }: NameModalProps) {
   const [localCollectedQty, setLocalCollectedQty] = useState(collected);
   const [localIsEditing, setLocalIsEditing] = useState(false);
@@ -229,18 +232,30 @@ export function NameModal({
                     </span>
                   </button>
                   
-                  {/* Свайп кнопка - всегда видима */}
+                  {/* Кнопка подтверждения - всегда видима */}
                   <div className="flex-1 min-w-0">
                     {!isCollected ? (
-                      <SwipeButton
-                        trackId={`swipe-name-modal-track-${lineIndex}`}
-                        sliderId={`swipe-name-modal-slider-${lineIndex}`}
-                        textId={`swipe-name-modal-text-${lineIndex}`}
-                        onConfirm={handleConfirm}
-                        label="→ Сдвиньте для подтверждения"
-                        confirmedLabel="✓ Подтверждено"
-                        className="w-full h-full"
-                      />
+                      <>
+                        {/* Мобильная версия - свайп */}
+                        <div className="md:hidden">
+                          <SwipeButton
+                            trackId={`swipe-name-modal-track-${lineIndex}`}
+                            sliderId={`swipe-name-modal-slider-${lineIndex}`}
+                            textId={`swipe-name-modal-text-${lineIndex}`}
+                            onConfirm={handleConfirm}
+                            label="→ Сдвиньте для подтверждения"
+                            confirmedLabel="✓ Подтверждено"
+                            className="w-full h-full"
+                          />
+                        </div>
+                        {/* Десктоп версия - кнопка */}
+                        <button
+                          onClick={handleConfirm}
+                          className="hidden md:flex w-full h-full min-h-[52px] items-center justify-center px-6 py-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95"
+                        >
+                          {buttonLabel}
+                        </button>
+                      </>
                     ) : (
                       <div className="w-full h-full min-h-[52px] flex items-center justify-center px-6 py-4 bg-gradient-to-r from-green-600/20 to-green-500/20 border-2 border-green-500/50 rounded-lg">
                         <div className="flex items-center gap-2">
