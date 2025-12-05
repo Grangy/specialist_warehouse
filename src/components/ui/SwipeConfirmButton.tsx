@@ -18,12 +18,13 @@ export function SwipeConfirmButton({
   sliderId,
   textId,
 }: SwipeConfirmButtonProps) {
+  const isDraggingRef = useRef(false);
   const handlersRef = useRef<{
     handleStart?: (e: TouchEvent | MouseEvent) => void;
     handleMove?: (e: TouchEvent | MouseEvent) => void;
     handleEnd?: () => void;
     mouseMoveHandler?: (e: MouseEvent) => void;
-    mouseUpHandler?: () => void;
+    mouseUpHandler?: (e: MouseEvent) => void;
   }>({});
 
   useEffect(() => {
@@ -57,7 +58,6 @@ export function SwipeConfirmButton({
 
       let startX = 0;
       let currentX = 0;
-      let isDragging = false;
       let hasConfirmed = false;
 
       const updateSlider = () => {
@@ -105,7 +105,7 @@ export function SwipeConfirmButton({
         const trackRect = track.getBoundingClientRect();
         startX = touch.clientX - trackRect.left;
         currentX = startX;
-        isDragging = true;
+        isDraggingRef.current = true;
         slider.style.transition = 'none';
         track.classList.add('swiping');
         e.preventDefault();
@@ -113,7 +113,7 @@ export function SwipeConfirmButton({
       };
 
       const handleMove = (e: TouchEvent | MouseEvent) => {
-        if (!isDragging || hasConfirmed || disabled) return;
+        if (!isDraggingRef.current || hasConfirmed || disabled) return;
         const touch = 'touches' in e ? e.touches[0] : e;
         const trackRect = track.getBoundingClientRect();
         currentX = touch.clientX - trackRect.left;
@@ -123,8 +123,8 @@ export function SwipeConfirmButton({
       };
 
       const handleEnd = () => {
-        if (!isDragging) return;
-        isDragging = false;
+        if (!isDraggingRef.current) return;
+        isDraggingRef.current = false;
         slider.style.transition = 'width 0.3s ease-out';
         track.classList.remove('swiping');
 
@@ -150,15 +150,19 @@ export function SwipeConfirmButton({
       track.addEventListener('touchend', handleEnd, { passive: true });
       track.addEventListener('touchcancel', handleEnd, { passive: true });
 
-      track.addEventListener('mousedown', handleStart);
+      track.addEventListener('mousedown', handleStart, { passive: false });
       const mouseMoveHandler = (e: MouseEvent) => {
-        if (isDragging) handleMove(e);
+        if (isDraggingRef.current) {
+          handleMove(e);
+        }
       };
-      const mouseUpHandler = () => {
-        if (isDragging) handleEnd();
+      const mouseUpHandler = (e: MouseEvent) => {
+        if (isDraggingRef.current) {
+          handleEnd();
+        }
       };
-      document.addEventListener('mousemove', mouseMoveHandler);
-      document.addEventListener('mouseup', mouseUpHandler);
+      document.addEventListener('mousemove', mouseMoveHandler, { passive: false });
+      document.addEventListener('mouseup', mouseUpHandler, { passive: false });
 
       handlersRef.current.mouseMoveHandler = mouseMoveHandler;
       handlersRef.current.mouseUpHandler = mouseUpHandler;

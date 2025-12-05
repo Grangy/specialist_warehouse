@@ -1,6 +1,8 @@
 // Скрипт для создания тестового заказа с длинными названиями товаров
 // Использование: npx tsx scripts/create-test-order-long-names.ts
 
+// Изолируем переменные в функции для избежания конфликтов
+(function() {
 const API_BASE_URL = process.env.API_BASE || 'http://localhost:3000/api';
 
 async function login(username: string, password: string): Promise<string> {
@@ -183,4 +185,5 @@ async function main() {
 }
 
 main();
+})();
 

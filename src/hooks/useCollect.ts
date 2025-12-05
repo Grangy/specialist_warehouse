@@ -134,7 +134,7 @@ export function useCollect(options?: UseCollectOptions) {
           initialState[index] = {
             collected: isCollected,
             qty: line.qty,
-            collectedQty: savedQty, // Показываем сохраненное количество или требуемое по умолчанию
+            collectedQty: savedQty ?? line.qty, // Показываем сохраненное количество или требуемое по умолчанию
           };
         });
       }
