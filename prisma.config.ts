@@ -3,6 +3,23 @@
 // npm install --save-dev prisma dotenv
 import "dotenv/config";
 import { defineConfig, env } from "prisma/config";
+import path from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const projectRoot = path.resolve(__dirname, "..");
+
+// Получаем DATABASE_URL из переменных окружения
+let databaseUrl = env("DATABASE_URL");
+
+// Если это относительный путь для SQLite, преобразуем в абсолютный
+if (databaseUrl && databaseUrl.startsWith("file:./")) {
+  const relativePath = databaseUrl.replace("file:./", "");
+  const absolutePath = path.resolve(projectRoot, relativePath);
+  databaseUrl = `file:${absolutePath}`;
+}
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -11,6 +28,6 @@ export default defineConfig({
   },
   engine: "classic",
   datasource: {
-    url: env("DATABASE_URL"),
+    url: databaseUrl || env("DATABASE_URL"),
   },
 });

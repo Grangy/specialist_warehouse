@@ -99,7 +99,10 @@ export async function POST(
       // Все задания подтверждены - отправляем заказ в офис
       await prisma.shipment.update({
         where: { id: task.shipmentId },
-        data: { status: 'processed' },
+        data: { 
+          status: 'processed',
+          confirmedAt: new Date(), // Записываем время подтверждения
+        },
       });
 
       // Обновляем исходные позиции заказа на основе заданий

@@ -11,7 +11,9 @@
     "server": "node server.js",
     "db:seed": "tsx prisma/seed.ts",
     "db:migrate": "prisma migrate dev",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
+    "db:fill-analytics": "tsx scripts/fill-analytics-test-data.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -19,11 +21,13 @@
   "dependencies": {
     "@prisma/client": "^6.19.0",
     "bcryptjs": "^3.0.3",
+    "dotenv": "^17.2.3",
     "lucide-react": "^0.555.0",
     "next": "^14.0.0",
     "prisma": "^6.19.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "recharts": "^3.5.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
