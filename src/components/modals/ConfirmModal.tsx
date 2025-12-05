@@ -510,15 +510,25 @@ export function ConfirmModal({
                                 Ред.
                               </button>
                               {!isConfirmed && (
-                                <SwipeButton
-                                  trackId={`swipe-confirm-item-track-${index}`}
-                                  sliderId={`swipe-confirm-item-slider-${index}`}
-                                  textId={`swipe-confirm-item-text-${index}`}
-                                  onConfirm={() => onConfirmItem(index)}
-                                  label="→ Подтвердить"
-                                  confirmedLabel="✓ Подтверждено"
-                                  className="flex-shrink-0"
-                                />
+                                <>
+                                  {/* Мобильная версия - свайп */}
+                                  <SwipeButton
+                                    trackId={`swipe-confirm-item-track-${index}`}
+                                    sliderId={`swipe-confirm-item-slider-${index}`}
+                                    textId={`swipe-confirm-item-text-${index}`}
+                                    onConfirm={() => onConfirmItem(index)}
+                                    label="→ Подтвердить"
+                                    confirmedLabel="✓ Подтверждено"
+                                    className="flex-shrink-0 md:hidden"
+                                  />
+                                  {/* Десктоп версия - кнопка */}
+                                  <button
+                                    onClick={() => onConfirmItem(index)}
+                                    className="hidden md:flex px-4 py-1.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white text-xs font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+                                  >
+                                    Подтв.
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -625,6 +635,7 @@ export function ConfirmModal({
         onNextItem={handleNextItem}
         currentItemNumber={modalItemInfo.currentItemNumber}
         totalItems={modalItemInfo.totalItems}
+        buttonLabel="Подтв."
       />
     )}
     </>
