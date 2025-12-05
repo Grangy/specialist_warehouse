@@ -50,23 +50,12 @@ export async function POST(request: NextRequest) {
     
     // 2. Проверяем заголовок X-Forwarded-Proto (для прокси/обратного прокси)
     const forwardedProto = request.headers.get('x-forwarded-proto');
-    
-    // 3. Пытаемся определить из URL (может быть относительным в Next.js)
-    let isHttps = false;
-    try {
-      if (request.url.startsWith('https://')) {
-        isHttps = true;
-      } else if (forwardedProto === 'https') {
-        isHttps = true;
-      }
-    } catch (e) {
-      // Игнорируем ошибки парсинга URL
-    }
+    const isHttps = forwardedProto === 'https';
     
     // Определяем secure флаг:
     // - Если явно отключен через env - false
     // - Если явно включен через env - true  
-    // - Иначе: в production только если HTTPS, в dev - false
+    // - Иначе: в production только если HTTPS (через заголовок), в dev - false
     const isSecure = disableSecure 
       ? false 
       : (forceSecure || (process.env.NODE_ENV === 'production' && isHttps));
@@ -90,8 +79,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Ошибка при входе:', error);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
-      { error: 'Ошибка сервера при входе' },
+      { 
+        error: 'Ошибка сервера при входе',
+        message: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     );
   }
