@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment, useMemo } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
 import { SwipeConfirmButton } from '@/components/ui/SwipeConfirmButton';
@@ -140,26 +140,55 @@ export function CollectModal({
     handleNameClick(line, index);
   };
 
+  // Сортируем индексы, но исключаем товары, которые находятся в процессе удаления
+  // ВАЖНО: хуки должны быть до условного возврата
+  const sortedIndices = useMemo(() => {
+    if (!currentShipment) return [];
+    return currentShipment.lines
+      .map((_, index) => index)
+      .sort((a, b) => {
+        // Товары в процессе удаления остаются на своих местах
+        const aRemoving = removingItems.has(a);
+        const bRemoving = removingItems.has(b);
+        if (aRemoving && !bRemoving) return -1;
+        if (!aRemoving && bRemoving) return 1;
+        
+        const aCollected = checklistState[a]?.collected || false;
+        const bCollected = checklistState[b]?.collected || false;
+        return aCollected === bCollected ? 0 : aCollected ? 1 : -1;
+      });
+  }, [currentShipment, checklistState, removingItems]);
+
+  // Вычисляем currentItemNumber и totalItems для модального окна
+  const modalItemInfo = useMemo(() => {
+    if (!currentShipment || !selectedLine) {
+      return { currentItemNumber: undefined, totalItems: undefined };
+    }
+    
+    const currentSortedIndices = currentShipment.lines
+      .map((_, index) => index)
+      .sort((a, b) => {
+        const aRemoving = removingItems.has(a);
+        const bRemoving = removingItems.has(b);
+        if (aRemoving && !bRemoving) return -1;
+        if (!aRemoving && bRemoving) return 1;
+        const aCollected = checklistState[a]?.collected || false;
+        const bCollected = checklistState[b]?.collected || false;
+        return aCollected === bCollected ? 0 : aCollected ? 1 : -1;
+      });
+    
+    return {
+      currentItemNumber: currentSortedIndices.indexOf(selectedLine.index) + 1,
+      totalItems: currentSortedIndices.length,
+    };
+  }, [currentShipment, selectedLine, checklistState, removingItems]);
+
   // Проверяем, что модальное окно должно быть открыто
   if (!currentShipment || !isOpen) {
     return null;
   }
 
   const progress = getProgress();
-  // Сортируем индексы, но исключаем товары, которые находятся в процессе удаления
-  const sortedIndices = currentShipment.lines
-    .map((_, index) => index)
-    .sort((a, b) => {
-      // Товары в процессе удаления остаются на своих местах
-      const aRemoving = removingItems.has(a);
-      const bRemoving = removingItems.has(b);
-      if (aRemoving && !bRemoving) return -1;
-      if (!aRemoving && bRemoving) return 1;
-      
-      const aCollected = checklistState[a]?.collected || false;
-      const bCollected = checklistState[b]?.collected || false;
-      return aCollected === bCollected ? 0 : aCollected ? 1 : -1;
-    });
 
   const handleScrollSave = () => {
     if (scrollContainerRef.current) {
@@ -186,26 +215,45 @@ export function CollectModal({
         subtitle={`${currentShipment.shipment_number || currentShipment.number || 'N/A'}${currentShipment.warehouse ? ` - ${currentShipment.warehouse}` : ''}`}
         businessRegion={currentShipment.business_region}
         footer={
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <div className="text-slate-400">
-                Прогресс: <span className="font-semibold text-slate-200">{progress.collected}/{progress.total}</span>
+          <div className="space-y-4">
+            {/* Прогресс-бар */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <div className="text-slate-300 font-medium">
+                  Прогресс: <span className="font-bold text-slate-100">{progress.collected}/{progress.total}</span>
+                </div>
+                <div className={`flex items-center gap-2 ${isReady() ? 'text-green-400' : 'text-slate-400'}`}>
+                  {isReady() && (
+                    <svg className="w-5 h-5 text-green-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  <span className={`font-semibold ${isReady() ? 'text-green-400' : 'text-slate-400'}`}>
+                    {isReady() ? 'Все товары собраны' : 'Укажите количество и отметьте собранные товары'}
+                  </span>
+                </div>
               </div>
-              <div className={isReady() ? 'text-green-500 font-semibold' : 'text-slate-400'}>
-                {isReady() ? '✓ Все товары собраны' : 'Укажите количество и отметьте собранные товары'}
+              <div className="w-full bg-slate-700/50 rounded-full h-2.5 overflow-hidden shadow-inner">
+                <div 
+                  className={`h-full rounded-full transition-all duration-500 ease-out ${
+                    isReady() ? 'bg-gradient-to-r from-green-500 to-green-400' : 
+                    progress.collected > 0 ? 'bg-gradient-to-r from-blue-500 to-blue-400' : 'bg-slate-600'
+                  } shadow-lg`}
+                  style={{ width: `${(progress.collected / progress.total) * 100}%` }}
+                ></div>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <button
                 onClick={onClose}
-                className="bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-3 px-6 rounded-lg transition-colors"
+                className="bg-slate-700/90 hover:bg-slate-600 text-slate-100 font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
               >
                 Отмена
               </button>
               <div className="flex-1 swipe-confirm-container" style={{ opacity: isReady() ? 1 : 0.5 }}>
                 <div
                   id="swipe-confirm-track"
-                  className="relative w-full h-12 bg-slate-700 rounded-lg overflow-hidden border-2 border-slate-600"
+                  className="relative w-full h-12 bg-slate-700/90 rounded-lg overflow-hidden border-2 border-slate-600/50 shadow-lg"
                   style={{ 
                     touchAction: 'pan-x', 
                     cursor: isReady() ? 'grab' : 'not-allowed',
@@ -214,16 +262,16 @@ export function CollectModal({
                 >
                   <div
                     id="swipe-confirm-slider"
-                    className="absolute left-0 top-0 h-full bg-green-600 flex items-center justify-center transition-none z-30"
+                    className="absolute left-0 top-0 h-full bg-gradient-to-r from-green-600 to-green-500 flex items-center justify-center transition-none z-30 shadow-lg"
                     style={{ width: '60px', minWidth: '60px' }}
                   >
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                    <svg className="w-6 h-6 text-white drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
                   <div
                     id="swipe-confirm-text"
-                    className="absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-xs pointer-events-none z-20"
+                    className="absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-sm pointer-events-none z-20"
                     style={{ left: '60px', right: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   >
                     <span>→ Сдвиньте для подтверждения</span>
@@ -242,9 +290,18 @@ export function CollectModal({
         }
       >
         <div className="mb-4 flex items-center justify-between text-sm">
-          <div className="text-slate-400">
-            Всего: <span className="font-semibold text-slate-200">{progress.total}</span> | Собрано:{' '}
-            <span className="font-semibold text-green-400">{progress.collected}</span>
+          <div className="flex items-center gap-4">
+            <div className="text-slate-300">
+              Всего: <span className="font-bold text-slate-100">{progress.total}</span>
+            </div>
+            <div className="text-slate-300">
+              Собрано: <span className="font-bold text-green-400">{progress.collected}</span>
+            </div>
+            {progress.hasShortage && (
+              <div className="text-yellow-400 font-medium">
+                ⚠ Есть недостачи
+              </div>
+            )}
           </div>
         </div>
         <div
@@ -253,27 +310,27 @@ export function CollectModal({
           onScroll={handleScrollSave}
         >
           <table className="w-full border-collapse">
-            <thead className="bg-slate-800 sticky top-0 z-10 hidden md:table-header-group">
+            <thead className="bg-slate-800/95 backdrop-blur-sm sticky top-0 z-10 hidden md:table-header-group shadow-sm">
               <tr>
-                <th className="px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-12">
+                <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600" style={{ width: '60px', minWidth: '60px' }}>
                   Статус
                 </th>
-                <th className="px-2 py-2 text-left text-xs font-semibold text-slate-300 uppercase border-b border-slate-700">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-slate-200 uppercase border-b border-slate-600">
                   Наименование
                 </th>
-                <th className={`px-2 py-2 text-left text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-28 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`}>
+                <th className={`px-3 py-3 text-left text-xs font-semibold text-slate-200 uppercase border-b border-slate-600 hidden ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '140px', minWidth: '140px' }}>
                   Артикул
                 </th>
-                <th className={`px-2 py-2 text-left text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-24 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`}>
+                <th className={`px-3 py-3 text-left text-xs font-semibold text-slate-200 uppercase border-b border-slate-600 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '100px', minWidth: '100px' }}>
                   Место
                 </th>
-                <th className={`px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-20 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`}>
+                <th className={`px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '90px', minWidth: '90px' }}>
                   Требуется
                 </th>
-                <th className="px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-20 hidden md:table-cell">
+                <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600 hidden md:table-cell" style={{ width: '90px', minWidth: '90px' }}>
                   Собрано
                 </th>
-                <th className="px-2 py-2 text-center text-xs font-semibold text-slate-300 uppercase border-b border-slate-700 w-40">
+                <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600" style={{ width: '180px', minWidth: '180px' }}>
                   Действия
                 </th>
               </tr>
@@ -294,15 +351,15 @@ export function CollectModal({
                   return (
                     <tr
                       key={index}
-                      className={`${isCollected ? (isZero ? 'bg-red-900/20' : 'bg-green-900/20') : 'bg-slate-900'} hover:bg-slate-800 transition-all duration-500 border-b border-slate-700 ${
+                      className={`${isCollected ? (isZero ? 'bg-red-900/20 border-l-2 border-l-red-500/50' : 'bg-green-900/20 border-l-2 border-l-green-500/50') : 'bg-blue-900/20 border-l-2 border-l-blue-500/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-slate-700/50 shadow-md ${
                         isRemoving ? 'item-removing' : ''
                       }`}
                     >
-                      <td colSpan={totalColumns} className="px-2 py-2">
+                      <td colSpan={totalColumns} className="px-3 py-3">
                         <div className="space-y-1.5">
                           {/* Строка 1: Название (может быть в 3 строки) */}
                           <div 
-                            className="text-xs leading-snug cursor-pointer hover:text-blue-400 transition-colors break-words"
+                            className="text-sm leading-relaxed cursor-pointer hover:text-blue-400 transition-all duration-200 break-words font-medium text-slate-100"
                             onClick={() => handleInfoClick(line, index)}
                             style={{ 
                               display: '-webkit-box',
@@ -310,7 +367,8 @@ export function CollectModal({
                               WebkitBoxOrient: 'vertical',
                               overflow: 'hidden',
                               wordBreak: 'break-word',
-                              lineHeight: '1.4'
+                              lineHeight: '1.5',
+                              minHeight: '1.5em'
                             }}
                           >
                             {line.name}
@@ -338,7 +396,7 @@ export function CollectModal({
                                 <span className="text-slate-500 text-[10px]">Собр:</span>
                                 <button
                                   onClick={() => onUpdateCollectedQty(index, state.collectedQty - 1)}
-                                  className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded transition-colors flex items-center justify-center text-[10px] font-bold"
+                                  className="w-6 h-6 bg-slate-700/90 hover:bg-slate-600 text-slate-100 rounded-md transition-all duration-200 flex items-center justify-center text-xs font-bold shadow-md hover:shadow-lg hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                                   disabled={state.collectedQty <= 0}
                                 >
                                   −
@@ -356,12 +414,12 @@ export function CollectModal({
                                     const value = parseInt(e.target.value) || 0;
                                     onUpdateCollectedQty(index, Math.max(0, Math.min(value, line.qty)));
                                   }}
-                                  className="w-10 bg-slate-800 border border-slate-600 text-slate-100 rounded px-0.5 py-0.5 text-center text-[10px] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  className="w-12 bg-slate-800/90 border-2 border-slate-600/50 text-slate-100 rounded-md px-1 py-1 text-center text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200"
                                   autoFocus
                                 />
                                 <button
                                   onClick={() => onUpdateCollectedQty(index, state.collectedQty + 1)}
-                                  className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded transition-colors flex items-center justify-center text-[10px] font-bold"
+                                  className="w-6 h-6 bg-slate-700/90 hover:bg-slate-600 text-slate-100 rounded-md transition-all duration-200 flex items-center justify-center text-xs font-bold shadow-md hover:shadow-lg hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                                   disabled={state.collectedQty >= line.qty}
                                 >
                                   +
@@ -369,16 +427,16 @@ export function CollectModal({
                                 <span className="text-slate-500 text-[10px]">{line.uom}</span>
                               </div>
                               {/* Кнопки подтверждения/отмены */}
-                              <div className="flex gap-1">
+                              <div className="flex gap-2">
                                 <button
                                   onClick={() => onConfirmEditQty(index)}
-                                  className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-semibold rounded transition-colors"
+                                  className="px-3 py-1.5 bg-green-600/90 hover:bg-green-500 text-white text-xs font-semibold rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
                                 >
                                   ✓
                                 </button>
                                 <button
                                   onClick={() => onCancelEditQty(index)}
-                                  className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] font-medium rounded transition-colors"
+                                  className="px-3 py-1.5 bg-slate-700/90 hover:bg-slate-600 text-slate-200 text-xs font-medium rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
                                 >
                                   Отмена
                                 </button>
@@ -392,7 +450,7 @@ export function CollectModal({
                 }
 
                 // Обычный режим - таблица: 1 товар = 2 строки
-                const rowClassName = `${isCollected ? (isZero ? 'bg-red-900/20' : 'bg-green-900/20') : 'bg-slate-900'} hover:bg-slate-800 transition-all duration-500 border-b border-slate-700 ${
+                const rowClassName = `${isCollected ? (isZero ? 'bg-red-900/15 border-l-2 border-l-red-500/50' : 'bg-green-900/15 border-l-2 border-l-green-500/50') : 'bg-slate-900/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-slate-700/50 ${
                   isRemoving ? 'item-removing' : ''
                 }`;
 
@@ -400,29 +458,29 @@ export function CollectModal({
                   <Fragment key={index}>
                     {/* Первая строка: Название товара (1 столбец на всю ширину) */}
                     <tr className={rowClassName}>
-                      <td rowSpan={2} className="px-2 py-2 text-center border-b border-slate-800 align-middle hidden md:table-cell w-12">
+                      <td rowSpan={2} className="px-3 py-3 text-center border-b border-slate-700/50 align-middle hidden md:table-cell" style={{ width: '60px', minWidth: '60px' }}>
                         {isCollected ? (
                           isZero ? (
-                            <div className="w-6 h-6 bg-red-600 rounded-full mx-auto flex items-center justify-center">
-                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            <div className="w-7 h-7 bg-red-500/90 rounded-full mx-auto flex items-center justify-center shadow-lg shadow-red-500/30 transition-all duration-300 hover:scale-110">
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                               </svg>
                             </div>
                           ) : (
-                            <div className="w-6 h-6 bg-green-600 rounded-full mx-auto flex items-center justify-center">
-                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            <div className="w-7 h-7 bg-green-500/90 rounded-full mx-auto flex items-center justify-center shadow-lg shadow-green-500/30 transition-all duration-300 hover:scale-110">
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
                             </div>
                           )
                         ) : (
-                          <div className="w-1.5 h-1.5 bg-slate-600 rounded-full mx-auto"></div>
+                          <div className="w-2 h-2 bg-slate-500/60 rounded-full mx-auto transition-all duration-300"></div>
                         )}
                       </td>
-                      <td colSpan={Object.values(editState).some(Boolean) ? 6 : 6} className="px-2 py-2 border-b border-slate-800 align-top">
+                      <td colSpan={Object.values(editState).some(Boolean) ? 6 : 5} className="px-3 py-3 border-b border-slate-700/50 align-top">
                         {/* Название товара (может быть в 3 строки) */}
                         <div 
-                          className="text-xs md:text-sm leading-snug cursor-pointer hover:text-blue-400 transition-colors break-words"
+                          className="text-sm md:text-base leading-relaxed cursor-pointer hover:text-blue-400 transition-all duration-200 break-words font-medium text-slate-100"
                           onClick={() => handleInfoClick(line, index)}
                           style={{ 
                             display: '-webkit-box',
@@ -430,7 +488,8 @@ export function CollectModal({
                             WebkitBoxOrient: 'vertical',
                             overflow: 'hidden',
                             wordBreak: 'break-word',
-                            lineHeight: '1.4'
+                            lineHeight: '1.5',
+                            minHeight: '1.5em'
                           }}
                         >
                           {line.name}
@@ -487,10 +546,10 @@ export function CollectModal({
                             )}
                           </div>
                           {/* Правая часть: кнопки */}
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <div className="flex items-center gap-2 flex-shrink-0">
                             <button
                               onClick={() => onStartEditQty(index)}
-                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-medium rounded transition-colors"
+                              className="px-3 py-1.5 bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-semibold rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
                             >
                               Ред.
                             </button>
@@ -509,43 +568,52 @@ export function CollectModal({
                         </div>
                       </td>
                       
-                      {/* Десктоп версия: информация слева */}
-                      <td colSpan={4} className="px-2 py-2 border-b border-slate-800 hidden md:table-cell align-middle">
-                        <div className="flex items-center gap-3">
-                          <div 
-                            className="text-xs text-slate-400 truncate cursor-pointer hover:text-blue-400 transition-colors w-28"
-                            onClick={() => handleInfoClick(line, index)}
-                            title={line.sku}
-                          >
-                            {line.sku}
-                          </div>
-                          <div 
-                            className="text-xs text-slate-400 truncate cursor-pointer hover:text-blue-400 transition-colors w-24"
-                            onClick={() => handleInfoClick(line, index)}
-                            title={line.location || '—'}
-                          >
-                            {line.location || '—'}
-                          </div>
-                          <div className="text-xs text-slate-300 font-semibold w-20 text-center">
-                            {line.qty}
-                          </div>
-                          <div className="text-xs text-slate-300 font-semibold w-20 text-center">
-                            {state.collectedQty}
-                            {isCollected && isZero && (
-                              <div className="text-[10px] text-red-400 font-semibold mt-0.5">Не собрано</div>
-                            )}
-                            {isCollected && hasShortage && (
-                              <div className="text-[10px] text-yellow-500 mt-0.5">Недостаток: {line.qty - state.collectedQty}</div>
-                            )}
-                          </div>
+                      {/* Десктоп версия: Артикул, Место, Требуется, Собрано, Действия - всего 5 видимых ячеек для 6 колонок (Статус уже занят) */}
+                      <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '140px', minWidth: '140px' }}>
+                        <div 
+                          className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 font-mono"
+                          onClick={() => handleInfoClick(line, index)}
+                          title={line.sku}
+                        >
+                          {line.sku}
                         </div>
                       </td>
-                      {/* Десктоп версия: кнопки справа */}
-                      <td colSpan={2} className="px-2 py-2 text-center border-b border-slate-800 hidden md:table-cell align-middle">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '100px', minWidth: '100px' }}>
+                        <div 
+                          className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200"
+                          onClick={() => handleInfoClick(line, index)}
+                          title={line.location || '—'}
+                        >
+                          {line.location || '—'}
+                        </div>
+                      </td>
+                      <td className={`px-3 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '90px', minWidth: '90px' }}>
+                        <div className="text-sm text-slate-200 font-bold">
+                          {line.qty}
+                        </div>
+                        {line.uom && (
+                          <div className="text-[10px] text-slate-400 mt-0.5">{line.uom}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle" style={{ width: '90px', minWidth: '90px' }}>
+                        <div className={`text-sm font-bold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>
+                          {state.collectedQty}
+                        </div>
+                        {line.uom && (
+                          <div className="text-[10px] text-slate-400 mt-0.5">{line.uom}</div>
+                        )}
+                        {isCollected && isZero && (
+                          <div className="text-[10px] text-red-400 font-semibold mt-1">Не собрано</div>
+                        )}
+                        {isCollected && hasShortage && (
+                          <div className="text-[10px] text-yellow-500 mt-1">Недостаток: {line.qty - state.collectedQty}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle" style={{ width: '180px', minWidth: '180px' }}>
+                        <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => onStartEditQty(index)}
-                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-medium rounded transition-colors whitespace-nowrap"
+                            className="px-3 py-1.5 bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
                           >
                             Ред.
                           </button>
@@ -574,6 +642,7 @@ export function CollectModal({
       {/* Модальное окно с деталями товара */}
       {selectedLine !== null && (
         <NameModal
+          key={`name-modal-${selectedLine.index}-${modalItemInfo.currentItemNumber}`}
           isOpen={true}
           onClose={() => setSelectedLine(null)}
           name={selectedLine.name}
@@ -591,12 +660,8 @@ export function CollectModal({
           onConfirmEditQty={onConfirmEditQty}
           onCancelEditQty={onCancelEditQty}
           onNextItem={handleNextItem}
-          currentItemNumber={
-            currentShipment
-              ? sortedIndices.indexOf(selectedLine.index) + 1
-              : undefined
-          }
-          totalItems={currentShipment ? sortedIndices.length : undefined}
+          currentItemNumber={modalItemInfo.currentItemNumber}
+          totalItems={modalItemInfo.totalItems}
         />
       )}
     </>

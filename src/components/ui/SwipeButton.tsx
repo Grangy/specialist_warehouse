@@ -25,12 +25,13 @@ export function SwipeButton({
   textId,
 }: SwipeButtonProps) {
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const isDraggingRef = useRef(false);
   const handlersRef = useRef<{
     handleStart?: (e: TouchEvent | MouseEvent) => void;
     handleMove?: (e: TouchEvent | MouseEvent) => void;
     handleEnd?: () => void;
     mouseMoveHandler?: (e: MouseEvent) => void;
-    mouseUpHandler?: () => void;
+    mouseUpHandler?: (e: MouseEvent) => void;
   }>({});
 
   useEffect(() => {
@@ -59,7 +60,6 @@ export function SwipeButton({
 
     let startX = 0;
     let currentX = 0;
-    let isDragging = false;
     let hasConfirmed = false;
 
     const updateSlider = () => {
@@ -107,31 +107,29 @@ export function SwipeButton({
       const trackRect = track.getBoundingClientRect();
       startX = touch.clientX - trackRect.left;
       currentX = startX;
-      isDragging = true;
+      isDraggingRef.current = true;
       slider.style.transition = 'none';
       track.style.cursor = 'grabbing';
       track.parentElement?.classList.add('swiping-collect');
-      if ('touches' in e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      // Предотвращаем стандартные действия для мыши и тача
+      e.preventDefault();
+      e.stopPropagation();
     };
 
     const handleMove = (e: TouchEvent | MouseEvent) => {
-      if (!isDragging || hasConfirmed || disabled) return;
+      if (!isDraggingRef.current || hasConfirmed || disabled) return;
       const touch = 'touches' in e ? e.touches[0] : e;
       const trackRect = track.getBoundingClientRect();
       currentX = touch.clientX - trackRect.left;
       updateSlider();
-      if ('touches' in e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      // Предотвращаем стандартные действия для мыши и тача
+      e.preventDefault();
+      e.stopPropagation();
     };
 
     const handleEnd = () => {
-      if (!isDragging) return;
-      isDragging = false;
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
       track.style.cursor = 'grab';
       slider.style.transition = 'width 0.3s ease-out';
       track.parentElement?.classList.remove('swiping-collect');
@@ -155,15 +153,19 @@ export function SwipeButton({
     track.addEventListener('touchend', handleEnd, { passive: true });
     track.addEventListener('touchcancel', handleEnd, { passive: true });
 
-    track.addEventListener('mousedown', handleStart);
+    track.addEventListener('mousedown', handleStart, { passive: false });
     const mouseMoveHandler = (e: MouseEvent) => {
-      if (isDragging) handleMove(e);
+      if (isDraggingRef.current) {
+        handleMove(e);
+      }
     };
-    const mouseUpHandler = () => {
-      if (isDragging) handleEnd();
+    const mouseUpHandler = (e: MouseEvent) => {
+      if (isDraggingRef.current) {
+        handleEnd();
+      }
     };
-    document.addEventListener('mousemove', mouseMoveHandler);
-    document.addEventListener('mouseup', mouseUpHandler);
+    document.addEventListener('mousemove', mouseMoveHandler, { passive: false });
+    document.addEventListener('mouseup', mouseUpHandler, { passive: false });
 
     handlersRef.current.mouseMoveHandler = mouseMoveHandler;
     handlersRef.current.mouseUpHandler = mouseUpHandler;
@@ -180,24 +182,34 @@ export function SwipeButton({
   }, [disabled, isConfirmed, trackId, sliderId, textId, label, confirmedLabel, onConfirm]);
 
   return (
-    <div className={`relative overflow-hidden rounded-lg ${className}`} style={{ maxWidth: '50%', minWidth: '120px' }}>
+    <div className={`relative overflow-hidden rounded-lg ${className}`} style={{ minWidth: '120px' }}>
       <div
         id={trackId}
-        className="swipe-collect-track relative w-full h-10 bg-slate-700 rounded-lg overflow-hidden border-2 border-slate-600"
-        style={{ touchAction: 'pan-x', cursor: disabled ? 'not-allowed' : 'grab', userSelect: 'none', WebkitUserSelect: 'none', opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : 'auto' }}
+        className="swipe-collect-track relative w-full h-[52px] bg-slate-700/90 rounded-lg overflow-hidden border-2 border-slate-600/50 shadow-lg"
+        style={{ 
+          touchAction: 'pan-x', 
+          cursor: disabled ? 'not-allowed' : 'grab', 
+          userSelect: 'none', 
+          WebkitUserSelect: 'none',
+          MozUserSelect: 'none',
+          msUserSelect: 'none',
+          opacity: disabled ? 0.5 : 1, 
+          pointerEvents: disabled ? 'none' : 'auto',
+          WebkitTouchCallout: 'none'
+        }}
       >
         <div
           id={sliderId}
-          className="swipe-collect-slider absolute left-0 top-0 h-full bg-green-600 flex items-center justify-center transition-none z-20"
+          className="swipe-collect-slider absolute left-0 top-0 h-full bg-gradient-to-r from-green-600 to-green-500 flex items-center justify-center transition-none z-20 shadow-lg"
           style={{ width: `${SWIPE_MIN_WIDTH}px`, minWidth: `${SWIPE_MIN_WIDTH}px` }}
         >
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+          <svg className="w-6 h-6 text-white drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
         <div
           id={textId}
-          className="swipe-collect-text absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-[10px] pointer-events-none z-10 px-2"
+          className="swipe-collect-text absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-sm pointer-events-none z-10 px-4"
           style={{ left: `${SWIPE_MIN_WIDTH}px` }}
         >
           <span>{label}</span>

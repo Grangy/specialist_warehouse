@@ -3,7 +3,8 @@
 // 2. Заказ на 20 наименований на склад 3
 // Использование: npx tsx scripts/create-two-test-orders.ts
 
-// Используем отдельную переменную для избежания конфликтов
+// Изолируем переменные в функции для избежания конфликтов
+(function() {
 const API_BASE_URL = process.env.API_BASE || 'http://localhost:3000/api';
 
 async function login(username: string, password: string): Promise<string> {
@@ -297,4 +298,5 @@ async function main() {
 }
 
 main();
+})();
 

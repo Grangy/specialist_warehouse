@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
-import type { CollectChecklistState } from '@/types';
+import type { CollectChecklistState, ConfirmChecklistState } from '@/types';
 
 interface NameModalProps {
   isOpen: boolean;
@@ -16,7 +16,7 @@ interface NameModalProps {
   uom?: string;
   // Функционал сбора и редактирования
   lineIndex?: number;
-  checklistState?: CollectChecklistState;
+  checklistState?: CollectChecklistState | ConfirmChecklistState;
   isEditing?: boolean;
   onUpdateCollected?: (lineIndex: number, collected: boolean) => void;
   onUpdateCollectedQty?: (lineIndex: number, qty: number) => void;
@@ -69,8 +69,8 @@ export function NameModal({
     onConfirmEditQty && 
     onCancelEditQty;
 
-  const state = checklistState || { collected: false, qty, collectedQty: collected };
-  const isCollected = state.collected;
+  const state = checklistState || { collected: false, qty, collectedQty: collected, confirmed: false };
+  const isCollected = 'collected' in state ? state.collected : ('confirmed' in state ? state.confirmed : false);
   const currentCollectedQty = localIsEditing ? localCollectedQty : state.collectedQty;
 
   const handleUpdateQty = (newQty: number) => {
@@ -113,9 +113,14 @@ export function NameModal({
         } else {
           onClose();
         }
-      }, 500);
+      }, 300);
     }
   };
+
+  // Обновляем счетчик при изменении пропсов
+  useEffect(() => {
+    // Принудительно обновляем компонент при изменении currentItemNumber
+  }, [currentItemNumber, totalItems]);
 
   return (
     <Modal 
@@ -160,7 +165,7 @@ export function NameModal({
                   <div className="flex items-center gap-3 justify-center">
                     <button
                       onClick={() => handleUpdateQty(Math.max(0, currentCollectedQty - 1))}
-                      className="w-10 h-10 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-lg transition-colors flex items-center justify-center text-lg font-bold"
+                      className="w-12 h-12 bg-slate-700/90 hover:bg-slate-600 text-slate-100 rounded-lg transition-all duration-200 flex items-center justify-center text-xl font-bold shadow-md hover:shadow-lg hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                       disabled={currentCollectedQty <= 0}
                     >
                       −
@@ -178,12 +183,12 @@ export function NameModal({
                         const value = parseInt(e.target.value) || 0;
                         handleUpdateQty(Math.max(0, Math.min(value, qty)));
                       }}
-                      className="w-24 bg-slate-800 border-2 border-slate-600 text-slate-100 rounded-lg px-4 py-3 text-center text-2xl font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-28 bg-slate-800/90 border-2 border-slate-600/50 text-slate-100 rounded-lg px-4 py-3 text-center text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200"
                       autoFocus
                     />
                     <button
                       onClick={() => handleUpdateQty(Math.min(qty, currentCollectedQty + 1))}
-                      className="w-10 h-10 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-lg transition-colors flex items-center justify-center text-lg font-bold"
+                      className="w-12 h-12 bg-slate-700/90 hover:bg-slate-600 text-slate-100 rounded-lg transition-all duration-200 flex items-center justify-center text-xl font-bold shadow-md hover:shadow-lg hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                       disabled={currentCollectedQty >= qty}
                     >
                       +
@@ -193,52 +198,59 @@ export function NameModal({
                 <div className="flex gap-3 justify-center">
                   <button
                     onClick={handleConfirmEdit}
-                    className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
+                    className="flex-1 max-w-xs px-6 py-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95"
                   >
                     ✓ Сохранить
                   </button>
                   <button
                     onClick={handleCancelEdit}
-                    className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold rounded-lg transition-colors"
+                    className="flex-1 max-w-xs px-6 py-4 bg-slate-700/90 hover:bg-slate-600 text-slate-200 font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95"
                   >
                     Отмена
                   </button>
                 </div>
               </div>
             ) : (
-              // Обычный режим
+              // Обычный режим - кнопки в одну строку, всегда видимы
               <div className="space-y-4">
-                <div className="flex gap-3 justify-center">
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch">
+                  {/* Кнопка Редактировать - всегда видима */}
                   <button
                     onClick={handleStartEdit}
-                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+                    className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 min-h-[52px] flex items-center justify-center"
                   >
-                    Ред.
-                  </button>
-                </div>
-                {!isCollected && (
-                  <div className="flex justify-center">
-                    <SwipeButton
-                      trackId={`swipe-name-modal-track-${lineIndex}`}
-                      sliderId={`swipe-name-modal-slider-${lineIndex}`}
-                      textId={`swipe-name-modal-text-${lineIndex}`}
-                      onConfirm={handleConfirm}
-                      label="→ Сдвиньте для подтверждения"
-                      confirmedLabel="✓ Подтверждено"
-                      className="w-full max-w-md"
-                    />
-                  </div>
-                )}
-                {isCollected && (
-                  <div className="text-center">
-                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-600/20 border border-green-500/50 rounded-lg">
-                      <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    <span className="flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
-                      <span className="text-green-400 font-semibold">Товар собран</span>
-                    </div>
+                      Редактировать
+                    </span>
+                  </button>
+                  
+                  {/* Свайп кнопка - всегда видима */}
+                  <div className="flex-1 min-w-0">
+                    {!isCollected ? (
+                      <SwipeButton
+                        trackId={`swipe-name-modal-track-${lineIndex}`}
+                        sliderId={`swipe-name-modal-slider-${lineIndex}`}
+                        textId={`swipe-name-modal-text-${lineIndex}`}
+                        onConfirm={handleConfirm}
+                        label="→ Сдвиньте для подтверждения"
+                        confirmedLabel="✓ Подтверждено"
+                        className="w-full h-full"
+                      />
+                    ) : (
+                      <div className="w-full h-full min-h-[52px] flex items-center justify-center px-6 py-4 bg-gradient-to-r from-green-600/20 to-green-500/20 border-2 border-green-500/50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span className="text-green-400 font-semibold text-base">Товар собран</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
