@@ -62,25 +62,9 @@ export function useCollect(options?: UseCollectOptions) {
 
       console.log('Блокировка успешна, открываем модальное окно');
       
-      // Загружаем актуальные данные заказа из БД для получения сохраненного прогресса
-      let actualShipment = shipment;
-      try {
-        console.log('[useCollect] Загружаем актуальные данные заказа из БД...');
-        const shipments = await shipmentsApi.getAll();
-        const found = shipments.find(s => s.id === shipment.id);
-        if (found) {
-          actualShipment = found;
-          console.log('[useCollect] Актуальные данные загружены:', {
-            id: actualShipment.id,
-            linesCount: actualShipment.lines?.length || 0,
-            linesWithProgress: actualShipment.lines?.filter((l: any) => l.collected_qty !== null && l.collected_qty !== undefined).length || 0
-          });
-        } else {
-          console.warn('[useCollect] Заказ не найден в списке, используем переданные данные');
-        }
-      } catch (error) {
-        console.error('[useCollect] Ошибка при загрузке актуальных данных, используем переданные:', error);
-      }
+      // Используем переданные данные заказа (они уже актуальны, так как загружаются через useShipments)
+      // НЕ вызываем getAll() здесь, чтобы избежать лишних запросов и возможных циклов обновления
+      const actualShipment = shipment;
       
       // Логируем данные заказа для отладки
       console.log('[useCollect] Данные заказа для инициализации:', {

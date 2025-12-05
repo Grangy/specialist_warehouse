@@ -46,34 +46,49 @@ class APIClient {
       const response = await fetch(url, config);
       
       if (!response.ok) {
+        // Для 401 (не авторизован) не логируем ошибку - это нормально для незалогиненных пользователей
+        const isUnauthorized = response.status === 401;
+        
         let errorData: any = {};
         try {
           // Сначала пытаемся получить текст ответа
           const text = await response.text();
-          console.log('[apiClient] Текст ответа об ошибке:', text);
+          if (!isUnauthorized) {
+            console.log('[apiClient] Текст ответа об ошибке:', text);
+          }
           if (text) {
             try {
               errorData = JSON.parse(text);
-              console.log('[apiClient] Распарсенные данные ошибки:', errorData);
+              if (!isUnauthorized) {
+                console.log('[apiClient] Распарсенные данные ошибки:', errorData);
+              }
             } catch (parseError) {
               // Если не JSON, используем текст как сообщение
-              console.warn('[apiClient] Не удалось распарсить JSON, используем текст:', parseError);
+              if (!isUnauthorized) {
+                console.warn('[apiClient] Не удалось распарсить JSON, используем текст:', parseError);
+              }
               errorData = { message: text };
             }
           }
         } catch (e) {
           // Если не удалось прочитать ответ, используем пустой объект
-          console.warn('[apiClient] Не удалось прочитать ответ об ошибке:', e);
+          if (!isUnauthorized) {
+            console.warn('[apiClient] Не удалось прочитать ответ об ошибке:', e);
+          }
         }
         
         // Формируем сообщение об ошибке
         let errorMessage = errorData.message || errorData.error;
-        console.log('[apiClient] Извлеченное сообщение об ошибке:', errorMessage);
+        if (!isUnauthorized) {
+          console.log('[apiClient] Извлеченное сообщение об ошибке:', errorMessage);
+        }
         
         // Если сообщения нет, формируем стандартное
         if (!errorMessage) {
           if (response.status === 409) {
             errorMessage = 'Задание уже начато другим сборщиком. Только администратор может вмешаться в сборку.';
+          } else if (response.status === 401) {
+            errorMessage = 'Не авторизован';
           } else {
             errorMessage = `HTTP error! status: ${response.status}`;
           }
@@ -83,7 +98,9 @@ class APIClient {
           message: errorMessage,
           status: response.status,
         };
-        console.log('[apiClient] Выбрасываем ошибку:', error);
+        if (!isUnauthorized) {
+          console.log('[apiClient] Выбрасываем ошибку:', error);
+        }
         throw error;
       }
 
