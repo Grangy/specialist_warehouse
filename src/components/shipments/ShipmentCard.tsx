@@ -13,7 +13,8 @@ import {
   CheckSquare,
   Warehouse,
   TrendingUp,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 
 interface ShipmentCardProps {
@@ -23,6 +24,7 @@ interface ShipmentCardProps {
   onDetails: (shipment: Shipment) => void;
   onCollectAll?: (shipment: Shipment) => void;
   onConfirmAll?: (shipment: Shipment) => void;
+  onDeleteCollection?: (shipment: Shipment) => void;
   userRole?: 'admin' | 'collector' | 'checker' | null;
 }
 
@@ -33,6 +35,7 @@ export function ShipmentCard({
   onDetails, 
   onCollectAll, 
   onConfirmAll,
+  onDeleteCollection,
   userRole 
 }: ShipmentCardProps) {
   const isProcessed = shipment.status === 'processed';
@@ -256,6 +259,20 @@ export function ShipmentCard({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                   <span className="truncate">Собрать все</span>
+                </button>
+              )}
+              {userRole === 'admin' && onDeleteCollection && shipment.status === 'new' && (
+                <button
+                  onClick={() => {
+                    if (confirm('Вы уверены, что хотите удалить сборку? Весь прогресс будет сброшен.')) {
+                      onDeleteCollection(shipment);
+                    }
+                  }}
+                  className="flex-1 min-w-[120px] sm:min-w-0 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
+                  title="Удалить сборку (сбросить прогресс)"
+                >
+                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <span className="truncate">Удалить сборку</span>
                 </button>
               )}
             </>
