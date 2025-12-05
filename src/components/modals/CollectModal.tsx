@@ -87,23 +87,10 @@ export function CollectModal({
   const handleNextItem = () => {
     if (!currentShipment || !selectedLine) return;
 
-    // Находим следующий несобранный товар
+    // Используем актуальную сортировку из useMemo
     const currentIndex = selectedLine.index;
-    const sortedIndices = currentShipment.lines
-      .map((_, index) => index)
-      .sort((a, b) => {
-        const aRemoving = removingItems.has(a);
-        const bRemoving = removingItems.has(b);
-        if (aRemoving && !bRemoving) return -1;
-        if (!aRemoving && bRemoving) return 1;
-        const aState = checklistState[a] || { collected: false, qty: currentShipment.lines[a].qty, collectedQty: currentShipment.lines[a].qty };
-        const bState = checklistState[b] || { collected: false, qty: currentShipment.lines[b].qty, collectedQty: currentShipment.lines[b].qty };
-        const aCollected = aState.collected;
-        const bCollected = bState.collected;
-        return aCollected === bCollected ? 0 : aCollected ? 1 : -1;
-      });
-
     const currentPosition = sortedIndices.indexOf(currentIndex);
+    
     if (currentPosition === -1) {
       setSelectedLine(null);
       return;
@@ -136,6 +123,19 @@ export function CollectModal({
     setSelectedLine(null);
   };
 
+  // Синхронизируем selectedLine.collected с актуальным состоянием checklistState
+  useEffect(() => {
+    if (selectedLine && currentShipment) {
+      const currentState = checklistState[selectedLine.index];
+      if (currentState && currentState.collectedQty !== selectedLine.collected) {
+        setSelectedLine(prev => prev ? {
+          ...prev,
+          collected: currentState.collectedQty,
+        } : null);
+      }
+    }
+  }, [selectedLine, checklistState, currentShipment]);
+
   const handleInfoClick = (line: any, index: number) => {
     handleNameClick(line, index);
   };
@@ -160,28 +160,22 @@ export function CollectModal({
   }, [currentShipment, checklistState, removingItems]);
 
   // Вычисляем currentItemNumber и totalItems для модального окна
+  // Используем sortedIndices для согласованности с handleNextItem
   const modalItemInfo = useMemo(() => {
     if (!currentShipment || !selectedLine) {
       return { currentItemNumber: undefined, totalItems: undefined };
     }
     
-    const currentSortedIndices = currentShipment.lines
-      .map((_, index) => index)
-      .sort((a, b) => {
-        const aRemoving = removingItems.has(a);
-        const bRemoving = removingItems.has(b);
-        if (aRemoving && !bRemoving) return -1;
-        if (!aRemoving && bRemoving) return 1;
-        const aCollected = checklistState[a]?.collected || false;
-        const bCollected = checklistState[b]?.collected || false;
-        return aCollected === bCollected ? 0 : aCollected ? 1 : -1;
-      });
+    const currentPosition = sortedIndices.indexOf(selectedLine.index);
+    if (currentPosition === -1) {
+      return { currentItemNumber: undefined, totalItems: sortedIndices.length };
+    }
     
     return {
-      currentItemNumber: currentSortedIndices.indexOf(selectedLine.index) + 1,
-      totalItems: currentSortedIndices.length,
+      currentItemNumber: currentPosition + 1,
+      totalItems: sortedIndices.length,
     };
-  }, [currentShipment, selectedLine, checklistState, removingItems]);
+  }, [sortedIndices, selectedLine]);
 
   // Проверяем, что модальное окно должно быть открыто
   if (!currentShipment || !isOpen) {
@@ -642,14 +636,14 @@ export function CollectModal({
       {/* Модальное окно с деталями товара */}
       {selectedLine !== null && (
         <NameModal
-          key={`name-modal-${selectedLine.index}-${modalItemInfo.currentItemNumber}`}
+          key={`name-modal-${selectedLine.index}-${modalItemInfo.currentItemNumber || 0}`}
           isOpen={true}
           onClose={() => setSelectedLine(null)}
           name={selectedLine.name}
           sku={selectedLine.sku}
           location={selectedLine.location}
           qty={selectedLine.qty}
-          collected={selectedLine.collected}
+          collected={checklistState[selectedLine.index]?.collectedQty ?? selectedLine.collected}
           uom={selectedLine.uom}
           lineIndex={selectedLine.index}
           checklistState={checklistState[selectedLine.index]}
