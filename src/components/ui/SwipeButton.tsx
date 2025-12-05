@@ -111,8 +111,10 @@ export function SwipeButton({
       slider.style.transition = 'none';
       track.style.cursor = 'grabbing';
       track.parentElement?.classList.add('swiping-collect');
-      e.preventDefault();
-      e.stopPropagation();
+      if ('touches' in e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
     };
 
     const handleMove = (e: TouchEvent | MouseEvent) => {
@@ -121,8 +123,10 @@ export function SwipeButton({
       const trackRect = track.getBoundingClientRect();
       currentX = touch.clientX - trackRect.left;
       updateSlider();
-      e.preventDefault();
-      e.stopPropagation();
+      if ('touches' in e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
     };
 
     const handleEnd = () => {

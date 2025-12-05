@@ -25,14 +25,15 @@ enum ShipmentStatus {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  login     String    @unique
+  id        String          @id @default(cuid())
+  login     String          @unique
   password  String
   name      String
-  role      UserRole  @default(collector)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  role      UserRole        @default(collector)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   sessions  Session[]
+  tasks     ShipmentTask[]  // Задания, начатые пользователем
 
   @@map("users")
 }
@@ -92,7 +93,10 @@ model ShipmentTask {
   status       ShipmentStatus    @default(new)
   createdAt    DateTime          @default(now()) @map("created_at")
   collectorName String?          @map("collector_name")
+  collectorId  String?           @map("collector_id") // ID пользователя, начавшего сборку
+  startedAt   DateTime?         @map("started_at") // Время начала сборки
   shipment     Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  collector    User?             @relation(fields: [collectorId], references: [id], onDelete: SetNull)
   lines        ShipmentTaskLine[]
   locks        ShipmentTaskLock[]
 

@@ -37,14 +37,78 @@ export async function POST(request: NextRequest) {
     // Проверяем, не существует ли уже заказ с таким номером
     const existing = await prisma.shipment.findUnique({
       where: { number },
+      include: {
+        tasks: {
+          include: {
+            lines: true,
+          },
+        },
+        lines: true,
+      },
     });
 
     if (existing) {
-      return NextResponse.json(
-        { error: `Заказ с номером ${number} уже существует` },
-        { status: 409 }
-      );
+      // Если заказ уже существует, удаляем его и все связанные данные
+      // чтобы создать новый с непроверенными позициями
+      console.log(`Заказ ${number} уже существует, удаляем старый и создаем новый`);
+      
+      // Удаляем все связанные данные (каскадное удаление должно сработать, но делаем явно)
+      await prisma.shipmentTaskLine.deleteMany({
+        where: {
+          task: {
+            shipmentId: existing.id,
+          },
+        },
+      });
+      await prisma.shipmentTaskLock.deleteMany({
+        where: {
+          task: {
+            shipmentId: existing.id,
+          },
+        },
+      });
+      await prisma.shipmentTask.deleteMany({
+        where: {
+          shipmentId: existing.id,
+        },
+      });
+      await prisma.shipmentLine.deleteMany({
+        where: {
+          shipmentId: existing.id,
+        },
+      });
+      await prisma.shipmentLock.deleteMany({
+        where: {
+          shipmentId: existing.id,
+        },
+      });
+      await prisma.shipment.delete({
+        where: { id: existing.id },
+      });
+      
+      console.log(`Старый заказ ${number} удален, создаем новый`);
     }
+
+    // ЯВНО убеждаемся, что все позиции создаются с непроверенным статусом
+    // Игнорируем любые значения из входящих данных
+    const shipmentLines = lines.map((line: any) => {
+      // Явно устанавливаем непроверенный статус, игнорируя входящие данные
+      const cleanLine = {
+        sku: line.sku || '',
+        name: line.name || '',
+        qty: line.qty || 0,
+        uom: line.uom || 'шт',
+        location: line.location || null,
+        warehouse: line.warehouse || 'Склад 1',
+        collectedQty: null, // ВСЕГДА null для новых заказов
+        checked: false, // ВСЕГДА false для новых заказов
+      };
+      
+      console.log(`[API CREATE] Создаем позицию: SKU=${cleanLine.sku}, checked=${cleanLine.checked}, collectedQty=${cleanLine.collectedQty}`);
+      return cleanLine;
+    });
+
+    console.log(`[API CREATE] Создаем заказ ${number} с ${shipmentLines.length} позициями, все непроверенные`);
 
     // Создаем заказ с позициями
     const shipment = await prisma.shipment.create({
@@ -60,22 +124,24 @@ export async function POST(request: NextRequest) {
         status: 'new',
         createdAt: new Date(),
         lines: {
-          create: lines.map((line: any) => ({
-            sku: line.sku || '',
-            name: line.name || '',
-            qty: line.qty || 0,
-            uom: line.uom || 'шт',
-            location: line.location || null,
-            warehouse: line.warehouse || 'Склад 1', // Обязательное поле, по умолчанию Склад 1
-            collectedQty: null,
-            checked: false,
-          })),
+          create: shipmentLines,
         },
       },
       include: {
         lines: true,
       },
     });
+
+    // Проверяем, что все позиции созданы с правильным статусом
+    const checkedCount = shipment.lines.filter(line => line.checked === true).length;
+    const collectedCount = shipment.lines.filter(line => line.collectedQty !== null).length;
+    
+    if (checkedCount > 0 || collectedCount > 0) {
+      console.error(`[API CREATE] ⚠️ ВНИМАНИЕ! Заказ ${number} создан с проверенными позициями!`);
+      console.error(`[API CREATE] Проверенных позиций: ${checkedCount}, с собранным количеством: ${collectedCount}`);
+    } else {
+      console.log(`[API CREATE] ✅ Заказ ${number} создан корректно: все ${shipment.lines.length} позиций непроверенные`);
+    }
 
     // Разбиваем заказ на задания (используем реальные ID позиций)
     const tasks = splitShipmentIntoTasks(
@@ -90,26 +156,49 @@ export async function POST(request: NextRequest) {
       }))
     );
 
-    // Создаем задания
+    // Создаем задания с явной проверкой статуса
+    console.log(`[API CREATE] Создаем ${tasks.length} заданий для заказа ${number}`);
+    
     for (const task of tasks) {
-      await prisma.shipmentTask.create({
+      const taskLines = task.lines.map((taskLine) => {
+        // Явно устанавливаем непроверенный статус
+        const cleanTaskLine = {
+          shipmentLineId: taskLine.shipmentLineId,
+          qty: taskLine.qty,
+          collectedQty: null, // ВСЕГДА null для новых заданий
+          checked: false, // ВСЕГДА false для новых заданий
+        };
+        console.log(`[API CREATE] Создаем позицию задания: shipmentLineId=${cleanTaskLine.shipmentLineId}, checked=${cleanTaskLine.checked}, collectedQty=${cleanTaskLine.collectedQty}`);
+        return cleanTaskLine;
+      });
+
+      const createdTask = await prisma.shipmentTask.create({
         data: {
           shipmentId: shipment.id,
           warehouse: task.warehouse,
           status: 'new',
           lines: {
-            create: task.lines.map((taskLine) => ({
-              shipmentLineId: taskLine.shipmentLineId,
-              qty: taskLine.qty,
-              collectedQty: null,
-              checked: false,
-            })),
+            create: taskLines,
           },
         },
+        include: {
+          lines: true,
+        },
       });
+
+      // Проверяем созданное задание
+      const taskCheckedCount = createdTask.lines.filter(line => line.checked === true).length;
+      const taskCollectedCount = createdTask.lines.filter(line => line.collectedQty !== null).length;
+      
+      if (taskCheckedCount > 0 || taskCollectedCount > 0) {
+        console.error(`[API CREATE] ⚠️ ВНИМАНИЕ! Задание ${createdTask.id} создано с проверенными позициями!`);
+        console.error(`[API CREATE] Проверенных позиций: ${taskCheckedCount}, с собранным количеством: ${taskCollectedCount}`);
+      } else {
+        console.log(`[API CREATE] ✅ Задание ${createdTask.id} (${task.warehouse}) создано корректно: все ${createdTask.lines.length} позиций непроверенные`);
+      }
     }
 
-    // Получаем созданные задания для ответа
+    // Получаем созданные задания для ответа и проверяем их статус
     const createdTasks = await prisma.shipmentTask.findMany({
       where: { shipmentId: shipment.id },
       include: {
@@ -120,6 +209,50 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Финальная проверка всех созданных заданий
+    console.log(`[API CREATE] ========== ФИНАЛЬНАЯ ПРОВЕРКА ЗАКАЗА ${number} ==========`);
+    let totalChecked = 0;
+    let totalCollected = 0;
+    let totalLines = 0;
+    
+    for (const task of createdTasks) {
+      const taskChecked = task.lines.filter(line => line.checked === true).length;
+      const taskCollected = task.lines.filter(line => line.collectedQty !== null).length;
+      totalChecked += taskChecked;
+      totalCollected += taskCollected;
+      totalLines += task.lines.length;
+      
+      if (taskChecked > 0 || taskCollected > 0) {
+        console.error(`[API CREATE] ⚠️ Задание ${task.id} (${task.warehouse}): ${taskChecked} проверенных, ${taskCollected} с собранным количеством`);
+      } else {
+        console.log(`[API CREATE] ✅ Задание ${task.id} (${task.warehouse}): все ${task.lines.length} позиций непроверенные`);
+      }
+    }
+    
+    if (totalChecked === 0 && totalCollected === 0) {
+      console.log(`[API CREATE] ✅✅✅ УСПЕХ! Все ${totalLines} позиций в ${createdTasks.length} заданиях заказа ${number} непроверенные`);
+    } else {
+      console.error(`[API CREATE] ❌❌❌ ОШИБКА! В заказе ${number} найдены проверенные позиции:`);
+      console.error(`[API CREATE]    - Проверенных позиций: ${totalChecked}`);
+      console.error(`[API CREATE]    - Позиций с собранным количеством: ${totalCollected}`);
+      console.error(`[API CREATE]    - Всего позиций: ${totalLines}`);
+      
+      // Строгая валидация: если найдены проверенные позиции, возвращаем ошибку
+      // Это критическая ошибка, так как новые заказы должны быть непроверенными
+      return NextResponse.json(
+        { 
+          error: `Критическая ошибка: заказ создан с проверенными позициями. Проверенных: ${totalChecked}, с собранным количеством: ${totalCollected}`,
+          details: {
+            checkedCount: totalChecked,
+            collectedCount: totalCollected,
+            totalLines: totalLines
+          }
+        },
+        { status: 500 }
+      );
+    }
+    console.log(`[API CREATE] ========================================================`);
 
     return NextResponse.json(
       {
@@ -138,17 +271,27 @@ export async function POST(request: NextRequest) {
           status: shipment.status,
           business_region: shipment.businessRegion,
           tasks_count: createdTasks.length,
-          lines: shipment.lines.map((line) => ({
-            id: line.id,
-            sku: line.sku,
-            name: line.name,
-            qty: line.qty,
-            uom: line.uom,
-            location: line.location,
-            warehouse: line.warehouse,
-            collected_qty: line.collectedQty,
-            checked: line.checked,
-          })),
+          lines: shipment.lines.map((line) => {
+            // Явно проверяем и устанавливаем правильные значения
+            const cleanLine = {
+              id: line.id,
+              sku: line.sku,
+              name: line.name,
+              qty: line.qty,
+              uom: line.uom,
+              location: line.location,
+              warehouse: line.warehouse,
+              collected_qty: line.collectedQty || null, // Явно null если undefined
+              checked: line.checked === true ? true : false, // Явно false если не true
+            };
+            
+            // Логируем если что-то не так
+            if (cleanLine.checked || cleanLine.collected_qty !== null) {
+              console.error(`[API CREATE] ⚠️ Позиция ${line.sku} в ответе имеет неправильный статус: checked=${cleanLine.checked}, collected_qty=${cleanLine.collected_qty}`);
+            }
+            
+            return cleanLine;
+          }),
           tasks: createdTasks.map((task) => ({
             id: task.id,
             warehouse: task.warehouse,
@@ -234,7 +377,8 @@ export async function GET(request: NextRequest) {
     // Определяем фильтр по статусу заданий для отображения
     const taskStatusFilter = status ? status : undefined;
 
-    console.log(`[API] Найдено заказов в БД: ${shipments.length}, фильтр:`, where);
+    console.log(`[API] Найдено заказов в БД: ${shipments.length}, фильтр статуса заказов:`, where.status);
+    console.log(`[API] Фильтр статуса заданий: ${taskStatusFilter || 'new и pending_confirmation'}`);
     console.log(`[API] Пользователь: ${user.name} (${user.role})`);
 
     // Преобразуем задания в формат для фронтенда
@@ -257,25 +401,29 @@ export async function GET(request: NextRequest) {
         // Фильтруем задания по статусу для отображения (если указан фильтр)
         if (taskStatusFilter) {
           if (task.status !== taskStatusFilter) {
+            console.log(`[API] Пропускаем задание ${task.id}: статус ${task.status} не соответствует фильтру ${taskStatusFilter}`);
             continue; // Пропускаем задания с другим статусом
           }
         } else {
           // Если фильтр не указан, показываем только new и pending_confirmation
+          // НЕ показываем processed задания
           if (task.status !== 'new' && task.status !== 'pending_confirmation') {
+            console.log(`[API] Пропускаем задание ${task.id}: статус ${task.status} (показываем только new и pending_confirmation)`);
             continue;
           }
         }
 
-        // Фильтруем заблокированные задания
+        // Проверяем блокировку, но не пропускаем - показываем все задания
+        // Блокировка будет проверяться на фронтенде
         const lock = task.locks[0];
-        if (lock && lock.userId !== user.id) {
-          continue; // Пропускаем задания, заблокированные другими пользователями
-        }
 
         // Пропускаем задания из обработанных заказов (если не запрошены явно)
         if (!status && shipment.status === 'processed') {
+          console.log(`[API] Пропускаем задание ${task.id}: заказ ${shipment.number} имеет статус processed`);
           continue;
         }
+        
+        console.log(`[API] Включаем задание ${task.id}: статус=${task.status}, заказ=${shipment.number}`);
 
         // Собираем позиции задания
         const taskLines = task.lines.map((taskLine) => ({
@@ -303,10 +451,13 @@ export async function GET(request: NextRequest) {
           comment: shipment.comment,
           status: task.status,
           business_region: shipment.businessRegion,
-          collector_name: task.collectorName,
+          collector_name: task.collectorName || null,
+          collector_id: task.collectorId || null,
+          started_at: task.startedAt ? task.startedAt.toISOString() : null,
           lines: taskLines,
           locked: !!lock,
           lockedBy: lock ? lock.userId : null,
+          lockedByCurrentUser: lock ? lock.userId === user.id : false,
           // Прогресс подтверждения заказа
           tasks_progress: {
             confirmed: confirmedTasksCount,
@@ -318,10 +469,18 @@ export async function GET(request: NextRequest) {
 
     console.log(`[API] Возвращаем заданий после фильтрации: ${tasks.length}`);
     return NextResponse.json(tasks);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Ошибка при получении заказов:', error);
+    console.error('Детали ошибки:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+    });
     return NextResponse.json(
-      { error: 'Ошибка сервера при получении заказов' },
+      { 
+        error: 'Ошибка сервера при получении заказов',
+        details: process.env.NODE_ENV === 'development' ? error?.message : undefined
+      },
       { status: 500 }
     );
   }

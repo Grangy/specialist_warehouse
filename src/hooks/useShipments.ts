@@ -11,9 +11,20 @@ export function useShipments() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState<Tab>('new');
   const [userRole, setUserRole] = useState<'admin' | 'collector' | 'checker' | null>(null);
+  // Загружаем сохраненный склад из localStorage при инициализации
+  const getStoredWarehouse = (): string => {
+    if (typeof window === 'undefined') return '';
+    try {
+      const stored = localStorage.getItem('selectedWarehouse');
+      return stored || '';
+    } catch {
+      return '';
+    }
+  };
+
   const [filters, setFilters] = useState<FilterState>({
     search: '',
-    warehouse: '',
+    warehouse: getStoredWarehouse(),
     urgentOnly: false,
   });
   const { showError } = useToast();
@@ -154,6 +165,23 @@ export function useShipments() {
     [shipments]
   );
 
+  // Обертка для setFilters с сохранением склада в localStorage
+  const handleFiltersChange = useCallback((newFilters: FilterState) => {
+    setFilters(newFilters);
+    // Сохраняем выбранный склад в localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        if (newFilters.warehouse) {
+          localStorage.setItem('selectedWarehouse', newFilters.warehouse);
+        } else {
+          localStorage.removeItem('selectedWarehouse');
+        }
+      } catch (error) {
+        console.error('Ошибка при сохранении склада в localStorage:', error);
+      }
+    }
+  }, []);
+
   return {
     shipments,
     filteredShipments,
@@ -165,7 +193,7 @@ export function useShipments() {
       }
     },
     filters,
-    setFilters,
+    setFilters: handleFiltersChange,
     warehouses,
     newCount,
     pendingCount,

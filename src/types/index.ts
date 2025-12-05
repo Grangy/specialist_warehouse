@@ -29,9 +29,12 @@ export interface Shipment {
   status: ShipmentStatus;
   lines: ShipmentLine[];
   collector_name?: string;
+  collector_id?: string;
+  started_at?: string;
   business_region?: string;
   locked?: boolean;
   lockedBy?: string | null;
+  lockedByCurrentUser?: boolean;
   tasks_progress?: {
     confirmed: number;
     total: number;

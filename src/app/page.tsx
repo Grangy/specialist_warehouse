@@ -15,6 +15,7 @@ import { useShipments } from '@/hooks/useShipments';
 import { useCollect } from '@/hooks/useCollect';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useModal } from '@/hooks/useModal';
+import { useToast } from '@/hooks/useToast';
 import type { Shipment } from '@/types';
 
 export default function Home() {
@@ -50,11 +51,12 @@ export default function Home() {
     userRole,
   } = useShipments();
 
-  const collectHook = useCollect();
+  const collectHook = useCollect({ onClose: refreshShipments });
   const confirmHook = useConfirm();
   const detailsModal = useModal();
   const nameModal = useModal();
   const orderCompletedModal = useModal();
+  const { showError } = useToast();
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
   const [completedOrderData, setCompletedOrderData] = useState<{
     number: string;
@@ -80,6 +82,26 @@ export default function Home() {
   });
 
   const handleCollect = async (shipment: Shipment) => {
+    // Проверяем блокировку перед открытием модального окна
+    // Если задание заблокировано другим пользователем и текущий пользователь не админ,
+    // показываем сообщение и не открываем модальное окно
+    if (shipment.locked && shipment.lockedBy && shipment.lockedByCurrentUser === false) {
+      // Если пользователь не админ, не позволяем вмешиваться в сборку другого
+      if (userRole !== 'admin') {
+        const collectorName = shipment.collector_name || 'другой сборщик';
+        showError(`Задание уже начато другим сборщиком. Сборку начал: ${collectorName}. Только администратор может вмешаться в сборку другого пользователя.`);
+        return;
+      }
+      // Если админ, показываем предупреждение, но позволяем вмешаться
+      const collectorName = shipment.collector_name || 'другой сборщик';
+      const confirmed = window.confirm(
+        `Задание уже начато другим сборщиком.\nСборку начал: ${collectorName}\n\nВы администратор. Хотите вмешаться в сборку?`
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    
     await collectHook.openModal(shipment);
   };
 
@@ -171,6 +193,7 @@ export default function Home() {
         currentShipment={collectHook.currentShipment}
         checklistState={collectHook.checklistState}
         editState={collectHook.editState}
+        removingItems={collectHook.removingItems}
         isOpen={collectHook.isOpen}
         onClose={collectHook.closeModal}
         onUpdateCollected={collectHook.updateCollected}

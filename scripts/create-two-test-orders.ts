@@ -3,10 +3,11 @@
 // 2. Заказ на 20 наименований на склад 3
 // Использование: npx tsx scripts/create-two-test-orders.ts
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000/api';
+// Используем отдельную переменную для избежания конфликтов
+const API_BASE_URL = process.env.API_BASE || 'http://localhost:3000/api';
 
 async function login(username: string, password: string): Promise<string> {
-  const response = await fetch(`${API_BASE}/auth/login`, {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -33,7 +34,7 @@ async function login(username: string, password: string): Promise<string> {
 }
 
 async function createShipment(shipmentData: any, sessionToken: string): Promise<any> {
-  const response = await fetch(`${API_BASE}/shipments`, {
+    const response = await fetch(`${API_BASE_URL}/shipments`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -57,6 +58,10 @@ async function main() {
   try {
     console.log('🧪 Создание двух тестовых заказов\n');
     console.log('='.repeat(60));
+    console.log('📝 ВАЖНО: Все позиции должны создаваться с непроверенным статусом');
+    console.log('   - checked: false');
+    console.log('   - collected_qty: null');
+    console.log('='.repeat(60));
 
     // 1. Авторизация
     console.log('\n1️⃣ Авторизация как admin...');
@@ -73,6 +78,7 @@ async function main() {
     const lines1: any[] = [];
     
     // Склад 1: 10 наименований
+    // ЯВНО не передаем checked и collected_qty - они должны быть false/null по умолчанию
     for (let i = 1; i <= 10; i++) {
       lines1.push({
         sku: `SKU-W1-${String(i).padStart(3, '0')}`,
@@ -81,6 +87,7 @@ async function main() {
         uom: 'шт',
         location: `Стеллаж W1 / Полка ${Math.ceil(i / 5)}`,
         warehouse: 'Склад 1',
+        // ЯВНО не передаем checked и collected_qty - API должен установить false/null
       });
     }
     
@@ -111,7 +118,7 @@ async function main() {
     const totalQty1 = lines1.reduce((sum, line) => sum + line.qty, 0);
 
     const testShipment1 = {
-      number: `РН-TEST-100-${Date.now()}`,
+      number: `РН-TEST-1090-${Date.now()}`,
       customerName: 'ООО Тестовая Компания',
       destination: 'Основной склад',
       itemsCount: 100,
@@ -133,6 +140,7 @@ async function main() {
     console.log(`     - Склад 3: 70 наименований (должно разбиться на 2 задания по 35)`);
     console.log(`   Ожидаемое количество заданий: 4`);
 
+    console.log('\n📤 Отправка запроса на создание заказа 1...');
     const result1 = await createShipment(testShipment1, sessionToken);
 
     console.log('\n✅ Заказ 1 успешно создан!');
@@ -143,6 +151,22 @@ async function main() {
         `   ${index + 1}. ${task.warehouse} - ${task.items_count} наименований, ${task.total_qty} единиц товара, статус: ${task.status}`
       );
     });
+
+    // Проверка статуса позиций
+    console.log('\n🔍 Проверка статуса позиций заказа 1...');
+    if (result1.shipment.lines && result1.shipment.lines.length > 0) {
+      const checkedCount = result1.shipment.lines.filter((line: any) => line.checked === true).length;
+      const collectedCount = result1.shipment.lines.filter((line: any) => line.collected_qty !== null && line.collected_qty !== undefined).length;
+      
+      if (checkedCount > 0 || collectedCount > 0) {
+        console.error(`   ❌ ОШИБКА! Найдены проверенные позиции: ${checkedCount} проверенных, ${collectedCount} с собранным количеством`);
+        console.error(`   ⚠️ Все позиции должны быть непроверенными (checked: false, collected_qty: null)`);
+      } else {
+        console.log(`   ✅ Все ${result1.shipment.lines.length} позиций непроверенные (checked: false, collected_qty: null)`);
+      }
+    } else {
+      console.log('   ⚠️ Информация о позициях не получена');
+    }
 
     // Проверка
     console.log('\n3️⃣ Проверка разбиения заказа 1...');
@@ -179,6 +203,7 @@ async function main() {
     const lines2: any[] = [];
     
     // Склад 3: 20 наименований (должно быть 1 задание)
+    // ЯВНО не передаем checked и collected_qty - они должны быть false/null по умолчанию
     for (let i = 1; i <= 20; i++) {
       lines2.push({
         sku: `SKU-W3-SINGLE-${String(i).padStart(3, '0')}`,
@@ -187,6 +212,7 @@ async function main() {
         uom: 'шт',
         location: `Стеллаж W3 / Полка ${Math.ceil(i / 5)}`,
         warehouse: 'Склад 3',
+        // ЯВНО не передаем checked и collected_qty - API должен установить false/null
       });
     }
 
@@ -212,6 +238,7 @@ async function main() {
     console.log(`   Склад: Склад 3`);
     console.log(`   Ожидаемое количество заданий: 1`);
 
+    console.log('\n📤 Отправка запроса на создание заказа 2...');
     const result2 = await createShipment(testShipment2, sessionToken);
 
     console.log('\n✅ Заказ 2 успешно создан!');
@@ -222,6 +249,22 @@ async function main() {
         `   ${index + 1}. ${task.warehouse} - ${task.items_count} наименований, ${task.total_qty} единиц товара, статус: ${task.status}`
       );
     });
+
+    // Проверка статуса позиций
+    console.log('\n🔍 Проверка статуса позиций заказа 2...');
+    if (result2.shipment.lines && result2.shipment.lines.length > 0) {
+      const checkedCount = result2.shipment.lines.filter((line: any) => line.checked === true).length;
+      const collectedCount = result2.shipment.lines.filter((line: any) => line.collected_qty !== null && line.collected_qty !== undefined).length;
+      
+      if (checkedCount > 0 || collectedCount > 0) {
+        console.error(`   ❌ ОШИБКА! Найдены проверенные позиции: ${checkedCount} проверенных, ${collectedCount} с собранным количеством`);
+        console.error(`   ⚠️ Все позиции должны быть непроверенными (checked: false, collected_qty: null)`);
+      } else {
+        console.log(`   ✅ Все ${result2.shipment.lines.length} позиций непроверенные (checked: false, collected_qty: null)`);
+      }
+    } else {
+      console.log('   ⚠️ Информация о позициях не получена');
+    }
 
     // Проверка
     console.log('\n3️⃣ Проверка разбиения заказа 2...');

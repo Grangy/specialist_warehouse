@@ -5,11 +5,17 @@ import { shipmentsApi } from '@/lib/api/shipments';
 import type { Shipment, ShipmentLine, CollectChecklistState } from '@/types';
 import { useToast } from './useToast';
 
-export function useCollect() {
+interface UseCollectOptions {
+  onClose?: () => void | Promise<void>;
+}
+
+export function useCollect(options?: UseCollectOptions) {
+  const { onClose } = options || {};
   const [currentShipment, setCurrentShipment] = useState<Shipment | null>(null);
   const [checklistState, setChecklistState] = useState<Record<number, CollectChecklistState>>({});
   const [editState, setEditState] = useState<Record<number, boolean>>({});
   const [lockedShipmentId, setLockedShipmentId] = useState<string | null>(null);
+  const [removingItems, setRemovingItems] = useState<Set<number>>(new Set());
   const { showToast, showError, showSuccess } = useToast();
 
   const openModal = useCallback(async (shipment: Shipment) => {
@@ -23,25 +29,112 @@ export function useCollect() {
       console.log('Открытие модального окна для заказа:', shipment.id);
       
       // Блокируем заказ
-      const lockResponse = await shipmentsApi.lock(shipment.id);
-      console.log('Ответ блокировки:', lockResponse);
+      let lockResponse;
+      try {
+        lockResponse = await shipmentsApi.lock(shipment.id);
+        console.log('Ответ блокировки:', lockResponse);
+      } catch (error: any) {
+        // Обрабатываем ошибку блокировки (например, 409 Conflict)
+        console.error('[useCollect] Ошибка блокировки:', error);
+        console.error('[useCollect] Тип ошибки:', typeof error);
+        console.error('[useCollect] Содержимое ошибки:', JSON.stringify(error, null, 2));
+        
+        // Извлекаем сообщение из ошибки
+        let message = 'Задание уже начато другим сборщиком. Только администратор может вмешаться в сборку.';
+        
+        // APIError имеет структуру { message: string, status?: number }
+        if (error?.message) {
+          message = error.message;
+        } else if (typeof error === 'string') {
+          message = error;
+        }
+        
+        console.log('[useCollect] Показываем ошибку пользователю:', message);
+        showError(message);
+        return;
+      }
       
       if (!lockResponse || !lockResponse.success) {
-        const message = lockResponse?.message || 'Заказ уже заблокирован другим пользователем';
+        const message = lockResponse?.message || 'Задание уже заблокировано другим пользователем. Только администратор может вмешаться в сборку.';
         showError(message);
         return;
       }
 
       console.log('Блокировка успешна, открываем модальное окно');
       
+      // Загружаем актуальные данные заказа из БД для получения сохраненного прогресса
+      let actualShipment = shipment;
+      try {
+        console.log('[useCollect] Загружаем актуальные данные заказа из БД...');
+        const shipments = await shipmentsApi.getAll();
+        const found = shipments.find(s => s.id === shipment.id);
+        if (found) {
+          actualShipment = found;
+          console.log('[useCollect] Актуальные данные загружены:', {
+            id: actualShipment.id,
+            linesCount: actualShipment.lines?.length || 0,
+            linesWithProgress: actualShipment.lines?.filter((l: any) => l.collected_qty !== null && l.collected_qty !== undefined).length || 0
+          });
+        } else {
+          console.warn('[useCollect] Заказ не найден в списке, используем переданные данные');
+        }
+      } catch (error) {
+        console.error('[useCollect] Ошибка при загрузке актуальных данных, используем переданные:', error);
+      }
+      
+      // Логируем данные заказа для отладки
+      console.log('[useCollect] Данные заказа для инициализации:', {
+        id: actualShipment.id,
+        number: actualShipment.number || actualShipment.shipment_number,
+        linesCount: actualShipment.lines?.length || 0,
+        lines: actualShipment.lines?.map((line: any, idx: number) => ({
+          index: idx,
+          sku: line.sku,
+          qty: line.qty,
+          collected_qty: line.collected_qty,
+          checked: line.checked,
+        })) || []
+      });
+      
       // Инициализируем состояние чеклиста ПЕРЕД установкой currentShipment
+      // Загружаем сохраненный прогресс из БД, если он есть
       const initialState: Record<number, CollectChecklistState> = {};
-      if (shipment.lines && shipment.lines.length > 0) {
-        shipment.lines.forEach((line, index) => {
+      if (actualShipment.lines && actualShipment.lines.length > 0) {
+        actualShipment.lines.forEach((line, index) => {
+          // Используем сохраненное количество из БД, если есть
+          // ВАЖНО: для отображения в UI используем сохраненное количество ИЛИ требуемое по умолчанию
+          // Но для новых позиций (collected_qty = null) показываем требуемое количество для удобства
+          const hasSavedQty = line.collected_qty !== undefined && line.collected_qty !== null;
+          const savedQty = hasSavedQty 
+            ? line.collected_qty 
+            : line.qty; // По умолчанию показываем требуемое количество для удобства пользователя
+          
+          // Используем checked из данных как основной источник истины
+          // Если checked = true, значит позиция уже проверена в сборке
+          // Если checked = false или undefined, позиция НЕ собрана, даже если количество установлено
+          const isChecked = line.checked === true;
+          
+          // Позиция считается собранной ТОЛЬКО если:
+          // 1. checked = true (явно помечена как проверенная)
+          // НЕ используем collected_qty для определения collected, так как пользователь может установить количество, но еще не отметить как собранное
+          const isCollected = isChecked;
+          
+          // Логируем для отладки (только если что-то не так)
+          if (isCollected && line.checked !== true) {
+            console.warn(`[useCollect] Позиция ${index} (${line.sku}) помечена как собранная некорректно:`, {
+              checked: line.checked,
+              collected_qty: line.collected_qty,
+              savedQty,
+              qty: line.qty,
+              isChecked,
+              isCollected
+            });
+          }
+          
           initialState[index] = {
-            collected: false,
+            collected: isCollected,
             qty: line.qty,
-            collectedQty: line.qty,
+            collectedQty: savedQty, // Показываем сохраненное количество или требуемое по умолчанию
           };
         });
       }
@@ -49,11 +142,15 @@ export function useCollect() {
       // Устанавливаем состояние синхронно в правильном порядке
       setChecklistState(initialState);
       setEditState({});
-      setLockedShipmentId(shipment.id);
+      setLockedShipmentId(actualShipment.id);
       // Устанавливаем currentShipment последним, чтобы isOpen стал true
-      setCurrentShipment(shipment);
+      setCurrentShipment(actualShipment);
       
-      console.log('Состояние модального окна установлено, currentShipment:', shipment.id);
+      console.log('[useCollect] Состояние модального окна установлено:', {
+        shipmentId: actualShipment.id,
+        linesCount: actualShipment.lines?.length || 0,
+        initialStateKeys: Object.keys(initialState).length
+      });
     } catch (error: any) {
       console.error('Ошибка блокировки заказа:', error);
       const errorMessage = error?.message || 'Не удалось заблокировать заказ';
@@ -62,6 +159,9 @@ export function useCollect() {
   }, [currentShipment, showError]);
 
   const closeModal = useCallback(async () => {
+    // НЕ сохраняем прогресс при закрытии - сохранение происходит только при действии "Сдвиньте" слайдера
+    // Это позволяет пользователю закрыть модальное окно без потери несохраненных изменений
+    
     if (lockedShipmentId) {
       try {
         await shipmentsApi.unlock(lockedShipmentId);
@@ -73,35 +173,138 @@ export function useCollect() {
     setCurrentShipment(null);
     setChecklistState({});
     setEditState({});
-  }, [lockedShipmentId]);
+    setRemovingItems(new Set());
+    
+    // Обновляем данные на фронтенде после закрытия модального окна
+    if (onClose) {
+      try {
+        await onClose();
+      } catch (error) {
+        console.error('Ошибка при обновлении данных после закрытия:', error);
+      }
+    }
+  }, [lockedShipmentId, onClose]);
 
-  const updateCollected = useCallback((lineIndex: number, collected: boolean) => {
-    setChecklistState((prev) => {
-      const newState = { ...prev };
-      if (!newState[lineIndex]) {
-        const line = currentShipment?.lines[lineIndex];
-        if (line) {
-          newState[lineIndex] = {
-            collected: false,
-            qty: line.qty,
-            collectedQty: line.qty,
-          };
+  const updateCollected = useCallback(async (lineIndex: number, collected: boolean) => {
+    if (collected) {
+      // Помечаем товар как "улетающий" и запускаем анимацию
+      setRemovingItems((prev) => new Set(prev).add(lineIndex));
+      
+      // Через 500мс обновляем состояние и убираем из списка удаляемых
+      setTimeout(async () => {
+        // Используем функциональное обновление для получения актуального состояния
+        setChecklistState((prev) => {
+          const newState = { ...prev };
+          if (!newState[lineIndex]) {
+            const line = currentShipment?.lines[lineIndex];
+            if (line) {
+              newState[lineIndex] = {
+                collected: true,
+                qty: line.qty,
+                collectedQty: line.qty,
+              };
+            }
+          } else {
+            newState[lineIndex].collected = true;
+            // Если количество не установлено, устанавливаем полное количество
+            if (!newState[lineIndex].collectedQty || newState[lineIndex].collectedQty === 0) {
+              newState[lineIndex].collectedQty = newState[lineIndex].qty;
+            }
+          }
+          
+          // Сохраняем прогресс в БД с актуальным состоянием
+          if (currentShipment) {
+            const linesData = currentShipment.lines.map((line, idx) => {
+              const state = newState[idx] || { collected: false, qty: line.qty, collectedQty: line.qty };
+              // Если товар отмечен как собранный, сохраняем количество
+              // Если не собран, сохраняем null
+              const qty = state.collected ? (state.collectedQty || line.qty) : null;
+              return {
+                sku: line.sku,
+                collected_qty: qty && qty > 0 ? qty : null,
+              };
+            });
+            
+            console.log('[useCollect] Сохраняем прогресс после отметки товара:', {
+              shipmentId: currentShipment.id,
+              linesData: linesData.map(l => ({ sku: l.sku, collected_qty: l.collected_qty }))
+            });
+            
+            // Сохраняем асинхронно, не блокируя обновление UI
+            shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
+              .then((response) => {
+                console.log('[useCollect] Прогресс сохранен после отметки как собранного:', response);
+              })
+              .catch((error) => {
+                console.error('[useCollect] Ошибка при сохранении прогресса:', error);
+              });
+          }
+          
+          return newState;
+        });
+        
+        setRemovingItems((prev) => {
+          const next = new Set(prev);
+          next.delete(lineIndex);
+          return next;
+        });
+      }, 500);
+    } else {
+      // Если отменяем сборку, сразу обновляем состояние
+      setChecklistState((prev) => {
+        const newState = { ...prev };
+        if (!newState[lineIndex]) {
+          const line = currentShipment?.lines[lineIndex];
+          if (line) {
+            newState[lineIndex] = {
+              collected: false,
+              qty: line.qty,
+              collectedQty: line.qty,
+            };
+          }
+        } else {
+          newState[lineIndex].collected = false;
         }
-      }
-      if (newState[lineIndex]) {
-        newState[lineIndex].collected = collected;
-      }
-      return newState;
-    });
+        
+        // Сохраняем прогресс при отмене сборки
+        if (currentShipment) {
+          const linesData = currentShipment.lines.map((line, idx) => {
+            const state = newState[idx] || { collected: false, qty: line.qty, collectedQty: line.qty };
+            // Если товар не собран, сохраняем null (или текущее количество, если оно было изменено)
+            const qty = state.collected ? (state.collectedQty || line.qty) : (state.collectedQty && state.collectedQty > 0 ? state.collectedQty : null);
+            return {
+              sku: line.sku,
+              collected_qty: qty && qty > 0 ? qty : null,
+            };
+          });
+          
+          console.log('[useCollect] Сохраняем прогресс после отмены сборки:', {
+            shipmentId: currentShipment.id,
+            linesData: linesData.map(l => ({ sku: l.sku, collected_qty: l.collected_qty }))
+          });
+          
+          shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
+            .then((response) => {
+              console.log('[useCollect] Прогресс сохранен после отмены сборки:', response);
+            })
+            .catch((error) => {
+              console.error('[useCollect] Ошибка при сохранении прогресса:', error);
+            });
+        }
+        
+        return newState;
+      });
+    }
   }, [currentShipment]);
 
-  const updateCollectedQty = useCallback((lineIndex: number, qty: number) => {
+  const updateCollectedQty = useCallback(async (lineIndex: number, qty: number) => {
     if (!currentShipment) return;
     
     const line = currentShipment.lines[lineIndex];
     const maxQty = line.qty;
     const newQty = Math.min(Math.max(0, Math.floor(qty)), maxQty);
 
+    // Используем функциональное обновление для получения актуального состояния
     setChecklistState((prev) => {
       const newState = { ...prev };
       if (!newState[lineIndex]) {
@@ -112,6 +315,33 @@ export function useCollect() {
         };
       }
       newState[lineIndex].collectedQty = newQty;
+      
+      // Сохраняем прогресс в БД с актуальным состоянием
+      const linesData = currentShipment.lines.map((l, idx) => {
+        const state = newState[idx] || { collected: false, qty: l.qty, collectedQty: l.qty };
+        // Если товар отмечен как собранный, сохраняем количество
+        // Если не собран, но количество изменено, сохраняем его (для промежуточного прогресса)
+        const qty = state.collected ? (state.collectedQty || l.qty) : (state.collectedQty || null);
+        return {
+          sku: l.sku,
+          collected_qty: qty && qty > 0 ? qty : null,
+        };
+      });
+      
+      console.log(`[useCollect] Сохраняем прогресс для позиции ${lineIndex}:`, {
+        newQty,
+        linesData: linesData.map(l => ({ sku: l.sku, collected_qty: l.collected_qty }))
+      });
+      
+      // Сохраняем асинхронно, не блокируя обновление UI
+      shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
+        .then((response) => {
+          console.log(`[useCollect] Прогресс сохранен для позиции ${lineIndex}:`, response);
+        })
+        .catch((error) => {
+          console.error('[useCollect] Ошибка при сохранении прогресса:', error);
+        });
+      
       return newState;
     });
   }, [currentShipment]);
@@ -165,21 +395,50 @@ export function useCollect() {
     }
 
     const shipmentId = currentShipment.id;
-    console.log('Начинаем подтверждение обработки для заказа:', shipmentId);
+    console.log('[useCollect] Начинаем подтверждение обработки для заказа:', shipmentId);
 
     try {
+      // ВАЖНО: Сохраняем прогресс в БД перед отправкой на подтверждение
+      // Это происходит при действии "Сдвиньте" слайдера
+      console.log('[useCollect] Сохраняем финальный прогресс перед подтверждением...');
+      
+      // Используем функциональное обновление для получения актуального состояния
+      let finalChecklistState = checklistState;
+      
+      // Сохраняем прогресс с актуальным состоянием
+      const progressLinesData = currentShipment.lines.map((line, idx) => {
+        const state = finalChecklistState[idx] || { collected: false, qty: line.qty, collectedQty: line.qty };
+        // Если товар отмечен как собранный, сохраняем количество
+        // Если не собран, сохраняем null
+        const qty = state.collected ? (state.collectedQty || line.qty) : null;
+        return {
+          sku: line.sku,
+          collected_qty: qty && qty > 0 ? qty : null,
+        };
+      });
+      
+      console.log('[useCollect] Сохраняем финальный прогресс:', {
+        shipmentId,
+        linesData: progressLinesData.map(l => ({ sku: l.sku, collected_qty: l.collected_qty }))
+      });
+      
+      // Сохраняем прогресс в БД
+      const saveResponse = await shipmentsApi.saveProgress(shipmentId, { lines: progressLinesData });
+      console.log('[useCollect] Прогресс сохранен в БД перед подтверждением:', saveResponse);
+
+      // Подготавливаем данные для отправки на подтверждение
       const linesData = currentShipment.lines.map((line, index) => ({
         sku: line.sku,
-        collected_qty: checklistState[index]?.collectedQty ?? line.qty,
+        collected_qty: finalChecklistState[index]?.collectedQty ?? line.qty,
       }));
 
-      console.log('Отправляем данные на сервер:', { shipmentId, linesData });
+      console.log('[useCollect] Отправляем данные на подтверждение:', { shipmentId, linesCount: linesData.length });
 
       const response = await shipmentsApi.markPendingConfirmation(shipmentId, {
         lines: linesData,
       });
 
-      console.log('Заказ успешно отправлен на подтверждение:', response);
+      console.log('[useCollect] Заказ успешно отправлен на подтверждение:', response);
       showSuccess('Заказ успешно отправлен на подтверждение');
       
       // Закрываем модальное окно перед возвратом
@@ -187,7 +446,7 @@ export function useCollect() {
       
       return response;
     } catch (error) {
-      console.error('Ошибка подтверждения обработки:', error);
+      console.error('[useCollect] Ошибка подтверждения обработки:', error);
       showError('Не удалось подтвердить обработку заказа');
       throw error;
     }
@@ -252,6 +511,7 @@ export function useCollect() {
     currentShipment,
     checklistState,
     editState,
+    removingItems,
     isOpen: currentShipment !== null,
     openModal,
     closeModal,
