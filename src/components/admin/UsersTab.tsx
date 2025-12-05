@@ -2,6 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { 
+  UserPlus, 
+  Edit, 
+  Trash2, 
+  Save, 
+  X, 
+  Shield, 
+  User, 
+  CheckCircle,
+  Calendar,
+  Loader2,
+  AlertCircle
+} from 'lucide-react';
 
 interface User {
   id: string;
@@ -134,94 +147,127 @@ export default function UsersTab() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-slate-400">Загрузка...</div>
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+          <div className="text-slate-400 font-medium">Загрузка пользователей...</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
+    <div className="space-y-6 animate-fadeIn">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-100">Управление пользователями</h2>
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+            <User className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-slate-100">Управление пользователями</h2>
+            <p className="text-sm text-slate-400">Создание и редактирование пользователей системы</p>
+          </div>
+        </div>
         <button
           onClick={() => {
             setShowAddForm(true);
             setEditingUser(null);
             setFormData({ login: '', password: '', name: '', role: 'collector' });
           }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+          className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white px-6 py-3 rounded-lg transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 font-semibold"
         >
+          <UserPlus className="w-5 h-5" />
           Добавить пользователя
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4">
-          {error}
+        <div className="bg-red-900/40 border-2 border-red-500/60 text-red-200 px-4 py-3 rounded-lg mb-4 flex items-center gap-2 shadow-lg shadow-red-500/20 animate-pulse">
+          <AlertCircle className="w-5 h-5 text-red-400" />
+          <span className="font-medium">{error}</span>
         </div>
       )}
 
       {showAddForm && (
-        <div className="bg-slate-800 rounded-lg p-6 mb-6 border border-slate-700">
-          <h3 className="text-xl font-semibold text-slate-100 mb-4">
-            {editingUser ? 'Редактировать пользователя' : 'Добавить пользователя'}
-          </h3>
+        <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl p-6 mb-6 border-2 border-slate-700/50 shadow-xl animate-slideDown">
+          <div className="flex items-center gap-3 mb-6">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+              editingUser 
+                ? 'bg-gradient-to-br from-blue-600 to-blue-500' 
+                : 'bg-gradient-to-br from-green-600 to-green-500'
+            } shadow-lg`}>
+              {editingUser ? (
+                <Edit className="w-5 h-5 text-white" />
+              ) : (
+                <UserPlus className="w-5 h-5 text-white" />
+              )}
+            </div>
+            <h3 className="text-xl font-semibold text-slate-100">
+              {editingUser ? 'Редактировать пользователя' : 'Добавить пользователя'}
+            </h3>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Логин
-              </label>
-              <input
-                type="text"
-                value={formData.login}
-                onChange={(e) => setFormData({ ...formData, login: e.target.value })}
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  Логин
+                </label>
+                <input
+                  type="text"
+                  value={formData.login}
+                  onChange={(e) => setFormData({ ...formData, login: e.target.value })}
+                  className="w-full bg-slate-700/90 border-2 border-slate-600/50 rounded-lg px-4 py-3 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  Имя
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full bg-slate-700/90 border-2 border-slate-600/50 rounded-lg px-4 py-3 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  Пароль {editingUser && <span className="text-xs text-slate-400">(оставьте пустым, чтобы не менять)</span>}
+                </label>
+                <input
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="w-full bg-slate-700/90 border-2 border-slate-600/50 rounded-lg px-4 py-3 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200"
+                  required={!editingUser}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  Роль
+                </label>
+                <select
+                  value={formData.role}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                  className="w-full bg-slate-700/90 border-2 border-slate-600/50 rounded-lg px-4 py-3 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200"
+                >
+                  <option value="admin">Администратор</option>
+                  <option value="collector">Сборщик</option>
+                  <option value="checker">Проверка</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Имя
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Пароль {editingUser && '(оставьте пустым, чтобы не менять)'}
-              </label>
-              <input
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required={!editingUser}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Роль
-              </label>
-              <select
-                value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="admin">Администратор</option>
-                <option value="collector">Сборщик</option>
-                <option value="checker">Проверка</option>
-              </select>
-            </div>
-            <div className="flex gap-2">
+            <div className="flex gap-3 pt-2">
               <button
                 type="submit"
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                className="flex-1 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white px-6 py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 font-semibold"
               >
+                <Save className="w-5 h-5" />
                 {editingUser ? 'Сохранить' : 'Создать'}
               </button>
               <button
@@ -231,8 +277,9 @@ export default function UsersTab() {
                   setEditingUser(null);
                   setFormData({ login: '', password: '', name: '', role: 'collector' });
                 }}
-                className="bg-slate-700 hover:bg-slate-600 text-slate-100 px-4 py-2 rounded-lg transition-colors"
+                className="px-6 py-3 bg-slate-700/90 hover:bg-slate-600 text-slate-100 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 font-semibold"
               >
+                <X className="w-5 h-5" />
                 Отмена
               </button>
             </div>
@@ -240,38 +287,58 @@ export default function UsersTab() {
         </div>
       )}
 
-      <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+      <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 overflow-hidden shadow-xl">
         <table className="w-full">
-          <thead className="bg-slate-900">
+          <thead className="bg-slate-900/95 backdrop-blur-sm">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Логин</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Имя</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Роль</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Создан</th>
-              <th className="px-4 py-3 text-right text-sm font-semibold text-slate-300">Действия</th>
+              <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Логин</th>
+              <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Имя</th>
+              <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Роль</th>
+              <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Создан</th>
+              <th className="px-4 py-4 text-right text-sm font-semibold text-slate-200 uppercase tracking-wider">Действия</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-700">
-            {users.map((user) => (
-              <tr key={user.id} className="hover:bg-slate-700/50">
-                <td className="px-4 py-3 text-slate-200">{user.login}</td>
-                <td className="px-4 py-3 text-slate-200">{user.name}</td>
-                <td className="px-4 py-3 text-slate-200">{roleLabels[user.role]}</td>
-                <td className="px-4 py-3 text-slate-400 text-sm">
+          <tbody className="divide-y divide-slate-700/50">
+            {users.map((user, index) => (
+              <tr 
+                key={user.id} 
+                className="hover:bg-slate-700/50 transition-all duration-200 animate-fadeIn"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <td className="px-4 py-4 text-slate-200 font-medium">{user.login}</td>
+                <td className="px-4 py-4 text-slate-200">{user.name}</td>
+                <td className="px-4 py-4">
+                  <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ${
+                    user.role === 'admin' 
+                      ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50'
+                      : user.role === 'collector'
+                      ? 'bg-blue-600/20 text-blue-300 border border-blue-500/50'
+                      : 'bg-green-600/20 text-green-300 border border-green-500/50'
+                  }`}>
+                    {user.role === 'admin' && <Shield className="w-3.5 h-3.5" />}
+                    {user.role === 'collector' && <User className="w-3.5 h-3.5" />}
+                    {user.role === 'checker' && <CheckCircle className="w-3.5 h-3.5" />}
+                    {roleLabels[user.role]}
+                  </span>
+                </td>
+                <td className="px-4 py-4 text-slate-400 text-sm flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
                   {new Date(user.createdAt).toLocaleDateString('ru-RU')}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-4 text-right">
                   <div className="flex gap-2 justify-end">
                     <button
                       onClick={() => handleEdit(user)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors"
+                      className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white px-4 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 font-medium"
                     >
+                      <Edit className="w-4 h-4" />
                       Редактировать
                     </button>
                     <button
                       onClick={() => handleDelete(user.id)}
-                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors"
+                      className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white px-4 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 font-medium"
                     >
+                      <Trash2 className="w-4 h-4" />
                       Удалить
                     </button>
                   </div>
