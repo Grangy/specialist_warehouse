@@ -39,9 +39,41 @@ export async function POST(request: NextRequest) {
     const token = await createSession(user.id);
     const cookieStore = await cookies();
     
+    // Определяем, используется ли HTTPS для cookie secure флага
+    // Проблема: в production с HTTP (например, локальная сеть для PWA) 
+    // secure: true не позволит установить cookie
+    // Решение: проверяем переменную окружения или заголовки
+    
+    // 1. Явное указание через переменную окружения (приоритет)
+    const forceSecure = process.env.NEXT_PUBLIC_FORCE_SECURE_COOKIE === 'true';
+    const disableSecure = process.env.NEXT_PUBLIC_DISABLE_SECURE_COOKIE === 'true';
+    
+    // 2. Проверяем заголовок X-Forwarded-Proto (для прокси/обратного прокси)
+    const forwardedProto = request.headers.get('x-forwarded-proto');
+    
+    // 3. Пытаемся определить из URL (может быть относительным в Next.js)
+    let isHttps = false;
+    try {
+      if (request.url.startsWith('https://')) {
+        isHttps = true;
+      } else if (forwardedProto === 'https') {
+        isHttps = true;
+      }
+    } catch (e) {
+      // Игнорируем ошибки парсинга URL
+    }
+    
+    // Определяем secure флаг:
+    // - Если явно отключен через env - false
+    // - Если явно включен через env - true  
+    // - Иначе: в production только если HTTPS, в dev - false
+    const isSecure = disableSecure 
+      ? false 
+      : (forceSecure || (process.env.NODE_ENV === 'production' && isHttps));
+    
     cookieStore.set('session_token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecure,
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60, // 7 дней
       path: '/',

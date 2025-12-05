@@ -40,21 +40,33 @@ export function useShipments() {
     showErrorRef.current = showError;
   }, [showError]);
 
-  // Загружаем роль пользователя
+  const [isAuthorized, setIsAuthorized] = useState(false);
+
+  // Загружаем роль пользователя и проверяем авторизацию
   useEffect(() => {
     fetch('/api/auth/session')
       .then((res) => res.json())
       .then((data) => {
         if (data.user) {
           setUserRole(data.user.role);
+          setIsAuthorized(true);
+        } else {
+          setIsAuthorized(false);
         }
       })
       .catch(() => {
+        setIsAuthorized(false);
         // Игнорируем ошибки
       });
   }, []);
 
   const loadShipments = useCallback(async () => {
+    // Не загружаем заказы, если пользователь не авторизован
+    if (!isAuthorized) {
+      setIsLoading(false);
+      return;
+    }
+
     // Предотвращаем параллельные запросы
     if (loadingRef.current) return;
     
@@ -66,8 +78,15 @@ export function useShipments() {
       
       const data = await shipmentsApi.getAll();
       setShipments(data);
-    } catch (error) {
-      // Показываем ошибку только один раз
+    } catch (error: any) {
+      // Игнорируем ошибки 401 (не авторизован) - это нормально для незалогиненных пользователей
+      if (error?.status === 401) {
+        setIsAuthorized(false);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Показываем ошибку только один раз для других ошибок
       if (!errorShownRef.current) {
         errorShownRef.current = true;
         console.error('Ошибка при загрузке заказов:', error);
@@ -77,19 +96,27 @@ export function useShipments() {
       setIsLoading(false);
       loadingRef.current = false;
     }
-  }, []); // Пустой массив зависимостей, используем ref для showError
+  }, [isAuthorized]); // Зависим от isAuthorized
 
   useEffect(() => {
+    // Загружаем заказы только если пользователь авторизован
+    if (!isAuthorized) {
+      setIsLoading(false);
+      return;
+    }
+
     loadShipments();
     
-    // Автообновление каждые 60 секунд
+    // Автообновление каждые 60 секунд (только для авторизованных)
     const interval = setInterval(() => {
-      // Сбрасываем флаг ошибки перед повторной попыткой
-      errorShownRef.current = false;
-      loadShipments();
+      if (isAuthorized) {
+        // Сбрасываем флаг ошибки перед повторной попыткой
+        errorShownRef.current = false;
+        loadShipments();
+      }
     }, 60000);
     return () => clearInterval(interval);
-  }, [loadShipments]);
+  }, [isAuthorized, loadShipments]);
 
   // Контроль доступа к вкладкам
   const canAccessTab = (tab: Tab): boolean => {
