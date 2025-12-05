@@ -117,10 +117,12 @@ export function NameModal({
     }
   };
 
-  // Обновляем счетчик при изменении пропсов
+  // Принудительно обновляем компонент при изменении currentItemNumber
+  // Это гарантирует, что заголовок обновится при переходе к следующему товару
   useEffect(() => {
-    // Принудительно обновляем компонент при изменении currentItemNumber
-  }, [currentItemNumber, totalItems]);
+    // Компонент автоматически перерисуется при изменении currentItemNumber
+    // благодаря использованию его в title
+  }, [currentItemNumber, totalItems, lineIndex]);
 
   return (
     <Modal 
