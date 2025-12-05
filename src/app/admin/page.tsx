@@ -6,6 +6,7 @@ import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2 } fro
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
+import { useToast } from '@/hooks/useToast';
 
 type Tab = 'users' | 'shipments' | 'analytics';
 
@@ -14,6 +15,7 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingTestOrder, setIsCreatingTestOrder] = useState(false);
   const router = useRouter();
+  const { showToast } = useToast();
 
   useEffect(() => {
     checkAuth();
@@ -110,15 +112,27 @@ export default function AdminPage() {
                 });
                 const data = await res.json();
                 if (res.ok) {
-                  alert(`✅ Тестовый заказ успешно создан!\n\nНомер: ${data.shipment.number}\nЗаданий: ${data.shipment.tasks_count}`);
-                  router.push('/');
-                  router.refresh();
+                  showToast({
+                    type: 'success',
+                    message: `Тестовый заказ создан! Номер: ${data.shipment.number}, заданий: ${data.shipment.tasks_count}`,
+                  });
+                  // Обновляем страницу через небольшую задержку
+                  setTimeout(() => {
+                    router.push('/');
+                    router.refresh();
+                  }, 1000);
                 } else {
-                  alert(`❌ Ошибка: ${data.error || 'Не удалось создать тестовый заказ'}`);
+                  showToast({
+                    type: 'error',
+                    message: data.error || 'Не удалось создать тестовый заказ',
+                  });
                 }
               } catch (error) {
                 console.error('Ошибка при создании тестового заказа:', error);
-                alert('❌ Ошибка при создании тестового заказа');
+                showToast({
+                  type: 'error',
+                  message: 'Ошибка при создании тестового заказа',
+                });
               } finally {
                 setIsCreatingTestOrder(false);
               }
