@@ -139,7 +139,33 @@ export async function POST(request: NextRequest) {
     });
 
     // Разбиваем заказ на задания
-    const tasks = await splitShipmentIntoTasks(shipment);
+    const taskInputs = splitShipmentIntoTasks(shipment.lines);
+
+    // Создаем задания в базе данных
+    const createdTasks = [];
+    for (const taskInput of taskInputs) {
+      const task = await prisma.shipmentTask.create({
+        data: {
+          shipmentId: shipment.id,
+          warehouse: taskInput.warehouse,
+          status: 'new',
+          lines: {
+            create: taskInput.lines.map((taskLine) => ({
+              shipmentLineId: taskLine.shipmentLineId,
+              qty: taskLine.qty,
+            })),
+          },
+        },
+        include: {
+          lines: {
+            include: {
+              shipmentLine: true,
+            },
+          },
+        },
+      });
+      createdTasks.push(task);
+    }
 
     return NextResponse.json({
       success: true,
@@ -147,8 +173,8 @@ export async function POST(request: NextRequest) {
       shipment: {
         id: shipment.id,
         number: shipment.number,
-        tasks_count: tasks.length,
-        tasks: tasks.map((task) => ({
+        tasks_count: createdTasks.length,
+        tasks: createdTasks.map((task) => ({
           id: task.id,
           warehouse: task.warehouse,
           items_count: task.lines.length,
