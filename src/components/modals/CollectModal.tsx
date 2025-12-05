@@ -244,7 +244,8 @@ export function CollectModal({
               >
                 Отмена
               </button>
-              <div className="flex-1 swipe-confirm-container" style={{ opacity: isReady() ? 1 : 0.5 }}>
+              {/* Мобильная версия - свайп */}
+              <div className="flex-1 md:hidden swipe-confirm-container" style={{ opacity: isReady() ? 1 : 0.5 }}>
                 <div
                   id="swipe-confirm-track"
                   className="relative w-full h-12 bg-slate-700/90 rounded-lg overflow-hidden border-2 border-slate-600/50 shadow-lg"
@@ -271,25 +272,22 @@ export function CollectModal({
                     <span>→ Сдвиньте для подтверждения</span>
                   </div>
                 </div>
-                {/* Мобильная версия - свайп */}
-                <div className="md:hidden">
-                  <SwipeConfirmButton
-                    trackId="swipe-confirm-track"
-                    sliderId="swipe-confirm-slider"
-                    textId="swipe-confirm-text"
-                    onConfirm={handleConfirm}
-                    disabled={!isReady()}
-                  />
-                </div>
-                {/* Десктоп версия - кнопка */}
-                <button
-                  onClick={handleConfirm}
+                <SwipeConfirmButton
+                  trackId="swipe-confirm-track"
+                  sliderId="swipe-confirm-slider"
+                  textId="swipe-confirm-text"
+                  onConfirm={handleConfirm}
                   disabled={!isReady()}
-                  className="hidden md:flex px-8 py-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 disabled:from-slate-600 disabled:to-slate-500 disabled:cursor-not-allowed text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 disabled:hover:scale-100"
-                >
-                  Сборка
-                </button>
+                />
               </div>
+              {/* Десктоп версия - кнопка */}
+              <button
+                onClick={handleConfirm}
+                disabled={!isReady()}
+                className="hidden md:flex flex-1 px-8 py-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 disabled:from-slate-600 disabled:to-slate-500 disabled:cursor-not-allowed text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 disabled:hover:scale-100"
+              >
+                Сборка
+              </button>
             </div>
           </div>
         }
