@@ -5,6 +5,7 @@ import {
   Package, 
   PackageCheck, 
   ShoppingCart, 
+  Scale,
   Calendar,
   User,
   MapPin,
