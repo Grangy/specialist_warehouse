@@ -371,25 +371,34 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      const result = processedShipments.map((shipment) => ({
-        id: shipment.id,
-        shipment_id: shipment.id,
-        shipment_number: shipment.number,
-        number: shipment.number,
-        created_at: shipment.createdAt.toISOString(),
-        customer_name: shipment.customerName,
-        destination: shipment.destination,
-        items_count: shipment.itemsCount,
-        total_qty: shipment.totalQty,
-        weight: shipment.weight,
-        comment: shipment.comment,
-        status: shipment.status,
-        business_region: shipment.businessRegion,
-        collector_name: shipment.collectorName,
-        confirmed_at: shipment.confirmedAt?.toISOString() || null,
-        tasks_count: shipment.tasks.length,
-        warehouses: Array.from(new Set(shipment.tasks.map((t) => t.warehouse))),
-      }));
+      const result = processedShipments.map((shipment) => {
+        // Собираем всех уникальных сборщиков из всех tasks
+        const collectors = shipment.tasks
+          .filter((task) => task.collectorName)
+          .map((task) => task.collectorName)
+          .filter((name, index, self) => self.indexOf(name) === index); // Уникальные имена
+        
+        return {
+          id: shipment.id,
+          shipment_id: shipment.id,
+          shipment_number: shipment.number,
+          number: shipment.number,
+          created_at: shipment.createdAt.toISOString(),
+          customer_name: shipment.customerName,
+          destination: shipment.destination,
+          items_count: shipment.itemsCount,
+          total_qty: shipment.totalQty,
+          weight: shipment.weight,
+          comment: shipment.comment,
+          status: shipment.status,
+          business_region: shipment.businessRegion,
+          collector_name: collectors.length > 0 ? collectors.join(', ') : null,
+          collectors: collectors,
+          confirmed_at: shipment.confirmedAt?.toISOString() || null,
+          tasks_count: shipment.tasks.length,
+          warehouses: Array.from(new Set(shipment.tasks.map((t) => t.warehouse))),
+        };
+      });
 
       return NextResponse.json(result);
     }
