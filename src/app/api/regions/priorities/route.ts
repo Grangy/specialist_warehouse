@@ -1,0 +1,110 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/middleware';
+
+export const dynamic = 'force-dynamic';
+
+// GET - получить все приоритеты регионов
+export async function GET(request: NextRequest) {
+  try {
+    const authResult = await requireAuth(request, ['admin']);
+    if (authResult instanceof NextResponse) {
+      return authResult;
+    }
+
+    const priorities = await prisma.regionPriority.findMany({
+      orderBy: {
+        priority: 'asc',
+      },
+    });
+
+    return NextResponse.json(priorities);
+  } catch (error) {
+    console.error('Ошибка при получении приоритетов регионов:', error);
+    return NextResponse.json(
+      { error: 'Ошибка сервера при получении приоритетов регионов' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST - обновить приоритеты регионов
+export async function POST(request: NextRequest) {
+  try {
+    const authResult = await requireAuth(request, ['admin']);
+    if (authResult instanceof NextResponse) {
+      return authResult;
+    }
+
+    const body = await request.json();
+    const { priorities } = body;
+
+    if (!Array.isArray(priorities)) {
+      return NextResponse.json(
+        { error: 'Необходимо передать массив приоритетов' },
+        { status: 400 }
+      );
+    }
+
+    // Обновляем приоритеты в транзакции
+    await prisma.$transaction(
+      priorities.map((item: { id: string; priority: number }) =>
+        prisma.regionPriority.update({
+          where: { id: item.id },
+          data: { priority: item.priority },
+        })
+      )
+    );
+
+    // Получаем обновленные приоритеты
+    const updatedPriorities = await prisma.regionPriority.findMany({
+      orderBy: {
+        priority: 'asc',
+      },
+    });
+
+    return NextResponse.json(updatedPriorities);
+  } catch (error) {
+    console.error('Ошибка при обновлении приоритетов регионов:', error);
+    return NextResponse.json(
+      { error: 'Ошибка сервера при обновлении приоритетов регионов' },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT - создать или обновить приоритет региона
+export async function PUT(request: NextRequest) {
+  try {
+    const authResult = await requireAuth(request, ['admin']);
+    if (authResult instanceof NextResponse) {
+      return authResult;
+    }
+
+    const body = await request.json();
+    const { region, priority } = body;
+
+    if (!region || priority === undefined) {
+      return NextResponse.json(
+        { error: 'Необходимо указать region и priority' },
+        { status: 400 }
+      );
+    }
+
+    // Создаем или обновляем приоритет
+    const regionPriority = await prisma.regionPriority.upsert({
+      where: { region },
+      update: { priority },
+      create: { region, priority },
+    });
+
+    return NextResponse.json(regionPriority);
+  } catch (error) {
+    console.error('Ошибка при создании/обновлении приоритета региона:', error);
+    return NextResponse.json(
+      { error: 'Ошибка сервера при создании/обновлении приоритета региона' },
+      { status: 500 }
+    );
+  }
+}
+

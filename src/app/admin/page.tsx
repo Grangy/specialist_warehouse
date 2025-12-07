@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2 } from 'lucide-react';
+import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin } from 'lucide-react';
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
+import RegionPrioritiesTab from '@/components/admin/RegionPrioritiesTab';
 import { useToast } from '@/hooks/useToast';
 
-type Tab = 'users' | 'shipments' | 'analytics';
+type Tab = 'users' | 'shipments' | 'analytics' | 'regions';
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('users');
@@ -101,6 +102,17 @@ export default function AdminPage() {
             <TrendingUp className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'analytics' ? 'scale-110' : 'group-hover:scale-110'}`} />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Аналитика</span>
           </button>
+          <button
+            onClick={() => setActiveTab('regions')}
+            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+              activeTab === 'regions'
+                ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg shadow-purple-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <MapPin className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'regions' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <span className="font-medium text-sm md:text-base whitespace-nowrap">Приоритеты регионов</span>
+          </button>
         </nav>
         <div className="p-2 md:p-4 border-t border-slate-700/50 space-y-1 md:space-y-2">
           <button
@@ -179,6 +191,7 @@ export default function AdminPage() {
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'shipments' && <CompletedShipmentsTab />}
           {activeTab === 'analytics' && <AnalyticsTab />}
+          {activeTab === 'regions' && <RegionPrioritiesTab />}
         </div>
       </main>
     </div>
