@@ -5,7 +5,6 @@ import {
   Package, 
   PackageCheck, 
   ShoppingCart, 
-  Scale, 
   Calendar,
   User,
   MapPin,
@@ -17,7 +16,8 @@ import {
   ChevronRight,
   Filter,
   ArrowUpDown,
-  Eye
+  Eye,
+  CheckCircle2
 } from 'lucide-react';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
@@ -315,20 +315,10 @@ export default function CompletedShipmentsTab() {
                   onClick={() => handleSort('items_count')}
                 >
                   <div className="flex items-center justify-center">
-                    Позиций
+                    Позиций / Количество
                     <SortIcon field="items_count" />
                   </div>
                 </th>
-                <th 
-                  className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50 transition-colors select-none"
-                  onClick={() => handleSort('total_qty')}
-                >
-                  <div className="flex items-center justify-center">
-                    Количество
-                    <SortIcon field="total_qty" />
-                  </div>
-                </th>
-                <th className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider">Вес (кг)</th>
                 <th 
                   className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50 transition-colors select-none"
                   onClick={() => handleSort('created_at')}
@@ -338,13 +328,14 @@ export default function CompletedShipmentsTab() {
                     <SortIcon field="created_at" />
                   </div>
                 </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Дата завершения</th>
                 <th className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider">Действия</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/50">
               {paginatedShipments.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center">
+                  <td colSpan={9} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <Package className="w-12 h-12 text-slate-500 opacity-50" />
                       <div className="text-slate-400 font-medium">
@@ -393,52 +384,45 @@ export default function CompletedShipmentsTab() {
                       )}
                     </td>
                     <td className="px-4 py-4">
-                      {shipment.collector_name ? (
-                        <div className="flex flex-col gap-1">
-                          {shipment.collectors && shipment.collectors.length > 1 ? (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <User className="w-4 h-4 text-green-400 flex-shrink-0" />
-                              <div className="flex flex-wrap gap-1">
-                                {shipment.collectors.map((collector, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="inline-flex items-center px-2 py-0.5 bg-green-600/20 text-green-300 rounded text-xs font-medium border border-green-500/50 hover:bg-green-600/30 transition-colors"
-                                  >
-                                    {collector}
-                                  </span>
-                                ))}
-                              </div>
+                      {shipment.collectors && shipment.collectors.length > 0 ? (
+                        shipment.collectors.length === 1 ? (
+                          <div className="flex items-center gap-2 text-slate-200 group">
+                            <User className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
+                            <span className="group-hover:text-green-300 transition-colors">{shipment.collectors[0]}</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <User className="w-4 h-4 text-green-400 flex-shrink-0" />
+                            <div className="flex flex-wrap gap-1">
+                              {shipment.collectors.map((collector, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center px-2 py-0.5 bg-green-600/20 text-green-300 rounded text-xs font-medium border border-green-500/50 hover:bg-green-600/30 transition-colors"
+                                >
+                                  {collector}
+                                </span>
+                              ))}
                             </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-slate-200 group">
-                              <User className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
-                              <span className="group-hover:text-green-300 transition-colors">{shipment.collector_name}</span>
-                            </div>
-                          )}
+                          </div>
+                        )
+                      ) : shipment.collector_name ? (
+                        <div className="flex items-center gap-2 text-slate-200 group">
+                          <User className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
+                          <span className="group-hover:text-green-300 transition-colors">{shipment.collector_name}</span>
                         </div>
                       ) : (
                         <span className="text-slate-500">—</span>
                       )}
                     </td>
                     <td className="px-4 py-4 text-center">
-                      <span className="inline-flex items-center justify-center w-8 h-8 bg-blue-600/20 text-blue-300 rounded-full font-bold text-sm border border-blue-500/50 hover:bg-blue-600/30 hover:scale-110 transition-all cursor-default">
-                        {shipment.items_count}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className="inline-flex items-center justify-center w-10 h-8 bg-green-600/20 text-green-300 rounded-full font-bold text-sm border border-green-500/50 hover:bg-green-600/30 hover:scale-110 transition-all cursor-default">
-                        {shipment.total_qty}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      {shipment.weight ? (
-                        <span className="inline-flex items-center gap-1 text-slate-200 font-semibold hover:text-yellow-300 transition-colors">
-                          <Scale className="w-4 h-4 text-yellow-400" />
-                          {shipment.weight.toFixed(1)}
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="inline-flex items-center justify-center px-2 py-1 bg-blue-600/20 text-blue-300 rounded font-bold text-sm border border-blue-500/50 hover:bg-blue-600/30 transition-all cursor-default">
+                          {shipment.items_count} поз.
                         </span>
-                      ) : (
-                        <span className="text-slate-500">—</span>
-                      )}
+                        <span className="inline-flex items-center justify-center px-2 py-1 bg-green-600/20 text-green-300 rounded font-bold text-sm border border-green-500/50 hover:bg-green-600/30 transition-all cursor-default">
+                          {shipment.total_qty} ед.
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2 text-slate-400 text-sm group">
@@ -453,6 +437,24 @@ export default function CompletedShipmentsTab() {
                           })}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      {shipment.confirmed_at ? (
+                        <div className="flex items-center gap-2 text-slate-400 text-sm group">
+                          <CheckCircle2 className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
+                          <span className="group-hover:text-green-300 transition-colors">
+                            {new Date(shipment.confirmed_at).toLocaleString('ru-RU', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-4 text-center">
                       <button
