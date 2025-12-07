@@ -92,11 +92,13 @@ export default function CompletedShipmentsTab() {
         const customer = (s.customer_name || '').toLowerCase();
         const destination = (s.destination || '').toLowerCase();
         const collector = (s.collector_name || '').toLowerCase();
+        const businessRegion = (s.business_region || '').toLowerCase();
         return (
           number.includes(query) ||
           customer.includes(query) ||
           destination.includes(query) ||
-          collector.includes(query)
+          collector.includes(query) ||
+          businessRegion.includes(query)
         );
       });
     }
@@ -253,7 +255,7 @@ export default function CompletedShipmentsTab() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
               type="text"
-              placeholder="Поиск по номеру, клиенту, направлению, сборщику..."
+              placeholder="Поиск по номеру, клиенту, направлению, бизнес-региону, сборщику..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
@@ -290,6 +292,7 @@ export default function CompletedShipmentsTab() {
                   </div>
                 </th>
                 <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Направление</th>
+                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Бизнес-регион</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Сборщик</th>
                 <th 
                   className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50 transition-colors select-none"
@@ -325,7 +328,7 @@ export default function CompletedShipmentsTab() {
             <tbody className="divide-y divide-slate-700/50">
               {paginatedShipments.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center">
+                  <td colSpan={10} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <Package className="w-12 h-12 text-slate-500 opacity-50" />
                       <div className="text-slate-400 font-medium">
@@ -359,6 +362,19 @@ export default function CompletedShipmentsTab() {
                         <MapPin className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
                         <span className="group-hover:text-blue-300 transition-colors">{shipment.destination}</span>
                       </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      {shipment.business_region ? (
+                        <div className="flex items-center gap-2 text-slate-200 group">
+                          <svg className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          <span className="group-hover:text-purple-300 transition-colors">{shipment.business_region}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2 text-slate-200 group">
