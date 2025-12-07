@@ -53,26 +53,17 @@ export function ConfirmModal({
     collected: number;
   } | null>(null);
 
-  // Вычисляем currentItemNumber и totalItems для модального окна
-  // ВАЖНО: хуки должны быть до условного возврата
-  const modalItemInfo = useMemo(() => {
-    if (!currentShipment || !selectedLine) {
-      return { currentItemNumber: undefined, totalItems: undefined };
-    }
-    
-    const sortedIndices = currentShipment.lines
+  // Вычисляем sortedIndices для согласованности
+  const sortedIndices = useMemo(() => {
+    if (!currentShipment) return [];
+    return currentShipment.lines
       .map((_, index) => index)
       .sort((a, b) => {
         const aConfirmed = checklistState[a]?.confirmed || false;
         const bConfirmed = checklistState[b]?.confirmed || false;
         return aConfirmed === bConfirmed ? 0 : aConfirmed ? 1 : -1;
       });
-    
-    return {
-      currentItemNumber: sortedIndices.indexOf(selectedLine.index) + 1,
-      totalItems: sortedIndices.length,
-    };
-  }, [currentShipment, selectedLine, checklistState]);
+  }, [currentShipment, checklistState]);
 
   if (!currentShipment || !isOpen) return null;
 
@@ -517,7 +508,7 @@ export function ConfirmModal({
                                     sliderId={`swipe-confirm-item-slider-${index}`}
                                     textId={`swipe-confirm-item-text-${index}`}
                                     onConfirm={() => onConfirmItem(index)}
-                                    label="→ Подтвердить"
+                                    label="→"
                                     confirmedLabel="✓ Подтверждено"
                                     className="flex-shrink-0 md:hidden"
                                   />
@@ -591,7 +582,7 @@ export function ConfirmModal({
                                 sliderId={`swipe-confirm-item-slider-${index}`}
                                 textId={`swipe-confirm-item-text-${index}`}
                                 onConfirm={() => onConfirmItem(index)}
-                                label="→ Подтвердить"
+                                label="→"
                                 confirmedLabel="✓ Подтверждено"
                                 className="flex-shrink-0"
                               />
@@ -612,7 +603,7 @@ export function ConfirmModal({
     {/* Модальное окно с деталями товара */}
     {selectedLine !== null && (
       <NameModal
-        key={`name-modal-confirm-${selectedLine.index}-${modalItemInfo.currentItemNumber}`}
+        key={`name-modal-confirm-${selectedLine.index}-${sortedIndices.indexOf(selectedLine.index)}`}
         isOpen={true}
         onClose={() => setSelectedLine(null)}
         name={selectedLine.name}
@@ -633,8 +624,8 @@ export function ConfirmModal({
           }
         }}
         onNextItem={handleNextItem}
-        currentItemNumber={modalItemInfo.currentItemNumber}
-        totalItems={modalItemInfo.totalItems}
+        currentItemNumber={sortedIndices.indexOf(selectedLine.index) + 1}
+        totalItems={sortedIndices.length}
         buttonLabel="Подтв."
       />
     )}

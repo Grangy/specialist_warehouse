@@ -269,7 +269,7 @@ export function CollectModal({
                     className="absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-sm pointer-events-none z-20"
                     style={{ left: '60px', right: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   >
-                    <span>→ Сдвиньте для подтверждения</span>
+                    <span className="text-2xl">→</span>
                   </div>
                 </div>
                 <SwipeConfirmButton
@@ -562,7 +562,7 @@ export function CollectModal({
                                 sliderId={`swipe-collect-slider-${index}`}
                                 textId={`swipe-collect-text-${index}`}
                                 onConfirm={() => onUpdateCollected(index, true)}
-                                label="→ Сдвиньте"
+                                label="→"
                                 confirmedLabel="✓ Собрано"
                                 className="flex-shrink-0"
                               />
@@ -628,7 +628,7 @@ export function CollectModal({
                                 sliderId={`swipe-collect-slider-${index}`}
                                 textId={`swipe-collect-text-${index}`}
                                 onConfirm={() => onUpdateCollected(index, true)}
-                                label="→ Сдвиньте"
+                                label="→"
                                 confirmedLabel="✓ Собрано"
                                 className="flex-shrink-0 md:hidden"
                               />
@@ -655,7 +655,7 @@ export function CollectModal({
       {/* Модальное окно с деталями товара */}
       {selectedLine !== null && (
         <NameModal
-          key={`name-modal-${selectedLine.index}-${modalItemInfo.currentItemNumber || 0}`}
+          key={`name-modal-${selectedLine.index}-${sortedIndices.indexOf(selectedLine.index)}`}
           isOpen={true}
           onClose={() => setSelectedLine(null)}
           name={selectedLine.name}
@@ -673,8 +673,8 @@ export function CollectModal({
           onConfirmEditQty={onConfirmEditQty}
           onCancelEditQty={onCancelEditQty}
           onNextItem={handleNextItem}
-          currentItemNumber={modalItemInfo.currentItemNumber}
-          totalItems={modalItemInfo.totalItems}
+          currentItemNumber={sortedIndices.indexOf(selectedLine.index) + 1}
+          totalItems={sortedIndices.length}
         />
       )}
     </>
