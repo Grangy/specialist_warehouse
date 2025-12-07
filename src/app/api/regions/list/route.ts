@@ -30,11 +30,22 @@ export async function GET(request: NextRequest) {
       .filter((r): r is string => r !== null);
 
     // Получаем существующие приоритеты
-    const priorities = await prisma.regionPriority.findMany({
-      select: {
-        region: true,
-      },
-    });
+    let priorities: Array<{ region: string }> = [];
+    try {
+      priorities = await prisma.regionPriority.findMany({
+        select: {
+          region: true,
+        },
+      });
+    } catch (dbError: any) {
+      // Если таблица не существует, используем пустой массив
+      if (dbError.code === 'P2021' || dbError.message?.includes('does not exist')) {
+        console.warn('Таблица region_priorities не существует, используем пустой массив');
+        priorities = [];
+      } else {
+        throw dbError;
+      }
+    }
 
     const existingRegions = new Set(priorities.map((p) => p.region));
 

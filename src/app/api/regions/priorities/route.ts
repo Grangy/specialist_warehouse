@@ -12,13 +12,23 @@ export async function GET(request: NextRequest) {
       return authResult;
     }
 
-    const priorities = await prisma.regionPriority.findMany({
-      orderBy: {
-        priority: 'asc',
-      },
-    });
+    // Проверяем, существует ли таблица, если нет - возвращаем пустой массив
+    try {
+      const priorities = await prisma.regionPriority.findMany({
+        orderBy: {
+          priority: 'asc',
+        },
+      });
 
-    return NextResponse.json(priorities);
+      return NextResponse.json(priorities);
+    } catch (dbError: any) {
+      // Если таблица не существует, возвращаем пустой массив
+      if (dbError.code === 'P2021' || dbError.message?.includes('does not exist')) {
+        console.warn('Таблица region_priorities не существует, возвращаем пустой массив');
+        return NextResponse.json([]);
+      }
+      throw dbError;
+    }
   } catch (error) {
     console.error('Ошибка при получении приоритетов регионов:', error);
     return NextResponse.json(
