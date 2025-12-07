@@ -177,8 +177,14 @@ export default function RegionPrioritiesTab() {
 
   const handleRemoveRegion = async (id: string) => {
     try {
-      // Удаляем приоритет (в будущем можно добавить DELETE endpoint)
-      // Пока просто перезагружаем данные
+      const response = await fetch(`/api/regions/priorities/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка при удалении региона');
+      }
+
       await loadData();
       setSuccess('Регион удален из приоритетов');
       setTimeout(() => setSuccess(''), 3000);
