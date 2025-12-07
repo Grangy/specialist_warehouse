@@ -85,7 +85,7 @@ export function SwipeConfirmButton({
         } else if (percentage < SWIPE_THRESHOLD && hasConfirmed) {
           hasConfirmed = false;
           track.classList.remove('completed');
-          text.textContent = '→ Сдвиньте для подтверждения';
+          text.innerHTML = '<span class="text-2xl">→</span>';
           text.style.color = '';
           text.style.fontWeight = '';
         }

@@ -109,14 +109,14 @@ export function NameModal({
     if (onUpdateCollected && lineIndex !== undefined) {
       // Сначала обновляем состояние
       onUpdateCollected(lineIndex, true);
-      // Небольшая задержка перед переходом к следующему товару, чтобы дать время обновиться состоянию
+      // Увеличиваем задержку перед переходом к следующему товару, чтобы дать время обновиться состоянию и пересчитаться sortedIndices
       setTimeout(() => {
         if (onNextItem) {
           onNextItem();
         } else {
           onClose();
         }
-      }, 300);
+      }, 500);
     }
   };
 
@@ -243,7 +243,7 @@ export function NameModal({
                             sliderId={`swipe-name-modal-slider-${lineIndex}`}
                             textId={`swipe-name-modal-text-${lineIndex}`}
                             onConfirm={handleConfirm}
-                            label="→ Сдвиньте для подтверждения"
+                            label="→"
                             confirmedLabel="✓ Подтверждено"
                             className="w-full h-full"
                           />

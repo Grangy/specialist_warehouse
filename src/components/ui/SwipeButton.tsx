@@ -96,7 +96,7 @@ export function SwipeButton({
         hasConfirmed = false;
         setIsConfirmed(false);
         track.parentElement?.classList.remove('completed-collect');
-        text.textContent = label;
+        text.innerHTML = '<span class="text-2xl">→</span>';
         text.style.color = '';
       }
     };
@@ -212,7 +212,7 @@ export function SwipeButton({
           className="swipe-collect-text absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-sm pointer-events-none z-10 px-4"
           style={{ left: `${SWIPE_MIN_WIDTH}px` }}
         >
-          <span>{label}</span>
+          <span className="text-2xl">→</span>
         </div>
       </div>
     </div>
