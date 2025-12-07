@@ -30,6 +30,7 @@ export interface Shipment {
   lines: ShipmentLine[];
   collector_name?: string;
   collector_id?: string;
+  collectors?: string[];
   started_at?: string;
   business_region?: string;
   locked?: boolean;

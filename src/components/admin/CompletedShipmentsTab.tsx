@@ -52,6 +52,11 @@ export default function CompletedShipmentsTab() {
 
   useEffect(() => {
     loadShipments();
+    // Автоматическое обновление каждые 30 секунд
+    const interval = setInterval(() => {
+      loadShipments();
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadShipments = async () => {
@@ -92,12 +97,14 @@ export default function CompletedShipmentsTab() {
         const customer = (s.customer_name || '').toLowerCase();
         const destination = (s.destination || '').toLowerCase();
         const collector = (s.collector_name || '').toLowerCase();
+        const collectors = (s.collectors || []).join(' ').toLowerCase();
         const businessRegion = (s.business_region || '').toLowerCase();
         return (
           number.includes(query) ||
           customer.includes(query) ||
           destination.includes(query) ||
           collector.includes(query) ||
+          collectors.includes(query) ||
           businessRegion.includes(query)
         );
       });
@@ -261,6 +268,15 @@ export default function CompletedShipmentsTab() {
               className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
             />
           </div>
+          <button
+            onClick={loadShipments}
+            disabled={isLoading}
+            className="px-4 py-2.5 bg-blue-600/90 hover:bg-blue-500 text-white rounded-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+            title="Обновить список заказов"
+          >
+            <Loader2 className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Обновить</span>
+          </button>
           <div className="flex items-center gap-2 text-sm text-slate-400">
             <Filter className="w-4 h-4" />
             <span>Найдено: {filteredAndSortedShipments.length} из {shipments.length}</span>
@@ -377,10 +393,32 @@ export default function CompletedShipmentsTab() {
                       )}
                     </td>
                     <td className="px-4 py-4">
-                      <div className="flex items-center gap-2 text-slate-200 group">
-                        <User className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
-                        <span className="group-hover:text-green-300 transition-colors">{shipment.collector_name || '—'}</span>
-                      </div>
+                      {shipment.collector_name ? (
+                        <div className="flex flex-col gap-1">
+                          {shipment.collectors && shipment.collectors.length > 1 ? (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <User className="w-4 h-4 text-green-400 flex-shrink-0" />
+                              <div className="flex flex-wrap gap-1">
+                                {shipment.collectors.map((collector, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex items-center px-2 py-0.5 bg-green-600/20 text-green-300 rounded text-xs font-medium border border-green-500/50 hover:bg-green-600/30 transition-colors"
+                                  >
+                                    {collector}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-slate-200 group">
+                              <User className="w-4 h-4 text-green-400 group-hover:scale-110 transition-transform" />
+                              <span className="group-hover:text-green-300 transition-colors">{shipment.collector_name}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-4 text-center">
                       <span className="inline-flex items-center justify-center w-8 h-8 bg-blue-600/20 text-blue-300 rounded-full font-bold text-sm border border-blue-500/50 hover:bg-blue-600/30 hover:scale-110 transition-all cursor-default">
