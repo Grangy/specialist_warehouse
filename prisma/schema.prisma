@@ -141,3 +141,13 @@ model Session {
 
   @@map("sessions")
 }
+
+model RegionPriority {
+  id        String   @id @default(cuid())
+  region    String   @unique // Название региона (например, "Москва")
+  priority  Int      @default(0) // Приоритет: чем меньше число, тем выше приоритет
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("region_priorities")
+}

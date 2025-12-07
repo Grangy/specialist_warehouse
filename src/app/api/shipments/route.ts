@@ -349,6 +349,12 @@ export async function GET(request: NextRequest) {
 
     // Если запрошены processed заказы, возвращаем заказы напрямую
     if (status === 'processed') {
+      // Получаем приоритеты регионов для сортировки
+      const regionPriorities = await prisma.regionPriority.findMany();
+      const priorityMap = new Map(
+        regionPriorities.map((p) => [p.region, p.priority])
+      );
+
       const processedShipments = await prisma.shipment.findMany({
         where: {
           status: 'processed',
@@ -369,6 +375,23 @@ export async function GET(request: NextRequest) {
         orderBy: {
           createdAt: 'desc',
         },
+      });
+
+      // Сортируем по приоритету региона, затем по дате создания
+      processedShipments.sort((a, b) => {
+        const aPriority = a.businessRegion
+          ? priorityMap.get(a.businessRegion) ?? 9999
+          : 9999;
+        const bPriority = b.businessRegion
+          ? priorityMap.get(b.businessRegion) ?? 9999
+          : 9999;
+
+        if (aPriority !== bPriority) {
+          return aPriority - bPriority; // Меньше приоритет = выше в списке
+        }
+
+        // Если приоритеты равны, сортируем по дате создания (новые сверху)
+        return b.createdAt.getTime() - a.createdAt.getTime();
       });
 
       const result = processedShipments.map((shipment) => {
@@ -403,6 +426,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(result);
     }
 
+    // Получаем приоритеты регионов для сортировки
+    const regionPriorities = await prisma.regionPriority.findMany();
+    const priorityMap = new Map(
+      regionPriorities.map((p) => [p.region, p.priority])
+    );
+
     // Получаем задания вместо заказов
     // ВАЖНО: Получаем ВСЕ задания заказа (без фильтрации) для правильного подсчета прогресса
     const shipments = await prisma.shipment.findMany({
@@ -426,6 +455,23 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: 'desc',
       },
+    });
+
+    // Сортируем заказы по приоритету региона, затем по дате создания
+    shipments.sort((a, b) => {
+      const aPriority = a.businessRegion
+        ? priorityMap.get(a.businessRegion) ?? 9999
+        : 9999;
+      const bPriority = b.businessRegion
+        ? priorityMap.get(b.businessRegion) ?? 9999
+        : 9999;
+
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority; // Меньше приоритет = выше в списке
+      }
+
+      // Если приоритеты равны, сортируем по дате создания (новые сверху)
+      return b.createdAt.getTime() - a.createdAt.getTime();
     });
 
     // Определяем фильтр по статусу заданий для отображения
@@ -520,6 +566,23 @@ export async function GET(request: NextRequest) {
         });
       }
     }
+
+    // Сортируем задания по приоритету региона заказа, затем по дате создания
+    tasks.sort((a, b) => {
+      const aPriority = a.business_region
+        ? priorityMap.get(a.business_region) ?? 9999
+        : 9999;
+      const bPriority = b.business_region
+        ? priorityMap.get(b.business_region) ?? 9999
+        : 9999;
+
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority; // Меньше приоритет = выше в списке
+      }
+
+      // Если приоритеты равны, сортируем по дате создания (новые сверху)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
     console.log(`[API] Возвращаем заданий после фильтрации: ${tasks.length}`);
     return NextResponse.json(tasks);
