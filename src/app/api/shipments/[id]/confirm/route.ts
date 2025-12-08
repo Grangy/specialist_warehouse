@@ -55,10 +55,15 @@ export async function POST(
       );
     }
 
-    // Обновляем статус задания
+    // Обновляем статус задания и сохраняем информацию о проверяльщике
     await prisma.shipmentTask.update({
       where: { id },
-      data: { status: 'processed' },
+      data: { 
+        status: 'processed',
+        checkerId: user.id,
+        checkerName: user.name,
+        confirmedAt: new Date(),
+      },
     });
 
     // Обновляем количества в задании, если они переданы
