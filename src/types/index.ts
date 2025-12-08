@@ -40,6 +40,7 @@ export interface Shipment {
     confirmed: number;
     total: number;
   };
+  confirmed_at?: string | null;
 }
 
 export type Tab = 'new' | 'processed';
