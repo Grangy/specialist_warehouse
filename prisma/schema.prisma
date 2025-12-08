@@ -33,7 +33,8 @@ model User {
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
   sessions  Session[]
-  tasks     ShipmentTask[]  // Задания, начатые пользователем
+  collectorTasks ShipmentTask[] @relation("CollectorTasks") // Задания, начатые пользователем как сборщик
+  checkerTasks   ShipmentTask[] @relation("CheckerTasks") // Задания, подтвержденные пользователем как проверяльщик
 
   @@map("users")
 }
@@ -97,11 +98,15 @@ model ShipmentTask {
   collectorId  String?           @map("collector_id") // ID пользователя, начавшего сборку
   startedAt   DateTime?         @map("started_at") // Время начала сборки
   completedAt DateTime?         @map("completed_at") // Время завершения сборки (когда переведено в pending_confirmation)
+  checkerName  String?           @map("checker_name") // Имя проверяльщика
+  checkerId    String?           @map("checker_id") // ID проверяльщика
+  confirmedAt DateTime?         @map("confirmed_at") // Время подтверждения задания проверяльщиком
   totalItems  Int?              @map("total_items") // Общее количество позиций в задании
   totalUnits  Int?              @map("total_units") // Общее количество единиц в задании
   timePer100Items Float?        @map("time_per_100_items") // Время на 100 позиций в секундах
   shipment     Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  collector    User?             @relation(fields: [collectorId], references: [id], onDelete: SetNull)
+  collector    User?             @relation("CollectorTasks", fields: [collectorId], references: [id], onDelete: SetNull)
+  checker      User?             @relation("CheckerTasks", fields: [checkerId], references: [id], onDelete: SetNull)
   lines        ShipmentTaskLine[]
   locks        ShipmentTaskLock[]
 
