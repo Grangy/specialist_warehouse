@@ -1,19 +1,85 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, canAccessStatus } from '@/lib/middleware';
-import { cleanupExpiredSessions } from '@/lib/auth';
+import { cleanupExpiredSessions, verifyPassword, getSessionUser } from '@/lib/auth';
 import { splitShipmentIntoTasks } from '@/lib/shipmentTasks';
 
 export const dynamic = 'force-dynamic';
 
+// Функция для проверки авторизации через credentials или cookies
+async function authenticateRequest(request: NextRequest, body: any): Promise<{ user: any } | NextResponse> {
+  // Если переданы login и password в теле запроса, используем их
+  if (body.login && body.password) {
+    const { login, password } = body;
+    
+    const user = await prisma.user.findUnique({
+      where: { login },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Неверный логин или пароль' },
+        { status: 401 }
+      );
+    }
+
+    const isValid = await verifyPassword(password, user.password);
+
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Неверный логин или пароль' },
+        { status: 401 }
+      );
+    }
+
+    // Проверяем роль пользователя
+    if (user.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Недостаточно прав доступа. Требуется роль admin' },
+        { status: 403 }
+      );
+    }
+
+    return {
+      user: {
+        id: user.id,
+        login: user.login,
+        name: user.name,
+        role: user.role,
+      },
+    };
+  }
+
+  // Иначе используем стандартную авторизацию через cookies
+  const user = await getSessionUser();
+
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Требуется авторизация. Укажите login и password в теле запроса или авторизуйтесь через cookies' },
+      { status: 401 }
+    );
+  }
+
+  if (user.role !== 'admin') {
+    return NextResponse.json(
+      { error: 'Недостаточно прав доступа. Требуется роль admin' },
+      { status: 403 }
+    );
+  }
+
+  return { user };
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['admin']);
+    const body = await request.json();
+    
+    // Проверяем авторизацию (через credentials или cookies)
+    const authResult = await authenticateRequest(request, body);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
 
-    const body = await request.json();
     const {
       number,
       customerName,
@@ -24,6 +90,7 @@ export async function POST(request: NextRequest) {
       comment,
       businessRegion,
       lines,
+      // Исключаем login и password из данных заказа
     } = body;
 
     // Валидация обязательных полей
