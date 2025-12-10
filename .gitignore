@@ -80,3 +80,9 @@ cookies.txt
 dist/
 build/
 out/
+
+# Test scripts (не нужны в продакшене)
+scripts/test-*.sh
+scripts/test-*.ts
+scripts/create-test-*.ts
+scripts/fill-analytics-test-data.ts
