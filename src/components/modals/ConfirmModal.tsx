@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Fragment, useMemo } from 'react';
+import { useState, Fragment, useMemo, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
 import { NameModal } from '@/components/modals/NameModal';
@@ -10,6 +10,7 @@ interface ConfirmModalProps {
   currentShipment: Shipment | null;
   checklistState: Record<number, ConfirmChecklistState>;
   editState: Record<number, boolean>;
+  removingItems: Set<number>;
   isOpen: boolean;
   onClose: () => void;
   onUpdateCollectedQty: (lineIndex: number, qty: number) => void;
@@ -32,6 +33,7 @@ export function ConfirmModal({
   currentShipment,
   checklistState,
   editState,
+  removingItems,
   isOpen,
   onClose,
   onUpdateCollectedQty,
@@ -65,6 +67,20 @@ export function ConfirmModal({
       });
   }, [currentShipment, checklistState]);
 
+  // Обновляем selectedLine при изменении checklistState для обновления счетчика
+  // ВАЖНО: хук должен быть перед ранним возвратом, чтобы соблюдать правила хуков
+  useEffect(() => {
+    if (selectedLine !== null) {
+      const state = checklistState[selectedLine.index];
+      if (state) {
+        setSelectedLine(prev => prev ? {
+          ...prev,
+          collected: state.collectedQty,
+        } : null);
+      }
+    }
+  }, [checklistState, selectedLine?.index]);
+
   if (!currentShipment || !isOpen) return null;
 
   const progress = getProgress();
@@ -90,17 +106,10 @@ export function ConfirmModal({
   const handleNextItem = () => {
     if (!currentShipment || !selectedLine) return;
 
-    // Находим следующий неподтвержденный товар
+    // Используем актуальную сортировку из useMemo
     const currentIndex = selectedLine.index;
-    const sortedIndices = currentShipment.lines
-      .map((_, index) => index)
-      .sort((a, b) => {
-        const aConfirmed = checklistState[a]?.confirmed || false;
-        const bConfirmed = checklistState[b]?.confirmed || false;
-        return aConfirmed === bConfirmed ? 0 : aConfirmed ? 1 : -1;
-      });
-
     const currentPosition = sortedIndices.indexOf(currentIndex);
+    
     if (currentPosition === -1) {
       setSelectedLine(null);
       return;
@@ -140,7 +149,7 @@ export function ConfirmModal({
         isOpen={isOpen}
         onClose={onClose}
         title="Подтверждение заказа"
-        subtitle={`${currentShipment.shipment_number || currentShipment.number || 'N/A'}${currentShipment.warehouse ? ` - ${currentShipment.warehouse}` : ''}`}
+        subtitle={`${currentShipment.shipment_number || currentShipment.number || 'N/A'}${currentShipment.warehouse ? ` - ${currentShipment.warehouse}` : ''}${currentShipment.collector_name ? ` | Сборку начал: ${currentShipment.collector_name}` : ''}`}
       footer={
         <div className="space-y-4">
           {warnings.hasZeroItems && (
@@ -277,8 +286,11 @@ export function ConfirmModal({
               const isEditing = editState[index];
               const hasShortage = state.collectedQty < line.qty && state.collectedQty > 0;
               const isZero = state.collectedQty === 0;
+              const isRemoving = removingItems.has(index);
 
-              const rowClassName = `${isConfirmed ? 'bg-green-900/15 border-l-2 border-l-green-500/50' : 'bg-slate-900/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-slate-700/50`;
+              const rowClassName = `${isConfirmed ? 'bg-green-900/15 border-l-2 border-l-green-500/50' : 'bg-slate-900/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-slate-700/50 ${
+                isRemoving ? 'item-removing' : ''
+              }`;
 
               return (
                 <Fragment key={index}>
@@ -420,7 +432,7 @@ export function ConfirmModal({
                     // Обычный режим - таблица: 1 товар = 2 строки
                     <>
                       {/* Первая строка: Название товара (1 столбец на всю ширину) */}
-                      <tr className={rowClassName}>
+                      <tr className={rowClassName} style={isRemoving ? { animationDelay: '0ms' } : undefined}>
                         <td rowSpan={2} className="px-3 py-3 text-center border-b border-slate-700/50 align-middle hidden md:table-cell" style={{ width: '60px', minWidth: '60px' }}>
                           {isConfirmed ? (
                             <div className="w-7 h-7 bg-green-500/90 rounded-full mx-auto flex items-center justify-center shadow-lg shadow-green-500/30 transition-all duration-300 hover:scale-110">
@@ -613,14 +625,14 @@ export function ConfirmModal({
     {/* Модальное окно с деталями товара */}
     {selectedLine !== null && (
       <NameModal
-        key={`name-modal-confirm-${selectedLine.index}-${sortedIndices.indexOf(selectedLine.index)}`}
+        key={`name-modal-confirm-${selectedLine.index}-${sortedIndices.indexOf(selectedLine.index)}-${checklistState[selectedLine.index]?.confirmed ? 'confirmed' : 'pending'}-${sortedIndices.length}`}
         isOpen={true}
         onClose={() => setSelectedLine(null)}
         name={selectedLine.name}
         sku={selectedLine.sku}
         location={selectedLine.location}
         qty={selectedLine.qty}
-        collected={selectedLine.collected}
+        collected={checklistState[selectedLine.index]?.collectedQty ?? selectedLine.collected}
         lineIndex={selectedLine.index}
         checklistState={checklistState[selectedLine.index]}
         isEditing={editState[selectedLine.index] || false}
@@ -631,11 +643,16 @@ export function ConfirmModal({
         onUpdateCollected={(lineIndex: number, collected: boolean) => {
           if (collected) {
             onConfirmItem(lineIndex);
+            // После подтверждения переходим к следующему товару
+            // Задержка нужна для завершения анимации (500ms) + время на обновление состояния
+            setTimeout(() => {
+              handleNextItem();
+            }, 600);
           }
         }}
         onNextItem={handleNextItem}
-        currentItemNumber={sortedIndices.indexOf(selectedLine.index) + 1}
-        totalItems={sortedIndices.length}
+        currentItemNumber={currentShipment.lines.findIndex((_, idx) => idx === selectedLine.index) + 1}
+        totalItems={currentShipment.lines.length}
         buttonLabel="Подтв."
       />
     )}

@@ -5,23 +5,48 @@ import { shipmentsApi } from '@/lib/api/shipments';
 import type { Shipment, ConfirmChecklistState } from '@/types';
 import { useToast } from './useToast';
 
-export function useConfirm() {
+interface UseConfirmOptions {
+  onClose?: () => void | Promise<void>;
+}
+
+export function useConfirm(options?: UseConfirmOptions) {
+  const { onClose } = options || {};
   const [currentShipment, setCurrentShipment] = useState<Shipment | null>(null);
   const [checklistState, setChecklistState] = useState<Record<number, ConfirmChecklistState>>({});
   const [editState, setEditState] = useState<Record<number, boolean>>({});
+  const [removingItems, setRemovingItems] = useState<Set<number>>(new Set());
   const { showToast, showError, showSuccess } = useToast();
 
   const openModal = useCallback((shipment: Shipment) => {
     setCurrentShipment(shipment);
 
     // Инициализируем состояние чеклиста
+    // Загружаем сохраненный прогресс ПРОВЕРКИ из БД (отдельно от прогресса сборки)
     const initialState: Record<number, ConfirmChecklistState> = {};
     if (shipment.lines && shipment.lines.length > 0) {
       shipment.lines.forEach((line, index) => {
+        // ВАЖНО: Для режима проверки используем confirmed_qty и confirmed
+        // collected_qty и checked - это для режима сборки, их не трогаем!
+        // Для отображения в режиме проверки показываем собранное количество (collected_qty) для удобства,
+        // но для определения подтверждения используем только confirmed
+        const hasConfirmedQty = line.confirmed_qty !== undefined && line.confirmed_qty !== null;
+        // Для отображения используем собранное количество (collected_qty), если confirmed_qty не установлен
+        // Это позволяет видеть, сколько собрано, даже если еще не подтверждено
+        const displayQty = hasConfirmedQty 
+          ? line.confirmed_qty 
+          : (line.collected_qty !== undefined && line.collected_qty !== null 
+              ? line.collected_qty 
+              : line.qty); // По умолчанию показываем собранное количество или требуемое
+        
+        // ВАЖНО: Используем confirmed из данных как ЕДИНСТВЕННЫЙ источник истины для проверки
+        // Если confirmed = true, значит позиция уже проверена проверяльщиком
+        // НЕ используем collected_qty или checked для определения подтверждения!
+        const isConfirmed = line.confirmed === true;
+        
         initialState[index] = {
           qty: line.qty,
-          collectedQty: line.collected_qty !== undefined ? line.collected_qty : line.qty,
-          confirmed: false,
+          collectedQty: displayQty ?? line.qty, // Показываем подтвержденное/собранное количество или требуемое по умолчанию
+          confirmed: isConfirmed, // ТОЛЬКО из поля confirmed, без fallback!
         };
       });
     }
@@ -29,19 +54,30 @@ export function useConfirm() {
     setEditState({});
   }, []);
 
-  const closeModal = useCallback(() => {
+  const closeModal = useCallback(async () => {
     setCurrentShipment(null);
     setChecklistState({});
     setEditState({});
-  }, []);
+    setRemovingItems(new Set());
+    
+    // Обновляем данные на фронтенде после закрытия модального окна
+    if (onClose) {
+      try {
+        await onClose();
+      } catch (error) {
+        console.error('Ошибка при обновлении данных после закрытия:', error);
+      }
+    }
+  }, [onClose]);
 
-  const updateCollectedQty = useCallback((lineIndex: number, qty: number) => {
+  const updateCollectedQty = useCallback(async (lineIndex: number, qty: number) => {
     if (!currentShipment) return;
     
     const line = currentShipment.lines[lineIndex];
     const maxQty = line.qty;
     const newQty = Math.min(Math.max(0, Math.floor(qty)), maxQty);
 
+    // Используем функциональное обновление для получения актуального состояния
     setChecklistState((prev) => {
       const newState = { ...prev };
       const wasConfirmed = newState[lineIndex]?.confirmed;
@@ -58,6 +94,48 @@ export function useConfirm() {
       if (wasConfirmed) {
         newState[lineIndex].confirmed = true;
       }
+      
+      // Сохраняем прогресс ПРОВЕРКИ в БД (отдельно от прогресса сборки)
+      // ВАЖНО: Используем confirmed_qty и confirmed, а не collected_qty и checked!
+      const taskId = currentShipment.task_id || currentShipment.id; // taskId для режима подтверждения
+      const linesData = currentShipment.lines.map((l, idx) => {
+        const state = newState[idx];
+        // Сохраняем confirmed_qty только для текущей позиции (lineIndex)
+        // Для остальных позиций оставляем текущее значение из БД
+        if (idx === lineIndex && state) {
+          // Текущая позиция - сохраняем новое значение
+          const qty = state.collectedQty !== null && state.collectedQty !== undefined 
+            ? state.collectedQty 
+            : (l.confirmed_qty !== undefined ? l.confirmed_qty : null);
+          return {
+            sku: l.sku,
+            confirmed_qty: qty && qty > 0 ? qty : null,
+            confirmed: state.confirmed ? true : (l.confirmed === true), // Сохраняем confirmed только если позиция подтверждена
+          };
+        } else {
+          // Остальные позиции - оставляем текущее значение из БД (не меняем)
+          return {
+            sku: l.sku,
+            confirmed_qty: l.confirmed_qty !== undefined ? l.confirmed_qty : null,
+            confirmed: l.confirmed === true, // Сохраняем текущее значение confirmed
+          };
+        }
+      });
+      
+      console.log(`[useConfirm] Сохраняем прогресс ПРОВЕРКИ для позиции ${lineIndex}:`, {
+        newQty,
+        taskId,
+        linesData: linesData.map(l => ({ sku: l.sku, confirmed_qty: l.confirmed_qty }))
+      });
+      
+      // Сохраняем асинхронно через новый API для прогресса проверки
+      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
+        .then((response) => {
+          console.log(`[useConfirm] Прогресс ПРОВЕРКИ сохранен для позиции ${lineIndex}:`, response);
+        })
+        .catch((error) => {
+          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ:', error);
+        });
       
       return newState;
     });
@@ -87,6 +165,41 @@ export function useConfirm() {
       if (newState[lineIndex]) {
         newState[lineIndex].confirmed = wasConfirmed || false;
       }
+      
+      // Сохраняем прогресс ПРОВЕРКИ после редактирования
+      const taskId = currentShipment.task_id || currentShipment.id;
+      const linesData = currentShipment.lines.map((l, idx) => {
+        const state = newState[idx];
+        // Сохраняем confirmed_qty только для текущей позиции (lineIndex)
+        // Для остальных позиций оставляем текущее значение из БД
+        if (idx === lineIndex && state) {
+          // Текущая позиция - сохраняем новое значение (промежуточный прогресс)
+          const qty = state.collectedQty !== null && state.collectedQty !== undefined 
+            ? state.collectedQty 
+            : (l.confirmed_qty !== undefined ? l.confirmed_qty : null);
+          return {
+            sku: l.sku,
+            confirmed_qty: qty && qty > 0 ? qty : null,
+            confirmed: state.confirmed ? true : (l.confirmed === true), // Сохраняем confirmed только если позиция подтверждена
+          };
+        } else {
+          // Остальные позиции - оставляем текущее значение из БД (не меняем)
+          return {
+            sku: l.sku,
+            confirmed_qty: l.confirmed_qty !== undefined ? l.confirmed_qty : null,
+            confirmed: l.confirmed === true, // Сохраняем текущее значение confirmed
+          };
+        }
+      });
+      
+      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
+        .then((response) => {
+          console.log(`[useConfirm] Прогресс ПРОВЕРКИ сохранен после редактирования позиции ${lineIndex}:`, response);
+        })
+        .catch((error) => {
+          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после редактирования:', error);
+        });
+      
       return newState;
     });
     
@@ -110,7 +223,7 @@ export function useConfirm() {
       } else {
         newState[lineIndex] = {
           qty: line.qty,
-          collectedQty: line.collected_qty !== undefined ? line.collected_qty : line.qty,
+          collectedQty: line.confirmed_qty !== undefined ? line.confirmed_qty : (line.collected_qty !== undefined ? line.collected_qty : line.qty),
           confirmed: wasConfirmed || false,
         };
       }
@@ -125,23 +238,72 @@ export function useConfirm() {
   }, [currentShipment, checklistState]);
 
   const confirmItem = useCallback((lineIndex: number) => {
-    setChecklistState((prev) => {
-      const newState = { ...prev };
-      if (!newState[lineIndex]) {
-        const line = currentShipment?.lines[lineIndex];
-        if (line) {
-          newState[lineIndex] = {
-            qty: line.qty,
-            collectedQty: line.collected_qty !== undefined ? line.collected_qty : line.qty,
-            confirmed: false,
-          };
+    // Помечаем товар как "улетающий" и запускаем анимацию
+    setRemovingItems((prev) => new Set(prev).add(lineIndex));
+    
+    // Через 500мс обновляем состояние и убираем из списка удаляемых
+    setTimeout(() => {
+      setChecklistState((prev) => {
+        const newState = { ...prev };
+        if (!newState[lineIndex]) {
+          const line = currentShipment?.lines[lineIndex];
+          if (line) {
+            newState[lineIndex] = {
+              qty: line.qty,
+              collectedQty: line.confirmed_qty !== undefined ? line.confirmed_qty : (line.collected_qty !== undefined ? line.collected_qty : line.qty),
+              confirmed: false,
+            };
+          }
         }
-      }
-      if (newState[lineIndex]) {
-        newState[lineIndex].confirmed = true;
-      }
-      return newState;
-    });
+        if (newState[lineIndex]) {
+          newState[lineIndex].confirmed = true;
+        }
+        
+        // Сохраняем прогресс ПРОВЕРКИ после подтверждения товара
+        if (currentShipment) {
+          const taskId = currentShipment.task_id || currentShipment.id;
+          const linesData = currentShipment.lines.map((l, idx) => {
+            const state = newState[idx];
+            // ВАЖНО: Сохраняем confirmed_qty и confirmed ТОЛЬКО для подтвержденной позиции (lineIndex)
+            // Для остальных позиций сохраняем текущее значение из БД (не меняем)
+            if (idx === lineIndex && state && state.confirmed) {
+              // Текущая позиция подтверждена - сохраняем confirmed_qty и confirmed = true
+              const qty = state.collectedQty !== null && state.collectedQty !== undefined 
+                ? state.collectedQty 
+                : (l.confirmed_qty !== undefined ? l.confirmed_qty : null);
+              return {
+                sku: l.sku,
+                confirmed_qty: qty && qty > 0 ? qty : null,
+                confirmed: true, // Явно указываем, что позиция подтверждена
+              };
+            } else {
+              // Остальные позиции - оставляем текущее значение из БД (не меняем)
+              return {
+                sku: l.sku,
+                confirmed_qty: l.confirmed_qty !== undefined ? l.confirmed_qty : null,
+                confirmed: l.confirmed === true, // Сохраняем текущее значение confirmed
+              };
+            }
+          });
+          
+          shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
+            .then((response) => {
+              console.log(`[useConfirm] Прогресс ПРОВЕРКИ сохранен после подтверждения позиции ${lineIndex}:`, response);
+            })
+            .catch((error) => {
+              console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после подтверждения:', error);
+            });
+        }
+        
+        return newState;
+      });
+      
+      setRemovingItems((prev) => {
+        const next = new Set(prev);
+        next.delete(lineIndex);
+        return next;
+      });
+    }, 500);
   }, [currentShipment]);
 
   const confirmShipment = useCallback(async () => {
@@ -299,6 +461,7 @@ export function useConfirm() {
     currentShipment,
     checklistState,
     editState,
+    removingItems,
     isOpen: currentShipment !== null,
     openModal,
     closeModal,

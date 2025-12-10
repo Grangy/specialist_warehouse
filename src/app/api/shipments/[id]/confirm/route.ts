@@ -81,13 +81,14 @@ export async function POST(
       for (const taskLine of taskLines) {
         const lineData = linesBySku.get(taskLine.shipmentLine.sku);
         if (lineData) {
+          // ВАЖНО: При подтверждении обновляем confirmedQty и confirmed (для проверки)
+          // collectedQty и checked остаются без изменений (это прогресс сборки)
           await prisma.shipmentTaskLine.update({
             where: { id: taskLine.id },
             data: { 
-              collectedQty: lineData.collected_qty !== undefined ? lineData.collected_qty : taskLine.collectedQty,
-              // Исправлено: по умолчанию false, а не true
-              // checked должен быть явно передан в запросе для установки в true
-              checked: lineData.checked !== undefined ? lineData.checked : false,
+              confirmedQty: lineData.confirmed_qty !== undefined ? lineData.confirmed_qty : (lineData.collected_qty !== undefined ? lineData.collected_qty : taskLine.confirmedQty),
+              // confirmed устанавливается в true, если confirmed_qty > 0 или checked = true
+              confirmed: lineData.confirmed !== undefined ? lineData.confirmed : (lineData.checked === true || (lineData.confirmed_qty !== undefined && lineData.confirmed_qty > 0) || (lineData.collected_qty !== undefined && lineData.collected_qty > 0)),
             },
           });
         }

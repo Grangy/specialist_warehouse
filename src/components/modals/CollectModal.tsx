@@ -160,22 +160,23 @@ export function CollectModal({
   }, [currentShipment, checklistState, removingItems]);
 
   // Вычисляем currentItemNumber и totalItems для модального окна
-  // Используем sortedIndices для согласованности с handleNextItem
+  // Используем общий список товаров, а не только несобранные
   const modalItemInfo = useMemo(() => {
     if (!currentShipment || !selectedLine) {
       return { currentItemNumber: undefined, totalItems: undefined };
     }
     
-    const currentPosition = sortedIndices.indexOf(selectedLine.index);
+    // Находим позицию товара в общем списке (все товары, включая собранные)
+    const currentPosition = currentShipment.lines.findIndex((_, idx) => idx === selectedLine.index);
     if (currentPosition === -1) {
-      return { currentItemNumber: undefined, totalItems: sortedIndices.length };
+      return { currentItemNumber: undefined, totalItems: currentShipment.lines.length };
     }
     
     return {
       currentItemNumber: currentPosition + 1,
-      totalItems: sortedIndices.length,
+      totalItems: currentShipment.lines.length,
     };
-  }, [sortedIndices, selectedLine]);
+  }, [currentShipment, selectedLine]);
 
   // Проверяем, что модальное окно должно быть открыто
   if (!currentShipment || !isOpen) {
@@ -673,8 +674,8 @@ export function CollectModal({
           onConfirmEditQty={onConfirmEditQty}
           onCancelEditQty={onCancelEditQty}
           onNextItem={handleNextItem}
-          currentItemNumber={sortedIndices.indexOf(selectedLine.index) + 1}
-          totalItems={sortedIndices.length}
+          currentItemNumber={currentShipment.lines.findIndex((_, idx) => idx === selectedLine.index) + 1}
+          totalItems={currentShipment.lines.length}
         />
       )}
     </>

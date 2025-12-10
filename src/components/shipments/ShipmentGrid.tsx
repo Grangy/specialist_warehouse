@@ -1,13 +1,15 @@
 'use client';
 
 import { ShipmentCard } from './ShipmentCard';
+import { WaitingShipmentCard } from './WaitingShipmentCard';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
-import type { Shipment } from '@/types';
+import type { Shipment, Tab } from '@/types';
 
 interface ShipmentGridProps {
   shipments: Shipment[];
   isLoading: boolean;
+  currentTab: Tab;
   onCollect: (shipment: Shipment) => void;
   onConfirm: (shipment: Shipment) => void;
   onDetails: (shipment: Shipment) => void;
@@ -20,6 +22,7 @@ interface ShipmentGridProps {
 export function ShipmentGrid({
   shipments,
   isLoading,
+  currentTab,
   onCollect,
   onConfirm,
   onDetails,
@@ -42,19 +45,33 @@ export function ShipmentGrid({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-      {shipments.map((shipment) => (
-        <ShipmentCard
-          key={shipment.id}
-          shipment={shipment}
-          onCollect={onCollect}
-          onConfirm={onConfirm}
-          onDetails={onDetails}
-          onCollectAll={onCollectAll}
-          onConfirmAll={onConfirmAll}
-          onDeleteCollection={onDeleteCollection}
-          userRole={userRole}
-        />
-      ))}
+      {shipments.map((shipment) => {
+        // Для режима ожидания используем WaitingShipmentCard
+        if (currentTab === 'waiting') {
+          return (
+            <WaitingShipmentCard
+              key={shipment.id}
+              shipment={shipment}
+              tasks={shipment.tasks}
+            />
+          );
+        }
+        
+        // Для остальных режимов используем обычную ShipmentCard
+        return (
+          <ShipmentCard
+            key={shipment.id}
+            shipment={shipment}
+            onCollect={onCollect}
+            onConfirm={onConfirm}
+            onDetails={onDetails}
+            onCollectAll={onCollectAll}
+            onConfirmAll={onConfirmAll}
+            onDeleteCollection={onDeleteCollection}
+            userRole={userRole}
+          />
+        );
+      })}
     </div>
   );
 }

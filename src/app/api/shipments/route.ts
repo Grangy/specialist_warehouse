@@ -607,7 +607,11 @@ export async function GET(request: NextRequest) {
       const confirmedTasksCount = allShipmentTasks.filter((t: any) => t.status === 'processed').length;
       const totalTasksCount = allShipmentTasks.length;
       
-      console.log(`[API] Заказ ${shipment.number}: всего заданий=${totalTasksCount}, подтверждено=${confirmedTasksCount}, прогресс=${confirmedTasksCount}/${totalTasksCount}`);
+      // Для режима ожидания показываем все задания (включая processed)
+      // Режим ожидания: есть подтвержденные задания, но не все
+      const isWaitingMode = !taskStatusFilter && confirmedTasksCount > 0 && confirmedTasksCount < totalTasksCount;
+      
+      console.log(`[API] Заказ ${shipment.number}: всего заданий=${totalTasksCount}, подтверждено=${confirmedTasksCount}, прогресс=${confirmedTasksCount}/${totalTasksCount}, isWaitingMode=${isWaitingMode}`);
 
       for (const task of shipment.tasks) {
         // Фильтруем задания по статусу для отображения (если указан фильтр)
@@ -616,14 +620,15 @@ export async function GET(request: NextRequest) {
             console.log(`[API] Пропускаем задание ${task.id}: статус ${task.status} не соответствует фильтру ${taskStatusFilter}`);
             continue; // Пропускаем задания с другим статусом
           }
-        } else {
-          // Если фильтр не указан, показываем только new и pending_confirmation
+        } else if (!isWaitingMode) {
+          // Если фильтр не указан и не режим ожидания, показываем только new и pending_confirmation
           // НЕ показываем processed задания
           if (task.status !== 'new' && task.status !== 'pending_confirmation') {
             console.log(`[API] Пропускаем задание ${task.id}: статус ${task.status} (показываем только new и pending_confirmation)`);
             continue;
           }
         }
+        // Для режима ожидания показываем все задания (включая processed)
 
         // Проверяем блокировку, но не пропускаем - показываем все задания
         // Блокировка будет проверяться на фронтенде
@@ -645,12 +650,15 @@ export async function GET(request: NextRequest) {
           uom: taskLine.shipmentLine.uom,
           location: taskLine.shipmentLine.location,
           warehouse: taskLine.shipmentLine.warehouse,
-          collected_qty: taskLine.collectedQty,
-          checked: taskLine.checked,
+          collected_qty: taskLine.collectedQty, // Прогресс сборки
+          checked: taskLine.checked, // Флаг собранности (для сборки)
+          confirmed_qty: taskLine.confirmedQty, // Прогресс проверки
+          confirmed: taskLine.confirmed, // Флаг подтверждения (для проверки)
         }));
 
         tasks.push({
           id: task.id,
+          task_id: task.id, // ID задания для режима подтверждения
           shipment_id: shipment.id,
           shipment_number: shipment.number,
           warehouse: task.warehouse,

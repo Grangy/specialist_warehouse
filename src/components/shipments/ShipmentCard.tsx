@@ -191,7 +191,21 @@ export function ShipmentCard({
             <span className="text-xs font-semibold text-blue-300">Прогресс сборки</span>
           </div>
           <div className="text-sm text-slate-300">
-            {shipment.lines.filter(line => line.checked === true).length} / {shipment.lines.length} позиций
+            Собрано {shipment.lines.filter(line => line.checked === true).length} / {shipment.lines.length} позиций
+          </div>
+        </div>
+      )}
+
+      {/* Прогресс проверки - показываем если есть подтвержденные товары */}
+      {/* ВАЖНО: считаем только позиции с confirmed = true, так как confirmed_qty может быть установлен по умолчанию */}
+      {isPendingConfirmation && shipment.lines && shipment.lines.some(line => line.confirmed === true) && (
+        <div className="mb-3 p-2 bg-yellow-900/20 rounded-lg border border-yellow-700/30">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckSquare className="w-4 h-4 text-yellow-400" />
+            <span className="text-xs font-semibold text-yellow-300">Прогресс проверки</span>
+          </div>
+          <div className="text-sm text-slate-300">
+            Проверено {shipment.lines.filter(line => line.confirmed === true).length} / {shipment.lines.length} позиций
           </div>
         </div>
       )}
@@ -248,6 +262,13 @@ export function ShipmentCard({
                   <span className="truncate">Подтвердить все</span>
                 </button>
               )}
+              <button
+                onClick={() => onDetails(shipment)}
+                className="flex-1 min-w-[120px] sm:min-w-0 bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="truncate">Подробнее</span>
+              </button>
             </>
           ) : !isProcessed ? (
             <>
@@ -284,15 +305,23 @@ export function ShipmentCard({
                   <span className="truncate">Удалить сборку</span>
                 </button>
               )}
+              <button
+                onClick={() => onDetails(shipment)}
+                className="flex-1 min-w-[120px] sm:min-w-0 bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="truncate">Подробнее</span>
+              </button>
             </>
-          ) : null}
-          <button
-            onClick={() => onDetails(shipment)}
-            className="flex-1 min-w-[120px] sm:min-w-0 bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-            <span className="truncate">Подробнее</span>
-          </button>
+          ) : (
+            <button
+              onClick={() => onDetails(shipment)}
+              className="w-full bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span className="truncate">Подробнее</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

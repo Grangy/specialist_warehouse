@@ -94,6 +94,21 @@ export const shipmentsApi = {
   },
 
   /**
+   * Сохранить прогресс проверки в БД (отдельно от прогресса сборки)
+   */
+  async saveConfirmationProgress(
+    taskId: string,
+    data: {
+      lines: Array<{ sku: string; confirmed_qty: number | null }>;
+    }
+  ): Promise<{ success: boolean; progress: { confirmed: number; total: number } }> {
+    return apiClient.post<{ success: boolean; progress: { confirmed: number; total: number } }>(
+      `/shipments/${taskId}/save-confirmation-progress`,
+      data
+    );
+  },
+
+  /**
    * Сохранить прогресс сборки в БД
    */
   async saveProgress(

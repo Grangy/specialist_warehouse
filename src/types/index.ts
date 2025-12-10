@@ -9,8 +9,18 @@ export interface ShipmentLine {
   uom: string;
   location?: string;
   warehouse?: string;
-  collected_qty?: number;
-  checked?: boolean;
+  collected_qty?: number; // Количество собранное сборщиком
+  checked?: boolean; // Флаг собранности (для сборки)
+  confirmed_qty?: number; // Количество подтвержденное проверяльщиком
+  confirmed?: boolean; // Флаг подтверждения (для проверки)
+}
+
+export interface ShipmentTask {
+  id: string;
+  warehouse?: string;
+  status: string;
+  collector_name?: string;
+  created_at: string;
 }
 
 export interface Shipment {
@@ -41,9 +51,11 @@ export interface Shipment {
     total: number;
   };
   confirmed_at?: string | null;
+  task_id?: string; // ID задания (для режима подтверждения)
+  tasks?: ShipmentTask[]; // Массив заданий для режима ожидания
 }
 
-export type Tab = 'new' | 'processed';
+export type Tab = 'new' | 'processed' | 'waiting';
 
 // Состояние для сборки
 export interface CollectChecklistState {
