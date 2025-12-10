@@ -5,7 +5,7 @@
 Теперь можно передавать `login` и `password` прямо в теле запроса создания заказа:
 
 ```bash
-curl -X POST "http://localhost:3000/api/shipments" \
+curl -X POST "http://77.222.47.184:3000/api/shipments" \
   -H "Content-Type: application/json" \
   -d '{
     "login": "admin",

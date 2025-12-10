@@ -6,17 +6,33 @@ import { splitShipmentIntoTasks } from '@/lib/shipmentTasks';
 
 export const dynamic = 'force-dynamic';
 
-// Функция для проверки авторизации через credentials или cookies
+// Функция для проверки авторизации через заголовки, тело запроса или cookies
 async function authenticateRequest(request: NextRequest, body: any): Promise<{ user: any } | NextResponse> {
-  // Если переданы login и password в теле запроса, используем их
-  const hasLogin = body && typeof body.login === 'string' && body.login.trim().length > 0;
-  const hasPassword = body && typeof body.password === 'string' && body.password.trim().length > 0;
+  let login: string | null = null;
+  let password: string | null = null;
   
-  console.log('[API Auth] Проверка авторизации. hasLogin:', hasLogin, 'hasPassword:', hasPassword);
+  // Приоритет 1: Проверяем заголовки X-Login и X-Password
+  const headerLogin = request.headers.get('x-login');
+  const headerPassword = request.headers.get('x-password');
   
-  if (hasLogin && hasPassword) {
-    console.log('[API Auth] Используем авторизацию через credentials');
-    const { login, password } = body;
+  if (headerLogin && headerPassword) {
+    login = headerLogin.trim();
+    password = headerPassword.trim();
+    console.log('[API Auth] Используем авторизацию через заголовки X-Login/X-Password');
+  }
+  // Приоритет 2: Проверяем тело запроса (для обратной совместимости)
+  else if (body && typeof body.login === 'string' && typeof body.password === 'string') {
+    const bodyLogin = body.login.trim();
+    const bodyPassword = body.password.trim();
+    if (bodyLogin.length > 0 && bodyPassword.length > 0) {
+      login = bodyLogin;
+      password = bodyPassword;
+      console.log('[API Auth] Используем авторизацию через тело запроса (login/password)');
+    }
+  }
+  
+  // Если нашли credentials, проверяем их
+  if (login && password) {
     
     const user = await prisma.user.findUnique({
       where: { login },
@@ -63,7 +79,7 @@ async function authenticateRequest(request: NextRequest, body: any): Promise<{ u
   if (!user) {
     console.log('[API Auth] Пользователь не найден в cookies');
     return NextResponse.json(
-      { error: 'Требуется авторизация. Укажите login и password в теле запроса или авторизуйтесь через cookies' },
+      { error: 'Требуется авторизация. Укажите заголовки X-Login и X-Password, или login/password в теле запроса, или авторизуйтесь через cookies' },
       { status: 401 }
     );
   }
@@ -117,7 +133,9 @@ export async function POST(request: NextRequest) {
       comment,
       businessRegion,
       lines,
-      // Исключаем login и password из данных заказа
+      // Исключаем login и password из данных заказа (если они были в body)
+      login: _login,
+      password: _password,
     } = body;
 
     // Валидация обязательных полей
