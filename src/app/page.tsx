@@ -47,12 +47,13 @@ export default function Home() {
     setFilters,
     newCount,
     pendingCount,
+    waitingCount,
     refreshShipments,
     userRole,
   } = useShipments();
 
   const collectHook = useCollect({ onClose: refreshShipments });
-  const confirmHook = useConfirm();
+  const confirmHook = useConfirm({ onClose: refreshShipments });
   const detailsModal = useModal();
   const nameModal = useModal();
   const orderCompletedModal = useModal();
@@ -234,10 +235,11 @@ export default function Home() {
       <Header newCount={newCount} pendingCount={pendingCount} onRefresh={refreshShipments} />
       <FilterPanel shipments={filteredShipments} filters={filters} onFiltersChange={setFilters} />
       <main className="max-w-7xl mx-auto px-3 md:px-6 py-4 md:py-6">
-        <Tabs currentTab={currentTab} pendingCount={pendingCount} onTabChange={setCurrentTab} userRole={userRole} />
+        <Tabs currentTab={currentTab} pendingCount={pendingCount} waitingCount={waitingCount} onTabChange={setCurrentTab} userRole={userRole} />
         <ShipmentGrid
           shipments={filteredShipments}
           isLoading={isLoading}
+          currentTab={currentTab}
           onCollect={handleCollect}
           onConfirm={handleConfirm}
           onDetails={handleDetails}
@@ -268,6 +270,7 @@ export default function Home() {
         currentShipment={confirmHook.currentShipment}
         checklistState={confirmHook.checklistState}
         editState={confirmHook.editState}
+        removingItems={confirmHook.removingItems}
         isOpen={confirmHook.isOpen}
         onClose={confirmHook.closeModal}
         onUpdateCollectedQty={confirmHook.updateCollectedQty}

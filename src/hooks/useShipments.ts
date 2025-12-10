@@ -123,7 +123,7 @@ export function useShipments() {
     if (!userRole) return false;
     if (userRole === 'admin') return true;
     if (userRole === 'collector') return tab === 'new';
-    if (userRole === 'checker') return tab === 'new' || tab === 'processed';
+    if (userRole === 'checker') return tab === 'new' || tab === 'processed' || tab === 'waiting';
     return false;
   };
 
@@ -140,6 +140,77 @@ export function useShipments() {
   }, [userRole, currentTab]);
 
   const filteredShipments = useMemo(() => {
+    // Для режима ожидания группируем задания по shipment_id
+    if (currentTab === 'waiting') {
+      const groupedByShipment = new Map<string, Shipment[]>();
+      
+      shipments.forEach((shipment) => {
+        if (shipment.shipment_id) {
+          const key = shipment.shipment_id;
+          if (!groupedByShipment.has(key)) {
+            groupedByShipment.set(key, []);
+          }
+          groupedByShipment.get(key)!.push(shipment);
+        }
+      });
+      
+      // Создаем заказы с их заданиями
+      const waitingShipments: Shipment[] = [];
+      groupedByShipment.forEach((tasks, shipmentId) => {
+        const firstTask = tasks[0];
+        const confirmedTasks = tasks.filter(t => t.status === 'processed');
+        const totalTasks = tasks.length;
+        
+        // Показываем только если есть подтвержденные задания, но не все
+        if (confirmedTasks.length > 0 && confirmedTasks.length < totalTasks) {
+          waitingShipments.push({
+            ...firstTask,
+            id: shipmentId,
+            shipment_id: shipmentId,
+            shipment_number: firstTask.shipment_number || firstTask.number,
+            number: firstTask.shipment_number || firstTask.number,
+            tasks: tasks.map(t => ({
+              id: t.id || t.task_id || '',
+              warehouse: t.warehouse,
+              status: t.status,
+              collector_name: t.collector_name,
+              created_at: t.created_at,
+            })),
+            tasks_progress: {
+              confirmed: confirmedTasks.length,
+              total: totalTasks,
+            },
+          });
+        }
+      });
+      
+      return waitingShipments.filter((shipment) => {
+        // Фильтр по поиску
+        if (filters.search) {
+          const searchLower = filters.search.toLowerCase();
+          const number = shipment.number || shipment.shipment_number || '';
+          if (
+            !number.toLowerCase().includes(searchLower) &&
+            !shipment.customer_name.toLowerCase().includes(searchLower)
+          ) {
+            return false;
+          }
+        }
+
+        // Фильтр по складу
+        if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
+          return false;
+        }
+
+        // Фильтр по срочности
+        if (filters.urgentOnly && !isUrgent(shipment.comment)) {
+          return false;
+        }
+
+        return true;
+      });
+    }
+    
     return shipments.filter((shipment) => {
       // Фильтр по вкладке
       // Теперь работаем с заданиями, а не заказами
@@ -192,6 +263,16 @@ export function useShipments() {
     [shipments]
   );
 
+  const waitingCount = useMemo(
+    () => shipments.filter((s) => {
+      // Заказы в ожидании: есть подтвержденные задания, но не все
+      if (!s.tasks_progress) return false;
+      const { confirmed, total } = s.tasks_progress;
+      return confirmed > 0 && confirmed < total;
+    }).length,
+    [shipments]
+  );
+
   // Обертка для setFilters с сохранением склада в localStorage
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
@@ -224,6 +305,7 @@ export function useShipments() {
     warehouses,
     newCount,
     pendingCount,
+    waitingCount,
     refreshShipments: loadShipments,
     userRole,
     canAccessTab,
