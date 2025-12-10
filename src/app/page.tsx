@@ -330,10 +330,11 @@ export default function Home() {
               return;
             }
             
-            if (result && result.completed === true && 'orderData' in result && result.orderData) {
-              console.log('✅ Заказ отправлен в офис:', result.orderData.number, `(${result.orderData.tasksCount} заданий)`);
+            if (result && result.completed === true && 'orderData' in result && result.orderData && typeof result.orderData === 'object' && 'number' in result.orderData) {
+              const orderData = result.orderData as { number: string; tasksCount: number; finalData: any };
+              console.log('✅ Заказ отправлен в офис:', orderData.number, `(${orderData.tasksCount} заданий)`);
               
-              setCompletedOrderData(result.orderData);
+              setCompletedOrderData(orderData);
               if (confirmHook.isOpen) {
                 confirmHook.closeModal();
               }
