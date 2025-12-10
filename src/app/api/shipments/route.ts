@@ -9,7 +9,13 @@ export const dynamic = 'force-dynamic';
 // Функция для проверки авторизации через credentials или cookies
 async function authenticateRequest(request: NextRequest, body: any): Promise<{ user: any } | NextResponse> {
   // Если переданы login и password в теле запроса, используем их
-  if (body.login && body.password) {
+  const hasLogin = body && typeof body.login === 'string' && body.login.trim().length > 0;
+  const hasPassword = body && typeof body.password === 'string' && body.password.trim().length > 0;
+  
+  console.log('[API Auth] Проверка авторизации. hasLogin:', hasLogin, 'hasPassword:', hasPassword);
+  
+  if (hasLogin && hasPassword) {
+    console.log('[API Auth] Используем авторизацию через credentials');
     const { login, password } = body;
     
     const user = await prisma.user.findUnique({
@@ -51,9 +57,11 @@ async function authenticateRequest(request: NextRequest, body: any): Promise<{ u
   }
 
   // Иначе используем стандартную авторизацию через cookies
+  console.log('[API Auth] Используем авторизацию через cookies');
   const user = await getSessionUser();
 
   if (!user) {
+    console.log('[API Auth] Пользователь не найден в cookies');
     return NextResponse.json(
       { error: 'Требуется авторизация. Укажите login и password в теле запроса или авторизуйтесь через cookies' },
       { status: 401 }
@@ -72,7 +80,26 @@ async function authenticateRequest(request: NextRequest, body: any): Promise<{ u
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error('[API POST] Ошибка парсинга JSON:', error);
+      return NextResponse.json(
+        { error: 'Неверный формат JSON в теле запроса' },
+        { status: 400 }
+      );
+    }
+    
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json(
+        { error: 'Тело запроса должно быть объектом JSON' },
+        { status: 400 }
+      );
+    }
+    
+    console.log('[API POST] Получен запрос. body keys:', Object.keys(body));
+    console.log('[API POST] body.login:', !!body.login, 'body.password:', !!body.password);
     
     // Проверяем авторизацию (через credentials или cookies)
     const authResult = await authenticateRequest(request, body);
