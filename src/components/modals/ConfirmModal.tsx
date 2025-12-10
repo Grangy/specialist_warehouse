@@ -79,7 +79,8 @@ export function ConfirmModal({
         } : null);
       }
     }
-  }, [checklistState, selectedLine?.index]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checklistState]);
 
   if (!currentShipment || !isOpen) return null;
 
