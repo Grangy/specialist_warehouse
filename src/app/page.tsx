@@ -235,7 +235,7 @@ export default function Home() {
       <Header newCount={newCount} pendingCount={pendingCount} onRefresh={refreshShipments} />
       <FilterPanel shipments={filteredShipments} filters={filters} onFiltersChange={setFilters} />
       <main className="max-w-7xl mx-auto px-3 md:px-6 py-4 md:py-6">
-        <Tabs currentTab={currentTab} pendingCount={pendingCount} waitingCount={waitingCount} onTabChange={setCurrentTab} userRole={userRole} />
+        <Tabs currentTab={currentTab} newCount={newCount} pendingCount={pendingCount} waitingCount={waitingCount} onTabChange={setCurrentTab} userRole={userRole} />
         <ShipmentGrid
           shipments={filteredShipments}
           isLoading={isLoading}
