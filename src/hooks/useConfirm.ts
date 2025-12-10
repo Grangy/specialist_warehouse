@@ -306,7 +306,7 @@ export function useConfirm(options?: UseConfirmOptions) {
     }, 500);
   }, [currentShipment]);
 
-  const confirmShipment = useCallback(async () => {
+  const confirmShipment = useCallback(async (comment?: string, places?: number) => {
     if (!currentShipment) {
       console.error('[useConfirm] Ошибка: нет данных о заказе');
       showError('Ошибка: нет данных о заказе');
@@ -330,9 +330,23 @@ export function useConfirm(options?: UseConfirmOptions) {
         checked: true,
       }));
 
-      const response = await shipmentsApi.confirmShipment(currentShipment.id, {
+      const requestData: {
+        lines: Array<{ sku: string; collected_qty: number; checked: boolean }>;
+        comment?: string;
+        places?: number;
+      } = {
         lines: linesData,
-      });
+      };
+
+      // Добавляем комментарий и количество мест, если они переданы
+      if (comment !== undefined) {
+        requestData.comment = comment;
+      }
+      if (places !== undefined) {
+        requestData.places = places;
+      }
+
+      const response = await shipmentsApi.confirmShipment(currentShipment.id, requestData);
 
       const allTasksConfirmed = (response as any)?.all_tasks_confirmed === true;
       const finalOrderData = (response as any)?.final_order_data;
@@ -413,7 +427,7 @@ export function useConfirm(options?: UseConfirmOptions) {
     };
   }, [currentShipment, checklistState]);
 
-  const confirmAll = useCallback(async (shipment: Shipment) => {
+  const confirmAll = useCallback(async (shipment: Shipment, comment?: string, places?: number) => {
     try {
       const linesData = shipment.lines.map((line) => ({
         sku: line.sku,
@@ -421,9 +435,23 @@ export function useConfirm(options?: UseConfirmOptions) {
         checked: true,
       }));
 
-      const response = await shipmentsApi.confirmShipment(shipment.id, {
+      const requestData: {
+        lines: Array<{ sku: string; collected_qty: number; checked: boolean }>;
+        comment?: string;
+        places?: number;
+      } = {
         lines: linesData,
-      });
+      };
+
+      // Добавляем комментарий и количество мест, если они переданы
+      if (comment !== undefined) {
+        requestData.comment = comment;
+      }
+      if (places !== undefined) {
+        requestData.places = places;
+      }
+
+      const response = await shipmentsApi.confirmShipment(shipment.id, requestData);
 
       const allTasksConfirmed = (response as any)?.all_tasks_confirmed === true;
       const finalOrderData = (response as any)?.final_order_data;

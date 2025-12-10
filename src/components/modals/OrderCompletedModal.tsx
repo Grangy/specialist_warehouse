@@ -62,6 +62,12 @@ export function OrderCompletedModal({ isOpen, onClose, orderData }: OrderComplet
             <p>• Дата обработки: {new Date(orderData.finalData?.processed_at || Date.now()).toLocaleString('ru-RU')}</p>
             <p>• Позиций в заказе: {orderData.finalData?.items_count || 0}</p>
             <p>• Общее количество: {orderData.finalData?.total_qty || 0} ед.</p>
+            {orderData.finalData?.places && (
+              <p>• Количество мест: <span className="font-semibold">{orderData.finalData.places}</span></p>
+            )}
+            {orderData.finalData?.comment && (
+              <p>• Комментарий: <span className="italic">{orderData.finalData.comment}</span></p>
+            )}
           </div>
         </div>
 

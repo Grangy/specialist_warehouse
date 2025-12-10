@@ -52,6 +52,8 @@ export const shipmentsApi = {
     shipmentId: string,
     data: {
       lines: Array<{ id?: string; sku: string; collected_qty: number; checked?: boolean }>;
+      comment?: string;
+      places?: number;
     }
   ): Promise<Shipment & { 
     all_tasks_confirmed?: boolean; 

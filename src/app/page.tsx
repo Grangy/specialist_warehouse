@@ -11,6 +11,7 @@ import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import { DetailsModal } from '@/components/modals/DetailsModal';
 import { NameModal } from '@/components/modals/NameModal';
 import { OrderCompletedModal } from '@/components/modals/OrderCompletedModal';
+import { SendToOfficeModal } from '@/components/modals/SendToOfficeModal';
 import { useShipments } from '@/hooks/useShipments';
 import { useCollect } from '@/hooks/useCollect';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -57,6 +58,7 @@ export default function Home() {
   const detailsModal = useModal();
   const nameModal = useModal();
   const orderCompletedModal = useModal();
+  const sendToOfficeModal = useModal();
   const { showError } = useToast();
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
   const [completedOrderData, setCompletedOrderData] = useState<{
@@ -64,6 +66,7 @@ export default function Home() {
     tasksCount: number;
     finalData: any;
   } | null>(null);
+  const [pendingShipmentForOffice, setPendingShipmentForOffice] = useState<Shipment | null>(null);
 
   // Автоматическое открытие модального окна при появлении данных
   useEffect(() => {
@@ -135,22 +138,12 @@ export default function Home() {
 
   const handleConfirmAll = async (shipment: Shipment) => {
     try {
-      const result = await confirmHook.confirmAll(shipment);
-      
-      if (result && 'completed' in result && result.completed === true && 'orderData' in result && result.orderData) {
-        console.log('✅ Заказ отправлен в офис:', result.orderData.number, `(${result.orderData.tasksCount} заданий)`);
-        
-        setCompletedOrderData(result.orderData);
-        
-        setTimeout(() => {
-          orderCompletedModal.open();
-        }, 200);
-      }
-      
-      await refreshShipments();
+      // Показываем модальное окно для ввода комментария и количества мест
+      setPendingShipmentForOffice(shipment);
+      sendToOfficeModal.open();
     } catch (error: any) {
-      console.error('[Page] Ошибка при подтверждении всех позиций:', error);
-      await refreshShipments();
+      console.error('[Page] Ошибка при открытии модального окна отправки:', error);
+      showError('Ошибка при открытии модального окна отправки');
     }
   };
 
@@ -280,23 +273,20 @@ export default function Home() {
         onConfirmItem={confirmHook.confirmItem}
         onConfirmShipment={async () => {
           try {
-            const result = await confirmHook.confirmShipment();
-            
-            if (result && result.completed === true && 'orderData' in result && result.orderData) {
-              console.log('✅ Заказ отправлен в офис:', result.orderData.number, `(${result.orderData.tasksCount} заданий)`);
-              
-              setCompletedOrderData(result.orderData);
-              confirmHook.closeModal();
-              
-              setTimeout(() => {
-                orderCompletedModal.open();
-              }, 200);
+            // Проверяем, все ли товары подтверждены
+            if (!confirmHook.isReady()) {
+              showError('Необходимо подтвердить все товары перед подтверждением заказа');
+              return;
             }
-            
-            await refreshShipments();
+
+            // Если все подтверждено, показываем модальное окно для ввода комментария и количества мест
+            if (confirmHook.currentShipment) {
+              setPendingShipmentForOffice(confirmHook.currentShipment);
+              sendToOfficeModal.open();
+            }
           } catch (error: any) {
-            console.error('[Page] Ошибка при подтверждении заказа:', error);
-            await refreshShipments();
+            console.error('[Page] Ошибка при проверке готовности заказа:', error);
+            showError('Ошибка при проверке готовности заказа');
           }
         }}
         getProgress={confirmHook.getProgress}
@@ -316,6 +306,53 @@ export default function Home() {
         location={nameModalData.location}
         qty={nameModalData.qty}
         collected={nameModalData.collected}
+      />
+      <SendToOfficeModal
+        isOpen={sendToOfficeModal.isOpen}
+        onClose={() => {
+          sendToOfficeModal.close();
+          setPendingShipmentForOffice(null);
+        }}
+        onConfirm={async (comment: string, places: number) => {
+          try {
+            sendToOfficeModal.close();
+            
+            let result;
+            
+            // Если есть текущий shipment в confirmHook, используем confirmShipment
+            // Иначе используем confirmAll для shipment из pendingShipmentForOffice
+            if (confirmHook.currentShipment && confirmHook.isOpen) {
+              result = await confirmHook.confirmShipment(comment, places);
+            } else if (pendingShipmentForOffice) {
+              result = await confirmHook.confirmAll(pendingShipmentForOffice, comment, places);
+            } else {
+              showError('Ошибка: нет данных о заказе для отправки');
+              return;
+            }
+            
+            if (result && result.completed === true && 'orderData' in result && result.orderData) {
+              console.log('✅ Заказ отправлен в офис:', result.orderData.number, `(${result.orderData.tasksCount} заданий)`);
+              
+              setCompletedOrderData(result.orderData);
+              if (confirmHook.isOpen) {
+                confirmHook.closeModal();
+              }
+              setPendingShipmentForOffice(null);
+              
+              setTimeout(() => {
+                orderCompletedModal.open();
+              }, 200);
+            } else {
+              // Если не все задания подтверждены, просто обновляем список
+              await refreshShipments();
+            }
+          } catch (error: any) {
+            console.error('[Page] Ошибка при отправке заказа в офис:', error);
+            showError('Не удалось отправить заказ в офис: ' + (error?.message || 'Неизвестная ошибка'));
+            await refreshShipments();
+          }
+        }}
+        shipmentNumber={pendingShipmentForOffice?.number || pendingShipmentForOffice?.shipment_number || 'N/A'}
       />
       <OrderCompletedModal
         isOpen={orderCompletedModal.isOpen}
