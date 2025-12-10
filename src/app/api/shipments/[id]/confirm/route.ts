@@ -26,7 +26,7 @@ export async function POST(
 
     const { id } = params; // id теперь это taskId
     const body = await request.json();
-    const { lines } = body;
+    const { lines, comment, places } = body;
 
     const task = await prisma.shipmentTask.findUnique({
       where: { id },
@@ -258,7 +258,8 @@ export async function POST(
           destination: finalShipment.destination,
           status: finalShipment.status,
           business_region: finalShipment.businessRegion,
-          comment: finalShipment.comment,
+          comment: comment || finalShipment.comment || '', // Используем переданный комментарий или из БД
+          places: places !== undefined ? places : null, // Количество мест
           created_at: finalShipment.createdAt.toISOString(),
           processed_at: new Date().toISOString(),
           tasks_count: finalShipment.tasks.length,
