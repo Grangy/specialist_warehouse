@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { ToastContainer } from '@/components/ui/ToastContainer';
 import { PWARegister } from '@/components/PWARegister';
@@ -9,18 +9,19 @@ export const metadata: Metadata = {
   title: 'Панель отгрузок склада',
   description: 'Система управления отгрузками склада',
   manifest: '/manifest.json',
-  themeColor: '#1e293b',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'Склад',
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#1e293b',
 };
 
 export default function RootLayout({
