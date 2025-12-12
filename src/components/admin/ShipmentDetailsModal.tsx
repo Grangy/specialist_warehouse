@@ -106,6 +106,7 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
       setDetails(null);
       setError('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shipmentId]);
 
   // Закрытие по Escape

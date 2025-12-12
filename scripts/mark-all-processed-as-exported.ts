@@ -8,9 +8,29 @@
  *   npx tsx scripts/mark-all-processed-as-exported.ts
  */
 
-import { PrismaClient } from '../src/generated/prisma';
+import { PrismaClient } from '../src/generated/prisma/client';
+import path from 'path';
 
-const prisma = new PrismaClient();
+// Настройка пути к базе данных
+const databaseUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
+let finalDatabaseUrl = databaseUrl;
+
+if (databaseUrl?.startsWith('file:./')) {
+  const dbPath = databaseUrl.replace('file:', '');
+  const absolutePath = path.join(process.cwd(), dbPath);
+  finalDatabaseUrl = `file:${absolutePath}`;
+} else if (databaseUrl?.startsWith('file:')) {
+  // Если путь уже абсолютный, используем как есть
+  finalDatabaseUrl = databaseUrl;
+}
+
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: finalDatabaseUrl,
+    },
+  },
+});
 
 async function main() {
   console.log('🔄 Начинаем пометку всех обработанных заказов как интегрированных в 1С...\n');
