@@ -14,7 +14,33 @@ Endpoint выполняет две функции в одном запросе:
 
 Требуется авторизация. Доступ только для пользователей с ролью `admin`.
 
+Поддерживается три способа авторизации:
+1. **Заголовки** `X-Login` и `X-Password`
+2. **Тело запроса** - поля `login` и `password` в JSON
+3. **Cookies** - стандартная авторизация через сессию
+
 ### Формат запроса
+
+**С авторизацией через тело запроса (рекомендуется для 1С):**
+
+```json
+{
+  "login": "admin",
+  "password": "admin123",
+  "orders": [
+    {
+      "id": "shipment_id_1",
+      "success": true
+    },
+    {
+      "id": "shipment_id_2",
+      "success": false
+    }
+  ]
+}
+```
+
+**С авторизацией через заголовки:**
 
 ```json
 {
@@ -28,6 +54,17 @@ Endpoint выполняет две функции в одном запросе:
       "success": false
     }
   ]
+}
+```
+(Заголовки: `X-Login: admin`, `X-Password: admin123`)
+
+**Только получение готовых заказов (без обновления статусов):**
+
+```json
+{
+  "login": "admin",
+  "password": "admin123",
+  "orders": []
 }
 ```
 
@@ -111,8 +148,10 @@ Endpoint выполняет две функции в одном запросе:
 
 #### cURL
 
+**Пример запроса к серверу `77.222.47.184:3000`:**
+
 ```bash
-curl -X POST https://your-domain.com/api/shipments/sync-1c \
+curl -X POST http://77.222.47.184:3000/api/shipments/sync-1c \
   -H "Content-Type: application/json" \
   -H "Cookie: session=your_session_token" \
   -d '{
@@ -127,6 +166,15 @@ curl -X POST https://your-domain.com/api/shipments/sync-1c \
       }
     ]
   }'
+```
+
+**Получить только готовые заказы (без обновления статусов):**
+
+```bash
+curl -X POST http://77.222.47.184:3000/api/shipments/sync-1c \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=your_session_token" \
+  -d '{"orders": []}'
 ```
 
 #### JavaScript/TypeScript
