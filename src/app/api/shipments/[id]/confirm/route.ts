@@ -108,6 +108,8 @@ export async function POST(
         data: { 
           status: 'processed',
           confirmedAt: new Date(), // Записываем время подтверждения
+          comment: comment !== undefined ? comment : undefined, // Обновляем комментарий, если передан
+          places: places !== undefined ? places : undefined, // Сохраняем количество мест, если передано
         },
       });
 
