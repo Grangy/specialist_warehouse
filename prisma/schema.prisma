@@ -53,6 +53,9 @@ model Shipment {
   businessRegion  String?         @map("business_region")
   collectorName   String?         @map("collector_name")
   confirmedAt     DateTime?       @map("confirmed_at") // Время подтверждения заказа (когда все задания подтверждены)
+  exportedTo1C    Boolean         @default(false) @map("exported_to_1c") // Флаг выгрузки заказа в 1С
+  exportedTo1CAt  DateTime?       @map("exported_to_1c_at") // Время выгрузки заказа в 1С
+  places          Int?            // Количество мест (сохраняется при отправке в офис)
   lines           ShipmentLine[]
   tasks           ShipmentTask[]
   locks           ShipmentLock[]
