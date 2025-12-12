@@ -9,8 +9,26 @@
 ## ⚠️ ВАЖНО
 
 - **Сделайте бэкап БД** перед выполнением!
+- **Убедитесь, что миграции применены** (`npx prisma migrate deploy`)
+- **Проверьте путь к базе данных** в `.env` файле
 - Скрипт обновит только заказы со статусом `processed` и `exportedTo1C = false`
 - После выполнения только **новые** заказы будут возвращаться в endpoint sync-1c
+
+## 🔍 Перед выполнением проверьте:
+
+```bash
+# 1. Проверьте, что база данных существует
+ls -la prisma/*.db
+
+# 2. Проверьте переменную окружения
+cat .env | grep DATABASE_URL
+
+# 3. Проверьте, что миграции применены
+npx prisma migrate status
+
+# 4. Если миграции не применены, примените их
+npx prisma migrate deploy
+```
 
 ---
 
@@ -40,11 +58,35 @@ cd /opt/specialist_warehouse
 ./scripts/mark-all-processed-as-exported.sh
 ```
 
-### Вариант 3: Напрямую через SQL
+### Вариант 3: Напрямую через SQL (самый надежный способ)
 
+**Сначала проверьте путь к базе данных:**
 ```bash
 cd /opt/specialist_warehouse
+
+# Проверьте, где находится база данных
+ls -la prisma/*.db
+# или
+find . -name "*.db" -type f
+
+# Проверьте переменную окружения
+cat .env | grep DATABASE_URL
+```
+
+**Затем выполните SQL запрос:**
+```bash
+# Если база данных в prisma/dev.db
 sqlite3 prisma/dev.db "UPDATE shipments SET exported_to_1c = 1, exported_to_1c_at = datetime('now') WHERE status = 'processed' AND exported_to_1c = 0;"
+
+# Или если путь другой (узнайте из .env)
+sqlite3 /path/to/your/database.db "UPDATE shipments SET exported_to_1c = 1, exported_to_1c_at = datetime('now') WHERE status = 'processed' AND exported_to_1c = 0;"
+```
+
+**Проверка результата:**
+```bash
+sqlite3 prisma/dev.db "SELECT COUNT(*) as total_processed, 
+  SUM(CASE WHEN exported_to_1c = 1 THEN 1 ELSE 0 END) as exported
+FROM shipments WHERE status = 'processed';"
 ```
 
 ---

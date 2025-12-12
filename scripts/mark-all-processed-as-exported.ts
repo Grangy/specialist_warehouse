@@ -10,6 +10,11 @@
 
 import { PrismaClient } from '../src/generated/prisma/client';
 import path from 'path';
+import fs from 'fs';
+import { config } from 'dotenv';
+
+// Загружаем переменные окружения из .env файла
+config();
 
 // Настройка пути к базе данных
 const databaseUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
@@ -23,6 +28,16 @@ if (databaseUrl?.startsWith('file:./')) {
   // Если путь уже абсолютный, используем как есть
   finalDatabaseUrl = databaseUrl;
 }
+
+// Проверяем существование файла БД
+const dbFilePath = finalDatabaseUrl.replace('file:', '');
+if (!fs.existsSync(dbFilePath)) {
+  console.error(`❌ Ошибка: Файл базы данных не найден: ${dbFilePath}`);
+  console.error(`   Проверьте путь DATABASE_URL в .env файле или убедитесь, что миграции применены.`);
+  process.exit(1);
+}
+
+console.log(`📁 Используется база данных: ${dbFilePath}\n`);
 
 const prisma = new PrismaClient({
   datasources: {
