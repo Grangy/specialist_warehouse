@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/middleware';
+import { authenticateRequest } from '@/lib/middleware';
 import { areAllTasksConfirmed } from '@/lib/shipmentTasks';
 
 export const dynamic = 'force-dynamic';
@@ -13,8 +13,15 @@ export const dynamic = 'force-dynamic';
  * - Обновляет статус выгрузки заказов в БД
  * - Возвращает список готовых к выгрузке заказов
  * 
+ * Авторизация:
+ * - Через заголовки: X-Login и X-Password
+ * - Через тело запроса: login и password
+ * - Через cookies (стандартная авторизация)
+ * 
  * Запрос:
  * {
+ *   "login": "admin",
+ *   "password": "YOUR_PASSWORD",
  *   "orders": [
  *     { "id": "shipment_id", "success": true },
  *     { "id": "shipment_id_2", "success": false }
@@ -31,22 +38,17 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request);
+    const body = await request.json();
+    
+    // Авторизация через заголовки, тело запроса или cookies
+    const authResult = await authenticateRequest(request, body, ['admin']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
     const { user } = authResult;
 
-    // Только админ может синхронизировать с 1С
-    if (user.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Недостаточно прав доступа' },
-        { status: 403 }
-      );
-    }
-
-    const body = await request.json();
-    const { orders } = body;
+    // Исключаем login и password из данных (если они были в body)
+    const { login, password, orders } = body;
 
     if (!Array.isArray(orders)) {
       return NextResponse.json(
