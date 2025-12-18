@@ -214,11 +214,34 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Sync-1C] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length}`);
     
-    // Логируем ответ
+    // Логируем детальную информацию по каждому заказу
+    for (const order of readyOrders) {
+      console.log(`[Sync-1C] [${requestId}] Заказ ${order.number} (${order.id}):`);
+      console.log(`[Sync-1C] [${requestId}]   Клиент: ${order.customer_name}`);
+      console.log(`[Sync-1C] [${requestId}]   Позиций: ${order.items_count}, Всего количество: ${order.total_qty}`);
+      console.log(`[Sync-1C] [${requestId}]   Позиции заказа:`);
+      
+      order.lines.forEach((line, index) => {
+        const qtyChanged = line.qty !== line.collected_qty;
+        const changeIndicator = qtyChanged ? ' ⚠️ ИЗМЕНЕНО' : '';
+        console.log(`[Sync-1C] [${requestId}]     ${index + 1}. SKU: ${line.sku}`);
+        console.log(`[Sync-1C] [${requestId}]         Наименование: ${line.name}`);
+        console.log(`[Sync-1C] [${requestId}]         qty (заказано): ${line.qty}`);
+        console.log(`[Sync-1C] [${requestId}]         collected_qty (собрано/подтверждено): ${line.collected_qty}${changeIndicator}`);
+        if (qtyChanged) {
+          const diff = line.collected_qty - line.qty;
+          const diffText = diff > 0 ? `+${diff}` : `${diff}`;
+          console.log(`[Sync-1C] [${requestId}]         Разница: ${diffText} (${diff > 0 ? 'больше' : 'меньше'} на ${Math.abs(diff)})`);
+        }
+        console.log(`[Sync-1C] [${requestId}]         Единица: ${line.uom}, Место: ${line.location || 'не указано'}`);
+      });
+    }
+    
+    // Логируем краткую сводку ответа
     const responseData = {
       orders: readyOrders,
     };
-    console.log(`[Sync-1C] [${requestId}] Отправляем ответ:`, JSON.stringify({
+    console.log(`[Sync-1C] [${requestId}] Отправляем ответ (краткая сводка):`, JSON.stringify({
       orders_count: readyOrders.length,
       orders: readyOrders.map(o => ({
         id: o.id,
@@ -226,6 +249,12 @@ export async function POST(request: NextRequest) {
         customer_name: o.customer_name,
         items_count: o.items_count,
         total_qty: o.total_qty,
+        lines_summary: o.lines.map(l => ({
+          sku: l.sku,
+          qty: l.qty,
+          collected_qty: l.collected_qty,
+          changed: l.qty !== l.collected_qty
+        }))
       }))
     }, null, 2));
     console.log(`${'='.repeat(80)}\n`);
