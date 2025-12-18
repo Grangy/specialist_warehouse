@@ -111,7 +111,21 @@ export async function POST(request: NextRequest) {
       );
 
       if (allTasksConfirmed) {
-        // Формируем finalOrderData для заказа
+        // ВАЖНО: Формируем финальные количества на основе confirmedQty из заданий
+        // Группируем все taskLines по shipmentLineId и суммируем confirmedQty
+        const confirmedQtyByLine: Record<string, number> = {};
+        for (const task of shipment.tasks) {
+          for (const taskLine of task.lines) {
+            // Используем confirmedQty, если оно есть, иначе collectedQty (для обратной совместимости)
+            const qty = taskLine.confirmedQty !== null ? taskLine.confirmedQty : taskLine.collectedQty;
+            if (qty !== null) {
+              const lineId = taskLine.shipmentLineId;
+              confirmedQtyByLine[lineId] = (confirmedQtyByLine[lineId] || 0) + qty;
+            }
+          }
+        }
+
+        // Формируем finalOrderData для заказа с правильными количествами
         const finalOrderData = {
           id: shipment.id, // Добавляем id заказа для идентификации в 1С
           number: shipment.number,
@@ -126,25 +140,36 @@ export async function POST(request: NextRequest) {
           processed_at: shipment.confirmedAt?.toISOString() || new Date().toISOString(),
           tasks_count: shipment.tasks.length,
           items_count: shipment.lines.length,
-          total_qty: shipment.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
+          total_qty: shipment.lines.reduce((sum, line) => {
+            const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+            return sum + confirmedQty;
+          }, 0),
           weight: shipment.weight,
-          lines: shipment.lines.map((line) => ({
-            sku: line.sku,
-            name: line.name,
-            qty: line.qty,
-            collected_qty: line.collectedQty || line.qty,
-            uom: line.uom,
-            location: line.location,
-            warehouse: line.warehouse,
-            checked: line.checked,
-          })),
+          lines: shipment.lines.map((line) => {
+            // Используем confirmedQty из заданий, если оно есть
+            const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+            return {
+              sku: line.sku,
+              name: line.name,
+              qty: line.qty,
+              collected_qty: confirmedQty, // Используем подтвержденное количество
+              uom: line.uom,
+              location: line.location,
+              warehouse: line.warehouse,
+              checked: line.checked,
+            };
+          }),
           tasks: shipment.tasks.map((t) => ({
             id: t.id,
             warehouse: t.warehouse,
             status: t.status,
             collector_name: t.collectorName,
             items_count: t.lines.length,
-            total_qty: t.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
+            // Для задач используем confirmedQty, если есть, иначе collectedQty
+            total_qty: t.lines.reduce((sum, line) => {
+              const qty = line.confirmedQty !== null ? line.confirmedQty : (line.collectedQty || line.qty);
+              return sum + qty;
+            }, 0),
           })),
         };
 

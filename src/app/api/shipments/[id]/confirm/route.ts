@@ -125,21 +125,24 @@ export async function POST(
         },
       });
 
-      // Группируем по shipmentLineId и суммируем собранные количества
-      const collectedByLine: Record<string, number> = {};
+      // ВАЖНО: Группируем по shipmentLineId и суммируем ПОДТВЕРЖДЕННЫЕ количества (confirmedQty)
+      // При подтверждении используется confirmedQty, а не collectedQty
+      const confirmedByLine: Record<string, number> = {};
       for (const taskLine of allTaskLines) {
-        if (taskLine.collectedQty !== null) {
+        // Используем confirmedQty, если оно есть, иначе collectedQty (для обратной совместимости)
+        const qty = taskLine.confirmedQty !== null ? taskLine.confirmedQty : taskLine.collectedQty;
+        if (qty !== null) {
           const lineId = taskLine.shipmentLineId;
-          collectedByLine[lineId] = (collectedByLine[lineId] || 0) + taskLine.collectedQty;
+          confirmedByLine[lineId] = (confirmedByLine[lineId] || 0) + qty;
         }
       }
 
-      // Обновляем исходные позиции заказа
-      for (const [lineId, collectedQty] of Object.entries(collectedByLine)) {
+      // Обновляем исходные позиции заказа с подтвержденными количествами
+      for (const [lineId, confirmedQty] of Object.entries(confirmedByLine)) {
         await prisma.shipmentLine.update({
           where: { id: lineId },
           data: {
-            collectedQty,
+            collectedQty: confirmedQty, // Сохраняем подтвержденное количество как collectedQty для совместимости
             checked: true,
           },
         });
@@ -164,7 +167,21 @@ export async function POST(
         },
       });
 
-      // Формируем финальные данные заказа
+      // ВАЖНО: Формируем финальные количества на основе confirmedQty из заданий
+      // Группируем все taskLines по shipmentLineId и суммируем confirmedQty
+      const confirmedQtyByLine: Record<string, number> = {};
+      for (const task of finalShipment!.tasks) {
+        for (const taskLine of task.lines) {
+          // Используем confirmedQty, если оно есть, иначе collectedQty (для обратной совместимости)
+          const qty = taskLine.confirmedQty !== null ? taskLine.confirmedQty : taskLine.collectedQty;
+          if (qty !== null) {
+            const lineId = taskLine.shipmentLineId;
+            confirmedQtyByLine[lineId] = (confirmedQtyByLine[lineId] || 0) + qty;
+          }
+        }
+      }
+
+      // Формируем финальные данные заказа с правильными количествами
       const finalOrderData = {
         number: finalShipment!.number,
         customer_name: finalShipment!.customerName,
@@ -176,25 +193,36 @@ export async function POST(
         processed_at: new Date().toISOString(),
         tasks_count: finalShipment!.tasks.length,
         items_count: finalShipment!.lines.length,
-        total_qty: finalShipment!.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
+        total_qty: finalShipment!.lines.reduce((sum, line) => {
+          const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+          return sum + confirmedQty;
+        }, 0),
         weight: finalShipment!.weight,
-        lines: finalShipment!.lines.map((line) => ({
-          sku: line.sku,
-          name: line.name,
-          qty: line.qty,
-          collected_qty: line.collectedQty || line.qty,
-          uom: line.uom,
-          location: line.location,
-          warehouse: line.warehouse,
-          checked: line.checked,
-        })),
+        lines: finalShipment!.lines.map((line) => {
+          // Используем confirmedQty из заданий, если оно есть
+          const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+          return {
+            sku: line.sku,
+            name: line.name,
+            qty: line.qty,
+            collected_qty: confirmedQty, // Используем подтвержденное количество
+            uom: line.uom,
+            location: line.location,
+            warehouse: line.warehouse,
+            checked: line.checked,
+          };
+        }),
         tasks: finalShipment!.tasks.map((t) => ({
           id: t.id,
           warehouse: t.warehouse,
           status: t.status,
           collector_name: t.collectorName,
           items_count: t.lines.length,
-          total_qty: t.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
+          // Для задач используем confirmedQty, если есть, иначе collectedQty
+          total_qty: t.lines.reduce((sum, line) => {
+            const qty = line.confirmedQty !== null ? line.confirmedQty : (line.collectedQty || line.qty);
+            return sum + qty;
+          }, 0),
         })),
       };
 
@@ -254,6 +282,21 @@ export async function POST(
       });
 
       if (finalShipment) {
+        // ВАЖНО: Формируем финальные количества на основе confirmedQty из заданий
+        // Группируем все taskLines по shipmentLineId и суммируем confirmedQty
+        const confirmedQtyByLine: Record<string, number> = {};
+        for (const task of finalShipment.tasks) {
+          for (const taskLine of task.lines) {
+            // Используем confirmedQty, если оно есть, иначе collectedQty (для обратной совместимости)
+            const qty = taskLine.confirmedQty !== null ? taskLine.confirmedQty : taskLine.collectedQty;
+            if (qty !== null) {
+              const lineId = taskLine.shipmentLineId;
+              confirmedQtyByLine[lineId] = (confirmedQtyByLine[lineId] || 0) + qty;
+            }
+          }
+        }
+
+        // Формируем финальные данные с правильными количествами
         finalOrderData = {
           number: finalShipment.number,
           customer_name: finalShipment.customerName,
@@ -266,25 +309,36 @@ export async function POST(
           processed_at: new Date().toISOString(),
           tasks_count: finalShipment.tasks.length,
           items_count: finalShipment.lines.length,
-          total_qty: finalShipment.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
+          total_qty: finalShipment.lines.reduce((sum, line) => {
+            const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+            return sum + confirmedQty;
+          }, 0),
           weight: finalShipment.weight,
-          lines: finalShipment.lines.map((line) => ({
-            sku: line.sku,
-            name: line.name,
-            qty: line.qty,
-            collected_qty: line.collectedQty || line.qty,
-            uom: line.uom,
-            location: line.location,
-            warehouse: line.warehouse,
-            checked: line.checked,
-          })),
+          lines: finalShipment.lines.map((line) => {
+            // Используем confirmedQty из заданий, если оно есть
+            const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+            return {
+              sku: line.sku,
+              name: line.name,
+              qty: line.qty,
+              collected_qty: confirmedQty, // Используем подтвержденное количество
+              uom: line.uom,
+              location: line.location,
+              warehouse: line.warehouse,
+              checked: line.checked,
+            };
+          }),
           tasks: finalShipment.tasks.map((t) => ({
             id: t.id,
             warehouse: t.warehouse,
             status: t.status,
             collector_name: t.collectorName,
             items_count: t.lines.length,
-            total_qty: t.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
+            // Для задач используем confirmedQty, если есть, иначе collectedQty
+            total_qty: t.lines.reduce((sum, line) => {
+              const qty = line.confirmedQty !== null ? line.confirmedQty : (line.collectedQty || line.qty);
+              return sum + qty;
+            }, 0),
           })),
         };
         console.log(`🟢 [API Confirm] Финальные данные сформированы:`, {
