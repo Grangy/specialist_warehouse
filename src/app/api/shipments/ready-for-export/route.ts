@@ -171,12 +171,35 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Ready-For-Export] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length}`);
     
-    // Логируем ответ
+    // Логируем детальную информацию по каждому заказу
+    for (const order of readyOrders) {
+      console.log(`[Ready-For-Export] [${requestId}] Заказ ${order.number} (${order.id}):`);
+      console.log(`[Ready-For-Export] [${requestId}]   Клиент: ${order.customer_name}`);
+      console.log(`[Ready-For-Export] [${requestId}]   Позиций: ${order.items_count}, Всего количество: ${order.total_qty}`);
+      console.log(`[Ready-For-Export] [${requestId}]   Позиции заказа:`);
+      
+      order.lines.forEach((line, index) => {
+        const qtyChanged = line.qty !== line.collected_qty;
+        const changeIndicator = qtyChanged ? ' ⚠️ ИЗМЕНЕНО' : '';
+        console.log(`[Ready-For-Export] [${requestId}]     ${index + 1}. SKU: ${line.sku}`);
+        console.log(`[Ready-For-Export] [${requestId}]         Наименование: ${line.name}`);
+        console.log(`[Ready-For-Export] [${requestId}]         qty (заказано): ${line.qty}`);
+        console.log(`[Ready-For-Export] [${requestId}]         collected_qty (собрано/подтверждено): ${line.collected_qty}${changeIndicator}`);
+        if (qtyChanged) {
+          const diff = line.collected_qty - line.qty;
+          const diffText = diff > 0 ? `+${diff}` : `${diff}`;
+          console.log(`[Ready-For-Export] [${requestId}]         Разница: ${diffText} (${diff > 0 ? 'больше' : 'меньше'} на ${Math.abs(diff)})`);
+        }
+        console.log(`[Ready-For-Export] [${requestId}]         Единица: ${line.uom}, Место: ${line.location || 'не указано'}`);
+      });
+    }
+    
+    // Логируем краткую сводку ответа
     const responseData = {
       orders: readyOrders,
       count: readyOrders.length,
     };
-    console.log(`[Ready-For-Export] [${requestId}] Отправляем ответ:`, JSON.stringify({
+    console.log(`[Ready-For-Export] [${requestId}] Отправляем ответ (краткая сводка):`, JSON.stringify({
       count: readyOrders.length,
       orders: readyOrders.map(o => ({
         id: o.id,
@@ -184,6 +207,12 @@ export async function GET(request: NextRequest) {
         customer_name: o.customer_name,
         items_count: o.items_count,
         total_qty: o.total_qty,
+        lines_summary: o.lines.map(l => ({
+          sku: l.sku,
+          qty: l.qty,
+          collected_qty: l.collected_qty,
+          changed: l.qty !== l.collected_qty
+        }))
       }))
     }, null, 2));
     console.log(`${'='.repeat(80)}\n`);
