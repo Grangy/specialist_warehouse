@@ -37,8 +37,43 @@ export const dynamic = 'force-dynamic';
  * }
  */
 export async function POST(request: NextRequest) {
+  const requestId = Math.random().toString(36).substring(7);
+  const timestamp = new Date().toISOString();
+  const clientIp = request.headers.get('x-forwarded-for') || 
+                   request.headers.get('x-real-ip') || 
+                   'unknown';
+
   try {
+    // Логируем входящий запрос
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[Sync-1C] [${requestId}] [${timestamp}] Входящий POST запрос от 1С`);
+    console.log(`[Sync-1C] [${requestId}] IP адрес: ${clientIp}`);
+    console.log(`[Sync-1C] [${requestId}] URL: ${request.url}`);
+    console.log(`[Sync-1C] [${requestId}] Метод: POST`);
+    
+    // Логируем заголовки (без паролей)
+    const headers: Record<string, string> = {};
+    request.headers.forEach((value, key) => {
+      if (key.toLowerCase() === 'x-password' || key.toLowerCase() === 'authorization') {
+        headers[key] = '***HIDDEN***';
+      } else {
+        headers[key] = value;
+      }
+    });
+    console.log(`[Sync-1C] [${requestId}] Заголовки:`, JSON.stringify(headers, null, 2));
+
     const body = await request.json();
+    
+    // Логируем тело запроса (без паролей)
+    const sanitizedBody = { ...body };
+    if (sanitizedBody.password) {
+      sanitizedBody.password = '***HIDDEN***';
+    }
+    if (sanitizedBody.login) {
+      console.log(`[Sync-1C] [${requestId}] Логин: ${sanitizedBody.login}`);
+    }
+    console.log(`[Sync-1C] [${requestId}] Тело запроса:`, JSON.stringify(sanitizedBody, null, 2));
+    console.log(`[Sync-1C] [${requestId}] Количество orders в запросе: ${Array.isArray(body.orders) ? body.orders.length : 'не массив'}`);
     
     // Авторизация через заголовки, тело запроса или cookies
     const authResult = await authenticateRequest(request, body, ['admin']);
@@ -177,13 +212,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[Sync-1C] Найдено готовых к выгрузке заказов: ${readyOrders.length}`);
-
-    return NextResponse.json({
+    console.log(`[Sync-1C] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length}`);
+    
+    // Логируем ответ
+    const responseData = {
       orders: readyOrders,
-    });
+    };
+    console.log(`[Sync-1C] [${requestId}] Отправляем ответ:`, JSON.stringify({
+      orders_count: readyOrders.length,
+      orders: readyOrders.map(o => ({
+        id: o.id,
+        number: o.number,
+        customer_name: o.customer_name,
+        items_count: o.items_count,
+        total_qty: o.total_qty,
+      }))
+    }, null, 2));
+    console.log(`${'='.repeat(80)}\n`);
+
+    return NextResponse.json(responseData);
   } catch (error: any) {
-    console.error('[Sync-1C] Ошибка синхронизации с 1С:', error);
+    console.error(`[Sync-1C] [${requestId}] Ошибка синхронизации с 1С:`, error);
+    console.error(`[Sync-1C] [${requestId}] Сообщение ошибки:`, error.message);
+    console.error(`[Sync-1C] [${requestId}] Стек ошибки:`, error.stack);
+    console.log(`${'='.repeat(80)}\n`);
     return NextResponse.json(
       { error: 'Ошибка синхронизации с 1С', details: error.message },
       { status: 500 }
