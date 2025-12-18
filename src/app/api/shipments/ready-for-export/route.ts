@@ -143,8 +143,10 @@ export async function GET(request: NextRequest) {
             return {
               sku: line.sku,
               name: line.name,
-              qty: line.qty,
-              collected_qty: confirmedQty, // Используем подтвержденное количество
+              // ВАЖНО: qty должен быть равен фактическому собранному количеству для 1С
+              // 1С использует поле qty для получения финальной информации
+              qty: confirmedQty, // Фактическое собранное/подтвержденное количество (для 1С)
+              collected_qty: confirmedQty, // Дублируем для совместимости
               uom: line.uom,
               location: line.location,
               warehouse: line.warehouse,
@@ -179,17 +181,12 @@ export async function GET(request: NextRequest) {
       console.log(`[Ready-For-Export] [${requestId}]   Позиции заказа:`);
       
       order.lines.forEach((line, index) => {
-        const qtyChanged = line.qty !== line.collected_qty;
-        const changeIndicator = qtyChanged ? ' ⚠️ ИЗМЕНЕНО' : '';
+        // ВАЖНО: qty теперь равен collected_qty (фактическому количеству для 1С)
+        // Начальное заказанное количество больше не используется в ответе для 1С
         console.log(`[Ready-For-Export] [${requestId}]     ${index + 1}. SKU: ${line.sku}`);
         console.log(`[Ready-For-Export] [${requestId}]         Наименование: ${line.name}`);
-        console.log(`[Ready-For-Export] [${requestId}]         qty (заказано): ${line.qty}`);
-        console.log(`[Ready-For-Export] [${requestId}]         collected_qty (собрано/подтверждено): ${line.collected_qty}${changeIndicator}`);
-        if (qtyChanged) {
-          const diff = line.collected_qty - line.qty;
-          const diffText = diff > 0 ? `+${diff}` : `${diff}`;
-          console.log(`[Ready-For-Export] [${requestId}]         Разница: ${diffText} (${diff > 0 ? 'больше' : 'меньше'} на ${Math.abs(diff)})`);
-        }
+        console.log(`[Ready-For-Export] [${requestId}]         qty (для 1С, фактическое): ${line.qty}`);
+        console.log(`[Ready-For-Export] [${requestId}]         collected_qty (дублирует qty): ${line.collected_qty}`);
         console.log(`[Ready-For-Export] [${requestId}]         Единица: ${line.uom}, Место: ${line.location || 'не указано'}`);
       });
     }
@@ -209,9 +206,8 @@ export async function GET(request: NextRequest) {
         total_qty: o.total_qty,
         lines_summary: o.lines.map(l => ({
           sku: l.sku,
-          qty: l.qty,
-          collected_qty: l.collected_qty,
-          changed: l.qty !== l.collected_qty
+          qty: l.qty, // Теперь qty = collected_qty (фактическое количество для 1С)
+          collected_qty: l.collected_qty
         }))
       }))
     }, null, 2));

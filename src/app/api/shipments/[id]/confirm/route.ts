@@ -204,8 +204,10 @@ export async function POST(
           return {
             sku: line.sku,
             name: line.name,
-            qty: line.qty,
-            collected_qty: confirmedQty, // Используем подтвержденное количество
+            // ВАЖНО: qty должен быть равен фактическому собранному количеству для 1С
+            // 1С использует поле qty для получения финальной информации
+            qty: confirmedQty, // Фактическое собранное/подтвержденное количество (для 1С)
+            collected_qty: confirmedQty, // Дублируем для совместимости
             uom: line.uom,
             location: line.location,
             warehouse: line.warehouse,
@@ -320,8 +322,10 @@ export async function POST(
             return {
               sku: line.sku,
               name: line.name,
-              qty: line.qty,
-              collected_qty: confirmedQty, // Используем подтвержденное количество
+              // ВАЖНО: qty должен быть равен фактическому собранному количеству для 1С
+              // 1С использует поле qty для получения финальной информации
+              qty: confirmedQty, // Фактическое собранное/подтвержденное количество (для 1С)
+              collected_qty: confirmedQty, // Дублируем для совместимости
               uom: line.uom,
               location: line.location,
               warehouse: line.warehouse,
