@@ -13,11 +13,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Получаем все уникальные регионы из заказов
+    // ВАЖНО: Исключаем удаленные заказы
     const shipments = await prisma.shipment.findMany({
       where: {
         businessRegion: {
           not: null,
         },
+        deleted: false, // Исключаем удаленные заказы
       },
       select: {
         businessRegion: true,
