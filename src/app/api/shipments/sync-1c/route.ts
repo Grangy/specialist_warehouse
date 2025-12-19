@@ -248,12 +248,10 @@ export async function POST(request: NextRequest) {
       order.lines.forEach((line, index) => {
         // ВАЖНО: qty теперь равен collected_qty (фактическому количеству для 1С)
         // Начальное заказанное количество больше не используется в ответе для 1С
-        const originalQty = shipment.lines.find(l => l.sku === line.sku)?.qty || 'неизвестно';
-        const qtyChanged = line.qty !== originalQty;
         const isZero = line.qty === 0;
         console.log(`[Sync-1C] [${requestId}]     ${index + 1}. SKU: ${line.sku}`);
         console.log(`[Sync-1C] [${requestId}]         Наименование: ${line.name}`);
-        console.log(`[Sync-1C] [${requestId}]         qty (для 1С, фактическое): ${line.qty}${isZero ? ' ⚠️ НУЛЕВОЕ КОЛИЧЕСТВО' : ''}${qtyChanged ? ' ⚠️ ИЗМЕНЕНО (было: ' + originalQty + ')' : ''}`);
+        console.log(`[Sync-1C] [${requestId}]         qty (для 1С, фактическое): ${line.qty}${isZero ? ' ⚠️ НУЛЕВОЕ КОЛИЧЕСТВО' : ''}`);
         console.log(`[Sync-1C] [${requestId}]         collected_qty (дублирует qty): ${line.collected_qty}`);
         console.log(`[Sync-1C] [${requestId}]         Единица: ${line.uom}, Место: ${line.location || 'не указано'}`);
       });

@@ -188,12 +188,10 @@ export async function GET(request: NextRequest) {
       order.lines.forEach((line, index) => {
         // ВАЖНО: qty теперь равен collected_qty (фактическому количеству для 1С)
         // Начальное заказанное количество больше не используется в ответе для 1С
-        const originalQty = shipment.lines.find(l => l.sku === line.sku)?.qty || 'неизвестно';
-        const qtyChanged = line.qty !== originalQty;
         const isZero = line.qty === 0;
         console.log(`[Ready-For-Export] [${requestId}]     ${index + 1}. SKU: ${line.sku}`);
         console.log(`[Ready-For-Export] [${requestId}]         Наименование: ${line.name}`);
-        console.log(`[Ready-For-Export] [${requestId}]         qty (для 1С, фактическое): ${line.qty}${isZero ? ' ⚠️ НУЛЕВОЕ КОЛИЧЕСТВО' : ''}${qtyChanged ? ' ⚠️ ИЗМЕНЕНО (было: ' + originalQty + ')' : ''}`);
+        console.log(`[Ready-For-Export] [${requestId}]         qty (для 1С, фактическое): ${line.qty}${isZero ? ' ⚠️ НУЛЕВОЕ КОЛИЧЕСТВО' : ''}`);
         console.log(`[Ready-For-Export] [${requestId}]         collected_qty (дублирует qty): ${line.collected_qty}`);
         console.log(`[Ready-For-Export] [${requestId}]         Единица: ${line.uom}, Место: ${line.location || 'не указано'}`);
       });
