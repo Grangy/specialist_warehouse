@@ -112,9 +112,10 @@ export async function GET(request: NextRequest) {
           for (const taskLine of task.lines) {
             // Используем confirmedQty, если оно есть, иначе collectedQty (для обратной совместимости)
             const qty = taskLine.confirmedQty !== null ? taskLine.confirmedQty : taskLine.collectedQty;
-            if (qty !== null) {
+            if (qty !== null && qty !== undefined) {
               const lineId = taskLine.shipmentLineId;
-              confirmedQtyByLine[lineId] = (confirmedQtyByLine[lineId] || 0) + qty;
+              // ВАЖНО: Используем ?? чтобы 0 не заменялся на 0 (хотя здесь это не критично, но для явности)
+              confirmedQtyByLine[lineId] = (confirmedQtyByLine[lineId] ?? 0) + qty;
             }
           }
         }
@@ -135,13 +136,15 @@ export async function GET(request: NextRequest) {
           tasks_count: shipment.tasks.length,
           items_count: shipment.lines.length,
           total_qty: shipment.lines.reduce((sum, line) => {
-            const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+            // ВАЖНО: Используем ?? вместо || чтобы 0 не заменялся на fallback
+            const confirmedQty = confirmedQtyByLine[line.id] ?? line.collectedQty ?? line.qty;
             return sum + confirmedQty;
           }, 0),
           weight: shipment.weight,
           lines: shipment.lines.map((line) => {
             // Используем confirmedQty из заданий, если оно есть
-            const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+            // ВАЖНО: Используем ?? вместо || чтобы 0 не заменялся на fallback
+            const confirmedQty = confirmedQtyByLine[line.id] ?? line.collectedQty ?? line.qty;
             return {
               sku: line.sku,
               name: line.name,
@@ -185,9 +188,12 @@ export async function GET(request: NextRequest) {
       order.lines.forEach((line, index) => {
         // ВАЖНО: qty теперь равен collected_qty (фактическому количеству для 1С)
         // Начальное заказанное количество больше не используется в ответе для 1С
+        const originalQty = shipment.lines.find(l => l.sku === line.sku)?.qty || 'неизвестно';
+        const qtyChanged = line.qty !== originalQty;
+        const isZero = line.qty === 0;
         console.log(`[Ready-For-Export] [${requestId}]     ${index + 1}. SKU: ${line.sku}`);
         console.log(`[Ready-For-Export] [${requestId}]         Наименование: ${line.name}`);
-        console.log(`[Ready-For-Export] [${requestId}]         qty (для 1С, фактическое): ${line.qty}`);
+        console.log(`[Ready-For-Export] [${requestId}]         qty (для 1С, фактическое): ${line.qty}${isZero ? ' ⚠️ НУЛЕВОЕ КОЛИЧЕСТВО' : ''}${qtyChanged ? ' ⚠️ ИЗМЕНЕНО (было: ' + originalQty + ')' : ''}`);
         console.log(`[Ready-For-Export] [${requestId}]         collected_qty (дублирует qty): ${line.collected_qty}`);
         console.log(`[Ready-For-Export] [${requestId}]         Единица: ${line.uom}, Место: ${line.location || 'не указано'}`);
       });
