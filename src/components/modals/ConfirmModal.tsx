@@ -71,16 +71,25 @@ export function ConfirmModal({
   } | null>(null);
 
   // Вычисляем sortedIndices для согласованности
+  // ВАЖНО: Фильтруем подтвержденные товары - они не должны отображаться
   const sortedIndices = useMemo(() => {
     if (!currentShipment) return [];
     return currentShipment.lines
       .map((_, index) => index)
+      .filter((index) => {
+        // Исключаем подтвержденные товары из списка отображаемых
+        const isConfirmed = checklistState[index]?.confirmed || false;
+        // Также исключаем товары, которые находятся в процессе удаления (после анимации)
+        const isRemoving = removingItems.has(index);
+        return !isConfirmed && !isRemoving;
+      })
       .sort((a, b) => {
+        // Сортируем оставшиеся неподтвержденные товары
         const aConfirmed = checklistState[a]?.confirmed || false;
         const bConfirmed = checklistState[b]?.confirmed || false;
         return aConfirmed === bConfirmed ? 0 : aConfirmed ? 1 : -1;
       });
-  }, [currentShipment, checklistState]);
+  }, [currentShipment, checklistState, removingItems]);
 
   // Обновляем selectedLine при изменении checklistState для обновления счетчика
   // ВАЖНО: хук должен быть перед ранним возвратом, чтобы соблюдать правила хуков
@@ -259,14 +268,7 @@ export function ConfirmModal({
         {/* Grid layout для планшетов */}
         {isTablet && (
           <div className="tablet-products-grid tablet-show-grid p-2">
-            {currentShipment.lines
-              .map((_, index) => index)
-              .sort((a, b) => {
-                const aConfirmed = checklistState[a]?.confirmed || false;
-                const bConfirmed = checklistState[b]?.confirmed || false;
-                return aConfirmed === bConfirmed ? 0 : aConfirmed ? 1 : -1;
-              })
-              .map((originalIndex) => {
+            {sortedIndices.map((originalIndex) => {
                 const line = currentShipment.lines[originalIndex];
                 const index = originalIndex;
                 const state = checklistState[index] || {
@@ -418,14 +420,7 @@ export function ConfirmModal({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
-            {currentShipment.lines
-              .map((_, index) => index)
-              .sort((a, b) => {
-                const aConfirmed = checklistState[a]?.confirmed || false;
-                const bConfirmed = checklistState[b]?.confirmed || false;
-                return aConfirmed === bConfirmed ? 0 : aConfirmed ? 1 : -1;
-              })
-              .map((originalIndex) => {
+            {sortedIndices.map((originalIndex) => {
                 const line = currentShipment.lines[originalIndex];
                 const index = originalIndex;
               const state = checklistState[index] || {
