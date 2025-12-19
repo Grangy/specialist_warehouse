@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/middleware';
 
 export const dynamic = 'force-dynamic';
 
-// Сброс прогресса сборки/проверки (только для админа)
+// Сброс прогресса сборки/проверки или удаление заказа (только для админа)
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -24,78 +24,202 @@ export async function POST(
       );
     }
 
-    const { id } = params; // taskId
+    const { id } = params; // shipmentId или taskId (для обратной совместимости)
     const body = await request.json();
-    const { mode } = body; // 'collect' или 'confirm'
+    const { mode } = body; // 'collect', 'confirm' или 'delete'
 
-    // Проверяем, что задание существует
-    const task = await prisma.shipmentTask.findUnique({
+    // Сначала проверяем, является ли id shipmentId
+    let shipment = await prisma.shipment.findUnique({
       where: { id },
       include: {
-        lines: {
+        tasks: {
           include: {
-            shipmentLine: true,
+            lines: true,
           },
         },
       },
     });
 
-    if (!task) {
-      return NextResponse.json({ error: 'Задание не найдено' }, { status: 404 });
+    // Если не найден заказ, проверяем, может быть это taskId (для обратной совместимости)
+    if (!shipment) {
+      const task = await prisma.shipmentTask.findUnique({
+        where: { id },
+        include: {
+          shipment: {
+            include: {
+              tasks: {
+                include: {
+                  lines: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!task) {
+        return NextResponse.json({ error: 'Заказ или задание не найдено' }, { status: 404 });
+      }
+
+      shipment = task.shipment;
     }
 
-    // Сбрасываем прогресс в зависимости от режима
+    if (!shipment) {
+      return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
+    }
+
+    // Обработка удаления заказа
+    if (mode === 'delete') {
+      // Помечаем заказ как удаленный (мягкое удаление)
+      await prisma.shipment.update({
+        where: { id: shipment.id },
+        data: {
+          deleted: true,
+          deletedAt: new Date(),
+        },
+      });
+
+      // Сбрасываем прогресс всех задач заказа
+      for (const task of shipment.tasks) {
+        // Сбрасываем прогресс сборки
+        await prisma.shipmentTaskLine.updateMany({
+          where: { taskId: task.id },
+          data: {
+            collectedQty: null,
+            checked: false,
+            confirmedQty: null,
+            confirmed: false,
+          },
+        });
+
+        // Сбрасываем информацию о сборщике и проверяльщике
+        await prisma.shipmentTask.update({
+          where: { id: task.id },
+          data: {
+            status: 'new',
+            collectorId: null,
+            collectorName: null,
+            startedAt: null,
+            completedAt: null,
+            checkerName: null,
+            checkerId: null,
+            confirmedAt: null,
+          },
+        });
+      }
+
+      // Сбрасываем прогресс в shipment lines
+      await prisma.shipmentLine.updateMany({
+        where: { shipmentId: shipment.id },
+        data: {
+          collectedQty: null,
+          checked: false,
+          confirmedQty: null,
+          confirmed: false,
+        },
+      });
+
+      console.log(`[reset-progress] Заказ ${shipment.number} (ID: ${shipment.id}) удален администратором ${user.name}`);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Заказ успешно удален',
+        shipment: {
+          id: shipment.id,
+          number: shipment.number,
+          deleted: true,
+        },
+      });
+    }
+
+    // Обработка сброса прогресса для всех задач заказа
     if (mode === 'collect') {
-      // Сбрасываем сборку: collectedQty = null, checked = false
-      await prisma.shipmentTaskLine.updateMany({
-        where: { taskId: id },
+      // Сбрасываем сборку для всех задач: collectedQty = null, checked = false
+      for (const task of shipment.tasks) {
+        await prisma.shipmentTaskLine.updateMany({
+          where: { taskId: task.id },
+          data: {
+            collectedQty: null,
+            checked: false,
+          },
+        });
+
+        // Сбрасываем информацию о сборщике
+        await prisma.shipmentTask.update({
+          where: { id: task.id },
+          data: {
+            collectorId: null,
+            collectorName: null,
+            startedAt: null,
+          },
+        });
+      }
+
+      // Сбрасываем прогресс в shipment lines
+      await prisma.shipmentLine.updateMany({
+        where: { shipmentId: shipment.id },
         data: {
           collectedQty: null,
           checked: false,
         },
       });
 
-      // Сбрасываем информацию о сборщике
-      await prisma.shipmentTask.update({
-        where: { id },
-        data: {
-          collectorId: null,
-          collectorName: null,
-          startedAt: null,
-        },
-      });
+      console.log(`[reset-progress] Прогресс сборки сброшен для заказа ${shipment.number} (ID: ${shipment.id}) администратором ${user.name}`);
     } else if (mode === 'confirm') {
-      // Сбрасываем подтверждение: возвращаем статус задания обратно
-      await prisma.shipmentTask.update({
-        where: { id },
+      // Сбрасываем подтверждение для всех задач: возвращаем статус заданий обратно
+      for (const task of shipment.tasks) {
+        await prisma.shipmentTask.update({
+          where: { id: task.id },
+          data: {
+            status: 'pending_confirmation',
+            checkerName: null,
+            checkerId: null,
+            confirmedAt: null,
+          },
+        });
+
+        // Сбрасываем подтверждение в task lines
+        await prisma.shipmentTaskLine.updateMany({
+          where: { taskId: task.id },
+          data: {
+            confirmedQty: null,
+            confirmed: false,
+          },
+        });
+      }
+
+      // Сбрасываем подтверждение в shipment lines
+      await prisma.shipmentLine.updateMany({
+        where: { shipmentId: shipment.id },
         data: {
-          status: 'pending_confirmation',
+          confirmedQty: null,
+          confirmed: false,
         },
       });
+
+      console.log(`[reset-progress] Прогресс проверки сброшен для заказа ${shipment.number} (ID: ${shipment.id}) администратором ${user.name}`);
     } else {
       return NextResponse.json(
-        { error: 'Неверный режим. Используйте "collect" или "confirm"' },
+        { error: 'Неверный режим. Используйте "collect", "confirm" или "delete"' },
         { status: 400 }
       );
     }
 
-    const updatedTask = await prisma.shipmentTask.findUnique({
-      where: { id },
+    const updatedShipment = await prisma.shipment.findUnique({
+      where: { id: shipment.id },
       include: {
-        lines: {
+        tasks: {
           include: {
-            shipmentLine: true,
+            lines: true,
           },
         },
       },
     });
 
-    console.log(`[reset-progress] Прогресс ${mode} сброшен для задания ${id} администратором ${user.name}`);
-
     return NextResponse.json({
       success: true,
       message: `Прогресс ${mode === 'collect' ? 'сборки' : 'проверки'} успешно сброшен`,
-      task: updatedTask,
+      shipment: updatedShipment,
     });
   } catch (error) {
     console.error('Ошибка при сбросе прогресса:', error);

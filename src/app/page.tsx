@@ -202,7 +202,7 @@ export default function Home() {
       const response = await fetch(`/api/shipments/${shipment.id}/reset-progress`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'collect' }),
+        body: JSON.stringify({ mode: 'delete' }),
       });
       if (!response.ok) {
         const data = await response.json();
