@@ -45,6 +45,21 @@ export function CollectModal({
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [savedScrollTop, setSavedScrollTop] = useState(0);
+  const [isTablet, setIsTablet] = useState(false);
+  
+  // Определяем, является ли устройство планшетом
+  useEffect(() => {
+    const checkTablet = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      setIsTablet(width >= 768 && width <= 1024 && height > width);
+    };
+    
+    checkTablet();
+    window.addEventListener('resize', checkTablet);
+    return () => window.removeEventListener('resize', checkTablet);
+  }, []);
+  
   const [selectedLine, setSelectedLine] = useState<{
     index: number;
     name: string;
@@ -313,7 +328,150 @@ export function CollectModal({
           className="overflow-y-auto overflow-x-hidden max-h-[60vh] border border-slate-700 rounded-lg"
           onScroll={handleScrollSave}
         >
-          <table className="w-full border-collapse">
+          {/* Grid layout для планшетов */}
+          {isTablet && (
+            <div className="tablet-products-grid tablet-show-grid p-2">
+              {sortedIndices.map((originalIndex) => {
+                const line = currentShipment.lines[originalIndex];
+                const index = originalIndex;
+                const state = checklistState[index] || { collected: false, qty: line.qty, collectedQty: line.qty };
+                const isCollected = state.collected;
+                const hasShortage = state.collectedQty < line.qty && state.collectedQty > 0;
+                const isZero = state.collectedQty === 0 && isCollected;
+                const isEditing = editState[index];
+                const isRemoving = removingItems.has(index);
+                
+                const cardBg = isCollected 
+                  ? (isZero ? 'bg-red-900/20 border-red-500/50' : 'bg-green-900/20 border-green-500/50')
+                  : 'bg-slate-900/50 border-slate-700';
+                
+                return (
+                  <div
+                    key={index}
+                    className={`tablet-product-card ${cardBg} border ${isRemoving ? 'item-removing' : ''}`}
+                  >
+                    {/* Статус */}
+                    <div className="flex items-center gap-2">
+                      {isCollected ? (
+                        isZero ? (
+                          <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </div>
+                        ) : (
+                          <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        )
+                      ) : (
+                        <div className="w-3 h-3 bg-slate-600 rounded-full flex-shrink-0"></div>
+                      )}
+                      <div 
+                        className="text-sm font-medium text-slate-100 cursor-pointer hover:text-blue-400 transition-colors line-clamp-2 flex-1"
+                        onClick={() => handleInfoClick(line, index)}
+                      >
+                        {line.name}
+                      </div>
+                    </div>
+                    
+                    {/* Информация */}
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <span>{line.sku}</span>
+                      {line.location && <span className="text-blue-400">{line.location}</span>}
+                    </div>
+                    
+                    {/* Количества */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs text-slate-500">
+                        Треб: <span className="text-slate-200 font-semibold">{line.qty}</span> {line.uom}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Собр: <span className={`font-semibold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span> {line.uom}
+                      </div>
+                    </div>
+                    
+                    {/* Действия */}
+                    {isEditing ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1 qty-controls">
+                          <button
+                            onClick={() => onUpdateCollectedQty(index, state.collectedQty - 1)}
+                            className="bg-slate-700 hover:bg-slate-600 text-slate-100 rounded transition-colors flex items-center justify-center font-bold disabled:opacity-50"
+                            disabled={state.collectedQty <= 0}
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max={line.qty}
+                            value={state.collectedQty}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value) || 0;
+                              onUpdateCollectedQty(index, Math.max(0, Math.min(value, line.qty)));
+                            }}
+                            className="bg-slate-800 border border-slate-600 text-slate-100 rounded px-1 text-center font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <button
+                            onClick={() => onUpdateCollectedQty(index, state.collectedQty + 1)}
+                            className="bg-slate-700 hover:bg-slate-600 text-slate-100 rounded transition-colors flex items-center justify-center font-bold disabled:opacity-50"
+                            disabled={state.collectedQty >= line.qty}
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => onConfirmEditQty(index)}
+                            className="flex-1 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold rounded transition-colors py-1"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() => onCancelEditQty(index)}
+                            className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium rounded transition-colors py-1"
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => onStartEditQty(index)}
+                          className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded transition-colors py-1"
+                        >
+                          Ред.
+                        </button>
+                        {!isCollected && (
+                          <button
+                            onClick={() => onUpdateCollected(index, true)}
+                            className="flex-1 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold rounded transition-colors py-1"
+                          >
+                            Сборка
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Предупреждения */}
+                    {isCollected && isZero && (
+                      <div className="text-xs text-red-400 font-semibold">⚠ Не собрано</div>
+                    )}
+                    {isCollected && hasShortage && (
+                      <div className="text-xs text-yellow-500">⚠ Недостаток: {line.qty - state.collectedQty}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          
+          {/* Таблица для десктопа и мобильных */}
+          <table className={`w-full border-collapse ${isTablet ? 'tablet-hide-table hidden' : ''}`}>
             <thead className="bg-slate-800/95 backdrop-blur-sm sticky top-0 z-10 hidden md:table-header-group shadow-sm">
               <tr>
                 <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600" style={{ width: '60px', minWidth: '60px' }}>

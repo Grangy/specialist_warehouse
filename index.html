@@ -83,6 +83,78 @@
             }
         }
         
+        /* Стили для планшетов (вертикальная ориентация 799x1280) */
+        @media (min-width: 768px) and (max-width: 1024px) and (orientation: portrait) {
+            /* Модальное окно на весь экран */
+            #collect-modal {
+                padding: 0.5rem !important;
+            }
+            
+            #collect-modal .bg-slate-800 {
+                max-width: 100% !important;
+                width: 100% !important;
+                height: calc(100vh - 1rem) !important;
+                max-height: calc(100vh - 1rem) !important;
+            }
+            
+            /* Контейнер с товарами - больше места */
+            #collect-modal-content .overflow-y-auto {
+                max-height: calc(100vh - 280px) !important;
+            }
+            
+            /* Скрываем таблицу на планшете */
+            #collect-modal-content table {
+                display: none !important;
+            }
+            
+            /* Grid layout для товаров на планшете - 2 колонки */
+            #collect-modal-content .tablet-grid {
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.75rem;
+                padding: 0.5rem;
+            }
+            
+            /* Карточки товаров на планшете */
+            #collect-modal-content .tablet-product-card {
+                background: rgb(15, 23, 42);
+                border: 1px solid rgb(51, 65, 85);
+                border-radius: 0.5rem;
+                padding: 0.75rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            /* Компактные кнопки на планшете */
+            #collect-modal-content .tablet-product-card button {
+                padding: 0.375rem 0.5rem !important;
+                font-size: 0.7rem !important;
+                min-height: 28px !important;
+                min-width: 28px !important;
+            }
+            
+            /* Уменьшенные иконки в кнопках */
+            #collect-modal-content .tablet-product-card button svg {
+                width: 0.75rem !important;
+                height: 0.75rem !important;
+            }
+            
+            /* Компактные input поля */
+            #collect-modal-content .tablet-product-card input[type="number"] {
+                width: 2.5rem !important;
+                padding: 0.25rem !important;
+                font-size: 0.7rem !important;
+            }
+            
+            /* Уменьшенные кнопки +/- */
+            #collect-modal-content .tablet-product-card .qty-controls button {
+                width: 24px !important;
+                height: 24px !important;
+                font-size: 0.7rem !important;
+            }
+        }
+        
         /* Swipe to confirm стили */
         #swipe-confirm-container {
             touch-action: pan-x;
