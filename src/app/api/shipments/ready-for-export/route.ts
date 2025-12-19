@@ -70,11 +70,12 @@ export async function GET(request: NextRequest) {
 
     // Получаем готовые к выгрузке заказы
     // Это заказы, где все задания подтверждены, но еще не выгружены в 1С
+    // ВАЖНО: Исключаем удаленные заказы (deleted = false) - они не должны отправляться в 1С
     const readyShipments = await prisma.shipment.findMany({
       where: {
         status: 'processed', // Все задания подтверждены
         exportedTo1C: false, // Еще не выгружены в 1С
-        deleted: false, // Исключаем удаленные заказы
+        deleted: false, // Исключаем удаленные заказы - они не должны отправляться в 1С
       },
       include: {
         lines: {
@@ -172,7 +173,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`[Ready-For-Export] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length}`);
+    console.log(`[Ready-For-Export] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length} (удаленные заказы исключены)`);
     
     // Логируем детальную информацию по каждому заказу
     for (const order of readyOrders) {

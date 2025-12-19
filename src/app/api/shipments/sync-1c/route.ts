@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Обновляем статус выгрузки для заказов, которые были обработаны в 1С
+    // ВАЖНО: Не обновляем удаленные заказы
     const updatePromises = orders.map(async (order: { id: string; success: boolean }) => {
       if (!order.id || typeof order.success !== 'boolean') {
         console.warn(`[Sync-1C] Пропущен неверный формат заказа:`, order);
@@ -100,6 +101,22 @@ export async function POST(request: NextRequest) {
       }
 
       if (order.success === true) {
+        // Проверяем, что заказ существует и не удален
+        const shipment = await prisma.shipment.findUnique({
+          where: { id: order.id },
+          select: { id: true, deleted: true, number: true },
+        });
+
+        if (!shipment) {
+          console.warn(`[Sync-1C] Заказ ${order.id} не найден, пропускаем обновление`);
+          return;
+        }
+
+        if (shipment.deleted) {
+          console.warn(`[Sync-1C] Заказ ${shipment.number} (${order.id}) удален, пропускаем обновление статуса`);
+          return;
+        }
+
         // Заказ успешно обработан в 1С - помечаем как выгруженный
         await prisma.shipment.update({
           where: { id: order.id },
@@ -108,7 +125,7 @@ export async function POST(request: NextRequest) {
             exportedTo1CAt: new Date(),
           },
         });
-        console.log(`[Sync-1C] Заказ ${order.id} помечен как выгруженный в 1С`);
+        console.log(`[Sync-1C] Заказ ${shipment.number} (${order.id}) помечен как выгруженный в 1С`);
       }
     });
 
@@ -116,11 +133,12 @@ export async function POST(request: NextRequest) {
 
     // Получаем готовые к выгрузке заказы
     // Это заказы, где все задания подтверждены, но еще не выгружены в 1С
+    // ВАЖНО: Исключаем удаленные заказы (deleted = false) - они не должны отправляться в 1С
     const readyShipments = await prisma.shipment.findMany({
       where: {
         status: 'processed', // Все задания подтверждены
         exportedTo1C: false, // Еще не выгружены в 1С
-        deleted: false, // Исключаем удаленные заказы
+        deleted: false, // Исключаем удаленные заказы - они не должны отправляться в 1С
       },
       include: {
         lines: {
@@ -215,7 +233,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[Sync-1C] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length}`);
+    console.log(`[Sync-1C] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length} (удаленные заказы исключены)`);
     
     // Логируем детальную информацию по каждому заказу
     for (const order of readyOrders) {
