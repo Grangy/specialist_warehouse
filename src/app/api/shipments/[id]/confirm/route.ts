@@ -129,12 +129,13 @@ export async function POST(
       // При подтверждении используется confirmedQty, а не collectedQty
       const confirmedByLine: Record<string, number> = {};
       for (const taskLine of allTaskLines) {
-        // Используем confirmedQty, если оно есть, иначе collectedQty (для обратной совместимости)
-        const qty = taskLine.confirmedQty !== null ? taskLine.confirmedQty : taskLine.collectedQty;
-        if (qty !== null) {
-          const lineId = taskLine.shipmentLineId;
-          confirmedByLine[lineId] = (confirmedByLine[lineId] || 0) + qty;
-        }
+          // Используем confirmedQty, если оно есть, иначе collectedQty (для обратной совместимости)
+          const qty = taskLine.confirmedQty !== null ? taskLine.confirmedQty : taskLine.collectedQty;
+          if (qty !== null && qty !== undefined) {
+            const lineId = taskLine.shipmentLineId;
+            // ВАЖНО: Используем ?? чтобы 0 не заменялся на 0 (хотя здесь это не критично, но для явности)
+            confirmedByLine[lineId] = (confirmedByLine[lineId] ?? 0) + qty;
+          }
       }
 
       // Обновляем исходные позиции заказа с подтвержденными количествами
@@ -194,13 +195,15 @@ export async function POST(
         tasks_count: finalShipment!.tasks.length,
         items_count: finalShipment!.lines.length,
         total_qty: finalShipment!.lines.reduce((sum, line) => {
-          const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+          // ВАЖНО: Используем ?? вместо || чтобы 0 не заменялся на fallback
+          const confirmedQty = confirmedQtyByLine[line.id] ?? line.collectedQty ?? line.qty;
           return sum + confirmedQty;
         }, 0),
         weight: finalShipment!.weight,
         lines: finalShipment!.lines.map((line) => {
           // Используем confirmedQty из заданий, если оно есть
-          const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+          // ВАЖНО: Используем ?? вместо || чтобы 0 не заменялся на fallback
+          const confirmedQty = confirmedQtyByLine[line.id] ?? line.collectedQty ?? line.qty;
           return {
             sku: line.sku,
             name: line.name,
@@ -291,9 +294,10 @@ export async function POST(
           for (const taskLine of task.lines) {
             // Используем confirmedQty, если оно есть, иначе collectedQty (для обратной совместимости)
             const qty = taskLine.confirmedQty !== null ? taskLine.confirmedQty : taskLine.collectedQty;
-            if (qty !== null) {
+            if (qty !== null && qty !== undefined) {
               const lineId = taskLine.shipmentLineId;
-              confirmedQtyByLine[lineId] = (confirmedQtyByLine[lineId] || 0) + qty;
+              // ВАЖНО: Используем ?? чтобы 0 не заменялся на 0 (хотя здесь это не критично, но для явности)
+              confirmedQtyByLine[lineId] = (confirmedQtyByLine[lineId] ?? 0) + qty;
             }
           }
         }
@@ -312,13 +316,15 @@ export async function POST(
           tasks_count: finalShipment.tasks.length,
           items_count: finalShipment.lines.length,
           total_qty: finalShipment.lines.reduce((sum, line) => {
-            const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+            // ВАЖНО: Используем ?? вместо || чтобы 0 не заменялся на fallback
+            const confirmedQty = confirmedQtyByLine[line.id] ?? line.collectedQty ?? line.qty;
             return sum + confirmedQty;
           }, 0),
           weight: finalShipment.weight,
           lines: finalShipment.lines.map((line) => {
             // Используем confirmedQty из заданий, если оно есть
-            const confirmedQty = confirmedQtyByLine[line.id] || line.collectedQty || line.qty;
+            // ВАЖНО: Используем ?? вместо || чтобы 0 не заменялся на fallback
+            const confirmedQty = confirmedQtyByLine[line.id] ?? line.collectedQty ?? line.qty;
             return {
               sku: line.sku,
               name: line.name,
