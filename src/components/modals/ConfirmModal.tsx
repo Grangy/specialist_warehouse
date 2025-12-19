@@ -46,6 +46,21 @@ export function ConfirmModal({
   isReady,
   getWarnings,
 }: ConfirmModalProps) {
+  const [isTablet, setIsTablet] = useState(false);
+  
+  // Определяем, является ли устройство планшетом
+  useEffect(() => {
+    const checkTablet = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      setIsTablet(width >= 768 && width <= 1024 && height > width);
+    };
+    
+    checkTablet();
+    window.addEventListener('resize', checkTablet);
+    return () => window.removeEventListener('resize', checkTablet);
+  }, []);
+  
   const [selectedLine, setSelectedLine] = useState<{
     index: number;
     name: string;
