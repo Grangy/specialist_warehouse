@@ -56,6 +56,8 @@ model Shipment {
   exportedTo1C    Boolean         @default(false) @map("exported_to_1c") // Флаг выгрузки заказа в 1С
   exportedTo1CAt  DateTime?       @map("exported_to_1c_at") // Время выгрузки заказа в 1С
   places          Int?            // Количество мест (сохраняется при отправке в офис)
+  deleted         Boolean         @default(false) // Флаг удаления заказа (мягкое удаление)
+  deletedAt       DateTime?       @map("deleted_at") // Время удаления заказа
   lines           ShipmentLine[]
   tasks           ShipmentTask[]
   locks           ShipmentLock[]

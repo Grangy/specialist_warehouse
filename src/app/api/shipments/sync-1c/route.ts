@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
       where: {
         status: 'processed', // Все задания подтверждены
         exportedTo1C: false, // Еще не выгружены в 1С
+        deleted: false, // Исключаем удаленные заказы
       },
       include: {
         lines: {

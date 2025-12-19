@@ -470,6 +470,8 @@ export async function GET(request: NextRequest) {
       const processedShipments = await prisma.shipment.findMany({
         where: {
           status: 'processed',
+          // Исключаем удаленные заказы
+          deleted: false,
         },
         include: {
           tasks: {
@@ -550,6 +552,8 @@ export async function GET(request: NextRequest) {
       where: {
         // Показываем только заказы со статусами new и pending_confirmation (если не запрошен processed)
         status: { in: ['new', 'pending_confirmation'] },
+        // Исключаем удаленные заказы
+        deleted: false,
       },
       include: {
         // Получаем ВСЕ задания заказа для правильного подсчета прогресса
