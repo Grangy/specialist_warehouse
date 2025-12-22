@@ -55,17 +55,44 @@ export function ConfirmModal({
     collected: number;
   } | null>(null);
 
+  // Вид отображения: 'compact' (минималистичный) или 'detailed' (текущий)
+  const [viewMode, setViewMode] = useState<'compact' | 'detailed'>(() => {
+    if (typeof window === 'undefined') return 'detailed';
+    try {
+      const saved = localStorage.getItem('confirmModalViewMode');
+      return (saved === 'compact' || saved === 'detailed') ? saved : 'detailed';
+    } catch {
+      return 'detailed';
+    }
+  });
+
+  // Сохраняем выбор вида отображения в localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('confirmModalViewMode', viewMode);
+      } catch (error) {
+        console.error('Ошибка при сохранении вида отображения:', error);
+      }
+    }
+  }, [viewMode]);
+
   // Вычисляем sortedIndices для согласованности
+  // Фильтруем подтвержденные товары и товары в процессе удаления
   const sortedIndices = useMemo(() => {
     if (!currentShipment) return [];
     return currentShipment.lines
       .map((_, index) => index)
+      .filter((index) => {
+        const state = checklistState[index];
+        return !state?.confirmed && !removingItems.has(index);
+      })
       .sort((a, b) => {
         const aConfirmed = checklistState[a]?.confirmed || false;
         const bConfirmed = checklistState[b]?.confirmed || false;
         return aConfirmed === bConfirmed ? 0 : aConfirmed ? 1 : -1;
       });
-  }, [currentShipment, checklistState]);
+  }, [currentShipment, checklistState, removingItems]);
 
   // Обновляем selectedLine при изменении checklistState для обновления счетчика
   // ВАЖНО: хук должен быть перед ранним возвратом, чтобы соблюдать правила хуков
@@ -239,9 +266,179 @@ export function ConfirmModal({
             Подтверждено: <span className="font-bold text-green-400">{progress.confirmed}</span>
           </div>
         </div>
+        {/* Переключатель вида отображения */}
+        <div className="flex items-center gap-2 bg-slate-800/50 rounded-lg p-1 border border-slate-700/50">
+          <button
+            onClick={() => setViewMode('compact')}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+              viewMode === 'compact'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Минималистичный вид (35 товаров на странице)"
+          >
+            Компактный
+          </button>
+          <button
+            onClick={() => setViewMode('detailed')}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+              viewMode === 'detailed'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Подробный вид (текущий)"
+          >
+            Подробный
+          </button>
+        </div>
       </div>
       <div className="overflow-y-auto overflow-x-hidden max-h-[60vh] border border-slate-700/50 rounded-lg shadow-inner">
-        <table className="w-full border-collapse">
+        {viewMode === 'compact' ? (
+          // Минималистичный компактный список
+          <div className="divide-y divide-slate-800">
+            {sortedIndices
+              .filter((index) => !removingItems.has(index))
+              .map((originalIndex) => {
+                const line = currentShipment.lines[originalIndex];
+                const index = originalIndex;
+                const state = checklistState[index] || {
+                  qty: line.qty,
+                  collectedQty: line.collected_qty !== undefined ? line.collected_qty : line.qty,
+                  confirmed: false,
+                };
+                const isConfirmed = state.confirmed;
+                const isEditing = editState[index];
+                const hasShortage = state.collectedQty < line.qty && state.collectedQty > 0;
+                const isZero = state.collectedQty === 0;
+                const isRemoving = removingItems.has(index);
+
+                if (isRemoving) return null;
+
+                return (
+                  <div
+                    key={index}
+                    className={`px-2 py-1.5 md:py-2 transition-all ${
+                      isConfirmed ? 'bg-green-900/10 border-l-2 border-l-green-500/50' : 'bg-slate-900/30 hover:bg-slate-800/50'
+                    } ${isEditing ? 'bg-blue-900/20 border-l-2 border-l-blue-500/50' : ''}`}
+                  >
+                    {isEditing ? (
+                      // Режим редактирования в компактном виде
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs md:text-sm text-slate-200 truncate font-medium">
+                            {line.name}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500">
+                            <span>{line.sku}</span>
+                            <span>•</span>
+                            <span>{line.location || '—'}</span>
+                            <span>•</span>
+                            <span>Треб: {line.qty} {line.uom || ''}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => onUpdateCollectedQty(index, state.collectedQty - 1)}
+                            className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded text-[10px] font-bold disabled:opacity-50"
+                            disabled={state.collectedQty <= 0}
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max={line.qty}
+                            value={state.collectedQty}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value) || 0;
+                              onUpdateCollectedQty(index, Math.max(0, Math.min(value, line.qty)));
+                            }}
+                            className="w-10 bg-slate-800 border border-slate-600 text-slate-100 rounded px-1 py-0.5 text-center text-[10px] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => onUpdateCollectedQty(index, state.collectedQty + 1)}
+                            className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded text-[10px] font-bold disabled:opacity-50"
+                            disabled={state.collectedQty >= line.qty}
+                          >
+                            +
+                          </button>
+                          <button
+                            onClick={() => onConfirmEditQty(index)}
+                            className="px-2 py-1 bg-green-600 hover:bg-green-500 text-white text-[10px] font-semibold rounded"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() => onCancelEditQty(index)}
+                            className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] rounded"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      // Обычный режим в компактном виде
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {/* Статус */}
+                          <div className="flex-shrink-0">
+                            {isConfirmed ? (
+                              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                            ) : (
+                              <div className="w-3 h-3 bg-slate-600 rounded-full"></div>
+                            )}
+                          </div>
+                          {/* Название и информация */}
+                          <div className="flex-1 min-w-0">
+                            <div 
+                              className="text-xs md:text-sm text-slate-200 truncate font-medium cursor-pointer hover:text-blue-400 transition-colors"
+                              onClick={() => handleInfoClick(line, index)}
+                              title={line.name}
+                            >
+                              {line.name}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
+                              <span className="truncate">{line.sku}</span>
+                              <span>•</span>
+                              <span className="truncate">{line.location || '—'}</span>
+                              <span>•</span>
+                              <span>Треб: <span className="text-slate-300 font-semibold">{line.qty}</span> {line.uom || ''}</span>
+                              <span>•</span>
+                              <span className={state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}>
+                                Собр: <span className="font-semibold">{state.collectedQty}</span> {line.uom || ''}
+                              </span>
+                              {isZero && <span className="text-red-400 font-semibold">• Не собрано</span>}
+                              {hasShortage && <span className="text-yellow-500">• Недостаток: {line.qty - state.collectedQty}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Действия */}
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button
+                            onClick={() => onStartEditQty(index)}
+                            className="px-2 py-1 bg-blue-600/90 hover:bg-blue-500 text-white text-[10px] font-semibold rounded transition-all"
+                          >
+                            Ред.
+                          </button>
+                          {!isConfirmed && (
+                            <button
+                              onClick={() => onConfirmItem(index)}
+                              className="px-2 py-1 bg-green-600/90 hover:bg-green-500 text-white text-[10px] font-semibold rounded transition-all"
+                            >
+                              Подтв.
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        ) : (
+          // Текущий подробный вид (таблица)
+          <table className="w-full border-collapse">
           <thead className="bg-slate-800/95 backdrop-blur-sm sticky top-0 z-10 hidden md:table-header-group shadow-sm">
             <tr>
               <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600" style={{ width: '60px', minWidth: '60px' }}>
@@ -620,6 +817,7 @@ export function ConfirmModal({
             })}
           </tbody>
         </table>
+        )}
       </div>
     </Modal>
     
