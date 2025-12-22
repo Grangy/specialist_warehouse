@@ -46,6 +46,7 @@ export function CollectModal({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [savedScrollTop, setSavedScrollTop] = useState(0);
   const [isTablet, setIsTablet] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   
   // Определяем, является ли устройство планшетом
   useEffect(() => {
@@ -155,12 +156,43 @@ export function CollectModal({
     handleNameClick(line, index);
   };
 
+  // Получаем все уникальные места и сортируем их от А до Z
+  const availableLocations = useMemo(() => {
+    if (!currentShipment) return [];
+    const locations = new Set<string>();
+    currentShipment.lines.forEach(line => {
+      if (line.location && line.location.trim()) {
+        locations.add(line.location.trim());
+      }
+    });
+    return Array.from(locations).sort((a, b) => {
+      // Сортируем по первой букве места
+      const aFirst = a.charAt(0).toUpperCase();
+      const bFirst = b.charAt(0).toUpperCase();
+      if (aFirst !== bFirst) {
+        return aFirst.localeCompare(bFirst, 'ru');
+      }
+      return a.localeCompare(b, 'ru');
+    });
+  }, [currentShipment]);
+
   // Сортируем индексы, но исключаем товары, которые находятся в процессе удаления
   // ВАЖНО: хуки должны быть до условного возврата
   const sortedIndices = useMemo(() => {
     if (!currentShipment) return [];
-    return currentShipment.lines
+    let indices = currentShipment.lines
       .map((_, index) => index)
+      .filter((index) => {
+        // Фильтруем по выбранному месту
+        if (selectedLocation !== null) {
+          const line = currentShipment.lines[index];
+          const lineLocation = line.location?.trim() || '';
+          if (lineLocation !== selectedLocation) {
+            return false;
+          }
+        }
+        return true;
+      })
       .sort((a, b) => {
         // Товары в процессе удаления остаются на своих местах
         const aRemoving = removingItems.has(a);
@@ -172,7 +204,8 @@ export function CollectModal({
         const bCollected = checklistState[b]?.collected || false;
         return aCollected === bCollected ? 0 : aCollected ? 1 : -1;
       });
-  }, [currentShipment, checklistState, removingItems]);
+    return indices;
+  }, [currentShipment, checklistState, removingItems, selectedLocation]);
 
   // Вычисляем currentItemNumber и totalItems для модального окна
   // Используем общий список товаров, а не только несобранные
@@ -308,20 +341,51 @@ export function CollectModal({
           </div>
         }
       >
-        <div className="mb-4 flex items-center justify-between text-sm">
-          <div className="flex items-center gap-4">
-            <div className="text-slate-300">
-              Всего: <span className="font-bold text-slate-100">{progress.total}</span>
-            </div>
-            <div className="text-slate-300">
-              Собрано: <span className="font-bold text-green-400">{progress.collected}</span>
-            </div>
-            {progress.hasShortage && (
-              <div className="text-yellow-400 font-medium">
-                ⚠ Есть недостачи
+        <div className="mb-4 space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-4">
+              <div className="text-slate-300">
+                Всего: <span className="font-bold text-slate-100">{progress.total}</span>
               </div>
-            )}
+              <div className="text-slate-300">
+                Собрано: <span className="font-bold text-green-400">{progress.collected}</span>
+              </div>
+              {progress.hasShortage && (
+                <div className="text-yellow-400 font-medium">
+                  ⚠ Есть недостачи
+                </div>
+              )}
+            </div>
           </div>
+          {/* Фильтр по местам */}
+          {availableLocations.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-slate-400 font-medium">Фильтр по месту:</span>
+              <button
+                onClick={() => setSelectedLocation(null)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  selectedLocation === null
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-slate-100'
+                }`}
+              >
+                Все
+              </button>
+              {availableLocations.map((location) => (
+                <button
+                  key={location}
+                  onClick={() => setSelectedLocation(location)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    selectedLocation === location
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-slate-100'
+                  }`}
+                >
+                  {location}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div
           ref={scrollContainerRef}
