@@ -78,15 +78,12 @@ export function ConfirmModal({
   }, [viewMode]);
 
   // Вычисляем sortedIndices для согласованности
-  // Фильтруем подтвержденные товары и товары в процессе удаления
+  // Фильтруем только товары в процессе удаления, подтвержденные показываем в конце
   const sortedIndices = useMemo(() => {
     if (!currentShipment) return [];
     return currentShipment.lines
       .map((_, index) => index)
-      .filter((index) => {
-        const state = checklistState[index];
-        return !state?.confirmed && !removingItems.has(index);
-      })
+      .filter((index) => !removingItems.has(index))
       .sort((a, b) => {
         const aConfirmed = checklistState[a]?.confirmed || false;
         const bConfirmed = checklistState[b]?.confirmed || false;
@@ -296,9 +293,7 @@ export function ConfirmModal({
         {viewMode === 'compact' ? (
           // Минималистичный компактный список
           <div className="divide-y divide-slate-800">
-            {sortedIndices
-              .filter((index) => !removingItems.has(index))
-              .map((originalIndex) => {
+            {sortedIndices.map((originalIndex) => {
                 const line = currentShipment.lines[originalIndex];
                 const index = originalIndex;
                 const state = checklistState[index] || {
