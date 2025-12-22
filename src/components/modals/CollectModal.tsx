@@ -180,17 +180,14 @@ export function CollectModal({
         const aLocation = (currentShipment.lines[a].location || '').trim();
         const bLocation = (currentShipment.lines[b].location || '').trim();
         
-        // Если у обоих есть места, сортируем по алфавиту
+        // Если у обоих есть места, сортируем по алфавиту (А-Я)
         if (aLocation && bLocation) {
-          const aFirst = aLocation.charAt(0).toUpperCase();
-          const bFirst = bLocation.charAt(0).toUpperCase();
-          if (aFirst !== bFirst) {
-            const locationCompare = aFirst.localeCompare(bFirst, 'ru');
-            if (locationCompare !== 0) return locationCompare;
-          }
-          // Если первые буквы одинаковые, сортируем полностью
-          const fullLocationCompare = aLocation.localeCompare(bLocation, 'ru');
-          if (fullLocationCompare !== 0) return fullLocationCompare;
+          // Используем localeCompare для правильной сортировки русских букв
+          const locationCompare = aLocation.localeCompare(bLocation, 'ru', { 
+            numeric: true, 
+            sensitivity: 'base' 
+          });
+          if (locationCompare !== 0) return locationCompare;
         } else if (aLocation && !bLocation) {
           // Товары с местами идут раньше товаров без мест
           return -1;
