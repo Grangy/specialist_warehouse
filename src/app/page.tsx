@@ -12,6 +12,7 @@ import { DetailsModal } from '@/components/modals/DetailsModal';
 import { NameModal } from '@/components/modals/NameModal';
 import { OrderCompletedModal } from '@/components/modals/OrderCompletedModal';
 import { SendToOfficeModal } from '@/components/modals/SendToOfficeModal';
+import { WarehouseSelectModal } from '@/components/modals/WarehouseSelectModal';
 import { useShipments } from '@/hooks/useShipments';
 import { useCollect } from '@/hooks/useCollect';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -22,6 +23,8 @@ import type { Shipment } from '@/types';
 export default function Home() {
   const router = useRouter();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [userInfo, setUserInfo] = useState<{ id: string; name: string; role: string } | null>(null);
+  const [showWarehouseModal, setShowWarehouseModal] = useState(false);
 
   useEffect(() => {
     // Проверяем авторизацию
@@ -31,6 +34,7 @@ export default function Home() {
         if (!data.user) {
           router.push('/login');
         } else {
+          setUserInfo(data.user);
           setIsCheckingAuth(false);
         }
       })
@@ -52,6 +56,55 @@ export default function Home() {
     refreshShipments,
     userRole,
   } = useShipments();
+
+  // Проверяем, нужно ли показать модальное окно выбора склада
+  useEffect(() => {
+    if (!userInfo || isCheckingAuth) return;
+
+    // Показываем модальное окно только для сборщиков
+    if (userInfo.role !== 'collector') return;
+
+    // Проверяем, выбирал ли пользователь склад сегодня
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const storageKey = `warehouse_selected_${userInfo.id}_${today}`;
+    
+    try {
+      const warehouseSelected = localStorage.getItem(storageKey);
+      if (!warehouseSelected) {
+        // Если склад не выбран сегодня, показываем модальное окно
+        setShowWarehouseModal(true);
+      }
+    } catch (error) {
+      console.error('Ошибка при проверке выбора склада:', error);
+    }
+  }, [userInfo, isCheckingAuth]);
+
+  // Обработчик выбора склада
+  const handleWarehouseSelect = (warehouse: string) => {
+    // Сохраняем выбранный склад в фильтр
+    setFilters({ ...filters, warehouse });
+    
+    // Сохраняем в localStorage для фильтра
+    try {
+      localStorage.setItem('selectedWarehouse', warehouse);
+    } catch (error) {
+      console.error('Ошибка при сохранении склада в localStorage:', error);
+    }
+
+    // Сохраняем информацию о том, что пользователь выбрал склад сегодня
+    if (userInfo) {
+      const today = new Date().toISOString().split('T')[0];
+      const storageKey = `warehouse_selected_${userInfo.id}_${today}`;
+      try {
+        localStorage.setItem(storageKey, 'true');
+      } catch (error) {
+        console.error('Ошибка при сохранении информации о выборе склада:', error);
+      }
+    }
+
+    // Закрываем модальное окно
+    setShowWarehouseModal(false);
+  };
 
   const collectHook = useCollect({ onClose: refreshShipments });
   const confirmHook = useConfirm({ onClose: refreshShipments });
@@ -362,6 +415,11 @@ export default function Home() {
           setCompletedOrderData(null);
         }}
         orderData={completedOrderData}
+      />
+      <WarehouseSelectModal
+        isOpen={showWarehouseModal}
+        onSelect={handleWarehouseSelect}
+        userName={userInfo?.name}
       />
     </div>
   );
