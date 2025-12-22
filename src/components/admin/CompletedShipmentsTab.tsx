@@ -18,7 +18,8 @@ import {
   Filter,
   ArrowUpDown,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  Trash2
 } from 'lucide-react';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
@@ -50,6 +51,7 @@ export default function CompletedShipmentsTab() {
     totalQty: 0,
     totalWeight: 0,
   });
+  const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
 
   useEffect(() => {
     loadShipments();
@@ -177,6 +179,57 @@ export default function CompletedShipmentsTab() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
+
+  const handleDeletePermanent = async (shipmentId: string, shipmentNumber: string) => {
+    // Подтверждение удаления
+    const confirmed = window.confirm(
+      `⚠️ ВНИМАНИЕ! Вы собираетесь полностью удалить заказ ${shipmentNumber} из базы данных.\n\n` +
+      `Это действие необратимо! Заказ и все связанные данные будут удалены без возможности восстановления.\n\n` +
+      `Вы уверены, что хотите продолжить?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    // Двойное подтверждение
+    const doubleConfirmed = window.confirm(
+      `🔴 ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ!\n\n` +
+      `Заказ ${shipmentNumber} будет полностью удален из базы данных.\n` +
+      `Это действие НЕЛЬЗЯ отменить!\n\n` +
+      `Нажмите OK для окончательного подтверждения удаления.`
+    );
+
+    if (!doubleConfirmed) {
+      return;
+    }
+
+    try {
+      setDeletingShipmentId(shipmentId);
+      
+      const response = await fetch(`/api/shipments/${shipmentId}/delete-permanent`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Ошибка при удалении заказа');
+      }
+
+      const data = await response.json();
+      
+      // Показываем сообщение об успехе
+      alert(`✅ Заказ ${shipmentNumber} полностью удален из базы данных`);
+      
+      // Обновляем список заказов
+      await loadShipments();
+    } catch (error: any) {
+      console.error('Ошибка при удалении заказа:', error);
+      alert(`❌ Ошибка при удалении заказа: ${error.message || 'Неизвестная ошибка'}`);
+    } finally {
+      setDeletingShipmentId(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -458,17 +511,35 @@ export default function CompletedShipmentsTab() {
                       )}
                     </td>
                     <td className="px-4 py-4 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedShipmentId(shipment.id);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-lg text-sm font-medium border border-blue-500/50 transition-all hover:scale-105 active:scale-95 hover:shadow-lg hover:shadow-blue-500/20"
-                        title="Просмотр деталей"
-                      >
-                        <Eye className="w-4 h-4" />
-                        <span className="hidden sm:inline">Детали</span>
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedShipmentId(shipment.id);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-lg text-sm font-medium border border-blue-500/50 transition-all hover:scale-105 active:scale-95 hover:shadow-lg hover:shadow-blue-500/20"
+                          title="Просмотр деталей"
+                        >
+                          <Eye className="w-4 h-4" />
+                          <span className="hidden sm:inline">Детали</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePermanent(shipment.id, shipment.shipment_number || shipment.number || 'N/A');
+                          }}
+                          disabled={deletingShipmentId === shipment.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-sm font-medium border border-red-500/50 transition-all hover:scale-105 active:scale-95 hover:shadow-lg hover:shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Полностью удалить заказ из БД"
+                        >
+                          {deletingShipmentId === shipment.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                          <span className="hidden sm:inline">Удалить</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
