@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth, canAccessStatus } from '@/lib/middleware';
 import { cleanupExpiredSessions, verifyPassword, getSessionUser } from '@/lib/auth';
 import { splitShipmentIntoTasks } from '@/lib/shipmentTasks';
+import { detectWarehouseFromLocation } from '@/lib/warehouseDetector';
 
 export const dynamic = 'force-dynamic';
 
@@ -204,6 +205,13 @@ export async function POST(request: NextRequest) {
     // ЯВНО убеждаемся, что все позиции создаются с непроверенным статусом
     // Игнорируем любые значения из входящих данных
     const shipmentLines = lines.map((line: any) => {
+      // Автоматически определяем склад по ячейке (location)
+      // Если склад передан от 1С, используем его, но все равно проверяем location
+      const detectedWarehouse = detectWarehouseFromLocation(
+        line.location,
+        line.warehouse
+      );
+      
       // Явно устанавливаем непроверенный статус, игнорируя входящие данные
       const cleanLine = {
         sku: line.sku || '',
@@ -211,12 +219,17 @@ export async function POST(request: NextRequest) {
         qty: line.qty || 0,
         uom: line.uom || 'шт',
         location: line.location || null,
-        warehouse: line.warehouse || 'Склад 1',
+        warehouse: detectedWarehouse,
         collectedQty: null, // ВСЕГДА null для новых заказов
         checked: false, // ВСЕГДА false для новых заказов
       };
       
-      console.log(`[API CREATE] Создаем позицию: SKU=${cleanLine.sku}, checked=${cleanLine.checked}, collectedQty=${cleanLine.collectedQty}`);
+      console.log(
+        `[API CREATE] Создаем позицию: SKU=${cleanLine.sku}, ` +
+        `location=${cleanLine.location || 'N/A'}, ` +
+        `warehouse=${cleanLine.warehouse} (определен автоматически), ` +
+        `checked=${cleanLine.checked}, collectedQty=${cleanLine.collectedQty}`
+      );
       return cleanLine;
     });
 
