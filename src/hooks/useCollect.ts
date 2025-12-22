@@ -206,6 +206,7 @@ export function useCollect(options?: UseCollectOptions) {
               return {
                 sku: line.sku,
                 collected_qty: qty && qty > 0 ? qty : null,
+                checked: state.collected || false, // Явно передаем checked
               };
             });
             
@@ -259,6 +260,7 @@ export function useCollect(options?: UseCollectOptions) {
             return {
               sku: line.sku,
               collected_qty: qty && qty > 0 ? qty : null,
+              checked: state.collected || false, // Явно передаем checked
             };
           });
           
@@ -281,14 +283,18 @@ export function useCollect(options?: UseCollectOptions) {
     }
   }, [currentShipment]);
 
-  const updateCollectedQty = useCallback(async (lineIndex: number, qty: number) => {
+  const updateCollectedQty = useCallback((lineIndex: number, qty: number) => {
     if (!currentShipment) return;
     
     const line = currentShipment.lines[lineIndex];
     const maxQty = line.qty;
     const newQty = Math.min(Math.max(0, Math.floor(qty)), maxQty);
 
-    // Используем функциональное обновление для получения актуального состояния
+    // ВАЖНО: Обновляем только локальное состояние, НЕ сохраняем в БД автоматически
+    // Сохранение в БД происходит только при явных действиях:
+    // - При отметке товара как собранного (updateCollected)
+    // - При подтверждении редактирования (confirmEditQty)
+    // - При финальном подтверждении обработки (confirmProcessing)
     setChecklistState((prev) => {
       const newState = { ...prev };
       if (!newState[lineIndex]) {
@@ -300,31 +306,11 @@ export function useCollect(options?: UseCollectOptions) {
       }
       newState[lineIndex].collectedQty = newQty;
       
-      // Сохраняем прогресс в БД с актуальным состоянием
-      const linesData = currentShipment.lines.map((l, idx) => {
-        const state = newState[idx] || { collected: false, qty: l.qty, collectedQty: l.qty };
-        // Если товар отмечен как собранный, сохраняем количество
-        // Если не собран, но количество изменено, сохраняем его (для промежуточного прогресса)
-        const qty = state.collected ? (state.collectedQty || l.qty) : (state.collectedQty || null);
-        return {
-          sku: l.sku,
-          collected_qty: qty && qty > 0 ? qty : null,
-        };
-      });
-      
-      console.log(`[useCollect] Сохраняем прогресс для позиции ${lineIndex}:`, {
+      console.log(`[useCollect] Обновлено локальное состояние для позиции ${lineIndex}:`, {
         newQty,
-        linesData: linesData.map(l => ({ sku: l.sku, collected_qty: l.collected_qty }))
+        collected: newState[lineIndex].collected,
+        sku: line.sku
       });
-      
-      // Сохраняем асинхронно, не блокируя обновление UI
-      shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
-        .then((response) => {
-          console.log(`[useCollect] Прогресс сохранен для позиции ${lineIndex}:`, response);
-        })
-        .catch((error) => {
-          console.error('[useCollect] Ошибка при сохранении прогресса:', error);
-        });
       
       return newState;
     });
@@ -341,13 +327,55 @@ export function useCollect(options?: UseCollectOptions) {
     setEditState((prev) => ({ ...prev, [lineIndex]: true }));
   }, []);
 
-  const confirmEditQty = useCallback((lineIndex: number) => {
+  const confirmEditQty = useCallback(async (lineIndex: number) => {
+    if (!currentShipment) return;
+    
+    // Выходим из режима редактирования
     setEditState((prev) => {
       const newState = { ...prev };
       delete newState[lineIndex];
       return newState;
     });
-  }, []);
+    
+    // ВАЖНО: Сохраняем прогресс ТОЛЬКО для измененной позиции
+    // Используем функциональное обновление для получения актуального состояния
+    setChecklistState((prev) => {
+      const newState = { ...prev };
+      const state = newState[lineIndex];
+      const line = currentShipment.lines[lineIndex];
+      
+      if (!state) {
+        console.warn(`[useCollect] confirmEditQty: состояние для позиции ${lineIndex} не найдено`);
+        return prev;
+      }
+      
+      // Сохраняем прогресс только для измененной позиции
+      // Передаем явно checked, чтобы не устанавливать его автоматически
+      const linesData = [{
+        sku: line.sku,
+        collected_qty: state.collectedQty && state.collectedQty > 0 ? state.collectedQty : null,
+        checked: state.collected || false, // Явно передаем checked
+      }];
+      
+      console.log(`[useCollect] Сохраняем прогресс после редактирования позиции ${lineIndex}:`, {
+        sku: line.sku,
+        collected_qty: linesData[0].collected_qty,
+        checked: linesData[0].checked,
+        shipmentId: currentShipment.id
+      });
+      
+      // Сохраняем асинхронно, не блокируя обновление UI
+      shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
+        .then((response) => {
+          console.log(`[useCollect] Прогресс сохранен после редактирования позиции ${lineIndex}:`, response);
+        })
+        .catch((error) => {
+          console.error('[useCollect] Ошибка при сохранении прогресса после редактирования:', error);
+        });
+      
+      return newState;
+    });
+  }, [currentShipment]);
 
   const cancelEditQty = useCallback((lineIndex: number) => {
     if (!currentShipment) return;
@@ -398,6 +426,7 @@ export function useCollect(options?: UseCollectOptions) {
         return {
           sku: line.sku,
           collected_qty: qty && qty > 0 ? qty : null,
+          checked: state.collected || false, // Явно передаем checked
         };
       });
       
