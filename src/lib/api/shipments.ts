@@ -116,7 +116,7 @@ export const shipmentsApi = {
   async saveProgress(
     shipmentId: string,
     data: {
-      lines: Array<{ sku: string; collected_qty: number | null }>;
+      lines: Array<{ sku: string; collected_qty: number | null; checked?: boolean }>;
     }
   ): Promise<{ success: boolean; progress: { collected: number; total: number } }> {
     return apiClient.post<{ success: boolean; progress: { collected: number; total: number } }>(
