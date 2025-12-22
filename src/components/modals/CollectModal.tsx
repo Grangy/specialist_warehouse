@@ -155,7 +155,7 @@ export function CollectModal({
     handleNameClick(line, index);
   };
 
-  // Сортируем индексы: сначала по местам (А-Я), затем по статусу сборки
+  // Сортируем индексы: сначала по статусу сборки (несобранные сверху), затем по местам (А-Я)
   // ВАЖНО: хуки должны быть до условного возврата
   const sortedIndices = useMemo(() => {
     if (!currentShipment) return [];
@@ -168,7 +168,15 @@ export function CollectModal({
         if (aRemoving && !bRemoving) return -1;
         if (!aRemoving && bRemoving) return 1;
         
-        // Сначала сортируем по местам (А-Я)
+        // ПРИОРИТЕТ 1: Сначала сортируем по статусу сборки (несобранные → собранные)
+        const aCollected = checklistState[a]?.collected || false;
+        const bCollected = checklistState[b]?.collected || false;
+        if (aCollected !== bCollected) {
+          // Несобранные всегда выше собранных
+          return aCollected ? 1 : -1;
+        }
+        
+        // ПРИОРИТЕТ 2: Если статус одинаковый, сортируем по местам (А-Я)
         const aLocation = (currentShipment.lines[a].location || '').trim();
         const bLocation = (currentShipment.lines[b].location || '').trim();
         
@@ -189,10 +197,9 @@ export function CollectModal({
         } else if (!aLocation && bLocation) {
           return 1;
         }
-        // Если места одинаковые или оба отсутствуют, сортируем по статусу сборки
-        const aCollected = checklistState[a]?.collected || false;
-        const bCollected = checklistState[b]?.collected || false;
-        return aCollected === bCollected ? 0 : aCollected ? 1 : -1;
+        
+        // Если все одинаково, сохраняем исходный порядок
+        return 0;
       });
   }, [currentShipment, checklistState, removingItems]);
 
