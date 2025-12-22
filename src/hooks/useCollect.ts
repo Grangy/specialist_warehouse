@@ -190,18 +190,23 @@ export function useCollect(options?: UseCollectOptions) {
           if (!newState[lineIndex]) {
             const line = currentShipment?.lines[lineIndex];
             if (line) {
+              // Если состояние еще не создано, создаем с требуемым количеством по умолчанию
               newState[lineIndex] = {
                 collected: true,
                 qty: line.qty,
-                collectedQty: line.qty,
+                collectedQty: line.qty, // По умолчанию полное количество
               };
             }
           } else {
             newState[lineIndex].collected = true;
-            // Если количество не установлено, устанавливаем полное количество
-            if (!newState[lineIndex].collectedQty || newState[lineIndex].collectedQty === 0) {
+            // ВАЖНО: Если collectedQty уже установлен (включая 0!), сохраняем его
+            // 0 - это валидное значение (нулевая позиция), не заменяем его!
+            // Заменяем только если collectedQty не установлен (undefined/null)
+            if (newState[lineIndex].collectedQty === undefined || newState[lineIndex].collectedQty === null) {
+              // Только если количество не установлено, устанавливаем полное количество
               newState[lineIndex].collectedQty = newState[lineIndex].qty;
             }
+            // Если collectedQty = 0, сохраняем 0 (не заменяем!)
           }
           
           // Сохраняем прогресс в БД с актуальным состоянием
