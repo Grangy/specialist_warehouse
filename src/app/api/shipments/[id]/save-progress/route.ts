@@ -59,11 +59,14 @@ export async function POST(
             ? (lineData.collected_qty !== null ? lineData.collected_qty : null)
             : null;
           
-          // ВАЖНО: checked устанавливается в true, если collected_qty > 0
-          // Это означает, что товар собран
-          const checked = collectedQty !== null && collectedQty > 0;
+          // ВАЖНО: checked должен передаваться ЯВНО из фронтенда
+          // НЕ устанавливаем checked автоматически на основе collected_qty
+          // Это предотвращает баг, когда при редактировании одной позиции все остальные помечаются как собранные
+          const checked = lineData.checked !== undefined 
+            ? lineData.checked 
+            : (collectedQty !== null && collectedQty > 0 ? taskLine.checked : false); // Сохраняем текущее значение, если не передано
           
-          console.log(`[save-progress] Обновляем позицию ${taskLine.shipmentLine.sku}: collectedQty=${collectedQty}, checked=${checked}`);
+          console.log(`[save-progress] Обновляем позицию ${taskLine.shipmentLine.sku}: collectedQty=${collectedQty}, checked=${checked} (явно передано: ${lineData.checked !== undefined})`);
           
           await prisma.shipmentTaskLine.update({
             where: { id: taskLine.id },
