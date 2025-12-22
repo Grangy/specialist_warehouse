@@ -181,11 +181,14 @@ export function CollectModal({
         const bLocation = (currentShipment.lines[b].location || '').trim();
         
         // Если у обоих есть места, сортируем по алфавиту (А-Я)
+        // ВАЖНО: sensitivity: 'variant' учитывает различия между Е и Ё
+        // Е идет раньше Ё в русском алфавите
         if (aLocation && bLocation) {
           // Используем localeCompare для правильной сортировки русских букв
+          // sensitivity: 'variant' - учитывает все различия, включая Е и Ё
           const locationCompare = aLocation.localeCompare(bLocation, 'ru', { 
             numeric: true, 
-            sensitivity: 'base' 
+            sensitivity: 'variant' // Изменено с 'base' на 'variant' для учета Е и Ё
           });
           if (locationCompare !== 0) return locationCompare;
         } else if (aLocation && !bLocation) {
