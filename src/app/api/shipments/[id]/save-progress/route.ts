@@ -53,8 +53,9 @@ export async function POST(
       for (const taskLine of task.lines) {
         const lineData = linesBySku.get(taskLine.shipmentLine.sku);
         if (lineData) {
-          // Сохраняем collected_qty только если оно явно передано и не null
-          // Если null, значит позиция не собрана - сохраняем null
+          // ВАЖНО: collected_qty может быть 0 (нулевая позиция) - это валидное значение!
+          // null означает, что количество еще не установлено
+          // 0 означает, что установлено явно 0 предметов
           const collectedQty = lineData.collected_qty !== undefined 
             ? (lineData.collected_qty !== null ? lineData.collected_qty : null)
             : null;
@@ -65,6 +66,11 @@ export async function POST(
           const checked = lineData.checked !== undefined 
             ? lineData.checked 
             : (collectedQty !== null && collectedQty > 0 ? taskLine.checked : false); // Сохраняем текущее значение, если не передано
+          
+          // Аудит: логируем нулевые позиции
+          if (collectedQty === 0) {
+            console.log(`[save-progress] АУДИТ: Сохраняем нулевую позицию ${taskLine.shipmentLine.sku}: collectedQty=0, checked=${checked} (явно передано: ${lineData.checked !== undefined})`);
+          }
           
           console.log(`[save-progress] Обновляем позицию ${taskLine.shipmentLine.sku}: collectedQty=${collectedQty}, checked=${checked} (явно передано: ${lineData.checked !== undefined})`);
           

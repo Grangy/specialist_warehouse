@@ -85,12 +85,15 @@ export function useCollect(options?: UseCollectOptions) {
       const initialState: Record<number, CollectChecklistState> = {};
       if (actualShipment.lines && actualShipment.lines.length > 0) {
         actualShipment.lines.forEach((line, index) => {
-          // Используем сохраненное количество из БД, если есть
-          // ВАЖНО: для отображения в UI используем сохраненное количество ИЛИ требуемое по умолчанию
-          // Но для новых позиций (collected_qty = null) показываем требуемое количество для удобства
+          // ВАЖНО: collected_qty может быть 0 (нулевая позиция) - это валидное значение!
+          // null означает, что количество еще не установлено
+          // 0 означает, что установлено явно 0 предметов
           const hasSavedQty = line.collected_qty !== undefined && line.collected_qty !== null;
+          
+          // Используем сохраненное количество из БД, включая 0
+          // Если collected_qty = null, значит количество еще не установлено - показываем требуемое для удобства
           const savedQty = hasSavedQty 
-            ? line.collected_qty 
+            ? line.collected_qty  // Может быть 0, 1, 2, ... или любое другое число
             : line.qty; // По умолчанию показываем требуемое количество для удобства пользователя
           
           // Используем checked из данных как основной источник истины
@@ -102,6 +105,11 @@ export function useCollect(options?: UseCollectOptions) {
           // 1. checked = true (явно помечена как проверенная)
           // НЕ используем collected_qty для определения collected, так как пользователь может установить количество, но еще не отметить как собранное
           const isCollected = isChecked;
+          
+          // Аудит: логируем нулевые позиции
+          if (hasSavedQty && line.collected_qty === 0) {
+            console.log(`[useCollect] Загружена нулевая позиция ${index} (${line.sku}): collected_qty=0, checked=${isChecked}`);
+          }
           
           // Логируем для отладки (только если что-то не так)
           if (isCollected && line.checked !== true) {
@@ -118,7 +126,7 @@ export function useCollect(options?: UseCollectOptions) {
           initialState[index] = {
             collected: isCollected,
             qty: line.qty,
-            collectedQty: savedQty ?? line.qty, // Показываем сохраненное количество или требуемое по умолчанию
+            collectedQty: savedQty ?? line.qty, // Может быть 0 - это валидное значение! Если undefined, используем требуемое количество
           };
         });
       }
@@ -200,12 +208,25 @@ export function useCollect(options?: UseCollectOptions) {
           if (currentShipment) {
             const linesData = currentShipment.lines.map((line, idx) => {
               const state = newState[idx] || { collected: false, qty: line.qty, collectedQty: line.qty };
-              // Если товар отмечен как собранный, сохраняем количество
+              
+              // ВАЖНО: Если товар отмечен как собранный, сохраняем количество (включая 0!)
               // Если не собран, сохраняем null
-              const qty = state.collected ? (state.collectedQty || line.qty) : null;
+              // НЕ используем || для collectedQty, так как 0 - это валидное значение!
+              let qty: number | null = null;
+              if (state.collected) {
+                // Если собран, сохраняем collectedQty (может быть 0, 1, 2, ...)
+                // Используем ?? вместо ||, чтобы 0 не заменялся на line.qty
+                qty = state.collectedQty ?? line.qty;
+              }
+              
+              // Аудит: логируем нулевые позиции
+              if (state.collected && qty === 0) {
+                console.log(`[useCollect] Сохраняем нулевую позицию ${idx} (${line.sku}): collected_qty=0, checked=true`);
+              }
+              
               return {
                 sku: line.sku,
-                collected_qty: qty && qty > 0 ? qty : null,
+                collected_qty: qty, // Может быть 0, 1, 2, ... или null
                 checked: state.collected || false, // Явно передаем checked
               };
             });
@@ -255,11 +276,27 @@ export function useCollect(options?: UseCollectOptions) {
         if (currentShipment) {
           const linesData = currentShipment.lines.map((line, idx) => {
             const state = newState[idx] || { collected: false, qty: line.qty, collectedQty: line.qty };
-            // Если товар не собран, сохраняем null (или текущее количество, если оно было изменено)
-            const qty = state.collected ? (state.collectedQty || line.qty) : (state.collectedQty && state.collectedQty > 0 ? state.collectedQty : null);
+            
+            // ВАЖНО: Если товар собран, сохраняем collectedQty (включая 0!)
+            // Если не собран, но количество было изменено, сохраняем его (включая 0!)
+            // Если не собран и количество не изменено, сохраняем null
+            let qty: number | null = null;
+            if (state.collected) {
+              // Собран - сохраняем collectedQty (может быть 0)
+              qty = state.collectedQty ?? line.qty;
+            } else if (state.collectedQty !== undefined && state.collectedQty !== line.qty) {
+              // Не собран, но количество изменено - сохраняем измененное количество (может быть 0)
+              qty = state.collectedQty;
+            }
+            
+            // Аудит: логируем нулевые позиции
+            if (qty === 0) {
+              console.log(`[useCollect] Сохраняем нулевую позицию при отмене ${idx} (${line.sku}): collected_qty=0, checked=${state.collected}`);
+            }
+            
             return {
               sku: line.sku,
-              collected_qty: qty && qty > 0 ? qty : null,
+              collected_qty: qty, // Может быть 0, 1, 2, ... или null
               checked: state.collected || false, // Явно передаем checked
             };
           });
@@ -351,11 +388,21 @@ export function useCollect(options?: UseCollectOptions) {
       
       // Сохраняем прогресс только для измененной позиции
       // Передаем явно checked, чтобы не устанавливать его автоматически
+      // ВАЖНО: collectedQty может быть 0 - это валидное значение!
+      const collectedQty = state.collectedQty !== undefined && state.collectedQty !== null 
+        ? state.collectedQty  // Может быть 0, 1, 2, ...
+        : null;
+      
       const linesData = [{
         sku: line.sku,
-        collected_qty: state.collectedQty && state.collectedQty > 0 ? state.collectedQty : null,
+        collected_qty: collectedQty, // Может быть 0, 1, 2, ... или null
         checked: state.collected || false, // Явно передаем checked
       }];
+      
+      // Аудит: логируем нулевые позиции
+      if (collectedQty === 0) {
+        console.log(`[useCollect] Сохраняем нулевую позицию после редактирования ${lineIndex} (${line.sku}): collected_qty=0, checked=${state.collected}`);
+      }
       
       console.log(`[useCollect] Сохраняем прогресс после редактирования позиции ${lineIndex}:`, {
         sku: line.sku,
@@ -420,12 +467,25 @@ export function useCollect(options?: UseCollectOptions) {
       // Сохраняем прогресс с актуальным состоянием
       const progressLinesData = currentShipment.lines.map((line, idx) => {
         const state = finalChecklistState[idx] || { collected: false, qty: line.qty, collectedQty: line.qty };
-        // Если товар отмечен как собранный, сохраняем количество
+        
+        // ВАЖНО: Если товар отмечен как собранный, сохраняем количество (включая 0!)
         // Если не собран, сохраняем null
-        const qty = state.collected ? (state.collectedQty || line.qty) : null;
+        // НЕ используем || для collectedQty, так как 0 - это валидное значение!
+        let qty: number | null = null;
+        if (state.collected) {
+          // Если собран, сохраняем collectedQty (может быть 0)
+          // Используем ?? вместо ||, чтобы 0 не заменялся на line.qty
+          qty = state.collectedQty ?? line.qty;
+        }
+        
+        // Аудит: логируем нулевые позиции
+        if (state.collected && qty === 0) {
+          console.log(`[useCollect] Сохраняем нулевую позицию при финальном подтверждении ${idx} (${line.sku}): collected_qty=0, checked=true`);
+        }
+        
         return {
           sku: line.sku,
-          collected_qty: qty && qty > 0 ? qty : null,
+          collected_qty: qty, // Может быть 0, 1, 2, ... или null
           checked: state.collected || false, // Явно передаем checked
         };
       });
