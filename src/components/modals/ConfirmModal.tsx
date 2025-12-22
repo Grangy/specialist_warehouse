@@ -312,29 +312,22 @@ export function ConfirmModal({
                 return (
                   <div
                     key={index}
-                    className={`px-2 py-1.5 md:py-2 transition-all ${
-                      isConfirmed ? 'bg-green-900/10 border-l-2 border-l-green-500/50' : 'bg-slate-900/30 hover:bg-slate-800/50'
-                    } ${isEditing ? 'bg-blue-900/20 border-l-2 border-l-blue-500/50' : ''}`}
+                    className={`px-1.5 py-0.5 transition-all ${
+                      isConfirmed ? 'bg-green-900/10 border-l border-l-green-500/50' : 'bg-slate-900/30 hover:bg-slate-800/50'
+                    } ${isEditing ? 'bg-blue-900/20 border-l border-l-blue-500/50' : ''}`}
                   >
                     {isEditing ? (
-                      // Режим редактирования в компактном виде
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs md:text-sm text-slate-200 truncate font-medium">
-                            {line.name}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500">
-                            <span>{line.sku}</span>
-                            <span>•</span>
-                            <span>{line.location || '—'}</span>
-                            <span>•</span>
-                            <span>Треб: {line.qty} {line.uom || ''}</span>
+                      // Режим редактирования в компактном виде - все в одну строку
+                      <div className="flex items-center justify-between gap-1.5 py-0.5">
+                        <div className="flex items-center gap-1 flex-1 min-w-0">
+                          <div className="text-[11px] md:text-xs text-slate-200 truncate font-medium">
+                            {line.name} {line.location || '—'}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="flex items-center gap-0.5 flex-shrink-0">
                           <button
                             onClick={() => onUpdateCollectedQty(index, state.collectedQty - 1)}
-                            className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded text-[10px] font-bold disabled:opacity-50"
+                            className="w-4 h-4 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded text-[9px] font-bold disabled:opacity-50"
                             disabled={state.collectedQty <= 0}
                           >
                             −
@@ -348,80 +341,79 @@ export function ConfirmModal({
                               const value = parseInt(e.target.value) || 0;
                               onUpdateCollectedQty(index, Math.max(0, Math.min(value, line.qty)));
                             }}
-                            className="w-10 bg-slate-800 border border-slate-600 text-slate-100 rounded px-1 py-0.5 text-center text-[10px] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-8 bg-slate-800 border border-slate-600 text-slate-100 rounded px-0.5 py-0 text-center text-[9px] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                           <button
                             onClick={() => onUpdateCollectedQty(index, state.collectedQty + 1)}
-                            className="w-5 h-5 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded text-[10px] font-bold disabled:opacity-50"
+                            className="w-4 h-4 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded text-[9px] font-bold disabled:opacity-50"
                             disabled={state.collectedQty >= line.qty}
                           >
                             +
                           </button>
                           <button
                             onClick={() => onConfirmEditQty(index)}
-                            className="px-2 py-1 bg-green-600 hover:bg-green-500 text-white text-[10px] font-semibold rounded"
+                            className="px-1 py-0.5 bg-green-600 hover:bg-green-500 text-white text-[9px] font-semibold rounded"
+                            title="Подтвердить"
                           >
                             ✓
                           </button>
                           <button
                             onClick={() => onCancelEditQty(index)}
-                            className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] rounded"
+                            className="px-1 py-0.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-[9px] rounded"
+                            title="Отмена"
                           >
                             ✕
                           </button>
                         </div>
                       </div>
                     ) : (
-                      // Обычный режим в компактном виде
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                      // Обычный режим в компактном виде - все в одну строку
+                      <div className="flex items-center justify-between gap-1.5 py-0.5">
+                        {/* Статус и информация в одну строку */}
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
                           {/* Статус */}
                           <div className="flex-shrink-0">
                             {isConfirmed ? (
-                              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                             ) : (
-                              <div className="w-3 h-3 bg-slate-600 rounded-full"></div>
+                              <div className="w-2 h-2 bg-slate-600 rounded-full"></div>
                             )}
                           </div>
-                          {/* Название и информация */}
-                          <div className="flex-1 min-w-0">
-                            <div 
-                              className="text-xs md:text-sm text-slate-200 truncate font-medium cursor-pointer hover:text-blue-400 transition-colors"
-                              onClick={() => handleInfoClick(line, index)}
-                              title={line.name}
-                            >
-                              {line.name}
-                            </div>
-                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
-                              <span className="truncate">{line.sku}</span>
-                              <span>•</span>
-                              <span className="truncate">{line.location || '—'}</span>
-                              <span>•</span>
-                              <span>Треб: <span className="text-slate-300 font-semibold">{line.qty}</span> {line.uom || ''}</span>
-                              <span>•</span>
-                              <span className={state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}>
-                                Собр: <span className="font-semibold">{state.collectedQty}</span> {line.uom || ''}
-                              </span>
-                              {isZero && <span className="text-red-400 font-semibold">• Не собрано</span>}
-                              {hasShortage && <span className="text-yellow-500">• Недостаток: {line.qty - state.collectedQty}</span>}
-                            </div>
+                          {/* Все в одну строку: Название Место, Треб/Собр */}
+                          <div 
+                            className="text-[11px] md:text-xs text-slate-200 truncate cursor-pointer hover:text-blue-400 transition-colors flex-1 min-w-0"
+                            onClick={() => handleInfoClick(line, index)}
+                            title={`${line.name} ${line.sku} ${line.location || '—'} Треб: ${line.qty} Собр: ${state.collectedQty}`}
+                          >
+                            <span className="font-medium">{line.name}</span>
+                            {' '}
+                            <span className="text-slate-400">{line.location || '—'}</span>
+                            {', '}
+                            <span className={state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}>
+                              <span className="font-semibold">{line.qty}</span>/
+                              <span className="font-semibold">{state.collectedQty}</span>
+                            </span>
+                            {isZero && <span className="text-red-400 ml-1">⚠</span>}
+                            {hasShortage && !isZero && <span className="text-yellow-500 ml-1">⚠</span>}
                           </div>
                         </div>
-                        {/* Действия */}
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {/* Действия - очень узкие кнопки */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             onClick={() => onStartEditQty(index)}
-                            className="px-2 py-1 bg-blue-600/90 hover:bg-blue-500 text-white text-[10px] font-semibold rounded transition-all"
+                            className="px-1.5 py-0.5 bg-blue-600/90 hover:bg-blue-500 text-white text-[9px] font-semibold rounded transition-all"
+                            title="Редактировать"
                           >
-                            Ред.
+                            Р
                           </button>
                           {!isConfirmed && (
                             <button
                               onClick={() => onConfirmItem(index)}
-                              className="px-2 py-1 bg-green-600/90 hover:bg-green-500 text-white text-[10px] font-semibold rounded transition-all"
+                              className="px-1.5 py-0.5 bg-green-600/90 hover:bg-green-500 text-white text-[9px] font-semibold rounded transition-all"
+                              title="Подтвердить"
                             >
-                              Подтв.
+                              ✓
                             </button>
                           )}
                         </div>
