@@ -31,35 +31,14 @@ export async function POST(
 
     // Проверяем, не начал ли уже другой пользователь сборку
     // Это проверяется через collectorId и startedAt
+    // Теперь можно перехватывать даже если начал другой пользователь (включая админа)
     if (task.collectorId && task.collectorId !== user.id) {
-      // Сборку начал другой пользователь
-      // Только админ может вмешаться
-      console.log(`[LOCK] Задание ${id} уже начато пользователем ${task.collectorId}, текущий пользователь: ${user.id} (${user.name}), роль: ${user.role}`);
+      const collector = await prisma.user.findUnique({
+        where: { id: task.collectorId },
+        select: { name: true, role: true },
+      });
       
-      if (user.role !== 'admin') {
-        const collector = await prisma.user.findUnique({
-          where: { id: task.collectorId },
-          select: { name: true },
-        });
-        
-        console.log(`[LOCK] Отказ в блокировке: пользователь ${user.name} (${user.role}) пытается заблокировать задание, начатое ${collector?.name || task.collectorId}`);
-        
-        return NextResponse.json(
-          { 
-            success: false, 
-            message: `Задание уже начато другим сборщиком${collector ? `: ${collector.name}` : ''}. Только администратор может вмешаться в сборку.` 
-          },
-          { status: 409 }
-        );
-      } else {
-        // Админ может вмешаться - сбрасываем collectorId и startedAt
-        const collector = await prisma.user.findUnique({
-          where: { id: task.collectorId },
-          select: { name: true },
-        });
-        
-        console.log(`[LOCK] Админ ${user.name} (${user.id}) вмешивается в сборку задания ${id}, начатую пользователем ${collector?.name || task.collectorId}`);
-      }
+      console.log(`[LOCK] Задание ${id} уже начато пользователем ${collector?.name || task.collectorId}${collector?.role === 'admin' ? ' (админ)' : ''}, текущий пользователь: ${user.id} (${user.name}). Разрешаем перехват.`);
     }
 
     // Проверяем существующую блокировку
@@ -82,36 +61,18 @@ export async function POST(
         const isActive = timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
         
         if (isActive) {
-          // Блокировка активна (попап открыт) - нельзя перехватить
-          // Только админ может вмешаться в активную сборку другого пользователя
-          if (user.role !== 'admin') {
-            const lockUser = await prisma.user.findUnique({
-              where: { id: existingLock.userId },
-              select: { name: true },
-            });
-            
-            console.log(`[LOCK] Задание ${id} активно заблокировано пользователем ${lockUser?.name || existingLock.userId} (heartbeat: ${timeSinceHeartbeat}ms назад)`);
-            
-            return NextResponse.json(
-              { 
-                success: false, 
-                message: `Задание уже начато другим сборщиком${lockUser ? `: ${lockUser.name}` : ''}. Сборщик находится в процессе сборки. Только администратор может вмешаться в активную сборку.` 
-              },
-              { status: 409 }
-            );
-          } else {
-            // Админ может вмешаться - удаляем старую блокировку и создаем новую
-            const lockUser = await prisma.user.findUnique({
-              where: { id: existingLock.userId },
-              select: { name: true },
-            });
-            
-            console.log(`[LOCK] Админ ${user.name} (${user.id}) вмешивается в активную сборку задания ${id}, заблокированного пользователем ${lockUser?.name || existingLock.userId}`);
-            
-            await prisma.shipmentTaskLock.delete({
-              where: { id: existingLock.id },
-            });
-          }
+          // Блокировка активна (попап открыт) - можно перехватить (включая админа)
+          const lockUser = await prisma.user.findUnique({
+            where: { id: existingLock.userId },
+            select: { name: true, role: true },
+          });
+          
+          console.log(`[LOCK] Блокировка задания ${id} активна (heartbeat: ${timeSinceHeartbeat}ms назад). Пользователь ${user.name} (${user.id}) перехватывает сборку у ${lockUser?.name || existingLock.userId}${lockUser?.role === 'admin' ? ' (админ)' : ''}`);
+          
+          // Удаляем активную блокировку - теперь можно перехватывать даже активные блокировки
+          await prisma.shipmentTaskLock.delete({
+            where: { id: existingLock.id },
+          });
         } else {
           // Блокировка неактивна (попап закрыт или пользователь вышел) - можно перехватить
           const lockUser = await prisma.user.findUnique({
