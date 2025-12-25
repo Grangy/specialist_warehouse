@@ -79,7 +79,7 @@ export function DetailsModal({ isOpen, onClose, shipment }: DetailsModalProps) {
                 {shipment.lines.map((line, index) => (
                   <tr key={index} className="hover:bg-slate-800">
                     <td className="px-3 py-2 text-sm text-slate-100">{line.name}</td>
-                    <td className="px-3 py-2 text-sm text-slate-400">{line.sku}</td>
+                    <td className="px-3 py-2 text-sm text-slate-400">{line.art || line.sku}</td>
                     <td className="px-3 py-2 text-sm text-slate-400">{line.location || '—'}</td>
                     <td className="px-3 py-2 text-center text-sm text-slate-100">
                       {line.qty} {line.uom}
