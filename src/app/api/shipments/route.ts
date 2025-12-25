@@ -215,6 +215,7 @@ export async function POST(request: NextRequest) {
       // Явно устанавливаем непроверенный статус, игнорируя входящие данные
       const cleanLine = {
         sku: line.sku || '',
+        art: line.art || null, // Дополнительный артикул от 1С
         name: line.name || '',
         qty: line.qty || 0,
         uom: line.uom || 'шт',
@@ -401,6 +402,7 @@ export async function POST(request: NextRequest) {
             const cleanLine = {
               id: line.id,
               sku: line.sku,
+              art: line.art || null, // Дополнительный артикул от 1С
               name: line.name,
               qty: line.qty,
               uom: line.uom,
@@ -663,6 +665,7 @@ export async function GET(request: NextRequest) {
         // Собираем позиции задания
         const taskLines = task.lines.map((taskLine) => ({
           sku: taskLine.shipmentLine.sku,
+          art: taskLine.shipmentLine.art || null, // Дополнительный артикул от 1С
           name: taskLine.shipmentLine.name,
           qty: taskLine.qty,
           uom: taskLine.shipmentLine.uom,

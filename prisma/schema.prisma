@@ -69,6 +69,7 @@ model ShipmentLine {
   id           String            @id @default(cuid())
   shipmentId   String            @map("shipment_id")
   sku          String
+  art          String?           // Дополнительный артикул от 1С (для отображения)
   name         String
   qty          Int
   uom          String

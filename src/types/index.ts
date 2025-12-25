@@ -4,6 +4,7 @@ export type ShipmentStatus = 'new' | 'pending_confirmation' | 'processed' | 'con
 
 export interface ShipmentLine {
   sku: string;
+  art?: string; // Дополнительный артикул от 1С (для отображения)
   name: string;
   qty: number;
   uom: string;

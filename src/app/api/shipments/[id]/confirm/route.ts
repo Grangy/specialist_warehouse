@@ -206,6 +206,7 @@ export async function POST(
           const confirmedQty = confirmedQtyByLine[line.id] ?? line.collectedQty ?? line.qty;
           return {
             sku: line.sku,
+            art: line.art || null, // Дополнительный артикул от 1С
             name: line.name,
             // ВАЖНО: qty должен быть равен фактическому собранному количеству для 1С
             // 1С использует поле qty для получения финальной информации
@@ -396,6 +397,7 @@ export async function POST(
         shipment_status: updatedTask!.shipment.status,
         lines: updatedTask!.lines.map((taskLine) => ({
           sku: taskLine.shipmentLine.sku,
+          art: taskLine.shipmentLine.art || null, // Дополнительный артикул от 1С
           name: taskLine.shipmentLine.name,
           qty: taskLine.qty,
           uom: taskLine.shipmentLine.uom,

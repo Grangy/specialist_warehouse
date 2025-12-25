@@ -50,6 +50,7 @@ export function ConfirmModal({
     index: number;
     name: string;
     sku: string;
+    art?: string;
     location: string;
     qty: number;
     collected: number;
@@ -121,6 +122,7 @@ export function ConfirmModal({
       index,
       name: line.name,
       sku: line.sku,
+      art: line.art,
       location: line.location || '—',
       qty: line.qty,
       collected: state.collectedQty,
@@ -384,7 +386,7 @@ export function ConfirmModal({
                           <div 
                             className="text-[11px] md:text-xs text-slate-200 truncate cursor-pointer hover:text-blue-400 transition-colors flex-1 min-w-0"
                             onClick={() => handleInfoClick(line, index)}
-                            title={`${line.name} ${line.sku} ${line.location || '—'} Треб: ${line.qty} Собр: ${state.collectedQty}`}
+                            title={`${line.name} ${line.art || line.sku} ${line.location || '—'} Треб: ${line.qty} Собр: ${state.collectedQty}`}
                           >
                             <span className="font-medium">{line.name}</span>
                             {' '}
@@ -512,7 +514,7 @@ export function ConfirmModal({
                                 className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
                                 onClick={() => handleInfoClick(line, index)}
                               >
-                                {line.sku}
+                                {line.art || line.sku}
                               </div>
                               <div 
                                 className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
@@ -668,7 +670,7 @@ export function ConfirmModal({
                                 className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
                                 onClick={() => handleInfoClick(line, index)}
                               >
-                                {line.sku}
+                                {line.art || line.sku}
                               </div>
                               <div 
                                 className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
@@ -727,9 +729,9 @@ export function ConfirmModal({
                           <div 
                             className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 font-mono"
                             onClick={() => handleInfoClick(line, index)}
-                            title={line.sku}
+                            title={line.art || line.sku}
                           >
-                            {line.sku}
+                            {line.art || line.sku}
                           </div>
                         </td>
                         <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '100px', minWidth: '100px' }}>
@@ -815,7 +817,7 @@ export function ConfirmModal({
         isOpen={true}
         onClose={() => setSelectedLine(null)}
         name={selectedLine.name}
-        sku={selectedLine.sku}
+        sku={selectedLine.art || selectedLine.sku}
         location={selectedLine.location}
         qty={selectedLine.qty}
         collected={checklistState[selectedLine.index]?.collectedQty ?? selectedLine.collected}
