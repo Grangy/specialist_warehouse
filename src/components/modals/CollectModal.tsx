@@ -72,10 +72,10 @@ export function CollectModal({
   } | null>(null);
   
   // Определяем количество видимых колонок для правильного colSpan
-  // Всего колонок: 7 (Статус, Наименование, Артикул, Место, Требуется, Собрано, Действия)
-  // При редактировании скрыты: Артикул, Место, Требуется (3 колонки)
-  // Но colSpan должен быть 7, так как все колонки существуют в DOM
-  const totalColumns = 7;
+  // Всего колонок: 6 (Статус, Наименование, Артикул, Место, Собрано, Действия)
+  // При редактировании скрыты: Артикул, Место (2 колонки)
+  // Но colSpan должен быть 6, так как все колонки существуют в DOM
+  const totalColumns = 6;
 
   const handleConfirm = async () => {
     try {
@@ -414,13 +414,10 @@ export function CollectModal({
                       {line.location && <span className="text-blue-400">{line.location}</span>}
                     </div>
                     
-                    {/* Количества */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-xs text-slate-500">
-                        Треб: <span className="text-slate-200 font-semibold">{line.qty}</span> {line.uom}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        Собр: <span className={`font-semibold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span> {line.uom}
+                    {/* Количество (только факт) */}
+                    <div className="flex items-center justify-center">
+                      <div className={`text-2xl font-bold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>
+                        {state.collectedQty} {line.uom}
                       </div>
                     </div>
                     
@@ -517,10 +514,7 @@ export function CollectModal({
                 <th className={`px-3 py-3 text-left text-xs font-semibold text-slate-200 uppercase border-b border-slate-600 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '100px', minWidth: '100px' }}>
                   Место
                 </th>
-                <th className={`px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600 ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '90px', minWidth: '90px' }}>
-                  Требуется
-                </th>
-                <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600 hidden md:table-cell" style={{ width: '90px', minWidth: '90px' }}>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600 hidden md:table-cell" style={{ width: '120px', minWidth: '120px' }}>
                   Собрано
                 </th>
                 <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600" style={{ width: '180px', minWidth: '180px' }}>
@@ -568,7 +562,7 @@ export function CollectModal({
                           </div>
                           {/* Строка 2: Информация слева, управление количеством и кнопки справа */}
                           <div className="flex items-center justify-between gap-2 flex-wrap">
-                            {/* Левая часть: Артикул, Требуется */}
+                            {/* Левая часть: Артикул */}
                             <div className="flex items-center gap-2 flex-wrap text-[10px]">
                               {line.art && (
                                 <div 
@@ -578,12 +572,6 @@ export function CollectModal({
                                   {line.art}
                                 </div>
                               )}
-                              <div 
-                                className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
-                                onClick={() => handleInfoClick(line, index)}
-                              >
-                                <span className="text-slate-300 font-semibold">{line.qty}</span> {line.uom}
-                              </div>
                             </div>
                             {/* Правая часть: Управление количеством и кнопки в одном месте */}
                             <div className="flex items-center gap-2 flex-shrink-0">
@@ -672,7 +660,7 @@ export function CollectModal({
                           <div className="w-2 h-2 bg-slate-500/60 rounded-full mx-auto transition-all duration-300"></div>
                         )}
                       </td>
-                      <td colSpan={Object.values(editState).some(Boolean) ? 6 : 5} className="px-3 py-3 border-b border-slate-700/50 align-top">
+                      <td colSpan={Object.values(editState).some(Boolean) ? 5 : 4} className="px-3 py-3 border-b border-slate-700/50 align-top">
                         {/* Название товара (может быть в 3 строки) */}
                         <div 
                           className="text-sm md:text-base leading-relaxed cursor-pointer hover:text-blue-400 transition-all duration-200 break-words font-medium text-slate-100"
@@ -694,7 +682,7 @@ export function CollectModal({
                     {/* Вторая строка: 2 столбца - информация слева, кнопки справа */}
                     <tr className={rowClassName}>
                       {/* Мобильная версия */}
-                      <td colSpan={7} className="px-2 py-2 md:hidden">
+                      <td colSpan={6} className="px-2 py-2 md:hidden">
                         <div className="flex items-center justify-between gap-2">
                           {/* Левая часть: информация */}
                           <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
@@ -729,11 +717,8 @@ export function CollectModal({
                             >
                               {line.location || '—'}
                             </div>
-                            <div className="text-[10px] text-slate-500 whitespace-nowrap">
-                              <span className="text-slate-300 font-semibold">{line.qty}</span> {line.uom}
-                            </div>
-                            <div className="text-[10px] text-slate-500 whitespace-nowrap">
-                              <span className="text-slate-300 font-semibold">{state.collectedQty}</span> {line.uom}
+                            <div className="text-xl font-bold whitespace-nowrap">
+                              <span className={`${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span> {line.uom}
                             </div>
                             {isCollected && isZero && (
                               <div className="text-[10px] text-red-400 font-semibold">Не собрано</div>
@@ -765,7 +750,7 @@ export function CollectModal({
                         </div>
                       </td>
                       
-                      {/* Десктоп версия: Артикул, Место, Требуется, Собрано, Действия - всего 5 видимых ячеек для 6 колонок (Статус уже занят) */}
+                      {/* Десктоп версия: Артикул, Место, Собрано, Действия - всего 4 видимых ячейки для 6 колонок (Статус и Наименование уже заняты) */}
                       <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '140px', minWidth: '140px' }}>
                         {line.art && (
                           <div 
@@ -786,20 +771,12 @@ export function CollectModal({
                           {line.location || '—'}
                         </div>
                       </td>
-                      <td className={`px-3 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '90px', minWidth: '90px' }}>
-                        <div className="text-sm text-slate-200 font-bold">
-                          {line.qty}
-                        </div>
-                        {line.uom && (
-                          <div className="text-[10px] text-slate-400 mt-0.5">{line.uom}</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle" style={{ width: '90px', minWidth: '90px' }}>
-                        <div className={`text-sm font-bold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>
+                      <td className="px-3 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle" style={{ width: '120px', minWidth: '120px' }}>
+                        <div className={`text-2xl font-bold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>
                           {state.collectedQty}
                         </div>
                         {line.uom && (
-                          <div className="text-[10px] text-slate-400 mt-0.5">{line.uom}</div>
+                          <div className="text-xs text-slate-400 mt-1">{line.uom}</div>
                         )}
                         {isCollected && isZero && (
                           <div className="text-[10px] text-red-400 font-semibold mt-1">Не собрано</div>
