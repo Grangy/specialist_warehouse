@@ -142,10 +142,12 @@ export function NameModal({
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <div className="text-base md:text-lg text-slate-400 mb-3">Артикул</div>
-            <p className="text-2xl md:text-3xl text-slate-100 font-bold">{sku}</p>
-          </div>
+          {sku && (
+            <div>
+              <div className="text-base md:text-lg text-slate-400 mb-3">Артикул</div>
+              <p className="text-2xl md:text-3xl text-slate-100 font-bold">{sku}</p>
+            </div>
+          )}
           <div>
             <div className="text-base md:text-lg text-slate-400 mb-3">Место</div>
             <p className="text-2xl md:text-3xl text-blue-400 font-bold">{location || '—'}</p>
