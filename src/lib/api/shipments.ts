@@ -38,6 +38,14 @@ export const shipmentsApi = {
   },
 
   /**
+   * Сбросить сборщика для задания (только для админа)
+   * Сохраняет прогресс, но снимает блокировку
+   */
+  async resetCollector(taskId: string): Promise<{ success: boolean; message: string; previousCollector: string | null }> {
+    return apiClient.post<{ success: boolean; message: string; previousCollector: string | null }>(`/shipments/${taskId}/reset-collector`, {});
+  },
+
+  /**
    * Отметить заказ как обработанный (сборка завершена)
    */
   async markPendingConfirmation(

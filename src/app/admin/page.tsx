@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation';
 import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin } from 'lucide-react';
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
+import ActiveShipmentsTab from '@/components/admin/ActiveShipmentsTab';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import RegionPrioritiesTab from '@/components/admin/RegionPrioritiesTab';
 import { useToast } from '@/hooks/useToast';
 
-type Tab = 'users' | 'shipments' | 'analytics' | 'regions';
+type Tab = 'users' | 'active' | 'shipments' | 'analytics' | 'regions';
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('users');
@@ -79,6 +80,17 @@ export default function AdminPage() {
           >
             <Users className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'users' ? 'scale-110' : 'group-hover:scale-110'}`} />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Пользователи</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('active')}
+            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+              activeTab === 'active'
+                ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white shadow-lg shadow-orange-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <Package className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'active' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <span className="font-medium text-sm md:text-base whitespace-nowrap">Активные заказы</span>
           </button>
           <button
             onClick={() => setActiveTab('shipments')}
@@ -189,6 +201,7 @@ export default function AdminPage() {
       <main className="flex-1 overflow-auto bg-slate-950">
         <div className="max-w-7xl mx-auto px-2 md:px-4 lg:px-6 py-3 md:py-4 lg:py-6">
           {activeTab === 'users' && <UsersTab />}
+          {activeTab === 'active' && <ActiveShipmentsTab />}
           {activeTab === 'shipments' && <CompletedShipmentsTab />}
           {activeTab === 'analytics' && <AnalyticsTab />}
           {activeTab === 'regions' && <RegionPrioritiesTab />}
