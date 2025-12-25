@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { shipmentsApi } from '@/lib/api/shipments';
 import type { Shipment, ShipmentLine, CollectChecklistState } from '@/types';
 import { useToast } from './useToast';
@@ -8,6 +8,8 @@ import { useToast } from './useToast';
 interface UseCollectOptions {
   onClose?: () => void | Promise<void>;
 }
+
+const HEARTBEAT_INTERVAL = 5000; // 5 секунд
 
 export function useCollect(options?: UseCollectOptions) {
   const { onClose } = options || {};
@@ -17,6 +19,39 @@ export function useCollect(options?: UseCollectOptions) {
   const [lockedShipmentId, setLockedShipmentId] = useState<string | null>(null);
   const [removingItems, setRemovingItems] = useState<Set<number>>(new Set());
   const { showToast, showError, showSuccess } = useToast();
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Функция для запуска heartbeat
+  const startHeartbeat = useCallback((shipmentId: string) => {
+    // Останавливаем предыдущий интервал, если он есть
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    // Отправляем первый heartbeat сразу
+    shipmentsApi.heartbeat(shipmentId).catch((error) => {
+      console.error('[useCollect] Ошибка при отправке heartbeat:', error);
+    });
+
+    // Устанавливаем интервал для периодической отправки heartbeat
+    heartbeatIntervalRef.current = setInterval(() => {
+      shipmentsApi.heartbeat(shipmentId).catch((error) => {
+        console.error('[useCollect] Ошибка при отправке heartbeat:', error);
+      });
+    }, HEARTBEAT_INTERVAL);
+
+    console.log('[useCollect] Heartbeat запущен для задания:', shipmentId);
+  }, []);
+
+  // Функция для остановки heartbeat
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+      console.log('[useCollect] Heartbeat остановлен');
+    }
+  }, []);
 
   const openModal = useCallback(async (shipment: Shipment) => {
     // Предотвращаем множественные открытия
@@ -138,6 +173,9 @@ export function useCollect(options?: UseCollectOptions) {
       // Устанавливаем currentShipment последним, чтобы isOpen стал true
       setCurrentShipment(actualShipment);
       
+      // Запускаем heartbeat для отслеживания активности
+      startHeartbeat(actualShipment.id);
+      
       console.log('[useCollect] Состояние модального окна установлено:', {
         shipmentId: actualShipment.id,
         linesCount: actualShipment.lines?.length || 0,
@@ -148,9 +186,12 @@ export function useCollect(options?: UseCollectOptions) {
       const errorMessage = error?.message || 'Не удалось заблокировать заказ';
       showError(errorMessage);
     }
-  }, [currentShipment, showError]);
+  }, [currentShipment, showError, startHeartbeat]);
 
   const closeModal = useCallback(async () => {
+    // Останавливаем heartbeat
+    stopHeartbeat();
+    
     // НЕ сохраняем прогресс при закрытии - сохранение происходит только при действии "Сдвиньте" слайдера
     // Это позволяет пользователю закрыть модальное окно без потери несохраненных изменений
     
@@ -175,7 +216,7 @@ export function useCollect(options?: UseCollectOptions) {
         console.error('Ошибка при обновлении данных после закрытия:', error);
       }
     }
-  }, [lockedShipmentId, onClose]);
+  }, [lockedShipmentId, onClose, stopHeartbeat]);
 
   const updateCollected = useCallback(async (lineIndex: number, collected: boolean) => {
     if (collected) {
@@ -584,6 +625,62 @@ export function useCollect(options?: UseCollectOptions) {
       throw error;
     }
   }, [showError, showSuccess]);
+
+  // Обработка закрытия вкладки/приложения
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Если модальное окно открыто, пытаемся разблокировать задание
+      if (lockedShipmentId) {
+        // Останавливаем heartbeat
+        stopHeartbeat();
+        
+        // Пытаемся разблокировать через fetch с keepalive
+        // Это более надежно, чем sendBeacon для POST запросов
+        try {
+          fetch(`/api/shipments/${lockedShipmentId}/unlock`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({}),
+            keepalive: true, // Позволяет запросу завершиться даже после закрытия страницы
+          }).catch((error) => {
+            console.error('[useCollect] Ошибка при разблокировке через fetch:', error);
+          });
+        } catch (error) {
+          console.error('[useCollect] Ошибка при разблокировке:', error);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Вкладка скрыта - останавливаем heartbeat
+        // Блокировка станет неактивной через 30 секунд после последнего heartbeat
+        console.log('[useCollect] Вкладка скрыта, останавливаем heartbeat');
+        stopHeartbeat();
+      } else if (lockedShipmentId && currentShipment) {
+        // Вкладка снова видима - возобновляем heartbeat
+        console.log('[useCollect] Вкладка снова видима, возобновляем heartbeat');
+        startHeartbeat(lockedShipmentId);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [lockedShipmentId, currentShipment, stopHeartbeat, startHeartbeat]);
+
+  // Очистка heartbeat при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      stopHeartbeat();
+    };
+  }, [stopHeartbeat]);
 
   return {
     currentShipment,

@@ -31,6 +31,13 @@ export const shipmentsApi = {
   },
 
   /**
+   * Обновить heartbeat блокировки (показывает, что пользователь активен)
+   */
+  async heartbeat(shipmentId: string): Promise<{ success: boolean }> {
+    return apiClient.post<{ success: boolean }>(`/shipments/${shipmentId}/heartbeat`, {});
+  },
+
+  /**
    * Отметить заказ как обработанный (сборка завершена)
    */
   async markPendingConfirmation(
