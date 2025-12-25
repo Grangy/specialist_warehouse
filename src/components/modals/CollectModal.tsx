@@ -410,7 +410,7 @@ export function CollectModal({
                     
                     {/* Информация */}
                     <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span>{line.art || line.sku}</span>
+                      {line.art && <span>{line.art}</span>}
                       {line.location && <span className="text-blue-400">{line.location}</span>}
                     </div>
                     
@@ -570,12 +570,14 @@ export function CollectModal({
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             {/* Левая часть: Артикул, Требуется */}
                             <div className="flex items-center gap-2 flex-wrap text-[10px]">
-                              <div 
-                                className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
-                                onClick={() => handleInfoClick(line, index)}
-                              >
-                                {line.art || line.sku}
-                              </div>
+                              {line.art && (
+                                <div 
+                                  className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
+                                  onClick={() => handleInfoClick(line, index)}
+                                >
+                                  {line.art}
+                                </div>
+                              )}
                               <div 
                                 className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
                                 onClick={() => handleInfoClick(line, index)}
@@ -713,12 +715,14 @@ export function CollectModal({
                             ) : (
                               <div className="w-3.5 h-3.5 bg-slate-600 rounded-full flex-shrink-0"></div>
                             )}
-                            <div 
-                              className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
-                              onClick={() => handleInfoClick(line, index)}
-                            >
-                              {line.art || line.sku}
-                            </div>
+                            {line.art && (
+                              <div 
+                                className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
+                                onClick={() => handleInfoClick(line, index)}
+                              >
+                                {line.art}
+                              </div>
+                            )}
                             <div 
                               className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
                               onClick={() => handleInfoClick(line, index)}
@@ -763,13 +767,15 @@ export function CollectModal({
                       
                       {/* Десктоп версия: Артикул, Место, Требуется, Собрано, Действия - всего 5 видимых ячеек для 6 колонок (Статус уже занят) */}
                       <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '140px', minWidth: '140px' }}>
-                        <div 
-                          className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 font-mono"
-                          onClick={() => handleInfoClick(line, index)}
-                          title={line.art || line.sku}
-                        >
-                          {line.art || line.sku}
-                        </div>
+                        {line.art && (
+                          <div 
+                            className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 font-mono"
+                            onClick={() => handleInfoClick(line, index)}
+                            title={line.art}
+                          >
+                            {line.art}
+                          </div>
+                        )}
                       </td>
                       <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '100px', minWidth: '100px' }}>
                         <div 
@@ -849,7 +855,7 @@ export function CollectModal({
           isOpen={true}
           onClose={() => setSelectedLine(null)}
           name={selectedLine.name}
-          sku={selectedLine.art || selectedLine.sku}
+          sku={selectedLine.art || ''}
           location={selectedLine.location}
           qty={selectedLine.qty}
           collected={checklistState[selectedLine.index]?.collectedQty ?? selectedLine.collected}
