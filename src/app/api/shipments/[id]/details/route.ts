@@ -105,6 +105,7 @@ export async function GET(
         lines: task.lines.map((taskLine) => ({
           id: taskLine.id,
           sku: taskLine.shipmentLine.sku,
+          art: taskLine.shipmentLine.art || null,
           name: taskLine.shipmentLine.name,
           qty: taskLine.qty,
           collectedQty: taskLine.collectedQty,
@@ -131,6 +132,7 @@ export async function GET(
       lines: shipment.lines.map((line) => ({
         id: line.id,
         sku: line.sku,
+        art: line.art || null,
         name: line.name,
         qty: line.qty,
         collectedQty: line.collectedQty,

@@ -125,6 +125,7 @@ export async function POST(
         collector_name: updatedTask!.collectorName,
         lines: updatedTask!.lines.map((taskLine) => ({
           sku: taskLine.shipmentLine.sku,
+          art: taskLine.shipmentLine.art || null, // Дополнительный артикул от 1С
           name: taskLine.shipmentLine.name,
           qty: taskLine.qty,
           uom: taskLine.shipmentLine.uom,

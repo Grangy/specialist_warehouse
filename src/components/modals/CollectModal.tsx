@@ -64,6 +64,7 @@ export function CollectModal({
     index: number;
     name: string;
     sku: string;
+    art?: string;
     location: string;
     qty: number;
     collected: number;
@@ -91,6 +92,7 @@ export function CollectModal({
       index,
       name: line.name,
       sku: line.sku,
+      art: line.art,
       location: line.location || '—',
       qty: line.qty,
       collected: state.collectedQty,
@@ -408,7 +410,7 @@ export function CollectModal({
                     
                     {/* Информация */}
                     <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span>{line.sku}</span>
+                      <span>{line.art || line.sku}</span>
                       {line.location && <span className="text-blue-400">{line.location}</span>}
                     </div>
                     
@@ -572,7 +574,7 @@ export function CollectModal({
                                 className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
                                 onClick={() => handleInfoClick(line, index)}
                               >
-                                {line.sku}
+                                {line.art || line.sku}
                               </div>
                               <div 
                                 className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
@@ -715,7 +717,7 @@ export function CollectModal({
                               className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
                               onClick={() => handleInfoClick(line, index)}
                             >
-                              {line.sku}
+                              {line.art || line.sku}
                             </div>
                             <div 
                               className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
@@ -764,9 +766,9 @@ export function CollectModal({
                         <div 
                           className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 font-mono"
                           onClick={() => handleInfoClick(line, index)}
-                          title={line.sku}
+                          title={line.art || line.sku}
                         >
-                          {line.sku}
+                          {line.art || line.sku}
                         </div>
                       </td>
                       <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '100px', minWidth: '100px' }}>
@@ -847,7 +849,7 @@ export function CollectModal({
           isOpen={true}
           onClose={() => setSelectedLine(null)}
           name={selectedLine.name}
-          sku={selectedLine.sku}
+          sku={selectedLine.art || selectedLine.sku}
           location={selectedLine.location}
           qty={selectedLine.qty}
           collected={checklistState[selectedLine.index]?.collectedQty ?? selectedLine.collected}
