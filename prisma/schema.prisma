@@ -137,11 +137,12 @@ model ShipmentTaskLine {
 }
 
 model ShipmentTaskLock {
-  id         String        @id @default(cuid())
-  taskId     String        @map("task_id")
-  userId     String        @map("user_id")
-  lockedAt   DateTime      @default(now()) @map("locked_at")
-  task       ShipmentTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id           String        @id @default(cuid())
+  taskId       String        @map("task_id")
+  userId       String        @map("user_id")
+  lockedAt     DateTime      @default(now()) @map("locked_at")
+  lastHeartbeat DateTime     @default(now()) @map("last_heartbeat")
+  task         ShipmentTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@unique([taskId])
   @@map("shipment_task_locks")

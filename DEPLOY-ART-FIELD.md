@@ -120,3 +120,4 @@ ls -la prisma/migrations/
 2. Проверьте статус БД: `npx prisma migrate status`
 3. Проверьте, что все миграции применены: `ls prisma/migrations/`
 
+
