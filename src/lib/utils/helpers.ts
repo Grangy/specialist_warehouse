@@ -64,3 +64,26 @@ export function debounce<T extends (...args: any[]) => any>(
   };
 }
 
+/**
+ * Обрезает артикул, показывая первые и последние символы
+ * Например: "ABCDEFGHIJKLMNOP" -> "ABCDE...NOP"
+ * @param art - Артикул для обрезки
+ * @param maxLength - Максимальная длина (по умолчанию 12)
+ * @param startChars - Количество символов в начале (по умолчанию 5)
+ * @param endChars - Количество символов в конце (по умолчанию 3)
+ */
+export function truncateArt(
+  art: string,
+  maxLength: number = 12,
+  startChars: number = 5,
+  endChars: number = 3
+): string {
+  if (!art || art.length <= maxLength) {
+    return art;
+  }
+  
+  const start = art.substring(0, startChars);
+  const end = art.substring(art.length - endChars);
+  return `${start}...${end}`;
+}
+

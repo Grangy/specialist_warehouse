@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
 import { SwipeConfirmButton } from '@/components/ui/SwipeConfirmButton';
 import { NameModal } from '@/components/modals/NameModal';
-import { escapeHtml } from '@/lib/utils/helpers';
+import { escapeHtml, truncateArt } from '@/lib/utils/helpers';
 import { SWIPE_MIN_WIDTH } from '@/lib/utils/constants';
 import type { Shipment, CollectChecklistState } from '@/types';
 
@@ -409,9 +409,35 @@ export function CollectModal({
                     </div>
                     
                     {/* Информация */}
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      {line.art && <span>{line.art}</span>}
-                      {line.location && <span className="text-blue-400">{line.location}</span>}
+                    <div className="flex items-center gap-2 text-xs text-slate-400 min-w-0">
+                      {line.art && (
+                        <span 
+                          className="truncate flex-shrink-0"
+                          title={line.art}
+                          style={{ 
+                            maxWidth: '60px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {truncateArt(line.art, 8, 3, 2)}
+                        </span>
+                      )}
+                      {line.location && (
+                        <span 
+                          className="text-blue-400 truncate flex-shrink-0"
+                          title={line.location}
+                          style={{ 
+                            maxWidth: '50px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {line.location}
+                        </span>
+                      )}
                     </div>
                     
                     {/* Количество (только факт) */}
@@ -563,18 +589,20 @@ export function CollectModal({
                           {/* Строка 2: Информация слева, управление количеством и кнопки справа */}
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             {/* Левая часть: Артикул и Ячейка */}
-                            <div className="flex items-center gap-3 flex-wrap">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
                               {line.art && (
                                 <div 
-                                  className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors break-all"
+                                  className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors whitespace-nowrap flex-shrink-0"
                                   onClick={() => handleInfoClick(line, index)}
+                                  title={line.art}
                                 >
-                                  {line.art}
+                                  {truncateArt(line.art, 10, 4, 3)}
                                 </div>
                               )}
                               <div 
-                                className="text-sm font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors truncate border-l-2 border-slate-600 pl-2"
+                                className="text-sm font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors truncate border-l-2 border-slate-600 pl-2 flex-shrink-0"
                                 onClick={() => handleInfoClick(line, index)}
+                                title={line.location || '—'}
                               >
                                 {line.location || '—'}
                               </div>
@@ -708,22 +736,26 @@ export function CollectModal({
                             ) : (
                               <div className="w-3.5 h-3.5 bg-slate-600 rounded-full flex-shrink-0"></div>
                             )}
-                            {line.art && (
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {line.art && (
+                                <div 
+                                  className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors whitespace-nowrap flex-shrink-0"
+                                  onClick={() => handleInfoClick(line, index)}
+                                  title={line.art}
+                                >
+                                  {truncateArt(line.art, 10, 4, 3)}
+                                </div>
+                              )}
                               <div 
-                                className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors break-all"
+                                className="text-sm font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors truncate border-l-2 border-slate-600 pl-2 flex-shrink-0"
                                 onClick={() => handleInfoClick(line, index)}
+                                title={line.location || '—'}
                               >
-                                {line.art}
+                                {line.location || '—'}
                               </div>
-                            )}
-                            <div 
-                              className="text-sm font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors truncate border-l-2 border-slate-600 pl-2"
-                              onClick={() => handleInfoClick(line, index)}
-                            >
-                              {line.location || '—'}
-                            </div>
-                            <div className="text-xl font-bold whitespace-nowrap">
-                              <span className={`${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span>
+                              <div className="text-xl font-bold whitespace-nowrap flex-shrink-0 ml-auto">
+                                <span className={`${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span>
+                              </div>
                             </div>
                             {isCollected && isZero && (
                               <div className="text-[10px] text-red-400 font-semibold">Не собрано</div>
@@ -759,11 +791,17 @@ export function CollectModal({
                       <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '140px', minWidth: '140px' }}>
                         {line.art && (
                           <div 
-                            className="text-base font-bold text-blue-400 break-all cursor-pointer hover:text-blue-300 transition-colors duration-200 font-mono"
+                            className="text-base font-bold text-blue-400 truncate cursor-pointer hover:text-blue-300 transition-colors duration-200 font-mono"
                             onClick={() => handleInfoClick(line, index)}
                             title={line.art}
+                            style={{ 
+                              maxWidth: '100%',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}
                           >
-                            {line.art}
+                            {truncateArt(line.art, 15, 6, 4)}
                           </div>
                         )}
                       </td>
@@ -772,6 +810,12 @@ export function CollectModal({
                           className="text-base font-bold text-slate-200 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 border-l-2 border-slate-600 pl-2"
                           onClick={() => handleInfoClick(line, index)}
                           title={line.location || '—'}
+                          style={{ 
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
                         >
                           {line.location || '—'}
                         </div>

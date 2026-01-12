@@ -4,6 +4,7 @@ import { useState, Fragment, useMemo, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
 import { NameModal } from '@/components/modals/NameModal';
+import { truncateArt } from '@/lib/utils/helpers';
 import type { Shipment, ConfirmChecklistState } from '@/types';
 
 interface ConfirmModalProps {
@@ -400,10 +401,19 @@ export function ConfirmModal({
                             >
                               {line.name}
                             </div>
-                            {/* Артикул - полностью */}
+                            {/* Артикул - обрезанный, если длинный */}
                             {line.art && (
-                              <div className="text-[10px] text-slate-400 mt-0.5 break-all">
-                                {line.art}
+                              <div 
+                                className="text-[10px] text-slate-400 mt-0.5 truncate"
+                                title={line.art}
+                                style={{ 
+                                  maxWidth: '100%',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                {truncateArt(line.art, 10, 4, 3)}
                               </div>
                             )}
                             {/* Количество - только собранное количество */}
@@ -684,19 +694,29 @@ export function ConfirmModal({
                               ) : (
                                 <div className="w-3.5 h-3.5 bg-slate-600 rounded-full flex-shrink-0"></div>
                               )}
-                              {line.art && (
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {line.art && (
+                                  <div 
+                                    className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors whitespace-nowrap flex-shrink-0"
+                                    onClick={() => handleInfoClick(line, index)}
+                                    title={line.art}
+                                  >
+                                    {truncateArt(line.art, 8, 3, 2)}
+                                  </div>
+                                )}
                                 <div 
-                                  className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
+                                  className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate flex-shrink-0"
                                   onClick={() => handleInfoClick(line, index)}
+                                  title={line.location || '—'}
+                                  style={{ 
+                                    maxWidth: '50px',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}
                                 >
-                                  {line.art}
+                                  {line.location || '—'}
                                 </div>
-                              )}
-                              <div 
-                                className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
-                                onClick={() => handleInfoClick(line, index)}
-                              >
-                                {line.location || '—'}
                               </div>
                               <div className="text-[10px] text-slate-500 whitespace-nowrap">
                                 <span className="text-slate-300 font-semibold">{line.qty}</span> {line.uom || ''}
@@ -751,8 +771,14 @@ export function ConfirmModal({
                               className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 font-mono"
                               onClick={() => handleInfoClick(line, index)}
                               title={line.art}
+                              style={{ 
+                                maxWidth: '100%',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}
                             >
-                              {line.art}
+                              {truncateArt(line.art, 15, 6, 4)}
                             </div>
                           )}
                         </td>
@@ -761,6 +787,12 @@ export function ConfirmModal({
                             className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200"
                             onClick={() => handleInfoClick(line, index)}
                             title={line.location || '—'}
+                            style={{ 
+                              maxWidth: '100%',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}
                           >
                             {line.location || '—'}
                           </div>
