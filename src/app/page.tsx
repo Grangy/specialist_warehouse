@@ -366,7 +366,7 @@ export default function Home() {
           sendToOfficeModal.close();
           setPendingShipmentForOffice(null);
         }}
-        onConfirm={async (comment: string, places: number) => {
+        onConfirm={async (places: number) => {
           try {
             sendToOfficeModal.close();
             
@@ -375,9 +375,9 @@ export default function Home() {
             // Если есть текущий shipment в confirmHook, используем confirmShipment
             // Иначе используем confirmAll для shipment из pendingShipmentForOffice
             if (confirmHook.currentShipment && confirmHook.isOpen) {
-              result = await confirmHook.confirmShipment(comment, places);
+              result = await confirmHook.confirmShipment(undefined, places);
             } else if (pendingShipmentForOffice) {
-              result = await confirmHook.confirmAll(pendingShipmentForOffice, comment, places);
+              result = await confirmHook.confirmAll(pendingShipmentForOffice, undefined, places);
             } else {
               showError('Ошибка: нет данных о заказе для отправки');
               return;
@@ -406,7 +406,7 @@ export default function Home() {
             await refreshShipments();
           }
         }}
-        shipmentNumber={pendingShipmentForOffice?.number || pendingShipmentForOffice?.shipment_number || 'N/A'}
+        shipment={pendingShipmentForOffice}
       />
       <OrderCompletedModal
         isOpen={orderCompletedModal.isOpen}

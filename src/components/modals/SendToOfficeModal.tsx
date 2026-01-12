@@ -2,29 +2,28 @@
 
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
+import type { Shipment } from '@/types';
 
 interface SendToOfficeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (comment: string, places: number) => void;
-  shipmentNumber: string;
+  onConfirm: (places: number) => void;
+  shipment: Shipment | null;
 }
 
 export function SendToOfficeModal({ 
   isOpen, 
   onClose, 
   onConfirm, 
-  shipmentNumber 
+  shipment 
 }: SendToOfficeModalProps) {
-  const [comment, setComment] = useState('');
-  const [places, setPlaces] = useState<number | ''>(1);
-  const [errors, setErrors] = useState<{ comment?: string; places?: string }>({});
+  const [places, setPlaces] = useState<number>(0);
+  const [errors, setErrors] = useState<{ places?: string }>({});
 
   // Сбрасываем форму при открытии/закрытии
   useEffect(() => {
     if (isOpen) {
-      setComment('');
-      setPlaces(1);
+      setPlaces(0);
       setErrors({});
     }
   }, [isOpen]);
@@ -33,9 +32,9 @@ export function SendToOfficeModal({
     e.preventDefault();
     
     // Валидация
-    const newErrors: { comment?: string; places?: string } = {};
+    const newErrors: { places?: string } = {};
     
-    if (places === '' || places < 1) {
+    if (places < 1) {
       newErrors.places = 'Количество мест должно быть не менее 1';
     }
     
@@ -45,26 +44,31 @@ export function SendToOfficeModal({
     }
 
     // Вызываем callback с данными
-    onConfirm(comment.trim(), Number(places));
+    onConfirm(places);
   };
 
-  const handlePlacesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (value === '') {
-      setPlaces('');
-    } else {
-      const num = parseInt(value, 10);
-      if (!isNaN(num) && num > 0) {
-        setPlaces(num);
+  const handleDecrease = () => {
+    if (places > 0) {
+      setPlaces(places - 1);
+      if (errors.places) {
+        setErrors(prev => ({ ...prev, places: undefined }));
       }
     }
-    // Очищаем ошибку при изменении
+  };
+
+  const handleIncrease = () => {
+    setPlaces(places + 1);
     if (errors.places) {
       setErrors(prev => ({ ...prev, places: undefined }));
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !shipment) return null;
+
+  const shipmentNumber = shipment.number || shipment.shipment_number || 'N/A';
+  const customerName = shipment.customer_name || 'Не указан';
+  const businessRegion = shipment.business_region || 'Не указан';
+  const comment = shipment.comment || 'Нет комментария';
 
   return (
     <Modal
@@ -76,55 +80,59 @@ export function SendToOfficeModal({
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
           <p className="text-blue-300 text-sm">
-            Все задания подтверждены. Перед отправкой заказа в офис укажите дополнительную информацию:
+            Все задания подтверждены. Перед отправкой заказа в офис укажите количество мест:
           </p>
         </div>
 
-        <div className="space-y-4">
+        {/* Информация о заказе */}
+        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-3">
           <div>
-            <label htmlFor="places" className="block text-sm font-medium text-slate-300 mb-2">
-              Количество мест <span className="text-red-400">*</span>
-            </label>
+            <span className="text-sm font-medium text-slate-400">Клиент:</span>
+            <p className="text-slate-200 mt-1">{customerName}</p>
+          </div>
+          <div>
+            <span className="text-sm font-medium text-slate-400">Регион:</span>
+            <p className="text-slate-200 mt-1">{businessRegion}</p>
+          </div>
+          <div>
+            <span className="text-sm font-medium text-slate-400">Комментарий:</span>
+            <p className="text-slate-200 mt-1">{comment}</p>
+          </div>
+        </div>
+
+        {/* Количество мест с кнопками +/- */}
+        <div>
+          <label htmlFor="places" className="block text-sm font-medium text-slate-300 mb-2">
+            Количество мест <span className="text-red-400">*</span>
+          </label>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleDecrease}
+              disabled={places === 0}
+              className="w-12 h-12 flex items-center justify-center bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-100 font-semibold rounded-lg transition-colors border border-slate-600"
+            >
+              −
+            </button>
             <input
               id="places"
               type="number"
-              min="1"
+              min="0"
               value={places}
-              onChange={handlePlacesChange}
-              className={`w-full px-4 py-2 bg-slate-700 border rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.places ? 'border-red-500' : 'border-slate-600'
-              }`}
-              placeholder="Введите количество мест"
-              required
+              readOnly
+              className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 text-center text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            {errors.places && (
-              <p className="mt-1 text-sm text-red-400">{errors.places}</p>
-            )}
+            <button
+              type="button"
+              onClick={handleIncrease}
+              className="w-12 h-12 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold rounded-lg transition-colors border border-slate-600"
+            >
+              +
+            </button>
           </div>
-
-          <div>
-            <label htmlFor="comment" className="block text-sm font-medium text-slate-300 mb-2">
-              Комментарий
-            </label>
-            <textarea
-              id="comment"
-              value={comment}
-              onChange={(e) => {
-                setComment(e.target.value);
-                if (errors.comment) {
-                  setErrors(prev => ({ ...prev, comment: undefined }));
-                }
-              }}
-              rows={4}
-              className={`w-full px-4 py-2 bg-slate-700 border rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none ${
-                errors.comment ? 'border-red-500' : 'border-slate-600'
-              }`}
-              placeholder="Введите комментарий (необязательно)"
-            />
-            {errors.comment && (
-              <p className="mt-1 text-sm text-red-400">{errors.comment}</p>
-            )}
-          </div>
+          {errors.places && (
+            <p className="mt-1 text-sm text-red-400">{errors.places}</p>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-end pt-4 border-t border-slate-700">
@@ -137,7 +145,8 @@ export function SendToOfficeModal({
           </button>
           <button
             type="submit"
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+            disabled={places === 0}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
           >
             Отправить в офис
           </button>

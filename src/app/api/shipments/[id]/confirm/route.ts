@@ -63,6 +63,7 @@ export async function POST(
         checkerId: user.id,
         checkerName: user.name,
         confirmedAt: new Date(),
+        places: places !== undefined ? places : undefined, // Сохраняем количество мест для этого задания
       },
     });
 
@@ -103,13 +104,27 @@ export async function POST(
 
     if (areAllTasksConfirmed(allTasks)) {
       // Все задания подтверждены - отправляем заказ в офис
+      // Суммируем количество мест из всех заданий
+      const allTasksWithPlaces = await prisma.shipmentTask.findMany({
+        where: { shipmentId: task.shipmentId },
+        select: { places: true },
+      });
+      
+      const totalPlaces = allTasksWithPlaces.reduce((sum, t) => {
+        return sum + (t.places || 0);
+      }, 0);
+      
+      // Если места были переданы в текущем запросе, используем их (для обратной совместимости)
+      // Иначе используем сумму мест из всех заданий
+      const finalPlaces = places !== undefined ? places : (totalPlaces > 0 ? totalPlaces : undefined);
+      
       await prisma.shipment.update({
         where: { id: task.shipmentId },
         data: { 
           status: 'processed',
           confirmedAt: new Date(), // Записываем время подтверждения
           comment: comment !== undefined ? comment : undefined, // Обновляем комментарий, если передан
-          places: places !== undefined ? places : undefined, // Сохраняем количество мест, если передано
+          places: finalPlaces, // Сохраняем суммарное количество мест
         },
       });
 
@@ -311,7 +326,7 @@ export async function POST(
           status: finalShipment.status,
           business_region: finalShipment.businessRegion,
           comment: comment || finalShipment.comment || '', // Используем переданный комментарий или из БД
-          places: places !== undefined ? places : null, // Количество мест
+          places: finalShipment.places || null, // Количество мест (сумма из всех заданий)
           created_at: finalShipment.createdAt.toISOString(),
           processed_at: new Date().toISOString(),
           tasks_count: finalShipment.tasks.length,
