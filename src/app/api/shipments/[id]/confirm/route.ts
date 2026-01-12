@@ -114,15 +114,25 @@ export async function POST(
         return sum + (t.places || 0);
       }, 0);
       
-      // Суммируем места из всех заданий с местами из модального окна (если указаны)
-      // Места из модального окна - это дополнительное количество мест для всего заказа
-      const placesFromModal = places !== undefined ? places : 0;
-      const finalPlaces = totalPlacesFromTasks + placesFromModal;
-      
-      console.log(`[API Confirm] 🔢 Суммирование мест для заказа ${task.shipment.number}:`);
-      console.log(`[API Confirm]   - Места из заданий: ${totalPlacesFromTasks} (из ${allTasksWithPlaces.length} заданий)`);
-      console.log(`[API Confirm]   - Места из модального окна: ${placesFromModal}`);
-      console.log(`[API Confirm]   - ИТОГО мест: ${finalPlaces}`);
+      // ВАЖНО: Места из модального окна ЗАМЕНЯЮТ сумму мест из заданий, а не суммируются с ней
+      // Если места указаны в модальном окне, используем их как финальное значение
+      // Иначе используем сумму мест из заданий
+      let finalPlaces: number;
+      if (places !== undefined && places > 0) {
+        // Места из модального окна имеют приоритет
+        finalPlaces = places;
+        console.log(`[API Confirm] 🔢 Места для заказа ${task.shipment.number}:`);
+        console.log(`[API Confirm]   - Места из заданий: ${totalPlacesFromTasks} (из ${allTasksWithPlaces.length} заданий) - ИГНОРИРУЮТСЯ`);
+        console.log(`[API Confirm]   - Места из модального окна: ${places} - ИСПОЛЬЗУЮТСЯ`);
+        console.log(`[API Confirm]   - ИТОГО мест: ${finalPlaces}`);
+      } else {
+        // Используем сумму мест из заданий
+        finalPlaces = totalPlacesFromTasks;
+        console.log(`[API Confirm] 🔢 Места для заказа ${task.shipment.number}:`);
+        console.log(`[API Confirm]   - Места из заданий: ${totalPlacesFromTasks} (из ${allTasksWithPlaces.length} заданий) - ИСПОЛЬЗУЮТСЯ`);
+        console.log(`[API Confirm]   - Места из модального окна: не указаны`);
+        console.log(`[API Confirm]   - ИТОГО мест: ${finalPlaces}`);
+      }
       
       // Логируем детали по каждому заданию
       const allTasksDetails = await prisma.shipmentTask.findMany({
