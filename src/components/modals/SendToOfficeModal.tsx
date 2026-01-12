@@ -19,14 +19,34 @@ export function SendToOfficeModal({
 }: SendToOfficeModalProps) {
   const [places, setPlaces] = useState<number>(0);
   const [errors, setErrors] = useState<{ places?: string }>({});
+  const [initialPlacesFromTasks, setInitialPlacesFromTasks] = useState<number>(0);
 
-  // Сбрасываем форму при открытии/закрытии
+  // Инициализируем places суммой мест из заданий при открытии модального окна
   useEffect(() => {
-    if (isOpen) {
-      setPlaces(0);
+    if (isOpen && shipment) {
+      // Вычисляем сумму мест из всех заданий
+      let totalPlacesFromTasks = 0;
+      if (shipment.tasks && shipment.tasks.length > 0) {
+        totalPlacesFromTasks = shipment.tasks.reduce((sum, task) => {
+          // Проверяем разные возможные форматы task
+          const taskPlaces = (task as any).places !== undefined ? (task as any).places : 
+                           (task as any).task?.places !== undefined ? (task as any).task.places : 0;
+          return sum + (taskPlaces || 0);
+        }, 0);
+      }
+      
+      console.log('[SendToOfficeModal] Инициализация мест:', {
+        shipmentId: shipment.id,
+        tasksCount: shipment.tasks?.length || 0,
+        tasks: shipment.tasks?.map((t: any) => ({ id: t.id?.substring(0, 8), places: t.places || 0 })) || [],
+        totalPlacesFromTasks
+      });
+      
+      setInitialPlacesFromTasks(totalPlacesFromTasks);
+      setPlaces(totalPlacesFromTasks > 0 ? totalPlacesFromTasks : 0);
       setErrors({});
     }
-  }, [isOpen]);
+  }, [isOpen, shipment]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

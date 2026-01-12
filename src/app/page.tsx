@@ -403,14 +403,26 @@ export default function Home() {
           try {
             sendToOfficeModal.close();
             
+            // Вычисляем сумму мест из заданий для сравнения
+            let totalPlacesFromTasks = 0;
+            if (pendingShipmentForOffice?.tasks && pendingShipmentForOffice.tasks.length > 0) {
+              totalPlacesFromTasks = pendingShipmentForOffice.tasks.reduce((sum: number, task: any) => {
+                return sum + (task.places || 0);
+              }, 0);
+            }
+            
+            // Если places равно сумме из заданий, передаем undefined (будет использована сумма из заданий)
+            // Если places отличается, передаем значение (пользователь скорректировал)
+            const placesToSend = (places !== totalPlacesFromTasks) ? places : undefined;
+            
             let result;
             
             // Если есть текущий shipment в confirmHook, используем confirmShipment
             // Иначе используем confirmAll для shipment из pendingShipmentForOffice
             if (confirmHook.currentShipment && confirmHook.isOpen) {
-              result = await confirmHook.confirmShipment(undefined, places);
+              result = await confirmHook.confirmShipment(undefined, placesToSend);
             } else if (pendingShipmentForOffice) {
-              result = await confirmHook.confirmAll(pendingShipmentForOffice, undefined, places);
+              result = await confirmHook.confirmAll(pendingShipmentForOffice, undefined, placesToSend);
             } else {
               showError('Ошибка: нет данных о заказе для отправки');
               return;

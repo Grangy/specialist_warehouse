@@ -711,6 +711,7 @@ export async function GET(request: NextRequest) {
           collector_name: task.collectorName || null,
           collector_id: task.collectorId || null,
           started_at: task.startedAt ? task.startedAt.toISOString() : null,
+          places: task.places || null, // Количество мест для этого задания
           lines: taskLines,
           locked: !!lock,
           lockedBy: lock ? lock.userId : null,
