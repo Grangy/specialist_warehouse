@@ -1,6 +1,6 @@
 // Простой сервис-воркер для PWA
-// ВЕРСИЯ 3 - Полностью отключена обработка POST запросов
-const CACHE_NAME = 'sklad-shipments-v3';
+// ВЕРСИЯ 4 - Поддержка SSE (Server-Sent Events) для реального времени
+const CACHE_NAME = 'sklad-shipments-v4';
 const urlsToCache = [
   '/',
   '/login',
@@ -59,8 +59,22 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
+    // КРИТИЧНО: Пропускаем SSE (Server-Sent Events) запросы БЕЗ обработки
+    // EventSource использует GET запросы с Accept: text/event-stream
+    const acceptHeader = event.request.headers.get('Accept');
+    if (acceptHeader && acceptHeader.includes('text/event-stream')) {
+      console.log('[SW] Пропускаем SSE запрос:', url.pathname);
+      // Пропускаем SSE запросы напрямую в сеть, не обрабатывая через Service Worker
+      // НЕ вызываем event.respondWith - это позволяет браузеру обработать запрос напрямую
+      return;
+    }
+
     // Пропускаем запросы к API (не кэшируем динамические данные)
+    // Включая SSE endpoint /api/shipments/events
     if (url.pathname.startsWith('/api/')) {
+      console.log('[SW] Пропускаем API запрос:', url.pathname);
+      // Для API запросов также пропускаем без обработки
+      // НЕ вызываем event.respondWith - это позволяет браузеру обработать запрос напрямую
       return;
     }
   } catch (e) {
