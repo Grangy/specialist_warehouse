@@ -110,13 +110,30 @@ export async function POST(
         select: { places: true },
       });
       
-      const totalPlaces = allTasksWithPlaces.reduce((sum, t) => {
+      const totalPlacesFromTasks = allTasksWithPlaces.reduce((sum, t) => {
         return sum + (t.places || 0);
       }, 0);
       
-      // Если места были переданы в текущем запросе, используем их (для обратной совместимости)
-      // Иначе используем сумму мест из всех заданий
-      const finalPlaces = places !== undefined ? places : (totalPlaces > 0 ? totalPlaces : undefined);
+      // Суммируем места из всех заданий с местами из модального окна (если указаны)
+      // Места из модального окна - это дополнительное количество мест для всего заказа
+      const placesFromModal = places !== undefined ? places : 0;
+      const finalPlaces = totalPlacesFromTasks + placesFromModal;
+      
+      console.log(`[API Confirm] 🔢 Суммирование мест для заказа ${task.shipment.number}:`);
+      console.log(`[API Confirm]   - Места из заданий: ${totalPlacesFromTasks} (из ${allTasksWithPlaces.length} заданий)`);
+      console.log(`[API Confirm]   - Места из модального окна: ${placesFromModal}`);
+      console.log(`[API Confirm]   - ИТОГО мест: ${finalPlaces}`);
+      
+      // Логируем детали по каждому заданию
+      const allTasksDetails = await prisma.shipmentTask.findMany({
+        where: { shipmentId: task.shipmentId },
+        select: { id: true, warehouse: true, places: true },
+      });
+      console.log(`[API Confirm]   - Детали по заданиям:`, allTasksDetails.map(t => ({
+        id: t.id.substring(0, 8) + '...',
+        warehouse: t.warehouse,
+        places: t.places || 0
+      })));
       
       await prisma.shipment.update({
         where: { id: task.shipmentId },
@@ -124,7 +141,7 @@ export async function POST(
           status: 'processed',
           confirmedAt: new Date(), // Записываем время подтверждения
           comment: comment !== undefined ? comment : undefined, // Обновляем комментарий, если передан
-          places: finalPlaces, // Сохраняем суммарное количество мест
+          places: finalPlaces > 0 ? finalPlaces : undefined, // Сохраняем суммарное количество мест (только если > 0)
         },
       });
 

@@ -233,6 +233,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Формируем finalOrderData для заказа с правильными количествами
+        // ВАЖНО: places должно быть суммой мест из всех заданий + места из модального окна
         const finalOrderData = {
           id: shipment.id, // Добавляем id заказа для идентификации в 1С
           number: shipment.number,
@@ -241,7 +242,7 @@ export async function POST(request: NextRequest) {
           status: shipment.status,
           business_region: shipment.businessRegion,
           comment: shipment.comment || '',
-          places: shipment.places || null,
+          places: shipment.places || null, // Сумма мест из всех заданий + места из модального окна
           created_at: shipment.createdAt.toISOString(),
           confirmed_at: shipment.confirmedAt?.toISOString() || null,
           processed_at: shipment.confirmedAt?.toISOString() || new Date().toISOString(),
@@ -314,6 +315,7 @@ export async function POST(request: NextRequest) {
       console.log(`[Sync-1C] [${requestId}] Заказ ${order.number} (${order.id}):`);
       console.log(`[Sync-1C] [${requestId}]   Клиент: ${order.customer_name}`);
       console.log(`[Sync-1C] [${requestId}]   Позиций: ${order.items_count}, Всего количество: ${order.total_qty}`);
+      console.log(`[Sync-1C] [${requestId}]   Количество мест: ${order.places || 'не указано'}`);
       console.log(`[Sync-1C] [${requestId}]   Позиции заказа:`);
       
       order.lines.forEach((line, index) => {
