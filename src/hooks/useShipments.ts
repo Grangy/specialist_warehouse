@@ -5,6 +5,7 @@ import { shipmentsApi } from '@/lib/api/shipments';
 import { isUrgent } from '@/lib/utils/helpers';
 import type { Shipment, Tab, FilterState } from '@/types';
 import { useToast } from './useToast';
+import { useSSE } from './useSSE';
 
 export function useShipments() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -98,6 +99,35 @@ export function useShipments() {
     }
   }, [isAuthorized]); // Зависим от isAuthorized
 
+  // Подключаемся к SSE для получения обновлений в реальном времени
+  useSSE({
+    onEvent: (eventType, data) => {
+      if (!isAuthorized) return;
+
+      // Обновляем список заказов при получении событий
+      if (
+        eventType === 'shipment:created' ||
+        eventType === 'shipment:updated' ||
+        eventType === 'shipment:status_changed'
+      ) {
+        console.log(`[useShipments] Получено событие ${eventType}, обновляем список заказов`);
+        // Небольшая задержка для гарантии, что данные в БД обновлены
+        setTimeout(() => {
+          loadShipments();
+        }, 500);
+      }
+    },
+    onError: (error) => {
+      console.error('[useShipments] Ошибка SSE:', error);
+    },
+    onOpen: () => {
+      console.log('[useShipments] SSE подключение установлено');
+    },
+    onClose: () => {
+      console.log('[useShipments] SSE подключение закрыто');
+    },
+  });
+
   useEffect(() => {
     // Загружаем заказы только если пользователь авторизован
     if (!isAuthorized) {
@@ -107,14 +137,14 @@ export function useShipments() {
 
     loadShipments();
     
-    // Автообновление каждые 60 секунд (только для авторизованных)
+    // Резервное автообновление каждые 5 минут (на случай проблем с SSE)
     const interval = setInterval(() => {
       if (isAuthorized) {
         // Сбрасываем флаг ошибки перед повторной попыткой
         errorShownRef.current = false;
         loadShipments();
       }
-    }, 60000);
+    }, 300000); // 5 минут вместо 60 секунд
     return () => clearInterval(interval);
   }, [isAuthorized, loadShipments]);
 

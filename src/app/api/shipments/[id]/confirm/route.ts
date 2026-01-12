@@ -145,6 +145,18 @@ export async function POST(
         },
       });
 
+      // Отправляем событие об обновлении заказа через SSE
+      try {
+        const { emitShipmentEvent } = await import('../events/route');
+        emitShipmentEvent('shipment:status_changed', {
+          id: task.shipmentId,
+          status: 'processed',
+          confirmedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error('[API Confirm] Ошибка при отправке SSE события:', error);
+      }
+
       // Обновляем исходные позиции заказа на основе заданий
       const allTaskLines = await prisma.shipmentTaskLine.findMany({
         where: {

@@ -255,8 +255,24 @@ export async function POST(request: NextRequest) {
       },
       include: {
         lines: true,
+        tasks: true,
       },
     });
+
+    // Отправляем событие о создании нового заказа через SSE
+    try {
+      const { emitShipmentEvent } = await import('./events/route');
+      emitShipmentEvent('shipment:created', {
+        id: shipment.id,
+        number: shipment.number,
+        status: shipment.status,
+        customerName: shipment.customerName,
+        createdAt: shipment.createdAt.toISOString(),
+        tasksCount: shipment.tasks.length,
+      });
+    } catch (error) {
+      console.error('[API CREATE] Ошибка при отправке SSE события:', error);
+    }
 
     // Проверяем, что все позиции созданы с правильным статусом
     const checkedCount = shipment.lines.filter(line => line.checked === true).length;

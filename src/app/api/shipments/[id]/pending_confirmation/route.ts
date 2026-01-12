@@ -109,6 +109,19 @@ export async function POST(
       },
     });
 
+    // Отправляем событие об обновлении задания через SSE
+    try {
+      const { emitShipmentEvent } = await import('../events/route');
+      emitShipmentEvent('shipment:updated', {
+        id: updatedTask?.shipment.id,
+        taskId: id,
+        status: 'pending_confirmation',
+        completedAt: now.toISOString(),
+      });
+    } catch (error) {
+      console.error('[API PendingConfirmation] Ошибка при отправке SSE события:', error);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Задание успешно переведено в статус ожидания подтверждения',
