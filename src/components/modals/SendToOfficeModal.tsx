@@ -20,31 +20,70 @@ export function SendToOfficeModal({
   const [places, setPlaces] = useState<number>(0);
   const [errors, setErrors] = useState<{ places?: string }>({});
   const [initialPlacesFromTasks, setInitialPlacesFromTasks] = useState<number>(0);
+  const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
 
   // Инициализируем places суммой мест из заданий при открытии модального окна
+  // ВАЖНО: Загружаем актуальные данные о заказе с tasks и places из API
   useEffect(() => {
     if (isOpen && shipment) {
-      // Вычисляем сумму мест из всех заданий
-      let totalPlacesFromTasks = 0;
-      if (shipment.tasks && shipment.tasks.length > 0) {
-        totalPlacesFromTasks = shipment.tasks.reduce((sum, task) => {
-          // Проверяем разные возможные форматы task
-          const taskPlaces = (task as any).places !== undefined ? (task as any).places : 
-                           (task as any).task?.places !== undefined ? (task as any).task.places : 0;
-          return sum + (taskPlaces || 0);
-        }, 0);
-      }
+      setIsLoadingPlaces(true);
       
-      console.log('[SendToOfficeModal] Инициализация мест:', {
-        shipmentId: shipment.id,
-        tasksCount: shipment.tasks?.length || 0,
-        tasks: shipment.tasks?.map((t: any) => ({ id: t.id?.substring(0, 8), places: t.places || 0 })) || [],
-        totalPlacesFromTasks
-      });
+      // Загружаем актуальные данные о заказе из API для получения places из заданий
+      const loadPlacesFromAPI = async () => {
+        try {
+          // Получаем актуальные данные о заказе через API details
+          const response = await fetch(`/api/shipments/${shipment.id}/details`);
+          if (!response.ok) {
+            throw new Error('Ошибка загрузки данных о заказе');
+          }
+          const details = await response.json();
+          
+          // Вычисляем сумму мест из всех заданий
+          let totalPlacesFromTasks = 0;
+          if (details.tasks && details.tasks.length > 0) {
+            totalPlacesFromTasks = details.tasks.reduce((sum: number, task: any) => {
+              // places может быть в task.places или нужно получить из БД
+              // Но в details API places не возвращается, нужно использовать другой способ
+              return sum + (task.places || 0);
+            }, 0);
+          }
+          
+          // Если в details нет places, вычисляем из shipment.tasks (если есть)
+          if (totalPlacesFromTasks === 0 && shipment.tasks && shipment.tasks.length > 0) {
+            totalPlacesFromTasks = shipment.tasks.reduce((sum: number, task: any) => {
+              const taskPlaces = task.places !== undefined ? task.places : 0;
+              return sum + (taskPlaces || 0);
+            }, 0);
+          }
+          
+          console.log('[SendToOfficeModal] Инициализация мест из API:', {
+            shipmentId: shipment.id,
+            tasksCount: details.tasks?.length || shipment.tasks?.length || 0,
+            tasksFromDetails: details.tasks?.map((t: any) => ({ id: t.id?.substring(0, 8), places: t.places || 0 })) || [],
+            tasksFromShipment: shipment.tasks?.map((t: any) => ({ id: t.id?.substring(0, 8), places: t.places || 0 })) || [],
+            totalPlacesFromTasks
+          });
+          
+          setInitialPlacesFromTasks(totalPlacesFromTasks);
+          setPlaces(totalPlacesFromTasks > 0 ? totalPlacesFromTasks : 0);
+          setErrors({});
+        } catch (error) {
+          console.error('[SendToOfficeModal] Ошибка загрузки данных о заказе:', error);
+          // Fallback: используем данные из shipment
+          let totalPlacesFromTasks = 0;
+          if (shipment.tasks && shipment.tasks.length > 0) {
+            totalPlacesFromTasks = shipment.tasks.reduce((sum: number, task: any) => {
+              return sum + (task.places || 0);
+            }, 0);
+          }
+          setInitialPlacesFromTasks(totalPlacesFromTasks);
+          setPlaces(totalPlacesFromTasks > 0 ? totalPlacesFromTasks : 0);
+        } finally {
+          setIsLoadingPlaces(false);
+        }
+      };
       
-      setInitialPlacesFromTasks(totalPlacesFromTasks);
-      setPlaces(totalPlacesFromTasks > 0 ? totalPlacesFromTasks : 0);
-      setErrors({});
+      loadPlacesFromAPI();
     }
   }, [isOpen, shipment]);
 
@@ -124,32 +163,43 @@ export function SendToOfficeModal({
         <div>
           <label htmlFor="places" className="block text-sm font-medium text-slate-300 mb-2">
             Количество мест <span className="text-red-400">*</span>
+            {initialPlacesFromTasks > 0 && (
+              <span className="ml-2 text-xs text-slate-400">
+                (сумма из заданий: {initialPlacesFromTasks})
+              </span>
+            )}
           </label>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleDecrease}
-              disabled={places === 0}
-              className="w-12 h-12 flex items-center justify-center bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-100 font-semibold rounded-lg transition-colors border border-slate-600"
-            >
-              −
-            </button>
-            <input
-              id="places"
-              type="number"
-              min="0"
-              value={places}
-              readOnly
-              className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 text-center text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              type="button"
-              onClick={handleIncrease}
-              className="w-12 h-12 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold rounded-lg transition-colors border border-slate-600"
-            >
-              +
-            </button>
-          </div>
+          {isLoadingPlaces ? (
+            <div className="flex items-center justify-center py-4">
+              <div className="text-slate-400 text-sm">Загрузка данных о местах...</div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleDecrease}
+                disabled={places === 0}
+                className="w-12 h-12 flex items-center justify-center bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-slate-100 font-semibold rounded-lg transition-colors border border-slate-600"
+              >
+                −
+              </button>
+              <input
+                id="places"
+                type="number"
+                min="0"
+                value={places}
+                readOnly
+                className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 text-center text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={handleIncrease}
+                className="w-12 h-12 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold rounded-lg transition-colors border border-slate-600"
+              >
+                +
+              </button>
+            </div>
+          )}
           {errors.places && (
             <p className="mt-1 text-sm text-red-400">{errors.places}</p>
           )}

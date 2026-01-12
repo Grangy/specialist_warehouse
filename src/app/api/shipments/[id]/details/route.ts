@@ -15,8 +15,9 @@ export async function GET(
     }
     const { user } = authResult;
 
-    // Только админ может просматривать детали
-    if (user.role !== 'admin') {
+    // Разрешаем доступ для админа, сборщика и проверяльщика
+    // Проверяльщик и сборщик могут просматривать детали своих заданий
+    if (user.role !== 'admin' && user.role !== 'checker' && user.role !== 'collector') {
       return NextResponse.json(
         { error: 'Недостаточно прав доступа' },
         { status: 403 }
@@ -102,6 +103,7 @@ export async function GET(
         totalItems: task.totalItems || task.lines.length,
         totalUnits: task.totalUnits || task.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
         timePer100Items: task.timePer100Items,
+        places: task.places || null, // Количество мест для этого задания
         lines: task.lines.map((taskLine) => ({
           id: taskLine.id,
           sku: taskLine.shipmentLine.sku,
