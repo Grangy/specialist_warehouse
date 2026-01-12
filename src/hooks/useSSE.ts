@@ -29,6 +29,11 @@ export function useSSE(options: SSEOptions = {}) {
   const isConnectingRef = useRef(false);
 
   const connect = useCallback(() => {
+    // EventSource доступен только в браузере
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      return;
+    }
+
     // Предотвращаем множественные подключения
     if (isConnectingRef.current || eventSourceRef.current?.readyState === EventSource.OPEN) {
       return;
@@ -138,6 +143,6 @@ export function useSSE(options: SSEOptions = {}) {
   return {
     connect,
     disconnect,
-    isConnected: eventSourceRef.current?.readyState === EventSource.OPEN,
+    isConnected: typeof window !== 'undefined' && typeof EventSource !== 'undefined' && eventSourceRef.current?.readyState === EventSource.OPEN,
   };
 }

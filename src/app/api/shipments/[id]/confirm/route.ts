@@ -147,7 +147,7 @@ export async function POST(
 
       // Отправляем событие об обновлении заказа через SSE
       try {
-        const { emitShipmentEvent } = await import('../events/route');
+        const { emitShipmentEvent } = await import('@/lib/sseEvents');
         emitShipmentEvent('shipment:status_changed', {
           id: task.shipmentId,
           status: 'processed',

@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/middleware';
+import { addShipmentEventListener, removeShipmentEventListener } from '@/lib/sseEvents';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,11 +16,13 @@ export const runtime = 'nodejs';
  * - shipment:status_changed - статус заказа изменился
  */
 export async function GET(request: NextRequest) {
-  // Проверяем авторизацию
-  const authResult = await authenticateRequest(request);
-  if (authResult instanceof Response) {
-    return authResult;
+  // Проверяем авторизацию (SSE запросы не имеют body, используем пустой объект)
+  const authResult = await authenticateRequest(request, {});
+  if (authResult instanceof NextResponse) {
+    return authResult as Response;
   }
+  
+  // Если авторизация успешна, продолжаем создание SSE потока
 
   // Создаем поток SSE
   const stream = new ReadableStream({
@@ -36,7 +38,7 @@ export async function GET(request: NextRequest) {
       sendEvent('connected', { message: 'Connected to shipments events stream' });
 
       // Функция для отправки события обновления
-      const broadcastUpdate = async (eventType: string, shipmentData: any) => {
+      const broadcastUpdate = (eventType: string, shipmentData: any) => {
         try {
           sendEvent(eventType, shipmentData);
         } catch (error) {
@@ -44,14 +46,8 @@ export async function GET(request: NextRequest) {
         }
       };
 
-      // Сохраняем функцию для использования в других местах
-      // В production можно использовать Redis pub/sub или другую систему сообщений
-      if (typeof global !== 'undefined') {
-        if (!global.shipmentEventListeners) {
-          global.shipmentEventListeners = new Set();
-        }
-        global.shipmentEventListeners.add(broadcastUpdate);
-      }
+      // Добавляем слушателя
+      addShipmentEventListener(broadcastUpdate);
 
       // Отправляем heartbeat каждые 30 секунд для поддержания соединения
       const heartbeatInterval = setInterval(() => {
@@ -66,9 +62,7 @@ export async function GET(request: NextRequest) {
       // Очистка при закрытии соединения
       request.signal.addEventListener('abort', () => {
         clearInterval(heartbeatInterval);
-        if (typeof global !== 'undefined' && global.shipmentEventListeners) {
-          global.shipmentEventListeners.delete(broadcastUpdate);
-        }
+        removeShipmentEventListener(broadcastUpdate);
         controller.close();
       });
     },
@@ -82,22 +76,4 @@ export async function GET(request: NextRequest) {
       'X-Accel-Buffering': 'no', // Отключаем буферизацию в nginx
     },
   });
-}
-
-// Глобальная функция для отправки событий из других API routes
-export function emitShipmentEvent(eventType: string, shipmentData: any) {
-  if (typeof global !== 'undefined' && global.shipmentEventListeners) {
-    global.shipmentEventListeners.forEach((listener: Function) => {
-      try {
-        listener(eventType, shipmentData);
-      } catch (error) {
-        console.error('[SSE] Ошибка при отправке события через listener:', error);
-      }
-    });
-  }
-}
-
-// Расширяем глобальный тип для TypeScript
-declare global {
-  var shipmentEventListeners: Set<Function> | undefined;
 }

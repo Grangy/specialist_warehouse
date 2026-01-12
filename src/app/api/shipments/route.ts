@@ -261,7 +261,7 @@ export async function POST(request: NextRequest) {
 
     // Отправляем событие о создании нового заказа через SSE
     try {
-      const { emitShipmentEvent } = await import('./events/route');
+      const { emitShipmentEvent } = await import('@/lib/sseEvents');
       emitShipmentEvent('shipment:created', {
         id: shipment.id,
         number: shipment.number,
