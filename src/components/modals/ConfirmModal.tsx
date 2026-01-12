@@ -370,34 +370,50 @@ export function ConfirmModal({
                         </div>
                       </div>
                     ) : (
-                      // Обычный режим в компактном виде - все в одну строку
-                      <div className="flex items-center justify-between gap-1.5 py-0.5">
-                        {/* Статус и информация в одну строку */}
-                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      // Обычный режим в компактном виде - название в несколько строчек, артикул полностью
+                      <div className="flex items-start justify-between gap-1.5 py-1">
+                        {/* Статус и информация */}
+                        <div className="flex items-start gap-1.5 flex-1 min-w-0">
                           {/* Статус */}
-                          <div className="flex-shrink-0">
+                          <div className="flex-shrink-0 mt-0.5">
                             {isConfirmed ? (
                               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                             ) : (
                               <div className="w-2 h-2 bg-slate-600 rounded-full"></div>
                             )}
                           </div>
-                          {/* Все в одну строку: Название Место, Треб/Собр */}
+                          {/* Информация: название в несколько строчек, артикул, количество */}
                           <div 
-                            className="text-[11px] md:text-xs text-slate-200 truncate cursor-pointer hover:text-blue-400 transition-colors flex-1 min-w-0"
+                            className="flex-1 min-w-0 cursor-pointer hover:text-blue-400 transition-colors"
                             onClick={() => handleInfoClick(line, index)}
-                            title={`${line.name}${line.art ? ` ${line.art}` : ''} ${line.location || '—'} Треб: ${line.qty} Собр: ${state.collectedQty}`}
                           >
-                            <span className="font-medium">{line.name}</span>
-                            {' '}
-                            <span className="text-slate-400">{line.location || '—'}</span>
-                            {', '}
-                            <span className={state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}>
-                              <span className="font-semibold">{line.qty}</span>/
-                              <span className="font-semibold">{state.collectedQty}</span>
-                            </span>
-                            {isZero && <span className="text-red-400 ml-1">⚠</span>}
-                            {hasShortage && !isZero && <span className="text-yellow-500 ml-1">⚠</span>}
+                            {/* Название - в несколько строчек */}
+                            <div 
+                              className="text-[11px] md:text-xs text-slate-200 font-medium leading-tight break-words"
+                              style={{
+                                display: '-webkit-box',
+                                WebkitLineClamp: 3,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                wordBreak: 'break-word',
+                              }}
+                            >
+                              {line.name}
+                            </div>
+                            {/* Артикул - полностью */}
+                            {line.art && (
+                              <div className="text-[10px] text-slate-400 mt-0.5 break-all">
+                                {line.art}
+                              </div>
+                            )}
+                            {/* Количество - только собранное количество */}
+                            <div className="mt-0.5">
+                              <span className={`text-[11px] font-semibold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                {state.collectedQty} {line.uom || 'шт'}
+                              </span>
+                              {isZero && <span className="text-red-400 ml-1 text-[10px]">⚠</span>}
+                              {hasShortage && !isZero && <span className="text-yellow-500 ml-1 text-[10px]">⚠</span>}
+                            </div>
                           </div>
                         </div>
                         {/* Действия - очень узкие кнопки */}

@@ -122,6 +122,14 @@ export async function POST(
       console.error('[API PendingConfirmation] Ошибка при отправке SSE события:', error);
     }
 
+    // Получаем информацию о количестве заданий для прогресса
+    const allTasks = await prisma.shipmentTask.findMany({
+      where: { shipmentId: updatedTask!.shipmentId },
+      select: { status: true },
+    });
+    const totalTasks = allTasks.length;
+    const completedTasks = allTasks.filter(t => t.status === 'processed').length;
+
     return NextResponse.json({
       success: true,
       message: 'Задание успешно переведено в статус ожидания подтверждения',
@@ -147,6 +155,10 @@ export async function POST(
           collected_qty: taskLine.collectedQty,
           checked: taskLine.checked,
         })),
+      },
+      tasks_progress: {
+        confirmed: completedTasks,
+        total: totalTasks,
       },
     });
   } catch (error) {

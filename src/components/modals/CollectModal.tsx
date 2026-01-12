@@ -417,7 +417,7 @@ export function CollectModal({
                     {/* Количество (только факт) */}
                     <div className="flex items-center justify-center">
                       <div className={`text-2xl font-bold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>
-                        {state.collectedQty} {line.uom}
+                        {state.collectedQty}
                       </div>
                     </div>
                     
@@ -562,16 +562,22 @@ export function CollectModal({
                           </div>
                           {/* Строка 2: Информация слева, управление количеством и кнопки справа */}
                           <div className="flex items-center justify-between gap-2 flex-wrap">
-                            {/* Левая часть: Артикул */}
-                            <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                            {/* Левая часть: Артикул и Ячейка */}
+                            <div className="flex items-center gap-3 flex-wrap">
                               {line.art && (
                                 <div 
-                                  className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
+                                  className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors break-all"
                                   onClick={() => handleInfoClick(line, index)}
                                 >
                                   {line.art}
                                 </div>
                               )}
+                              <div 
+                                className="text-sm font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors truncate border-l-2 border-slate-600 pl-2"
+                                onClick={() => handleInfoClick(line, index)}
+                              >
+                                {line.location || '—'}
+                              </div>
                             </div>
                             {/* Правая часть: Управление количеством и кнопки в одном месте */}
                             <div className="flex items-center gap-2 flex-shrink-0">
@@ -607,7 +613,6 @@ export function CollectModal({
                                 >
                                   +
                                 </button>
-                                <span className="text-slate-500 text-[10px]">{line.uom}</span>
                               </div>
                               {/* Кнопки подтверждения/отмены */}
                               <div className="flex gap-2">
@@ -705,20 +710,20 @@ export function CollectModal({
                             )}
                             {line.art && (
                               <div 
-                                className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
+                                className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors break-all"
                                 onClick={() => handleInfoClick(line, index)}
                               >
                                 {line.art}
                               </div>
                             )}
                             <div 
-                              className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors truncate"
+                              className="text-sm font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors truncate border-l-2 border-slate-600 pl-2"
                               onClick={() => handleInfoClick(line, index)}
                             >
                               {line.location || '—'}
                             </div>
                             <div className="text-xl font-bold whitespace-nowrap">
-                              <span className={`${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span> {line.uom}
+                              <span className={`${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span>
                             </div>
                             {isCollected && isZero && (
                               <div className="text-[10px] text-red-400 font-semibold">Не собрано</div>
@@ -754,7 +759,7 @@ export function CollectModal({
                       <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '140px', minWidth: '140px' }}>
                         {line.art && (
                           <div 
-                            className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 font-mono"
+                            className="text-base font-bold text-blue-400 break-all cursor-pointer hover:text-blue-300 transition-colors duration-200 font-mono"
                             onClick={() => handleInfoClick(line, index)}
                             title={line.art}
                           >
@@ -764,7 +769,7 @@ export function CollectModal({
                       </td>
                       <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '100px', minWidth: '100px' }}>
                         <div 
-                          className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200"
+                          className="text-base font-bold text-slate-200 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 border-l-2 border-slate-600 pl-2"
                           onClick={() => handleInfoClick(line, index)}
                           title={line.location || '—'}
                         >
@@ -775,9 +780,6 @@ export function CollectModal({
                         <div className={`text-2xl font-bold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>
                           {state.collectedQty}
                         </div>
-                        {line.uom && (
-                          <div className="text-xs text-slate-400 mt-1">{line.uom}</div>
-                        )}
                         {isCollected && isZero && (
                           <div className="text-[10px] text-red-400 font-semibold mt-1">Не собрано</div>
                         )}

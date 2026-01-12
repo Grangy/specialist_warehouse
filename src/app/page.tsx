@@ -13,6 +13,7 @@ import { NameModal } from '@/components/modals/NameModal';
 import { OrderCompletedModal } from '@/components/modals/OrderCompletedModal';
 import { SendToOfficeModal } from '@/components/modals/SendToOfficeModal';
 import { WarehouseSelectModal } from '@/components/modals/WarehouseSelectModal';
+import { CollectionCompletedModal } from '@/components/modals/CollectionCompletedModal';
 import { useShipments } from '@/hooks/useShipments';
 import { useCollect } from '@/hooks/useCollect';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -120,6 +121,12 @@ export default function Home() {
     finalData: any;
   } | null>(null);
   const [pendingShipmentForOffice, setPendingShipmentForOffice] = useState<Shipment | null>(null);
+  const collectionCompletedModal = useModal();
+  const [completedCollectionData, setCompletedCollectionData] = useState<{
+    shipment: Shipment;
+    taskNumber?: number;
+    totalTasks?: number;
+  } | null>(null);
 
   // Автоматическое открытие модального окна при появлении данных
   useEffect(() => {
@@ -130,6 +137,16 @@ export default function Home() {
       return () => clearTimeout(timer);
     }
   }, [completedOrderData, orderCompletedModal]);
+
+  // Автоматическое открытие модального окна завершенной сборки
+  useEffect(() => {
+    if (completedCollectionData && !collectionCompletedModal.isOpen) {
+      const timer = setTimeout(() => {
+        collectionCompletedModal.open();
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [completedCollectionData, collectionCompletedModal]);
   const [nameModalData, setNameModalData] = useState({
     name: '',
     sku: '',
@@ -167,6 +184,22 @@ export default function Home() {
       console.log('handleConfirmProcessing вызван');
       const response = await collectHook.confirmProcessing();
       console.log('Подтверждение обработки завершено, обновляем список заказов');
+      
+      // Получаем данные о заказе для модального окна
+      const shipment = collectHook.currentShipment;
+      if (shipment && response) {
+        // Получаем информацию о количестве заданий из ответа API
+        const tasksProgress = (response as any)?.tasks_progress;
+        const totalTasks = tasksProgress?.total || (shipment.tasks?.length || 1);
+        const completedTasks = tasksProgress?.confirmed || 0;
+        
+        setCompletedCollectionData({
+          shipment: shipment,
+          taskNumber: completedTasks,
+          totalTasks: totalTasks,
+        });
+      }
+      
       // Обновляем список заказов после подтверждения
       await refreshShipments();
       console.log('Список заказов обновлен');
@@ -420,6 +453,16 @@ export default function Home() {
         isOpen={showWarehouseModal}
         onSelect={handleWarehouseSelect}
         userName={userInfo?.name}
+      />
+      <CollectionCompletedModal
+        isOpen={collectionCompletedModal.isOpen}
+        onClose={() => {
+          collectionCompletedModal.close();
+          setCompletedCollectionData(null);
+        }}
+        shipment={completedCollectionData?.shipment || null}
+        taskNumber={completedCollectionData?.taskNumber}
+        totalTasks={completedCollectionData?.totalTasks}
       />
     </div>
   );

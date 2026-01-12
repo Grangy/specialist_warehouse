@@ -563,7 +563,13 @@ export function useCollect(options?: UseCollectOptions) {
       // Закрываем модальное окно перед возвратом
       await closeModal();
       
-      return response;
+      // Возвращаем данные для модального окна завершенной сборки
+      // response может содержать tasks_progress из API
+      return {
+        ...response,
+        shipment: currentShipment, // Сохраняем данные о заказе
+        tasks_progress: (response as any)?.tasks_progress || currentShipment.tasks_progress,
+      };
     } catch (error) {
       console.error('[useCollect] Ошибка подтверждения обработки:', error);
       showError('Не удалось подтвердить обработку заказа');
