@@ -208,6 +208,8 @@ async function calculateTaskStatsForCollector(
     userId: task.collectorId,
     shipmentId: task.shipmentId,
     warehouse: task.warehouse,
+    positions, // Добавляем positions в возвращаемый объект
+    units,     // Добавляем units в возвращаемый объект
     ...stats,
     normA: norm.normA,
     normB: norm.normB,
@@ -347,11 +349,16 @@ async function main() {
           if (!stats || !stats.pickTimeSec || stats.pickTimeSec <= 0) continue;
 
           // Проверяем, что обязательные поля определены и валидны
-          const taskPositions = Number(stats.positions) || 0;
-          const taskUnits = Number(stats.units) || 0;
+          // stats теперь должен содержать positions и units
+          const taskPositions = stats.positions !== undefined && stats.positions !== null 
+            ? Number(stats.positions) 
+            : 0;
+          const taskUnits = stats.units !== undefined && stats.units !== null
+            ? Number(stats.units)
+            : 0;
 
-          if (isNaN(taskPositions) || taskPositions === 0 || !stats.positions) {
-            console.error(`      ⚠️  Пропущено задание ${task.id}: positions = ${stats.positions} (NaN, 0 или undefined), task.lines.length=${task.lines?.length || 0}, task.totalItems=${task.totalItems}`);
+          if (isNaN(taskPositions) || taskPositions === 0) {
+            console.error(`      ⚠️  Пропущено задание ${task.id}: positions = ${stats.positions} (NaN или 0), task.lines.length=${task.lines?.length || 0}, task.totalItems=${task.totalItems}, stats.positions=${stats.positions}, stats.units=${stats.units}`);
             continue;
           }
 
