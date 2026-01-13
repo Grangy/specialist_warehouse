@@ -162,7 +162,13 @@ model Session {
 model RegionPriority {
   id        String   @id @default(cuid())
   region    String   @unique // Название региона (например, "Москва")
-  priority  Int      @default(0) // Приоритет: чем меньше число, тем выше приоритет
+  priority  Int      @default(0) // Приоритет: чем меньше число, тем выше приоритет (для обратной совместимости)
+  // Приоритеты по дням недели (0=понедельник, 4=пятница)
+  priorityMonday    Int?  @default(0) @map("priority_monday")
+  priorityTuesday   Int?  @default(0) @map("priority_tuesday")
+  priorityWednesday Int?  @default(0) @map("priority_wednesday")
+  priorityThursday  Int?  @default(0) @map("priority_thursday")
+  priorityFriday     Int?  @default(0) @map("priority_friday")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

@@ -494,9 +494,35 @@ export async function GET(request: NextRequest) {
     if (status === 'processed') {
       // Получаем приоритеты регионов для сортировки
       const regionPriorities = await prisma.regionPriority.findMany();
-      const priorityMap = new Map(
-        regionPriorities.map((p) => [p.region, p.priority])
-      );
+      
+      // Определяем текущий день недели (0 = понедельник, 4 = пятница)
+      const today = new Date();
+      const dayOfWeek = (today.getDay() + 6) % 7; // Преобразуем воскресенье (0) в 6, понедельник (1) в 0
+      const currentDay = Math.min(dayOfWeek, 4); // Ограничиваем пн-пт (0-4)
+      
+      // Создаем карту приоритетов с учетом текущего дня недели
+      const priorityMap = new Map<string, number>();
+      regionPriorities.forEach((p) => {
+        let dayPriority: number | null = null;
+        switch (currentDay) {
+          case 0: // Понедельник
+            dayPriority = p.priorityMonday ?? p.priority ?? null;
+            break;
+          case 1: // Вторник
+            dayPriority = p.priorityTuesday ?? p.priority ?? null;
+            break;
+          case 2: // Среда
+            dayPriority = p.priorityWednesday ?? p.priority ?? null;
+            break;
+          case 3: // Четверг
+            dayPriority = p.priorityThursday ?? p.priority ?? null;
+            break;
+          case 4: // Пятница
+            dayPriority = p.priorityFriday ?? p.priority ?? null;
+            break;
+        }
+        priorityMap.set(p.region, dayPriority ?? 9999);
+      });
 
       const processedShipments = await prisma.shipment.findMany({
         where: {
