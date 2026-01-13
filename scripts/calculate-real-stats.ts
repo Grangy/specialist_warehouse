@@ -119,14 +119,19 @@ async function calculateTaskStatsForCollector(
     return null;
   }
 
-  const positions = task.totalItems || task.lines.length;
+  const positions = task.totalItems || task.lines.length || 0;
   const units = task.totalUnits || task.lines.reduce((sum: number, line: any) => {
     const qty = line.collectedQty || line.qty || line.shipmentLine?.qty || 0;
     return sum + qty;
-  }, 0);
+  }, 0) || 0;
 
-  if (positions === 0) {
+  if (positions === 0 || positions === null || positions === undefined) {
+    console.error(`      ⚠️  Задание ${task.id}: positions = ${positions}, пропущено`);
     return null;
+  }
+
+  if (units === null || units === undefined) {
+    console.error(`      ⚠️  Задание ${task.id}: units = ${units}, установлено 0`);
   }
 
   // Получаем все задания этого заказа для расчета switches
@@ -305,8 +310,17 @@ async function main() {
 
           if (!stats || !stats.pickTimeSec || stats.pickTimeSec <= 0) continue;
 
-          dayPositions += stats.positions;
-          dayUnits += stats.units;
+          // Проверяем, что обязательные поля определены
+          const taskPositions = stats.positions || 0;
+          const taskUnits = stats.units || 0;
+
+          if (taskPositions === 0) {
+            console.error(`      ⚠️  Пропущено задание ${task.id}: positions = 0`);
+            continue;
+          }
+
+          dayPositions += taskPositions;
+          dayUnits += taskUnits;
           dayOrders.add(task.shipmentId);
           dayPickTimeSec += stats.pickTimeSec;
           dayGapTimeSec += stats.gapTimeSec || 0;
@@ -330,8 +344,8 @@ async function main() {
                 pickTimeSec: stats.pickTimeSec,
                 elapsedTimeSec: stats.elapsedTimeSec,
                 gapTimeSec: stats.gapTimeSec,
-                positions: stats.positions,
-                units: stats.units,
+                positions: taskPositions,
+                units: taskUnits,
                 pph: stats.pph,
                 uph: stats.uph,
                 secPerPos: stats.secPerPos,
@@ -359,8 +373,8 @@ async function main() {
                 pickTimeSec: stats.pickTimeSec,
                 elapsedTimeSec: stats.elapsedTimeSec,
                 gapTimeSec: stats.gapTimeSec,
-                positions: stats.positions,
-                units: stats.units,
+                positions: taskPositions,
+                units: taskUnits,
                 pph: stats.pph,
                 uph: stats.uph,
                 secPerPos: stats.secPerPos,
@@ -386,7 +400,7 @@ async function main() {
           }
         }
 
-        if (dayOrders.size === 0) continue;
+        if (dayOrders.size === 0 || dayPositions === 0) continue;
 
         // Рассчитываем дневные метрики
         const dayPph = dayPickTimeSec > 0 ? (dayPositions * 3600) / dayPickTimeSec : null;
@@ -406,27 +420,27 @@ async function main() {
               },
             },
             update: {
-              positions: dayPositions,
-              units: dayUnits,
+              positions: dayPositions || 0,
+              units: dayUnits || 0,
               orders: dayOrders.size,
-              pickTimeSec: dayPickTimeSec,
-              gapTimeSec: dayGapTimeSec,
-              elapsedTimeSec: dayElapsedTimeSec,
+              pickTimeSec: dayPickTimeSec || 0,
+              gapTimeSec: dayGapTimeSec || 0,
+              elapsedTimeSec: dayElapsedTimeSec || 0,
               dayPph,
               dayUph,
               gapShare,
-              dayPoints: dayOrderPoints,
+              dayPoints: dayOrderPoints || 0,
               avgEfficiency,
             },
             create: {
               userId,
               date,
-              positions: dayPositions,
-              units: dayUnits,
+              positions: dayPositions || 0,
+              units: dayUnits || 0,
               orders: dayOrders.size,
-              pickTimeSec: dayPickTimeSec,
-              gapTimeSec: dayGapTimeSec,
-              elapsedTimeSec: dayElapsedTimeSec,
+              pickTimeSec: dayPickTimeSec || 0,
+              gapTimeSec: dayGapTimeSec || 0,
+              elapsedTimeSec: dayElapsedTimeSec || 0,
               dayPph,
               dayUph,
               gapShare,
