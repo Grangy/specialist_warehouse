@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "seed:stats": "tsx scripts/seed-ranking-stats.ts",
+    "stats:calculate": "tsx scripts/calculate-real-stats.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
