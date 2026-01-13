@@ -251,7 +251,7 @@ export function ShipmentCard({
         </div>
       )}
 
-      {shipment.comment && (
+      {shipment.comment && shipment.comment.trim() !== '' && shipment.comment.trim() !== 'Запрос из УТ' && (
         <div className="mb-4 text-sm text-slate-400 italic">{shipment.comment}</div>
       )}
 
@@ -264,7 +264,7 @@ export function ShipmentCard({
                 className="flex-1 min-w-[120px] sm:min-w-0 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
               >
                 <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                <span className="truncate">Подтвердить</span>
+                <span className="truncate">Начать проверку</span>
               </button>
               {userRole === 'admin' && onConfirmAll && (
                 <button

@@ -87,6 +87,7 @@ export function ConfirmModal({
   }, [viewMode]);
 
   // Вычисляем sortedIndices для согласованности
+  // В режиме проверки сортируем по наименованию, а не по ячейкам
   // Фильтруем только товары в процессе удаления, подтвержденные показываем в конце
   const sortedIndices = useMemo(() => {
     if (!currentShipment) return [];
@@ -94,9 +95,31 @@ export function ConfirmModal({
       .map((_, index) => index)
       .filter((index) => !removingItems.has(index))
       .sort((a, b) => {
+        // ПРИОРИТЕТ 1: Сначала сортируем по статусу подтверждения (неподтвержденные → подтвержденные)
         const aConfirmed = checklistState[a]?.confirmed || false;
         const bConfirmed = checklistState[b]?.confirmed || false;
-        return aConfirmed === bConfirmed ? 0 : aConfirmed ? 1 : -1;
+        if (aConfirmed !== bConfirmed) {
+          return aConfirmed ? 1 : -1;
+        }
+        
+        // ПРИОРИТЕТ 2: Если статус одинаковый, сортируем по наименованию (А-Я)
+        const aName = (currentShipment.lines[a].name || '').trim();
+        const bName = (currentShipment.lines[b].name || '').trim();
+        
+        if (aName && bName) {
+          const nameCompare = aName.localeCompare(bName, 'ru', { 
+            numeric: true, 
+            sensitivity: 'variant'
+          });
+          if (nameCompare !== 0) return nameCompare;
+        } else if (aName && !bName) {
+          return -1;
+        } else if (!aName && bName) {
+          return 1;
+        }
+        
+        // Если все одинаково, сохраняем исходный порядок
+        return 0;
       });
   }, [currentShipment, checklistState, removingItems]);
 
@@ -476,9 +499,9 @@ export function ConfirmModal({
                             >
                               {line.name}
                             </div>
-                            {/* Артикул и количество в одну строку */}
-                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                              {line.art && (
+                            {/* Артикул (количество теперь рядом с кнопкой Р) */}
+                            {line.art && (
+                              <div className="flex items-center gap-1 mt-0.5">
                                 <div 
                                   className="text-[9px] text-slate-400 truncate flex-shrink-0"
                                   title={line.art}
@@ -491,22 +514,18 @@ export function ConfirmModal({
                                 >
                                   {truncateArt(line.art, 8, 3, 2)}
                                 </div>
-                              )}
-                              {/* Разделитель между артикулом и количеством */}
-                              {line.art && (
-                                <span className="text-slate-600 text-[9px]">•</span>
-                              )}
-                              {/* Количество - только собранное количество */}
-                              <span className={`text-[10px] font-semibold whitespace-nowrap ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
-                                {state.collectedQty} {line.uom || 'шт'}
-                              </span>
-                              {isZero && <span className="text-red-400 text-[9px]">⚠</span>}
-                              {hasShortage && !isZero && <span className="text-yellow-500 text-[9px]">⚠</span>}
-                            </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                         {/* Действия - очень узкие кнопки */}
-                        <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {/* Количество рядом с кнопкой Р - увеличенный шрифт */}
+                          <span className={`text-[12px] md:text-[13px] font-bold whitespace-nowrap ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                            {state.collectedQty} {line.uom || 'шт'}
+                          </span>
+                          {isZero && <span className="text-red-400 text-[9px]">⚠</span>}
+                          {hasShortage && !isZero && <span className="text-yellow-500 text-[9px]">⚠</span>}
                           <button
                             onClick={() => onStartEditQty(index)}
                             className="px-1 py-0.5 bg-blue-600/90 hover:bg-blue-500 text-white text-[8px] font-semibold rounded transition-all"
@@ -818,7 +837,7 @@ export function ConfirmModal({
                                 <div className="text-[10px] text-red-400 font-semibold">Не собрано</div>
                               )}
                               {hasShortage && (
-                                <div className="text-[10px] text-yellow-500">Недостаток: {line.qty - state.collectedQty}</div>
+                                <div className="text-[10px] text-yellow-500">Недостаток: {line.qty - state.collectedQty} {line.uom || 'шт'}</div>
                               )}
                             </div>
                             {/* Правая часть: кнопки */}

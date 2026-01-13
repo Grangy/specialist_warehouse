@@ -359,6 +359,27 @@ export function CollectModal({
           className="overflow-y-auto overflow-x-hidden max-h-[60vh] border border-slate-700 rounded-lg"
           onScroll={handleScrollSave}
         >
+          {/* Sticky блок с клиентом и бизнес регионом - внутри скроллируемого контейнера */}
+          <div className="sticky top-0 z-20 bg-slate-900/98 backdrop-blur-sm flex items-center justify-between text-xs gap-2 py-1.5 px-3 border-b border-slate-700/50 shadow-sm">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              {/* Информация о клиенте и локации (регионе) без префиксов */}
+              {currentShipment.customer_name && (
+                <div className="text-slate-200 font-semibold truncate min-w-0 text-[11px]" title={currentShipment.customer_name}>
+                  {currentShipment.customer_name}
+                </div>
+              )}
+              {currentShipment.business_region && (
+                <>
+                  {currentShipment.customer_name && (
+                    <div className="h-3 w-px bg-slate-600"></div>
+                  )}
+                  <div className="text-slate-200 font-semibold truncate min-w-0 text-[11px]" title={currentShipment.business_region}>
+                    {currentShipment.business_region}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
           {/* Grid layout для планшетов */}
           {isTablet && (
             <div className="tablet-products-grid tablet-show-grid p-2">
