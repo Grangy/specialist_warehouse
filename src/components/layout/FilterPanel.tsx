@@ -41,22 +41,22 @@ export function FilterPanel({ shipments, filters, onFiltersChange }: FilterPanel
       <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-3 md:gap-4">
         <div className="flex-1 min-w-0 md:min-w-[300px] w-full md:w-auto">
           <div className="relative">
-            <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <SearchIcon className="absolute left-2 md:left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-slate-400" />
             <input
               type="text"
               placeholder="Поиск по номеру или клиенту..."
               value={filters.search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 h-10 md:h-auto text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-7 md:pl-10 pr-3 md:pr-4 py-2 h-10 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left text-sm"
               style={{ position: 'relative', zIndex: 1, textAlign: 'left' }}
             />
           </div>
         </div>
-        <div className="flex items-center gap-2 md:gap-4">
+        <div className="flex items-center gap-2 md:gap-3">
           <select
             value={filters.warehouse}
             onChange={(e) => handleWarehouseChange(e.target.value)}
-            className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 h-10 md:h-auto text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 h-10 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
           >
             <option value="">Все склады</option>
             {warehouses.map((warehouse) => (
@@ -65,15 +65,6 @@ export function FilterPanel({ shipments, filters, onFiltersChange }: FilterPanel
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={filters.urgentOnly}
-              onChange={(e) => handleUrgentChange(e.target.checked)}
-              className="w-4 h-4 text-blue-600 bg-slate-800 border-slate-700 rounded focus:ring-blue-500"
-            />
-            <span>Только срочные</span>
-          </label>
         </div>
       </div>
     </div>

@@ -227,15 +227,15 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
         
         {/* Счетчики и кнопки - компактно и красиво */}
         <div className="flex items-center gap-2 md:gap-2.5 flex-wrap w-full md:w-auto justify-between md:justify-end">
-          {/* Счетчики - компактные бейджи */}
+          {/* Счетчики - компактные бейджи с одинаковыми отступами */}
           <div className="flex items-center gap-1.5 md:gap-2">
-            <div className="flex items-center gap-1 bg-slate-800/60 border border-slate-700/50 rounded-md px-1.5 py-0.5 hover:bg-slate-800/80 transition-colors">
-              <Bell className="w-3 h-3 text-blue-400 flex-shrink-0" />
+            <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700/50 rounded-md px-2 py-1 hover:bg-slate-800/80 transition-colors">
+              <Bell className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
               <span className="text-[10px] md:text-xs text-slate-300 font-semibold min-w-[18px] text-center">
                 {newCount}
               </span>
             </div>
-            <div className="flex items-center gap-1 bg-slate-800/60 border border-slate-700/50 rounded-md px-1.5 py-0.5 hover:bg-slate-800/80 transition-colors">
+            <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700/50 rounded-md px-2 py-1 hover:bg-slate-800/80 transition-colors">
               <span className="text-[10px] md:text-xs text-slate-300 font-semibold min-w-[18px] text-center">
                 {pendingCount}
               </span>
@@ -264,7 +264,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
               <div className="relative z-[100]">
                 <button
                   onClick={() => setShowProfile(!showProfile)}
-                  className={`flex items-center gap-1.5 bg-slate-800/70 hover:bg-slate-700/80 border transition-all duration-200 touch-manipulation px-2.5 md:px-3 py-1.5 rounded-md shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98] ${
+                  className={`flex items-center gap-1.5 bg-slate-800/70 hover:bg-slate-700/80 border transition-all duration-200 touch-manipulation px-2.5 py-1.5 rounded-md shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98] ${
                     showProfile 
                       ? 'border-blue-500/70 bg-slate-700/80 shadow-md ring-2 ring-blue-500/30' 
                       : 'border-slate-600/50 hover:border-slate-500/70'
@@ -298,7 +298,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                     />
                     {/* Выпадающее меню - fixed позиционирование для правильного отображения поверх всех элементов */}
                     <div 
-                      className="fixed bg-slate-800/98 backdrop-blur-xl border border-slate-600/80 rounded-xl shadow-2xl p-5 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden"
+                      className="fixed bg-slate-800 border border-slate-600/80 rounded-xl shadow-2xl p-5 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden"
                       style={{
                         position: 'fixed',
                         zIndex: 99999,
@@ -309,20 +309,21 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                         maxWidth: '420px',
                         maxHeight: 'calc(100vh - 100px)',
                         pointerEvents: 'auto',
+                        backgroundColor: 'rgb(30 41 59)', // slate-800 непрозрачный
                       }}
                     >
                       {/* Кнопка закрытия */}
                       <button
                         onClick={() => setShowProfile(false)}
-                        className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600/70 text-slate-200 hover:text-white transition-all duration-200 z-10 shadow-lg hover:shadow-xl"
+                        className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white transition-all duration-200 z-10 shadow-lg hover:shadow-xl"
                         title="Закрыть"
                       >
-                        <X className="w-5 h-5" />
+                        <X className="w-4 h-4" />
                       </button>
                       {/* Заголовок профиля */}
-                      <div className="border-b border-slate-700/50 pb-3 mb-4 pr-8">
+                      <div className="border-b border-slate-700/50 pb-3 mb-4 pr-10">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg flex-shrink-0">
                             <UserIcon className="w-5 h-5 text-white" />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -334,9 +335,9 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
 
                       <div className="space-y-4 max-h-[70vh] overflow-y-auto">
                         {/* Дневная статистика */}
-                        <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/50">
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                        <div className="bg-slate-900/80 rounded-lg p-3 border border-slate-700/50">
+                          <div className="flex items-center gap-2.5 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
                               <TrendingUp className="w-4 h-4 text-blue-400" />
                             </div>
                             <span className="text-sm font-bold text-slate-200">Статистика за день</span>
@@ -345,7 +346,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                             <div className="space-y-2 text-xs">
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2 text-slate-400">
-                                  <Target className="w-3.5 h-3.5" />
+                                  <Target className="w-3.5 h-3.5 flex-shrink-0" />
                                   <span>Баллы:</span>
                                 </div>
                                 <span className="text-slate-100 font-bold text-sm">{Math.round(rankingStats.daily.points)}</span>
@@ -353,7 +354,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               {rankingStats.daily.levelEmoji && rankingStats.daily.levelName && (
                                 <div className="flex items-center justify-between py-1 bg-yellow-400/10 rounded px-2 py-1.5">
                                   <div className="flex items-center gap-2 text-slate-300">
-                                    <Award className="w-3.5 h-3.5 text-yellow-400" />
+                                    <Award className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
                                     <span>Уровень:</span>
                                   </div>
                                   <span className={`font-bold text-sm ${rankingStats.daily.levelColor || 'text-yellow-400'}`}>
@@ -363,21 +364,21 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               )}
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2 text-slate-400">
-                                  <PackageIconLucide className="w-3.5 h-3.5" />
+                                  <PackageIconLucide className="w-3.5 h-3.5 flex-shrink-0" />
                                   <span>Заказов:</span>
                                 </div>
                                 <span className="text-slate-200 font-semibold">{rankingStats.daily.orders}</span>
                               </div>
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2 text-slate-400">
-                                  <BarChart3 className="w-3.5 h-3.5" />
+                                  <BarChart3 className="w-3.5 h-3.5 flex-shrink-0" />
                                   <span>Позиций:</span>
                                 </div>
                                 <span className="text-slate-200 font-semibold">{rankingStats.daily.positions}</span>
                               </div>
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2 text-slate-400">
-                                  <PackageIconLucide className="w-3.5 h-3.5" />
+                                  <PackageIconLucide className="w-3.5 h-3.5 flex-shrink-0" />
                                   <span>Единиц:</span>
                                 </div>
                                 <span className="text-slate-200 font-semibold">{rankingStats.daily.units}</span>
@@ -385,7 +386,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               {rankingStats.daily.pph && (
                                 <div className="flex items-center justify-between py-1">
                                   <div className="flex items-center gap-2 text-slate-400">
-                                    <Zap className="w-3.5 h-3.5" />
+                                    <Zap className="w-3.5 h-3.5 flex-shrink-0" />
                                     <span>PPH:</span>
                                   </div>
                                   <span className="text-blue-400 font-semibold">{Math.round(rankingStats.daily.pph)}</span>
@@ -394,7 +395,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               {rankingStats.daily.uph && (
                                 <div className="flex items-center justify-between py-1">
                                   <div className="flex items-center gap-2 text-slate-400">
-                                    <Zap className="w-3.5 h-3.5" />
+                                    <Zap className="w-3.5 h-3.5 flex-shrink-0" />
                                     <span>UPH:</span>
                                   </div>
                                   <span className="text-blue-400 font-semibold">{Math.round(rankingStats.daily.uph)}</span>
@@ -403,7 +404,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               {rankingStats.daily.efficiency && (
                                 <div className="flex items-center justify-between py-1">
                                   <div className="flex items-center gap-2 text-slate-400">
-                                    <Star className="w-3.5 h-3.5" />
+                                    <Star className="w-3.5 h-3.5 flex-shrink-0" />
                                     <span>Эффективность:</span>
                                   </div>
                                   <span className={`font-semibold ${rankingStats.daily.efficiency >= 1 ? 'text-green-400' : 'text-yellow-400'}`}>
@@ -421,9 +422,9 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                         </div>
                         
                         {/* Месячная статистика */}
-                        <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/50">
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                        <div className="bg-slate-900/80 rounded-lg p-3 border border-slate-700/50">
+                          <div className="flex items-center gap-2.5 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
                               <Trophy className="w-4 h-4 text-yellow-400" />
                             </div>
                             <span className="text-sm font-bold text-slate-200">Статистика за месяц</span>
@@ -432,7 +433,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                             <div className="space-y-2 text-xs">
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2 text-slate-400">
-                                  <Target className="w-3.5 h-3.5" />
+                                  <Target className="w-3.5 h-3.5 flex-shrink-0" />
                                   <span>Баллы:</span>
                                 </div>
                                 <span className="text-slate-100 font-bold text-sm">{Math.round(rankingStats.monthly.points)}</span>
@@ -440,7 +441,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               {rankingStats.monthly.levelEmoji && rankingStats.monthly.levelName && (
                                 <div className="flex items-center justify-between py-1 bg-yellow-400/10 rounded px-2 py-1.5">
                                   <div className="flex items-center gap-2 text-slate-300">
-                                    <Award className="w-3.5 h-3.5 text-yellow-400" />
+                                    <Award className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
                                     <span>Уровень:</span>
                                   </div>
                                   <span className={`font-bold text-sm ${rankingStats.monthly.levelColor || 'text-yellow-400'}`}>
@@ -450,21 +451,21 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               )}
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2 text-slate-400">
-                                  <PackageIconLucide className="w-3.5 h-3.5" />
+                                  <PackageIconLucide className="w-3.5 h-3.5 flex-shrink-0" />
                                   <span>Заказов:</span>
                                 </div>
                                 <span className="text-slate-200 font-semibold">{rankingStats.monthly.orders}</span>
                               </div>
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2 text-slate-400">
-                                  <BarChart3 className="w-3.5 h-3.5" />
+                                  <BarChart3 className="w-3.5 h-3.5 flex-shrink-0" />
                                   <span>Позиций:</span>
                                 </div>
                                 <span className="text-slate-200 font-semibold">{rankingStats.monthly.positions}</span>
                               </div>
                               <div className="flex items-center justify-between py-1">
                                 <div className="flex items-center gap-2 text-slate-400">
-                                  <PackageIconLucide className="w-3.5 h-3.5" />
+                                  <PackageIconLucide className="w-3.5 h-3.5 flex-shrink-0" />
                                   <span>Единиц:</span>
                                 </div>
                                 <span className="text-slate-200 font-semibold">{rankingStats.monthly.units}</span>
@@ -472,7 +473,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               {rankingStats.monthly.pph && (
                                 <div className="flex items-center justify-between py-1">
                                   <div className="flex items-center gap-2 text-slate-400">
-                                    <Zap className="w-3.5 h-3.5" />
+                                    <Zap className="w-3.5 h-3.5 flex-shrink-0" />
                                     <span>Средний PPH:</span>
                                   </div>
                                   <span className="text-blue-400 font-semibold">{Math.round(rankingStats.monthly.pph)}</span>
@@ -481,7 +482,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               {rankingStats.monthly.uph && (
                                 <div className="flex items-center justify-between py-1">
                                   <div className="flex items-center gap-2 text-slate-400">
-                                    <Zap className="w-3.5 h-3.5" />
+                                    <Zap className="w-3.5 h-3.5 flex-shrink-0" />
                                     <span>Средний UPH:</span>
                                   </div>
                                   <span className="text-blue-400 font-semibold">{Math.round(rankingStats.monthly.uph)}</span>
@@ -490,7 +491,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               {rankingStats.monthly.efficiency && (
                                 <div className="flex items-center justify-between py-1">
                                   <div className="flex items-center gap-2 text-slate-400">
-                                    <Star className="w-3.5 h-3.5" />
+                                    <Star className="w-3.5 h-3.5 flex-shrink-0" />
                                     <span>Средняя эффективность:</span>
                                   </div>
                                   <span className={`font-semibold ${rankingStats.monthly.efficiency >= 1 ? 'text-green-400' : 'text-yellow-400'}`}>
@@ -516,8 +517,8 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                             </div>
                             <div className="space-y-1.5">
                               {rankingStats.daily.achievements.map((achievement, idx) => (
-                                <div key={idx} className="text-[11px] text-purple-200 flex items-center gap-2 bg-purple-900/20 rounded px-2 py-1">
-                                  <span className="text-purple-400 text-sm">{getAchievementEmoji(achievement.type)}</span>
+                                <div key={idx} className="text-[11px] text-purple-200 flex items-center gap-2 bg-purple-900/30 rounded-md px-2.5 py-1.5">
+                                  <span className="text-purple-400 text-sm flex-shrink-0">{getAchievementEmoji(achievement.type)}</span>
                                   <span className="font-medium">{getAchievementName(achievement.type)}</span>
                                 </div>
                               ))}
@@ -532,41 +533,41 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
             </div>
           )}
 
-          {/* Кнопки - красивые и компактные */}
+          {/* Кнопки - единообразные паддинги и отступы */}
           <div className="flex items-center gap-1.5 md:gap-2">
             {/* Кнопка скрытия хедера (только на мобильных) */}
             <button
               onClick={toggleHeader}
-              className="md:hidden bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2 py-1.5 rounded-md transition-all duration-200 flex items-center justify-center shadow-sm hover:shadow"
+              className="md:hidden bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center justify-center shadow-sm hover:shadow"
               title="Скрыть панель"
             >
-              <ChevronUp className="w-3.5 h-3.5" />
+              <ChevronUp className="w-4 h-4" />
             </button>
             
             {user.role === 'admin' && (
               <button
                 onClick={() => router.push('/admin')}
-                className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 md:px-3 py-1.5 md:py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
+                className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
                 title="Админка"
               >
-                <Settings className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                <Settings className="w-4 h-4" />
                 <span className="hidden md:inline text-xs font-medium">Админка</span>
               </button>
             )}
             <button
               onClick={onRefresh}
-              className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 md:px-3 py-1.5 md:py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
+              className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
               title="Обновить"
             >
-              <RefreshCw className="w-3.5 h-3.5 md:w-4 md:h-4" />
+              <RefreshCw className="w-4 h-4" />
               <span className="hidden sm:inline text-xs font-medium">Обновить</span>
             </button>
             <button
               onClick={handleLogout}
-              className="bg-slate-800/70 hover:bg-red-600/80 active:bg-red-700/80 border border-slate-600/50 hover:border-red-500/70 text-slate-200 hover:text-red-100 px-2.5 md:px-3 py-1.5 md:py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
+              className="bg-slate-800/70 hover:bg-red-600/80 active:bg-red-700/80 border border-slate-600/50 hover:border-red-500/70 text-slate-200 hover:text-red-100 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
               title="Выход"
             >
-              <LogOut className="w-3.5 h-3.5 md:w-4 md:h-4" />
+              <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline text-xs font-medium">Выход</span>
             </button>
           </div>
