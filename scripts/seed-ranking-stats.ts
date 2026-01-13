@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/prisma/client';
 import path from 'path';
 import dotenv from 'dotenv';
 
@@ -20,7 +20,7 @@ const prisma = new PrismaClient({
       url: finalDatabaseUrl || databaseUrl,
     },
   },
-});
+}) as any;
 
 /**
  * Генерация случайного числа в диапазоне
