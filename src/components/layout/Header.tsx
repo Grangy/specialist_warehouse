@@ -205,56 +205,53 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
       )}
 
       <header 
-        className={`bg-slate-900 border-b border-slate-700 px-2 md:px-6 py-2 md:py-4 transition-transform duration-300 ease-in-out ${
+        className={`bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/80 px-3 md:px-4 py-2 md:py-2.5 transition-transform duration-300 ease-in-out shadow-sm ${
           isHidden ? 'md:translate-y-0 -translate-y-full md:block hidden' : 'translate-y-0'
         }`}
         style={{ position: 'relative', zIndex: 100 }}
       >
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-0 max-w-7xl mx-auto">
-          {/* Логотип и приветствие - компактнее на мобильных */}
-          <div className="flex items-center gap-1.5 md:gap-3 flex-shrink-0 w-full md:w-auto">
-            <PackageIcon className="w-5 h-5 md:w-8 md:h-8 text-slate-300 flex-shrink-0" />
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-3 max-w-7xl mx-auto">
+          {/* Логотип и приветствие - компактнее */}
+          <div className="flex items-center gap-2 md:gap-2.5 flex-shrink-0 w-full md:w-auto">
+            <PackageIcon className="w-5 h-5 md:w-6 md:h-6 text-slate-300 flex-shrink-0" />
             <div className="min-w-0 flex-1 md:flex-none">
-              <h1 className="text-base md:text-2xl font-semibold text-slate-100 whitespace-nowrap tracking-tight">
+              <h1 className="text-sm md:text-lg font-semibold text-slate-100 whitespace-nowrap tracking-tight leading-tight">
                 Панель отгрузки
               </h1>
-              <p className="text-[10px] md:text-sm text-slate-400 truncate">
-                <span className="font-medium text-slate-300">{user.name}</span> <span className="hidden sm:inline">({roleLabels[user.role]})</span>
+              <p className="text-[9px] md:text-xs text-slate-400 truncate leading-tight">
+                <span className="font-medium text-slate-300">{user.name}</span> <span className="hidden sm:inline text-slate-500">•</span> <span className="hidden sm:inline text-slate-500">{roleLabels[user.role]}</span>
               </p>
             </div>
           </div>
         
-        {/* Счетчики и кнопки - оптимизировано для мобильных */}
-        <div className="flex items-center gap-1.5 md:gap-4 flex-wrap w-full md:w-auto justify-between md:justify-end">
-          {/* Счетчики - более компактные на мобильных */}
-          <div className="flex items-center gap-1.5 md:gap-3">
-            <div className="flex items-center gap-1 md:gap-2">
-              <Bell className="w-3 h-3 md:w-4 md:h-4 text-slate-400 flex-shrink-0" />
-              <span className="text-[10px] md:text-sm text-slate-400 whitespace-nowrap font-medium hidden sm:inline">Новых:</span>
-              <span className="bg-slate-800 border border-slate-600 text-slate-200 px-1.5 md:px-2.5 py-0.5 rounded text-[10px] md:text-sm font-semibold min-w-[20px] md:min-w-[24px] text-center">
+        {/* Счетчики и кнопки - компактно и красиво */}
+        <div className="flex items-center gap-2 md:gap-2.5 flex-wrap w-full md:w-auto justify-between md:justify-end">
+          {/* Счетчики - компактные бейджи */}
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <div className="flex items-center gap-1 bg-slate-800/60 border border-slate-700/50 rounded-md px-1.5 py-0.5 hover:bg-slate-800/80 transition-colors">
+              <Bell className="w-3 h-3 text-blue-400 flex-shrink-0" />
+              <span className="text-[10px] md:text-xs text-slate-300 font-semibold min-w-[18px] text-center">
                 {newCount}
               </span>
             </div>
-            <div className="flex items-center gap-1 md:gap-2">
-              <span className="text-[10px] md:text-sm text-slate-400 whitespace-nowrap font-medium hidden sm:inline">Подтв.:</span>
-              <span className="text-[10px] md:text-sm text-slate-400 whitespace-nowrap font-medium sm:hidden">Подтв.</span>
-              <span className="bg-slate-800 border border-slate-600 text-slate-200 px-1.5 md:px-2.5 py-0.5 rounded text-[10px] md:text-sm font-semibold min-w-[20px] md:min-w-[24px] text-center">
+            <div className="flex items-center gap-1 bg-slate-800/60 border border-slate-700/50 rounded-md px-1.5 py-0.5 hover:bg-slate-800/80 transition-colors">
+              <span className="text-[10px] md:text-xs text-slate-300 font-semibold min-w-[18px] text-center">
                 {pendingCount}
               </span>
             </div>
           </div>
           
-          {/* Прогрессбар и профиль - для всех пользователей (админы, сборщики, проверяльщики) */}
+          {/* Прогрессбар и профиль - для всех пользователей */}
           {user && (
-            <div className="flex items-center gap-2 md:gap-3">
-              {/* Прогрессбар дневных баллов - показываем для всех, но статистика может быть только у сборщиков */}
+            <div className="flex items-center gap-2 md:gap-2.5">
+              {/* Прогрессбар дневных баллов - компактный */}
               <div className="hidden sm:flex flex-col items-end gap-0.5">
-                <div className="text-[9px] text-slate-400">
-                  День: {rankingStats?.daily ? Math.round(rankingStats.daily.points) : '0'}
+                <div className="text-[8px] text-slate-400 font-medium">
+                  {rankingStats?.daily ? Math.round(rankingStats.daily.points) : '0'} баллов
                 </div>
-                <div className="w-24 h-1.5 bg-slate-700/50 rounded-full overflow-hidden shadow-inner">
+                <div className="w-20 h-1 bg-slate-700/50 rounded-full overflow-hidden shadow-inner">
                   <div
-                    className="h-full bg-gradient-to-r from-blue-500 via-blue-400 to-cyan-400 transition-all duration-500 ease-out shadow-sm"
+                    className="h-full bg-gradient-to-r from-blue-500 via-blue-400 to-cyan-400 transition-all duration-500 ease-out"
                     style={{
                       width: `${Math.min(100, rankingStats?.daily?.points ? (rankingStats.daily.points / 100) * 100 : 0)}%`,
                     }}
@@ -262,14 +259,14 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                 </div>
               </div>
               
-              {/* Выпадающий профиль */}
+              {/* Выпадающий профиль - красивая кнопка */}
               <div className="relative z-[100]">
                 <button
                   onClick={() => setShowProfile(!showProfile)}
-                  className={`flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border transition-all duration-200 touch-manipulation px-2 md:px-3 py-1.5 rounded-md shadow-sm ${
+                  className={`flex items-center gap-1.5 bg-slate-800/70 hover:bg-slate-700/80 border transition-all duration-200 touch-manipulation px-2.5 md:px-3 py-1.5 rounded-md shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98] ${
                     showProfile 
-                      ? 'border-blue-500 bg-slate-700 shadow-md ring-2 ring-blue-500/50' 
-                      : 'border-slate-600 hover:border-slate-500'
+                      ? 'border-blue-500/70 bg-slate-700/80 shadow-md ring-2 ring-blue-500/30' 
+                      : 'border-slate-600/50 hover:border-slate-500/70'
                   }`}
                   title="Профиль и статистика"
                 >
@@ -516,11 +513,11 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                               <Star className="w-4 h-4 text-purple-400" />
                               <span className="text-xs font-semibold text-purple-300">Достижения сегодня</span>
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-1.5">
                               {rankingStats.daily.achievements.map((achievement, idx) => (
-                                <div key={idx} className="text-[10px] text-purple-200 flex items-center gap-1.5">
-                                  <span className="text-purple-400">★</span>
-                                  <span>{achievement.type}</span>
+                                <div key={idx} className="text-[11px] text-purple-200 flex items-center gap-2 bg-purple-900/20 rounded px-2 py-1">
+                                  <span className="text-purple-400 text-sm">{getAchievementEmoji(achievement.type)}</span>
+                                  <span className="font-medium">{getAchievementName(achievement.type)}</span>
                                 </div>
                               ))}
                             </div>
@@ -534,12 +531,12 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
             </div>
           )}
 
-          {/* Кнопки - компактные на мобильных */}
-          <div className="flex items-center gap-1.5 md:gap-2.5">
+          {/* Кнопки - красивые и компактные */}
+          <div className="flex items-center gap-1.5 md:gap-2">
             {/* Кнопка скрытия хедера (только на мобильных) */}
             <button
               onClick={toggleHeader}
-              className="md:hidden bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 hover:border-slate-500 text-slate-200 px-2 py-1 rounded transition-all duration-150 flex items-center gap-1 text-[10px] font-medium touch-manipulation"
+              className="md:hidden bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2 py-1.5 rounded-md transition-all duration-200 flex items-center justify-center shadow-sm hover:shadow"
               title="Скрыть панель"
             >
               <ChevronUp className="w-3.5 h-3.5" />
@@ -548,30 +545,28 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
             {user.role === 'admin' && (
               <button
                 onClick={() => router.push('/admin')}
-                className="bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 hover:border-slate-500 text-slate-200 px-2 md:px-4 py-1 md:py-2 rounded transition-all duration-150 flex items-center gap-1 md:gap-2 text-[10px] md:text-sm font-medium touch-manipulation"
+                className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 md:px-3 py-1.5 md:py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
                 title="Админка"
               >
                 <Settings className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                <span className="hidden md:inline">Админка</span>
+                <span className="hidden md:inline text-xs font-medium">Админка</span>
               </button>
             )}
             <button
               onClick={onRefresh}
-              className="bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 hover:border-slate-500 text-slate-200 px-2 md:px-4 py-1 md:py-2 rounded transition-all duration-150 flex items-center gap-1 md:gap-2 text-[10px] md:text-sm font-medium touch-manipulation"
+              className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 md:px-3 py-1.5 md:py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
               title="Обновить"
             >
               <RefreshCw className="w-3.5 h-3.5 md:w-4 md:h-4" />
-              <span className="hidden sm:inline">Обновить</span>
-              <span className="sm:hidden">Обн.</span>
+              <span className="hidden sm:inline text-xs font-medium">Обновить</span>
             </button>
             <button
               onClick={handleLogout}
-              className="bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 hover:border-slate-500 text-slate-200 px-2 md:px-4 py-1 md:py-2 rounded transition-all duration-150 flex items-center gap-1 md:gap-2 text-[10px] md:text-sm font-medium touch-manipulation"
+              className="bg-slate-800/70 hover:bg-red-600/80 active:bg-red-700/80 border border-slate-600/50 hover:border-red-500/70 text-slate-200 hover:text-red-100 px-2.5 md:px-3 py-1.5 md:py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
               title="Выход"
             >
               <LogOut className="w-3.5 h-3.5 md:w-4 md:h-4" />
-              <span className="hidden sm:inline">Выход</span>
-              <span className="sm:hidden">Вых.</span>
+              <span className="hidden sm:inline text-xs font-medium">Выход</span>
             </button>
           </div>
         </div>

@@ -47,8 +47,8 @@ export function FilterPanel({ shipments, filters, onFiltersChange }: FilterPanel
               placeholder="Поиск по номеру или клиенту..."
               value={filters.search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 h-10 md:h-auto text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              style={{ position: 'relative', zIndex: 1 }}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 h-10 md:h-auto text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left"
+              style={{ position: 'relative', zIndex: 1, textAlign: 'left' }}
             />
           </div>
         </div>
