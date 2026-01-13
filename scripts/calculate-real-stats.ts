@@ -1101,13 +1101,13 @@ async function main() {
     const allDailyStats = await prisma.dailyStats.findMany({
       select: { dayPoints: true },
     });
-    const allDailyPoints = allDailyStats.map(s => s.dayPoints).filter(p => p > 0);
+    const allDailyPoints = allDailyStats.map((s: any) => s.dayPoints).filter((p: number) => p > 0);
 
     // Получаем все месячные статистики для расчета рангов
     const allMonthlyStats = await prisma.monthlyStats.findMany({
       select: { monthPoints: true },
     });
-    const allMonthlyPoints = allMonthlyStats.map(s => s.monthPoints).filter(p => p > 0);
+    const allMonthlyPoints = allMonthlyStats.map((s: any) => s.monthPoints).filter((p: number) => p > 0);
 
     // Обновляем ранги для всех дневных статистик
     const allDailyStatsForRanks = await prisma.dailyStats.findMany();
