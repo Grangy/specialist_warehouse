@@ -281,38 +281,55 @@ export function ConfirmModal({
         </div>
       }
     >
-      <div className="mb-4 flex items-center justify-between text-sm">
-        <div className="flex items-center gap-4">
-          <div className="text-slate-300">
+      <div className="mb-3 flex items-center justify-between text-xs gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="text-slate-300 whitespace-nowrap">
             Всего: <span className="font-bold text-slate-100">{progress.total}</span>
           </div>
-          <div className="text-slate-300">
+          <div className="text-slate-300 whitespace-nowrap">
             Подтверждено: <span className="font-bold text-green-400">{progress.confirmed}</span>
           </div>
+          {/* Информация о клиенте и городе */}
+          {currentShipment.customer_name && (
+            <>
+              <div className="h-4 w-px bg-slate-600"></div>
+              <div className="text-slate-300 truncate min-w-0" title={currentShipment.customer_name}>
+                <span className="text-slate-400">Клиент:</span> <span className="font-semibold text-slate-200">{currentShipment.customer_name}</span>
+              </div>
+            </>
+          )}
+          {currentShipment.destination && (
+            <>
+              <div className="h-4 w-px bg-slate-600"></div>
+              <div className="text-slate-300 truncate min-w-0" title={currentShipment.destination}>
+                <span className="text-slate-400">Город:</span> <span className="font-semibold text-slate-200">{currentShipment.destination}</span>
+              </div>
+            </>
+          )}
         </div>
-        {/* Переключатель вида отображения */}
-        <div className="flex items-center gap-2 bg-slate-800/50 rounded-lg p-1 border border-slate-700/50">
+        {/* Переключатель вида отображения - компактные кнопки К/П */}
+        <div className="flex items-center gap-1 bg-slate-800/50 rounded-md p-0.5 border border-slate-700/50 flex-shrink-0">
           <button
             onClick={() => setViewMode('compact')}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+            className={`px-2 py-1 rounded text-xs font-bold transition-all min-w-[28px] ${
               viewMode === 'compact'
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
-            title="Минималистичный вид (35 товаров на странице)"
+            title="Компактный вид"
           >
-            Компактный
+            К
           </button>
           <button
             onClick={() => setViewMode('detailed')}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+            className={`px-2 py-1 rounded text-xs font-bold transition-all min-w-[28px] ${
               viewMode === 'detailed'
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
-            title="Подробный вид (текущий)"
+            title="Подробный вид"
           >
-            Подробный
+            П
           </button>
         </div>
       </div>
