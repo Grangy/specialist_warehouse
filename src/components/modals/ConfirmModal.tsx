@@ -281,32 +281,32 @@ export function ConfirmModal({
         </div>
       }
     >
-      <div className="overflow-y-auto overflow-x-hidden max-h-[60vh] border border-slate-700/50 rounded-lg shadow-inner">
+      <div className="overflow-y-auto overflow-x-hidden max-h-[calc(100vh-280px)] border border-slate-700/50 rounded-lg shadow-inner">
         {/* Sticky блок с клиентом и переключателем режима - внутри скроллируемого контейнера */}
-        <div className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm mb-3 flex items-center justify-between text-xs gap-3 py-2 px-3 border-b border-slate-700/50 -mx-px -mt-px">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="sticky top-0 z-20 bg-slate-900/98 backdrop-blur-sm flex items-center justify-between text-xs gap-2 py-1.5 px-3 border-b border-slate-700/50 shadow-sm">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             {/* Информация о клиенте и локации (регионе) без префиксов */}
             {currentShipment.customer_name && (
-              <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.customer_name}>
+              <div className="text-slate-200 font-semibold truncate min-w-0 text-[11px]" title={currentShipment.customer_name}>
                 {currentShipment.customer_name}
               </div>
             )}
             {currentShipment.business_region && (
               <>
                 {currentShipment.customer_name && (
-                  <div className="h-4 w-px bg-slate-600"></div>
+                  <div className="h-3 w-px bg-slate-600"></div>
                 )}
-                <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.business_region}>
+                <div className="text-slate-200 font-semibold truncate min-w-0 text-[11px]" title={currentShipment.business_region}>
                   {currentShipment.business_region}
                 </div>
               </>
             )}
           </div>
           {/* Переключатель вида отображения - компактные кнопки К/П */}
-          <div className="flex items-center gap-1 bg-slate-800/50 rounded-md p-0.5 border border-slate-700/50 flex-shrink-0">
+          <div className="flex items-center gap-0.5 bg-slate-800/50 rounded-md p-0.5 border border-slate-700/50 flex-shrink-0">
             <button
               onClick={() => setViewMode('compact')}
-              className={`px-2 py-1 rounded text-xs font-bold transition-all min-w-[28px] ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all min-w-[24px] ${
                 viewMode === 'compact'
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
@@ -317,7 +317,7 @@ export function ConfirmModal({
             </button>
             <button
               onClick={() => setViewMode('detailed')}
-              className={`px-2 py-1 rounded text-xs font-bold transition-all min-w-[28px] ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all min-w-[24px] ${
                 viewMode === 'detailed'
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
@@ -328,7 +328,7 @@ export function ConfirmModal({
             </button>
           </div>
         </div>
-        <div className="px-3 -mx-3">
+        <div className="px-2">
           {viewMode === 'compact' ? (
             // Минималистичный компактный список
             <div className="divide-y divide-white/20">
@@ -355,13 +355,13 @@ export function ConfirmModal({
                       <div className="w-full h-px bg-white/30"></div>
                     )}
                     <div
-                      className={`px-1.5 py-0.5 transition-all ${
+                      className={`px-1 py-0.5 transition-all ${
                         isConfirmed ? 'bg-green-900/10 border-l border-l-green-500/50' : 'bg-slate-900/30 hover:bg-slate-800/50'
                       } ${isEditing ? 'bg-blue-900/20 border-l border-l-blue-500/50' : ''}`}
                     >
                     {isEditing ? (
                       // Режим редактирования в компактном виде - все в одну строку
-                      <div className="flex items-center justify-between gap-1.5 py-0.5">
+                      <div className="flex items-center justify-between gap-1 py-0.5">
                         <div className="flex items-center gap-1 flex-1 min-w-0">
                           <div className="text-[11px] md:text-xs text-slate-200 truncate font-medium">
                             {line.name} {line.location || '—'}
@@ -412,15 +412,15 @@ export function ConfirmModal({
                       </div>
                     ) : (
                       // Обычный режим в компактном виде - название в несколько строчек, артикул полностью
-                      <div className="flex items-start justify-between gap-1.5 py-1">
+                      <div className="flex items-start justify-between gap-1 py-0.5">
                         {/* Статус и информация */}
                         <div className="flex items-start gap-1.5 flex-1 min-w-0">
                           {/* Статус */}
                           <div className="flex-shrink-0 mt-0.5">
                             {isConfirmed ? (
-                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                              <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
                             ) : (
-                              <div className="w-2 h-2 bg-slate-600 rounded-full"></div>
+                              <div className="w-1.5 h-1.5 bg-slate-600 rounded-full"></div>
                             )}
                           </div>
                           {/* Информация: название в несколько строчек, артикул, количество */}
@@ -430,10 +430,10 @@ export function ConfirmModal({
                           >
                             {/* Название - в несколько строчек */}
                             <div 
-                              className="text-[11px] md:text-xs text-slate-200 font-medium leading-tight break-words"
+                              className="text-[10px] md:text-[11px] text-slate-200 font-medium leading-tight break-words"
                               style={{
                                 display: '-webkit-box',
-                                WebkitLineClamp: 3,
+                                WebkitLineClamp: 2,
                                 WebkitBoxOrient: 'vertical',
                                 overflow: 'hidden',
                                 wordBreak: 'break-word',
@@ -442,10 +442,10 @@ export function ConfirmModal({
                               {line.name}
                             </div>
                             {/* Артикул и количество в одну строку */}
-                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                               {line.art && (
                                 <div 
-                                  className="text-[10px] text-slate-400 truncate flex-shrink-0"
+                                  className="text-[9px] text-slate-400 truncate flex-shrink-0"
                                   title={line.art}
                                   style={{ 
                                     maxWidth: '100%',
@@ -454,27 +454,27 @@ export function ConfirmModal({
                                     whiteSpace: 'nowrap'
                                   }}
                                 >
-                                  {truncateArt(line.art, 10, 4, 3)}
+                                  {truncateArt(line.art, 8, 3, 2)}
                                 </div>
                               )}
                               {/* Разделитель между артикулом и количеством */}
                               {line.art && (
-                                <span className="text-slate-600 text-[10px]">•</span>
+                                <span className="text-slate-600 text-[9px]">•</span>
                               )}
                               {/* Количество - только собранное количество */}
-                              <span className={`text-[11px] font-semibold whitespace-nowrap ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              <span className={`text-[10px] font-semibold whitespace-nowrap ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
                                 {state.collectedQty} {line.uom || 'шт'}
                               </span>
-                              {isZero && <span className="text-red-400 text-[10px]">⚠</span>}
-                              {hasShortage && !isZero && <span className="text-yellow-500 text-[10px]">⚠</span>}
+                              {isZero && <span className="text-red-400 text-[9px]">⚠</span>}
+                              {hasShortage && !isZero && <span className="text-yellow-500 text-[9px]">⚠</span>}
                             </div>
                           </div>
                         </div>
                         {/* Действия - очень узкие кнопки */}
-                        <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="flex items-center gap-0.5 flex-shrink-0">
                           <button
                             onClick={() => onStartEditQty(index)}
-                            className="px-1.5 py-0.5 bg-blue-600/90 hover:bg-blue-500 text-white text-[9px] font-semibold rounded transition-all"
+                            className="px-1 py-0.5 bg-blue-600/90 hover:bg-blue-500 text-white text-[8px] font-semibold rounded transition-all"
                             title="Редактировать"
                           >
                             Р
@@ -482,7 +482,7 @@ export function ConfirmModal({
                           {!isConfirmed && (
                             <button
                               onClick={() => onConfirmItem(index)}
-                              className="px-1.5 py-0.5 bg-green-600/90 hover:bg-green-500 text-white text-[9px] font-semibold rounded transition-all"
+                              className="px-1 py-0.5 bg-green-600/90 hover:bg-green-500 text-white text-[8px] font-semibold rounded transition-all"
                               title="Подтвердить"
                             >
                               ✓
@@ -499,7 +499,7 @@ export function ConfirmModal({
           ) : (
             // Текущий подробный вид (таблица)
             <table className="w-full border-collapse">
-          <thead className="bg-slate-800/95 backdrop-blur-sm sticky top-0 z-10 hidden md:table-header-group shadow-sm">
+          <thead className="bg-slate-800/95 backdrop-blur-sm sticky top-[42px] z-10 hidden md:table-header-group shadow-sm">
             <tr>
               <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600" style={{ width: '60px', minWidth: '60px' }}>
                 Статус
