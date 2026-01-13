@@ -283,26 +283,19 @@ export function ConfirmModal({
     >
       <div className="mb-3 flex items-center justify-between text-xs gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="text-slate-300 whitespace-nowrap">
-            Всего: <span className="font-bold text-slate-100">{progress.total}</span>
-          </div>
-          <div className="text-slate-300 whitespace-nowrap">
-            Подтверждено: <span className="font-bold text-green-400">{progress.confirmed}</span>
-          </div>
-          {/* Информация о клиенте и городе */}
+          {/* Информация о клиенте и городе без префиксов */}
           {currentShipment.customer_name && (
-            <>
-              <div className="h-4 w-px bg-slate-600"></div>
-              <div className="text-slate-300 truncate min-w-0" title={currentShipment.customer_name}>
-                <span className="text-slate-400">Клиент:</span> <span className="font-semibold text-slate-200">{currentShipment.customer_name}</span>
-              </div>
-            </>
+            <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.customer_name}>
+              {currentShipment.customer_name}
+            </div>
           )}
           {currentShipment.destination && (
             <>
-              <div className="h-4 w-px bg-slate-600"></div>
-              <div className="text-slate-300 truncate min-w-0" title={currentShipment.destination}>
-                <span className="text-slate-400">Город:</span> <span className="font-semibold text-slate-200">{currentShipment.destination}</span>
+              {currentShipment.customer_name && (
+                <div className="h-4 w-px bg-slate-600"></div>
+              )}
+              <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.destination}>
+                {currentShipment.destination}
               </div>
             </>
           )}
