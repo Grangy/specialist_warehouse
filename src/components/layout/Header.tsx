@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PackageIcon } from '@/components/icons/PackageIcon';
 import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X } from 'lucide-react';
+import { getAchievementName, getAchievementEmoji } from '@/lib/ranking/achievements';
 
 interface HeaderProps {
   newCount: number;
