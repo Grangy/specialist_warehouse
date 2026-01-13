@@ -120,7 +120,10 @@ async function calculateTaskStatsForCollector(
   }
 
   const positions = task.totalItems || task.lines.length;
-  const units = task.totalUnits || task.lines.reduce((sum: number, line: any) => sum + (line.collectedQty || line.qty || 0), 0);
+  const units = task.totalUnits || task.lines.reduce((sum: number, line: any) => {
+    const qty = line.collectedQty || line.qty || line.shipmentLine?.qty || 0;
+    return sum + qty;
+  }, 0);
 
   if (positions === 0) {
     return null;
@@ -157,7 +160,10 @@ async function calculateTaskStatsForCollector(
         startedAt: t.startedAt,
         completedAt: t.completedAt,
         positions: t.totalItems || t.lines.length,
-        units: t.totalUnits || t.lines.reduce((sum: number, line: any) => sum + (line.collectedQty || line.qty || 0), 0),
+        units: t.totalUnits || t.lines.reduce((sum: number, line: any) => {
+          const qty = line.collectedQty || line.qty || line.shipmentLine?.qty || 0;
+          return sum + qty;
+        }, 0),
       })),
   };
 
@@ -203,12 +209,20 @@ async function main() {
         completedAt: { not: null },
       },
       include: {
-        lines: true,
+        lines: {
+          include: {
+            shipmentLine: true,
+          },
+        },
         shipment: {
           include: {
             tasks: {
               include: {
-                lines: true,
+                lines: {
+                  include: {
+                    shipmentLine: true,
+                  },
+                },
               },
             },
           },
