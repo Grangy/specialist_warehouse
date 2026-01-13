@@ -119,19 +119,33 @@ async function calculateTaskStatsForCollector(
     return null;
   }
 
-  const positions = task.totalItems || task.lines.length || 0;
-  const units = task.totalUnits || task.lines.reduce((sum: number, line: any) => {
-    const qty = line.collectedQty || line.qty || line.shipmentLine?.qty || 0;
-    return sum + qty;
-  }, 0) || 0;
+  // Рассчитываем positions и units с проверкой на валидность
+  let positions = 0;
+  if (task.totalItems !== null && task.totalItems !== undefined) {
+    positions = Number(task.totalItems) || 0;
+  } else if (task.lines && task.lines.length > 0) {
+    positions = task.lines.length;
+  }
 
-  if (positions === 0 || positions === null || positions === undefined) {
-    console.error(`      ⚠️  Задание ${task.id}: positions = ${positions}, пропущено`);
+  let units = 0;
+  if (task.totalUnits !== null && task.totalUnits !== undefined) {
+    units = Number(task.totalUnits) || 0;
+  } else if (task.lines && task.lines.length > 0) {
+    units = task.lines.reduce((sum: number, line: any) => {
+      const qty = line.collectedQty || line.qty || line.shipmentLine?.qty || 0;
+      return sum + (Number(qty) || 0);
+    }, 0);
+  }
+
+  // Проверяем валидность
+  if (isNaN(positions) || positions === 0) {
+    console.error(`      ⚠️  Задание ${task.id}: positions = ${positions} (невалидно), пропущено`);
     return null;
   }
 
-  if (units === null || units === undefined) {
-    console.error(`      ⚠️  Задание ${task.id}: units = ${units}, установлено 0`);
+  if (isNaN(units)) {
+    console.error(`      ⚠️  Задание ${task.id}: units = NaN, установлено 0`);
+    units = 0;
   }
 
   // Получаем все задания этого заказа для расчета switches
@@ -164,11 +178,11 @@ async function calculateTaskStatsForCollector(
         warehouse: t.warehouse,
         startedAt: t.startedAt,
         completedAt: t.completedAt,
-        positions: t.totalItems || t.lines.length,
-        units: t.totalUnits || t.lines.reduce((sum: number, line: any) => {
+        positions: t.totalItems ? Number(t.totalItems) : (t.lines?.length || 0),
+        units: t.totalUnits ? Number(t.totalUnits) : (t.lines?.reduce((sum: number, line: any) => {
           const qty = line.collectedQty || line.qty || line.shipmentLine?.qty || 0;
-          return sum + qty;
-        }, 0),
+          return sum + (Number(qty) || 0);
+        }, 0) || 0),
       })),
   };
 
@@ -310,13 +324,17 @@ async function main() {
 
           if (!stats || !stats.pickTimeSec || stats.pickTimeSec <= 0) continue;
 
-          // Проверяем, что обязательные поля определены
-          const taskPositions = stats.positions || 0;
-          const taskUnits = stats.units || 0;
+          // Проверяем, что обязательные поля определены и валидны
+          const taskPositions = Number(stats.positions) || 0;
+          const taskUnits = Number(stats.units) || 0;
 
-          if (taskPositions === 0) {
-            console.error(`      ⚠️  Пропущено задание ${task.id}: positions = 0`);
+          if (isNaN(taskPositions) || taskPositions === 0) {
+            console.error(`      ⚠️  Пропущено задание ${task.id}: positions = ${stats.positions} (NaN или 0)`);
             continue;
+          }
+
+          if (isNaN(taskUnits)) {
+            console.error(`      ⚠️  Задание ${task.id}: units = ${stats.units}, установлено 0`);
           }
 
           dayPositions += taskPositions;
@@ -400,12 +418,23 @@ async function main() {
           }
         }
 
-        if (dayOrders.size === 0 || dayPositions === 0) continue;
+        if (dayOrders.size === 0 || dayPositions === 0 || isNaN(dayPositions)) {
+          console.error(`      ⚠️  Пропущен день ${dateKey}: positions = ${dayPositions}, orders = ${dayOrders.size}`);
+          continue;
+        }
+
+        // Нормализуем все значения, чтобы избежать NaN
+        const finalDayPositions = Math.round(dayPositions) || 0;
+        const finalDayUnits = Math.round(dayUnits) || 0;
+        const finalDayPickTimeSec = Number(dayPickTimeSec) || 0;
+        const finalDayGapTimeSec = Number(dayGapTimeSec) || 0;
+        const finalDayElapsedTimeSec = Number(dayElapsedTimeSec) || 0;
+        const finalDayOrderPoints = Number(dayOrderPoints) || 0;
 
         // Рассчитываем дневные метрики
-        const dayPph = dayPickTimeSec > 0 ? (dayPositions * 3600) / dayPickTimeSec : null;
-        const dayUph = dayPickTimeSec > 0 ? (dayUnits * 3600) / dayPickTimeSec : null;
-        const gapShare = dayElapsedTimeSec > 0 ? dayGapTimeSec / dayElapsedTimeSec : null;
+        const dayPph = finalDayPickTimeSec > 0 ? (finalDayPositions * 3600) / finalDayPickTimeSec : null;
+        const dayUph = finalDayPickTimeSec > 0 ? (finalDayUnits * 3600) / finalDayPickTimeSec : null;
+        const gapShare = finalDayElapsedTimeSec > 0 ? finalDayGapTimeSec / finalDayElapsedTimeSec : null;
         const avgEfficiency = efficiencies.length > 0
           ? efficiencies.reduce((a, b) => a + b, 0) / efficiencies.length
           : null;
@@ -420,27 +449,27 @@ async function main() {
               },
             },
             update: {
-              positions: dayPositions || 0,
-              units: dayUnits || 0,
+              positions: finalDayPositions,
+              units: finalDayUnits,
               orders: dayOrders.size,
-              pickTimeSec: dayPickTimeSec || 0,
-              gapTimeSec: dayGapTimeSec || 0,
-              elapsedTimeSec: dayElapsedTimeSec || 0,
-              dayPph,
-              dayUph,
-              gapShare,
-              dayPoints: dayOrderPoints || 0,
-              avgEfficiency,
+              pickTimeSec: finalDayPickTimeSec,
+              gapTimeSec: finalDayGapTimeSec,
+              elapsedTimeSec: finalDayElapsedTimeSec,
+              dayPph: dayPph && !isNaN(dayPph) ? dayPph : null,
+              dayUph: dayUph && !isNaN(dayUph) ? dayUph : null,
+              gapShare: gapShare && !isNaN(gapShare) ? gapShare : null,
+              dayPoints: finalDayOrderPoints,
+              avgEfficiency: avgEfficiency && !isNaN(avgEfficiency) ? avgEfficiency : null,
             },
             create: {
               userId,
               date,
-              positions: dayPositions || 0,
-              units: dayUnits || 0,
+              positions: finalDayPositions,
+              units: finalDayUnits,
               orders: dayOrders.size,
-              pickTimeSec: dayPickTimeSec || 0,
-              gapTimeSec: dayGapTimeSec || 0,
-              elapsedTimeSec: dayElapsedTimeSec || 0,
+              pickTimeSec: finalDayPickTimeSec,
+              gapTimeSec: finalDayGapTimeSec,
+              elapsedTimeSec: finalDayElapsedTimeSec,
               dayPph,
               dayUph,
               gapShare,
