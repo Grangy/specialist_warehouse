@@ -82,23 +82,6 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
     }
   }, [showProfile]);
 
-  // Вычисляем позицию попапа при открытии
-  useEffect(() => {
-    if (showProfile && typeof window !== 'undefined') {
-      const updatePosition = () => {
-        const isMobile = window.innerWidth < 768;
-        setProfilePosition({
-          top: 80,
-          right: 16,
-          width: isMobile ? window.innerWidth - 32 : 420,
-        });
-      };
-      updatePosition();
-      window.addEventListener('resize', updatePosition);
-      return () => window.removeEventListener('resize', updatePosition);
-    }
-  }, [showProfile]);
-
   // Загружаем состояние скрытия из localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
