@@ -236,10 +236,10 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
             </div>
           </div>
           
-          {/* Прогрессбар и профиль - только для сборщиков */}
-          {user?.role === 'collector' && (
+          {/* Прогрессбар и профиль - для всех пользователей (админы, сборщики, проверяльщики) */}
+          {user && (
             <div className="flex items-center gap-2 md:gap-3">
-              {/* Прогрессбар дневных баллов - всегда показываем */}
+              {/* Прогрессбар дневных баллов - показываем для всех, но статистика может быть только у сборщиков */}
               <div className="hidden sm:flex flex-col items-end gap-0.5">
                 <div className="text-[9px] text-slate-400">
                   День: {rankingStats?.daily ? Math.round(rankingStats.daily.points) : '0'}
