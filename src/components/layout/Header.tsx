@@ -254,12 +254,12 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
               </div>
               
               {/* Выпадающий профиль */}
-              <div className="relative">
+              <div className="relative z-[100]">
                 <button
                   onClick={() => setShowProfile(!showProfile)}
-                  className={`flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border transition-all duration-200 touch-manipulation px-2 md:px-3 py-1.5 rounded-md shadow-sm relative z-[200] ${
+                  className={`flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border transition-all duration-200 touch-manipulation px-2 md:px-3 py-1.5 rounded-md shadow-sm ${
                     showProfile 
-                      ? 'border-blue-500 bg-slate-700 shadow-md' 
+                      ? 'border-blue-500 bg-slate-700 shadow-md ring-2 ring-blue-500/50' 
                       : 'border-slate-600 hover:border-slate-500'
                   }`}
                   title="Профиль и статистика"
@@ -279,15 +279,18 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                 {/* Выпадающее меню профиля */}
                 {showProfile && (
                   <>
-                    {/* Затемнение фона - очень высокий z-index для перекрытия всех элементов включая FilterPanel */}
+                    {/* Затемнение фона - очень высокий z-index для перекрытия всех элементов включая FilterPanel и body > div.min-h-screen */}
                     <div
                       className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-md"
                       onClick={() => setShowProfile(false)}
+                      style={{ position: 'fixed', zIndex: 9998 }}
                     />
                     {/* Выпадающее меню - fixed позиционирование для правильного отображения поверх всех элементов */}
                     <div 
                       className="fixed z-[9999] bg-slate-800/98 backdrop-blur-xl border border-slate-600/80 rounded-xl shadow-2xl p-5 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden"
                       style={{
+                        position: 'fixed',
+                        zIndex: 9999,
                         top: `${profilePosition.top}px`,
                         right: `${profilePosition.right}px`,
                         left: typeof window !== 'undefined' && window.innerWidth < 768 ? '16px' : 'auto',
