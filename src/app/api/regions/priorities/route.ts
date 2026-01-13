@@ -54,20 +54,21 @@ export async function POST(request: NextRequest) {
       await prisma.$transaction(
         weeklyPriorities.map((item: {
           id: string;
-          priorityMonday?: number;
-          priorityTuesday?: number;
-          priorityWednesday?: number;
-          priorityThursday?: number;
-          priorityFriday?: number;
+          priorityMonday?: number | null;
+          priorityTuesday?: number | null;
+          priorityWednesday?: number | null;
+          priorityThursday?: number | null;
+          priorityFriday?: number | null;
         }) =>
           prisma.regionPriority.update({
             where: { id: item.id },
             data: {
-              priorityMonday: item.priorityMonday ?? 0,
-              priorityTuesday: item.priorityTuesday ?? 0,
-              priorityWednesday: item.priorityWednesday ?? 0,
-              priorityThursday: item.priorityThursday ?? 0,
-              priorityFriday: item.priorityFriday ?? 0,
+              // Сохраняем null если передано null, иначе значение или null
+              priorityMonday: item.priorityMonday !== undefined ? item.priorityMonday : null,
+              priorityTuesday: item.priorityTuesday !== undefined ? item.priorityTuesday : null,
+              priorityWednesday: item.priorityWednesday !== undefined ? item.priorityWednesday : null,
+              priorityThursday: item.priorityThursday !== undefined ? item.priorityThursday : null,
+              priorityFriday: item.priorityFriday !== undefined ? item.priorityFriday : null,
             },
           })
         )
@@ -135,26 +136,22 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Создаем или обновляем приоритет (инициализируем приоритеты по дням недели значением priority)
+    // Создаем или обновляем приоритет (НЕ инициализируем приоритеты по дням - они должны быть null)
     const regionPriority = await prisma.regionPriority.upsert({
       where: { region },
       update: {
         priority,
-        // Если приоритеты по дням не установлены, используем общий приоритет
-        priorityMonday: undefined,
-        priorityTuesday: undefined,
-        priorityWednesday: undefined,
-        priorityThursday: undefined,
-        priorityFriday: undefined,
+        // Не трогаем приоритеты по дням при обновлении
       },
       create: {
         region,
         priority,
-        priorityMonday: priority,
-        priorityTuesday: priority,
-        priorityWednesday: priority,
-        priorityThursday: priority,
-        priorityFriday: priority,
+        // При создании все дни недели остаются null - они будут установлены отдельно
+        priorityMonday: null,
+        priorityTuesday: null,
+        priorityWednesday: null,
+        priorityThursday: null,
+        priorityFriday: null,
       },
     });
 

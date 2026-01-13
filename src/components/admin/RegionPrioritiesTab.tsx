@@ -1,30 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragStartEvent,
-  DragOverlay,
-  Over,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-  horizontalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { useState, useEffect } from 'react';
 import {
   MapPin,
-  GripVertical,
   Loader2,
   AlertCircle,
   Plus,
@@ -35,8 +13,9 @@ import {
   Info,
   CheckCircle2,
   Sparkles,
-  ArrowRight,
   Copy,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { XIcon } from '@/components/icons/XIcon';
 
@@ -80,23 +59,10 @@ export default function RegionPrioritiesTab() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeDay, setActiveDay] = useState<DayOfWeek | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedRegionToAdd, setSelectedRegionToAdd] = useState<string | null>(null);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   useEffect(() => {
     loadData();
@@ -122,11 +88,6 @@ export default function RegionPrioritiesTab() {
       setPriorities(prioritiesData);
       setRegionList(regionsData);
       setHasChanges(false);
-      
-      // Если регион был только что создан, но не в списке, перезагружаем
-      if (prioritiesData.length > priorities.length) {
-        // Регион был добавлен, обновляем список
-      }
     } catch (error) {
       console.error('Ошибка при загрузке данных:', error);
       setError('Ошибка при загрузке данных');
@@ -135,20 +96,20 @@ export default function RegionPrioritiesTab() {
     }
   };
 
-  const getDayPriority = (priority: RegionPriority, day: DayOfWeek): number => {
+  const getDayPriority = (priority: RegionPriority, day: DayOfWeek): number | null => {
     switch (day) {
       case 'monday':
-        return priority.priorityMonday ?? priority.priority ?? 0;
+        return priority.priorityMonday ?? null;
       case 'tuesday':
-        return priority.priorityTuesday ?? priority.priority ?? 0;
+        return priority.priorityTuesday ?? null;
       case 'wednesday':
-        return priority.priorityWednesday ?? priority.priority ?? 0;
+        return priority.priorityWednesday ?? null;
       case 'thursday':
-        return priority.priorityThursday ?? priority.priority ?? 0;
+        return priority.priorityThursday ?? null;
       case 'friday':
-        return priority.priorityFriday ?? priority.priority ?? 0;
+        return priority.priorityFriday ?? null;
       default:
-        return priority.priority ?? 0;
+        return null;
     }
   };
 
@@ -159,8 +120,8 @@ export default function RegionPrioritiesTab() {
         return dayPriority !== null && dayPriority !== undefined;
       })
       .sort((a, b) => {
-        const aPriority = getDayPriority(a, day);
-        const bPriority = getDayPriority(b, day);
+        const aPriority = getDayPriority(a, day) ?? 9999;
+        const bPriority = getDayPriority(b, day) ?? 9999;
         return aPriority - bPriority;
       });
   };
@@ -184,92 +145,134 @@ export default function RegionPrioritiesTab() {
     return regionList.all.filter((region) => !isRegionInAllDays(region));
   };
 
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-    const day = (event.active.data.current as { day?: DayOfWeek })?.day;
-    setActiveDay(day || null);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-    setActiveDay(null);
-
-    if (!over) return;
-
-    const activeDay = (active.data.current as { day?: DayOfWeek })?.day;
-    const overDay = (over.data.current as { day?: DayOfWeek })?.day;
-
-    if (!activeDay || !overDay) return;
-
-    if (activeDay === overDay) {
-      // Перемещение внутри одного столбца
-      const dayRegions = getRegionsForDay(activeDay);
-      const oldIndex = dayRegions.findIndex((r) => r.id === active.id);
-      const newIndex = dayRegions.findIndex((r) => r.id === over.id);
-
-      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-        const newOrder = arrayMove(dayRegions, oldIndex, newIndex);
-        updateDayPriorities(activeDay, newOrder);
-      }
-    } else {
-      // Перемещение между столбцами
-      const sourceRegions = getRegionsForDay(activeDay);
-      const targetRegions = getRegionsForDay(overDay);
-      const draggedRegion = priorities.find((r) => r.id === active.id);
-      
-      if (!draggedRegion) return;
-
-      // Удаляем из исходного столбца
-      const sourceIndex = sourceRegions.findIndex((r) => r.id === active.id);
-      if (sourceIndex !== -1) {
-        sourceRegions.splice(sourceIndex, 1);
-      }
-
-      // Добавляем в целевой столбец
-      const targetIndex = targetRegions.findIndex((r) => r.id === over.id);
-      if (targetIndex !== -1) {
-        targetRegions.splice(targetIndex, 0, draggedRegion);
-      } else {
-        targetRegions.push(draggedRegion);
-      }
-
-      // Обновляем приоритеты для обоих дней
-      updateDayPriorities(activeDay, sourceRegions);
-      updateDayPriorities(overDay, targetRegions);
-    }
-  };
-
-  const updateDayPriorities = (day: DayOfWeek, regions: RegionPriority[]) => {
+  // Перемещение региона вверх в списке дня
+  const moveRegionUp = (day: DayOfWeek, regionId: string) => {
+    const dayRegions = getRegionsForDay(day);
+    const currentIndex = dayRegions.findIndex((r) => r.id === regionId);
+    
+    if (currentIndex <= 0) return; // Уже наверху или не найден
+    
+    // Меняем местами приоритеты
+    const prevRegion = dayRegions[currentIndex - 1];
+    const currentRegion = dayRegions[currentIndex];
+    
+    const prevPriority = getDayPriority(prevRegion, day) ?? 0;
+    const currentPriority = getDayPriority(currentRegion, day) ?? 0;
+    
     setPriorities((prev) => {
-      const updated = prev.map((p) => {
-        const index = regions.findIndex((r) => r.id === p.id);
-        if (index === -1) return p;
-
-        const updateData: Partial<RegionPriority> = {};
-        switch (day) {
-          case 'monday':
-            updateData.priorityMonday = index;
-            break;
-          case 'tuesday':
-            updateData.priorityTuesday = index;
-            break;
-          case 'wednesday':
-            updateData.priorityWednesday = index;
-            break;
-          case 'thursday':
-            updateData.priorityThursday = index;
-            break;
-          case 'friday':
-            updateData.priorityFriday = index;
-            break;
+      return prev.map((p) => {
+        if (p.id === prevRegion.id) {
+          const updateData: Partial<RegionPriority> = {};
+          switch (day) {
+            case 'monday':
+              updateData.priorityMonday = currentPriority;
+              break;
+            case 'tuesday':
+              updateData.priorityTuesday = currentPriority;
+              break;
+            case 'wednesday':
+              updateData.priorityWednesday = currentPriority;
+              break;
+            case 'thursday':
+              updateData.priorityThursday = currentPriority;
+              break;
+            case 'friday':
+              updateData.priorityFriday = currentPriority;
+              break;
+          }
+          return { ...p, ...updateData };
         }
-
-        return { ...p, ...updateData };
+        if (p.id === currentRegion.id) {
+          const updateData: Partial<RegionPriority> = {};
+          switch (day) {
+            case 'monday':
+              updateData.priorityMonday = prevPriority;
+              break;
+            case 'tuesday':
+              updateData.priorityTuesday = prevPriority;
+              break;
+            case 'wednesday':
+              updateData.priorityWednesday = prevPriority;
+              break;
+            case 'thursday':
+              updateData.priorityThursday = prevPriority;
+              break;
+            case 'friday':
+              updateData.priorityFriday = prevPriority;
+              break;
+          }
+          return { ...p, ...updateData };
+        }
+        return p;
       });
-      setHasChanges(true);
-      return updated;
     });
+    
+    setHasChanges(true);
+  };
+
+  // Перемещение региона вниз в списке дня
+  const moveRegionDown = (day: DayOfWeek, regionId: string) => {
+    const dayRegions = getRegionsForDay(day);
+    const currentIndex = dayRegions.findIndex((r) => r.id === regionId);
+    
+    if (currentIndex < 0 || currentIndex >= dayRegions.length - 1) return; // Уже внизу или не найден
+    
+    // Меняем местами приоритеты
+    const nextRegion = dayRegions[currentIndex + 1];
+    const currentRegion = dayRegions[currentIndex];
+    
+    const nextPriority = getDayPriority(nextRegion, day) ?? 0;
+    const currentPriority = getDayPriority(currentRegion, day) ?? 0;
+    
+    setPriorities((prev) => {
+      return prev.map((p) => {
+        if (p.id === nextRegion.id) {
+          const updateData: Partial<RegionPriority> = {};
+          switch (day) {
+            case 'monday':
+              updateData.priorityMonday = currentPriority;
+              break;
+            case 'tuesday':
+              updateData.priorityTuesday = currentPriority;
+              break;
+            case 'wednesday':
+              updateData.priorityWednesday = currentPriority;
+              break;
+            case 'thursday':
+              updateData.priorityThursday = currentPriority;
+              break;
+            case 'friday':
+              updateData.priorityFriday = currentPriority;
+              break;
+          }
+          return { ...p, ...updateData };
+        }
+        if (p.id === currentRegion.id) {
+          const updateData: Partial<RegionPriority> = {};
+          switch (day) {
+            case 'monday':
+              updateData.priorityMonday = nextPriority;
+              break;
+            case 'tuesday':
+              updateData.priorityTuesday = nextPriority;
+              break;
+            case 'wednesday':
+              updateData.priorityWednesday = nextPriority;
+              break;
+            case 'thursday':
+              updateData.priorityThursday = nextPriority;
+              break;
+            case 'friday':
+              updateData.priorityFriday = nextPriority;
+              break;
+          }
+          return { ...p, ...updateData };
+        }
+        return p;
+      });
+    });
+    
+    setHasChanges(true);
   };
 
   const handleSave = async () => {
@@ -278,14 +281,67 @@ export default function RegionPrioritiesTab() {
       setError('');
       setSuccess('');
 
-      const weeklyPriorities = priorities.map((p) => ({
-        id: p.id,
-        priorityMonday: p.priorityMonday ?? p.priority ?? 0,
-        priorityTuesday: p.priorityTuesday ?? p.priority ?? 0,
-        priorityWednesday: p.priorityWednesday ?? p.priority ?? 0,
-        priorityThursday: p.priorityThursday ?? p.priority ?? 0,
-        priorityFriday: p.priorityFriday ?? p.priority ?? 0,
-      }));
+      // Для каждого дня недели пересчитываем приоритеты (0, 1, 2, ...)
+      const weeklyPriorities = priorities.map((p) => {
+        const result: {
+          id: string;
+          priorityMonday?: number | null;
+          priorityTuesday?: number | null;
+          priorityWednesday?: number | null;
+          priorityThursday?: number | null;
+          priorityFriday?: number | null;
+        } = {
+          id: p.id,
+        };
+
+        // Для каждого дня находим позицию региона и устанавливаем приоритет
+        DAYS_OF_WEEK.forEach((day) => {
+          const dayRegions = getRegionsForDay(day.key);
+          const index = dayRegions.findIndex((r) => r.id === p.id);
+          
+          if (index !== -1) {
+            // Регион есть в этом дне, устанавливаем приоритет = индекс
+            switch (day.key) {
+              case 'monday':
+                result.priorityMonday = index;
+                break;
+              case 'tuesday':
+                result.priorityTuesday = index;
+                break;
+              case 'wednesday':
+                result.priorityWednesday = index;
+                break;
+              case 'thursday':
+                result.priorityThursday = index;
+                break;
+              case 'friday':
+                result.priorityFriday = index;
+                break;
+            }
+          } else {
+            // Региона нет в этом дне, устанавливаем null
+            switch (day.key) {
+              case 'monday':
+                result.priorityMonday = null;
+                break;
+              case 'tuesday':
+                result.priorityTuesday = null;
+                break;
+              case 'wednesday':
+                result.priorityWednesday = null;
+                break;
+              case 'thursday':
+                result.priorityThursday = null;
+                break;
+              case 'friday':
+                result.priorityFriday = null;
+                break;
+            }
+          }
+        });
+
+        return result;
+      });
 
       const response = await fetch('/api/regions/priorities', {
         method: 'POST',
@@ -328,12 +384,18 @@ export default function RegionPrioritiesTab() {
       let dayPriority: number;
 
       if (existingPriority) {
-        // Регион уже существует, обновляем только выбранный день
-        regionId = existingPriority.id;
+        // Регион уже существует, проверяем, не добавлен ли он уже в этот день
         const dayRegions = getRegionsForDay(day);
+        if (dayRegions.some((r) => r.id === existingPriority.id)) {
+          setError(`Регион "${region}" уже добавлен в ${DAYS_OF_WEEK.find(d => d.key === day)?.label}`);
+          setTimeout(() => setError(''), 3000);
+          return;
+        }
+        
+        regionId = existingPriority.id;
         dayPriority = dayRegions.length; // Добавляем в конец
       } else {
-        // Создаем новый регион с приоритетом только для выбранного дня
+        // Создаем новый регион БЕЗ инициализации дней недели
         const response = await fetch('/api/regions/priorities', {
           method: 'PUT',
           headers: {
@@ -431,18 +493,38 @@ export default function RegionPrioritiesTab() {
     }
   };
 
-  const handleRemoveRegion = async (id: string) => {
+  const handleRemoveRegion = async (id: string, day: DayOfWeek) => {
     try {
-      const response = await fetch(`/api/regions/priorities/${id}`, {
-        method: 'DELETE',
+      // Удаляем регион только из выбранного дня
+      setPriorities((prev) => {
+        return prev.map((p) => {
+          if (p.id === id) {
+            const updateData: Partial<RegionPriority> = {};
+            switch (day) {
+              case 'monday':
+                updateData.priorityMonday = null;
+                break;
+              case 'tuesday':
+                updateData.priorityTuesday = null;
+                break;
+              case 'wednesday':
+                updateData.priorityWednesday = null;
+                break;
+              case 'thursday':
+                updateData.priorityThursday = null;
+                break;
+              case 'friday':
+                updateData.priorityFriday = null;
+                break;
+            }
+            return { ...p, ...updateData };
+          }
+          return p;
+        });
       });
 
-      if (!response.ok) {
-        throw new Error('Ошибка при удалении региона');
-      }
-
-      await loadData();
-      setSuccess('Регион удален из приоритетов');
+      setHasChanges(true);
+      setSuccess('Регион удален из дня недели');
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
       console.error('Ошибка при удалении региона:', error);
@@ -455,16 +537,18 @@ export default function RegionPrioritiesTab() {
     setPriorities((prev) => {
       return prev.map((p) => {
         const index = sourceRegions.findIndex((r) => r.id === p.id);
-        if (index === -1) return p;
-
-        return {
-          ...p,
-          priorityMonday: index,
-          priorityTuesday: index,
-          priorityWednesday: index,
-          priorityThursday: index,
-          priorityFriday: index,
-        };
+        if (index !== -1) {
+          // Регион есть в исходном дне, копируем его позицию на все дни
+          return {
+            ...p,
+            priorityMonday: index,
+            priorityTuesday: index,
+            priorityWednesday: index,
+            priorityThursday: index,
+            priorityFriday: index,
+          };
+        }
+        return p;
       });
     });
     setHasChanges(true);
@@ -482,8 +566,6 @@ export default function RegionPrioritiesTab() {
       </div>
     );
   }
-
-  const activeRegion = activeId ? priorities.find((p) => p.id === activeId) : null;
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -506,7 +588,7 @@ export default function RegionPrioritiesTab() {
                 </button>
               </h2>
               <p className="text-sm text-slate-400">
-                Настройте приоритеты регионов по дням недели. Перетаскивайте регионы между столбцами.
+                Настройте приоритеты регионов по дням недели. Используйте стрелки для изменения порядка.
               </p>
             </div>
           </div>
@@ -552,10 +634,11 @@ export default function RegionPrioritiesTab() {
               <div className="text-sm text-slate-300 space-y-2">
                 <p><strong className="text-blue-300">Как использовать:</strong></p>
                 <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li>Перетаскивайте регионы между столбцами дней недели</li>
-                  <li>Внутри столбца можно менять порядок (верх = выше приоритет)</li>
+                  <li>Добавляйте регионы в нужные дни недели через кнопку &quot;+&quot;</li>
+                  <li>Используйте стрелки ↑↓ для изменения порядка внутри дня</li>
+                  <li>Каждый день недели полностью независим</li>
                   <li>Используйте кнопку &quot;Копировать&quot; для применения приоритетов одного дня на все дни</li>
-                  <li>Регионы без приоритета для дня не отображаются в этом столбце</li>
+                  <li>Регион остается в списке доступных, пока не добавлен во все дни</li>
                 </ul>
               </div>
             </div>
@@ -579,37 +662,22 @@ export default function RegionPrioritiesTab() {
 
       {/* Сетка с 5 столбцами (дни недели) */}
       <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 p-6 shadow-xl">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {DAYS_OF_WEEK.map((day) => {
-              const dayRegions = getRegionsForDay(day.key);
-              return (
-                <DayColumn
-                  key={day.key}
-                  day={day}
-                  regions={dayRegions}
-                  onRemove={handleRemoveRegion}
-                  onCopy={copyDayToAllDays}
-                />
-              );
-            })}
-          </div>
-          <DragOverlay>
-            {activeRegion && activeDay ? (
-              <div className="bg-gradient-to-br from-purple-600 to-purple-500 rounded-lg p-4 shadow-2xl border-2 border-purple-400/50 transform rotate-3 scale-105">
-                <div className="flex items-center gap-3">
-                  <GripVertical className="w-5 h-5 text-white" />
-                  <div className="text-white font-semibold">{activeRegion.region}</div>
-                </div>
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {DAYS_OF_WEEK.map((day) => {
+            const dayRegions = getRegionsForDay(day.key);
+            return (
+              <DayColumn
+                key={day.key}
+                day={day}
+                regions={dayRegions}
+                onMoveUp={(regionId) => moveRegionUp(day.key, regionId)}
+                onMoveDown={(regionId) => moveRegionDown(day.key, regionId)}
+                onRemove={(regionId) => handleRemoveRegion(regionId, day.key)}
+                onCopy={copyDayToAllDays}
+              />
+            );
+          })}
+        </div>
       </div>
 
       {/* Список доступных регионов */}
@@ -705,11 +773,13 @@ export default function RegionPrioritiesTab() {
 interface DayColumnProps {
   day: typeof DAYS_OF_WEEK[0];
   regions: RegionPriority[];
-  onRemove: (id: string) => void;
+  onMoveUp: (regionId: string) => void;
+  onMoveDown: (regionId: string) => void;
+  onRemove: (regionId: string) => void;
   onCopy: (day: DayOfWeek) => void;
 }
 
-function DayColumn({ day, regions, onRemove, onCopy }: DayColumnProps) {
+function DayColumn({ day, regions, onMoveUp, onMoveDown, onRemove, onCopy }: DayColumnProps) {
   return (
     <div className="bg-slate-900/50 rounded-lg border-2 border-slate-700/50 p-4 min-h-[400px] flex flex-col">
       {/* Заголовок столбца */}
@@ -734,71 +804,44 @@ function DayColumn({ day, regions, onRemove, onCopy }: DayColumnProps) {
       </div>
 
       {/* Список регионов */}
-      <SortableContext
-        items={regions.map((r) => `${day.key}-${r.id}`)}
-        strategy={verticalListSortingStrategy}
-      >
-        <div className="flex-1 space-y-2 overflow-y-auto max-h-[500px] pr-1">
-          {regions.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 text-sm">
-              <MapPin className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p>Нет регионов</p>
-            </div>
-          ) : (
-            regions.map((region, index) => (
-              <SortableRegionItem
-                key={`${day.key}-${region.id}`}
-                region={region}
-                day={day.key}
-                index={index}
-                onRemove={onRemove}
-              />
-            ))
-          )}
-        </div>
-      </SortableContext>
+      <div className="flex-1 space-y-2 overflow-y-auto max-h-[500px] pr-1">
+        {regions.length === 0 ? (
+          <div className="text-center py-8 text-slate-500 text-sm">
+            <MapPin className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p>Нет регионов</p>
+          </div>
+        ) : (
+          regions.map((region, index) => (
+            <RegionItem
+              key={`${day.key}-${region.id}`}
+              region={region}
+              day={day.key}
+              index={index}
+              total={regions.length}
+              onMoveUp={onMoveUp}
+              onMoveDown={onMoveDown}
+              onRemove={onRemove}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
 
-interface SortableRegionItemProps {
+interface RegionItemProps {
   region: RegionPriority;
   day: DayOfWeek;
   index: number;
-  onRemove: (id: string) => void;
+  total: number;
+  onMoveUp: (regionId: string) => void;
+  onMoveDown: (regionId: string) => void;
+  onRemove: (regionId: string) => void;
 }
 
-function SortableRegionItem({ region, day, index, onRemove }: SortableRegionItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: `${day}-${region.id}`, data: { day } });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  };
-
+function RegionItem({ region, day, index, total, onMoveUp, onMoveDown, onRemove }: RegionItemProps) {
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`bg-slate-800/70 border-2 border-slate-600/50 rounded-lg p-3 flex items-center gap-2 hover:border-purple-500/50 transition-all group ${
-        isDragging ? 'shadow-2xl scale-105 z-50' : 'shadow-md hover:shadow-lg'
-      }`}
-    >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-200 transition-colors flex-shrink-0"
-      >
-        <GripVertical className="w-4 h-4" />
-      </div>
+    <div className="bg-slate-800/70 border-2 border-slate-600/50 rounded-lg p-3 flex items-center gap-2 hover:border-purple-500/50 transition-all group shadow-md hover:shadow-lg">
       <div className="flex-1 flex items-center gap-2 min-w-0">
         <div className="w-6 h-6 bg-purple-600/20 text-purple-300 rounded-full flex items-center justify-center font-bold text-xs border border-purple-500/50 flex-shrink-0">
           {index + 1}
@@ -807,13 +850,31 @@ function SortableRegionItem({ region, day, index, onRemove }: SortableRegionItem
           <div className="text-slate-200 font-semibold text-sm truncate">{region.region}</div>
         </div>
       </div>
-      <button
-        onClick={() => onRemove(region.id)}
-        className="px-2 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded transition-all flex items-center gap-1 text-xs hover:scale-110 active:scale-95 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-        title="Удалить из приоритетов"
-      >
-        <Trash2 className="w-3 h-3" />
-      </button>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <button
+          onClick={() => onMoveUp(region.id)}
+          disabled={index === 0}
+          className="p-1.5 bg-slate-700/50 hover:bg-slate-600 text-slate-300 rounded transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95"
+          title="Переместить вверх"
+        >
+          <ChevronUp className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => onMoveDown(region.id)}
+          disabled={index === total - 1}
+          className="p-1.5 bg-slate-700/50 hover:bg-slate-600 text-slate-300 rounded transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95"
+          title="Переместить вниз"
+        >
+          <ChevronDown className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => onRemove(region.id)}
+          className="p-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded transition-all hover:scale-110 active:scale-95 opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Удалить из дня"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
     </div>
   );
 }
