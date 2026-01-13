@@ -120,26 +120,37 @@ async function calculateTaskStatsForCollector(
   }
 
   // Рассчитываем positions и units с проверкой на валидность
+  // Сначала проверяем task.lines (это ShipmentTaskLine[])
   let positions = 0;
-  if (task.totalItems !== null && task.totalItems !== undefined) {
-    positions = Number(task.totalItems) || 0;
-  } else if (task.lines && task.lines.length > 0) {
+  if (task.lines && Array.isArray(task.lines) && task.lines.length > 0) {
     positions = task.lines.length;
+  } else if (task.totalItems !== null && task.totalItems !== undefined && task.totalItems > 0) {
+    positions = Number(task.totalItems);
+  } else {
+    // Если нет ни lines, ни totalItems, пытаемся получить из shipment.lines через task.lines
+    console.error(`      ⚠️  Задание ${task.id}: нет lines (${task.lines?.length || 0}) и totalItems (${task.totalItems}), пропущено`);
+    return null;
   }
 
   let units = 0;
-  if (task.totalUnits !== null && task.totalUnits !== undefined) {
-    units = Number(task.totalUnits) || 0;
-  } else if (task.lines && task.lines.length > 0) {
+  if (task.lines && Array.isArray(task.lines) && task.lines.length > 0) {
     units = task.lines.reduce((sum: number, line: any) => {
-      const qty = line.collectedQty || line.qty || line.shipmentLine?.qty || 0;
+      // В ShipmentTaskLine есть qty и collectedQty, а также shipmentLine с qty
+      const qty = line.collectedQty || line.qty || (line.shipmentLine?.qty) || 0;
       return sum + (Number(qty) || 0);
     }, 0);
+  } else if (task.totalUnits !== null && task.totalUnits !== undefined && task.totalUnits > 0) {
+    units = Number(task.totalUnits);
+  } else {
+    units = 0;
   }
 
   // Проверяем валидность
+  positions = Number(positions) || 0;
+  units = Number(units) || 0;
+
   if (isNaN(positions) || positions === 0) {
-    console.error(`      ⚠️  Задание ${task.id}: positions = ${positions} (невалидно), пропущено`);
+    console.error(`      ⚠️  Задание ${task.id}: positions = ${positions} (невалидно), task.totalItems=${task.totalItems}, task.lines.length=${task.lines?.length || 0}, пропущено`);
     return null;
   }
 
@@ -178,11 +189,15 @@ async function calculateTaskStatsForCollector(
         warehouse: t.warehouse,
         startedAt: t.startedAt,
         completedAt: t.completedAt,
-        positions: t.totalItems ? Number(t.totalItems) : (t.lines?.length || 0),
-        units: t.totalUnits ? Number(t.totalUnits) : (t.lines?.reduce((sum: number, line: any) => {
-          const qty = line.collectedQty || line.qty || line.shipmentLine?.qty || 0;
-          return sum + (Number(qty) || 0);
-        }, 0) || 0),
+        positions: (t.lines && Array.isArray(t.lines) && t.lines.length > 0) 
+          ? t.lines.length 
+          : (t.totalItems ? Number(t.totalItems) : 0),
+        units: (t.lines && Array.isArray(t.lines) && t.lines.length > 0)
+          ? t.lines.reduce((sum: number, line: any) => {
+              const qty = line.collectedQty || line.qty || (line.shipmentLine?.qty) || 0;
+              return sum + (Number(qty) || 0);
+            }, 0)
+          : (t.totalUnits ? Number(t.totalUnits) : 0),
       })),
   };
 
@@ -328,8 +343,8 @@ async function main() {
           const taskPositions = Number(stats.positions) || 0;
           const taskUnits = Number(stats.units) || 0;
 
-          if (isNaN(taskPositions) || taskPositions === 0) {
-            console.error(`      ⚠️  Пропущено задание ${task.id}: positions = ${stats.positions} (NaN или 0)`);
+          if (isNaN(taskPositions) || taskPositions === 0 || !stats.positions) {
+            console.error(`      ⚠️  Пропущено задание ${task.id}: positions = ${stats.positions} (NaN, 0 или undefined), task.lines.length=${task.lines?.length || 0}, task.totalItems=${task.totalItems}`);
             continue;
           }
 
