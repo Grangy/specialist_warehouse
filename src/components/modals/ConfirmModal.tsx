@@ -283,19 +283,19 @@ export function ConfirmModal({
     >
       <div className="mb-3 flex items-center justify-between text-xs gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Информация о клиенте и городе без префиксов */}
+          {/* Информация о клиенте и локации (регионе) без префиксов */}
           {currentShipment.customer_name && (
             <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.customer_name}>
               {currentShipment.customer_name}
             </div>
           )}
-          {currentShipment.destination && (
+          {currentShipment.business_region && (
             <>
               {currentShipment.customer_name && (
                 <div className="h-4 w-px bg-slate-600"></div>
               )}
-              <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.destination}>
-                {currentShipment.destination}
+              <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.business_region}>
+                {currentShipment.business_region}
               </div>
             </>
           )}
