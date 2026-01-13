@@ -146,11 +146,12 @@ async function calculateTaskStatsForCollector(
   }
 
   // Проверяем валидность
+  const originalPositions = positions;
   positions = Number(positions) || 0;
   units = Number(units) || 0;
 
   if (isNaN(positions) || positions === 0) {
-    console.error(`      ⚠️  Задание ${task.id}: positions = ${positions} (невалидно), task.totalItems=${task.totalItems}, task.lines.length=${task.lines?.length || 0}, пропущено`);
+    console.error(`      ⚠️  Задание ${task.id}: positions = ${positions} (невалидно после Number()), originalPositions=${originalPositions}, task.totalItems=${task.totalItems}, task.lines.length=${task.lines?.length || 0}, task.lines isArray=${Array.isArray(task.lines)}, пропущено`);
     return null;
   }
 
@@ -203,19 +204,27 @@ async function calculateTaskStatsForCollector(
 
   const stats = calculateTaskStatistics(taskData, shipmentData, norm);
 
-  return {
+  // Убеждаемся, что positions и units точно присутствуют в возвращаемом объекте
+  const result = {
     taskId: task.id,
     userId: task.collectorId,
     shipmentId: task.shipmentId,
     warehouse: task.warehouse,
-    positions, // Добавляем positions в возвращаемый объект
-    units,     // Добавляем units в возвращаемый объект
+    positions: positions, // Явно добавляем positions
+    units: units,        // Явно добавляем units
     ...stats,
     normA: norm.normA,
     normB: norm.normB,
     normC: norm.normC,
     normVersion: '1.0',
   };
+
+  // Отладочная проверка
+  if (!result.positions || result.positions === 0) {
+    console.error(`      ⚠️  [DEBUG] calculateTaskStatsForCollector вернул result.positions=${result.positions}, positions=${positions}, task.lines.length=${task.lines?.length || 0}`);
+  }
+
+  return result;
 }
 
 async function main() {
