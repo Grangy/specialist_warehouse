@@ -200,6 +200,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
         className={`bg-slate-900 border-b border-slate-700 px-2 md:px-6 py-2 md:py-4 transition-transform duration-300 ease-in-out ${
           isHidden ? 'md:translate-y-0 -translate-y-full md:block hidden' : 'translate-y-0'
         }`}
+        style={{ position: 'relative', zIndex: 100 }}
       >
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-0 max-w-7xl mx-auto">
           {/* Логотип и приветствие - компактнее на мобильных */}
@@ -281,22 +282,27 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                   <>
                     {/* Затемнение фона - очень высокий z-index для перекрытия всех элементов включая FilterPanel и body > div.min-h-screen */}
                     <div
-                      className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-md"
+                      className="fixed inset-0 bg-black/50 backdrop-blur-md"
                       onClick={() => setShowProfile(false)}
-                      style={{ position: 'fixed', zIndex: 9998 }}
+                      style={{ 
+                        position: 'fixed', 
+                        zIndex: 99998,
+                        pointerEvents: 'auto',
+                      }}
                     />
                     {/* Выпадающее меню - fixed позиционирование для правильного отображения поверх всех элементов */}
                     <div 
-                      className="fixed z-[9999] bg-slate-800/98 backdrop-blur-xl border border-slate-600/80 rounded-xl shadow-2xl p-5 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden"
+                      className="fixed bg-slate-800/98 backdrop-blur-xl border border-slate-600/80 rounded-xl shadow-2xl p-5 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden"
                       style={{
                         position: 'fixed',
-                        zIndex: 9999,
+                        zIndex: 99999,
                         top: `${profilePosition.top}px`,
                         right: `${profilePosition.right}px`,
                         left: typeof window !== 'undefined' && window.innerWidth < 768 ? '16px' : 'auto',
                         width: typeof window !== 'undefined' && window.innerWidth < 768 ? `${profilePosition.width}px` : '420px',
                         maxWidth: '420px',
                         maxHeight: 'calc(100vh - 100px)',
+                        pointerEvents: 'auto',
                       }}
                     >
                       {/* Кнопка закрытия */}

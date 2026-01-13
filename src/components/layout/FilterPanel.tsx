@@ -37,7 +37,7 @@ export function FilterPanel({ shipments, filters, onFiltersChange }: FilterPanel
   };
 
   return (
-    <div className="bg-slate-900 border-b border-slate-800 px-3 md:px-6 py-3 md:py-4">
+    <div className="bg-slate-900 border-b border-slate-800 px-3 md:px-6 py-3 md:py-4" style={{ position: 'relative', zIndex: 1 }}>
       <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-3 md:gap-4">
         <div className="flex-1 min-w-0 md:min-w-[300px] w-full md:w-auto">
           <div className="relative">
@@ -48,6 +48,7 @@ export function FilterPanel({ shipments, filters, onFiltersChange }: FilterPanel
               value={filters.search}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 h-10 md:h-auto text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              style={{ position: 'relative', zIndex: 1 }}
             />
           </div>
         </div>
