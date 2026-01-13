@@ -31,12 +31,24 @@ export async function GET(request: NextRequest) {
       .map((s) => s.businessRegion)
       .filter((r): r is string => r !== null);
 
-    // Получаем существующие приоритеты
-    let priorities: Array<{ region: string }> = [];
+    // Получаем существующие приоритеты с информацией о днях недели
+    let priorities: Array<{
+      region: string;
+      priorityMonday: number | null;
+      priorityTuesday: number | null;
+      priorityWednesday: number | null;
+      priorityThursday: number | null;
+      priorityFriday: number | null;
+    }> = [];
     try {
       priorities = await prisma.regionPriority.findMany({
         select: {
           region: true,
+          priorityMonday: true,
+          priorityTuesday: true,
+          priorityWednesday: true,
+          priorityThursday: true,
+          priorityFriday: true,
         },
       });
     } catch (dbError: any) {
@@ -49,13 +61,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const existingRegions = new Set(priorities.map((p) => p.region));
+    // Регионы, добавленные во все дни недели (полностью настроенные)
+    const regionsInAllDays = new Set(
+      priorities
+        .filter((p) => 
+          p.priorityMonday !== null &&
+          p.priorityTuesday !== null &&
+          p.priorityWednesday !== null &&
+          p.priorityThursday !== null &&
+          p.priorityFriday !== null
+        )
+        .map((p) => p.region)
+    );
 
     // Разделяем на существующие и новые
+    // withoutPriority - регионы, которые не добавлены во все дни (могут быть добавлены еще)
     const result = {
       all: regions,
       withPriority: priorities.map((p) => p.region),
-      withoutPriority: regions.filter((r) => !existingRegions.has(r)),
+      withoutPriority: regions.filter((r) => !regionsInAllDays.has(r)),
     };
 
     return NextResponse.json(result);

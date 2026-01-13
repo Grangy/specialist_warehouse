@@ -38,6 +38,7 @@ import {
   ArrowRight,
   Copy,
 } from 'lucide-react';
+import { XIcon } from '@/components/icons/XIcon';
 
 interface RegionPriority {
   id: string;
@@ -83,6 +84,8 @@ export default function RegionPrioritiesTab() {
   const [activeDay, setActiveDay] = useState<DayOfWeek | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedRegionToAdd, setSelectedRegionToAdd] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -97,6 +100,7 @@ export default function RegionPrioritiesTab() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
@@ -118,6 +122,11 @@ export default function RegionPrioritiesTab() {
       setPriorities(prioritiesData);
       setRegionList(regionsData);
       setHasChanges(false);
+      
+      // Если регион был только что создан, но не в списке, перезагружаем
+      if (prioritiesData.length > priorities.length) {
+        // Регион был добавлен, обновляем список
+      }
     } catch (error) {
       console.error('Ошибка при загрузке данных:', error);
       setError('Ошибка при загрузке данных');
@@ -154,6 +163,25 @@ export default function RegionPrioritiesTab() {
         const bPriority = getDayPriority(b, day);
         return aPriority - bPriority;
       });
+  };
+
+  // Проверяет, добавлен ли регион во все дни недели
+  const isRegionInAllDays = (region: string): boolean => {
+    const priority = priorities.find((p) => p.region === region);
+    if (!priority) return false;
+    
+    return (
+      (priority.priorityMonday !== null && priority.priorityMonday !== undefined) &&
+      (priority.priorityTuesday !== null && priority.priorityTuesday !== undefined) &&
+      (priority.priorityWednesday !== null && priority.priorityWednesday !== undefined) &&
+      (priority.priorityThursday !== null && priority.priorityThursday !== undefined) &&
+      (priority.priorityFriday !== null && priority.priorityFriday !== undefined)
+    );
+  };
+
+  // Получает список доступных регионов (не добавленных во все дни)
+  const getAvailableRegions = (): string[] => {
+    return regionList.all.filter((region) => !isRegionInAllDays(region));
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -286,29 +314,116 @@ export default function RegionPrioritiesTab() {
     }
   };
 
-  const handleAddRegion = async (region: string) => {
+  const handleAddRegionClick = (region: string) => {
+    setSelectedRegionToAdd(region);
+    setShowAddModal(true);
+  };
+
+  const handleAddRegion = async (region: string, day: DayOfWeek) => {
     try {
-      const maxPriority = priorities.length > 0
-        ? Math.max(...priorities.map((p) => p.priority)) + 1
-        : 0;
+      // Проверяем, существует ли уже регион в БД
+      const existingPriority = priorities.find((p) => p.region === region);
+      
+      let regionId: string;
+      let dayPriority: number;
 
-      const response = await fetch('/api/regions/priorities', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          region,
-          priority: maxPriority,
-        }),
-      });
+      if (existingPriority) {
+        // Регион уже существует, обновляем только выбранный день
+        regionId = existingPriority.id;
+        const dayRegions = getRegionsForDay(day);
+        dayPriority = dayRegions.length; // Добавляем в конец
+      } else {
+        // Создаем новый регион с приоритетом только для выбранного дня
+        const response = await fetch('/api/regions/priorities', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            region,
+            priority: 0, // Базовый приоритет
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error('Ошибка при добавлении региона');
+        if (!response.ok) {
+          throw new Error('Ошибка при создании региона');
+        }
+
+        const newPriority = await response.json();
+        regionId = newPriority.id;
+        dayPriority = 0;
       }
 
-      await loadData();
-      setSuccess(`Регион "${region}" добавлен`);
+      // Обновляем приоритет для выбранного дня
+      setPriorities((prev) => {
+        let updated = [...prev];
+        const existingIndex = updated.findIndex((p) => p.id === regionId);
+        
+        if (existingIndex !== -1) {
+          // Регион уже существует, обновляем только выбранный день
+          const updateData: Partial<RegionPriority> = {};
+          switch (day) {
+            case 'monday':
+              updateData.priorityMonday = dayPriority;
+              break;
+            case 'tuesday':
+              updateData.priorityTuesday = dayPriority;
+              break;
+            case 'wednesday':
+              updateData.priorityWednesday = dayPriority;
+              break;
+            case 'thursday':
+              updateData.priorityThursday = dayPriority;
+              break;
+            case 'friday':
+              updateData.priorityFriday = dayPriority;
+              break;
+          }
+          updated[existingIndex] = { ...updated[existingIndex], ...updateData };
+        } else {
+          // Регион новый, создаем новую запись
+          const newPriority: RegionPriority = {
+            id: regionId,
+            region,
+            priority: 0,
+            priorityMonday: null,
+            priorityTuesday: null,
+            priorityWednesday: null,
+            priorityThursday: null,
+            priorityFriday: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          
+          // Устанавливаем приоритет для выбранного дня
+          switch (day) {
+            case 'monday':
+              newPriority.priorityMonday = dayPriority;
+              break;
+            case 'tuesday':
+              newPriority.priorityTuesday = dayPriority;
+              break;
+            case 'wednesday':
+              newPriority.priorityWednesday = dayPriority;
+              break;
+            case 'thursday':
+              newPriority.priorityThursday = dayPriority;
+              break;
+            case 'friday':
+              newPriority.priorityFriday = dayPriority;
+              break;
+          }
+          
+          updated.push(newPriority);
+        }
+
+        return updated;
+      });
+
+      setHasChanges(true);
+      setShowAddModal(false);
+      setSelectedRegionToAdd(null);
+      setSuccess(`Регион "${region}" добавлен в ${DAYS_OF_WEEK.find(d => d.key === day)?.label}`);
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
       console.error('Ошибка при добавлении региона:', error);
@@ -498,23 +613,88 @@ export default function RegionPrioritiesTab() {
       </div>
 
       {/* Список доступных регионов */}
-      {regionList.withoutPriority.length > 0 && (
+      {getAvailableRegions().length > 0 && (
         <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 p-6 shadow-xl">
           <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-purple-400" />
-            Доступные регионы (без приоритета)
+            Доступные регионы
           </h3>
+          <p className="text-sm text-slate-400 mb-4">
+            Выберите регион и день недели для добавления. Регион останется в списке, пока не будет добавлен во все дни.
+          </p>
           <div className="flex flex-wrap gap-2">
-            {regionList.withoutPriority.map((region) => (
+            {getAvailableRegions().map((region) => (
               <button
                 key={region}
-                onClick={() => handleAddRegion(region)}
+                onClick={() => handleAddRegionClick(region)}
                 className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-lg border border-purple-500/50 transition-all flex items-center gap-2 text-sm hover:scale-105 active:scale-95 shadow-md hover:shadow-lg group"
               >
                 <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
                 {region}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно выбора дня недели */}
+      {showAddModal && selectedRegionToAdd && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full border border-slate-700">
+            <div className="flex items-center justify-between p-6 border-b border-slate-700">
+              <div>
+                <h2 className="text-xl font-bold text-slate-100">Выберите день недели</h2>
+                <p className="text-sm text-slate-400 mt-1">
+                  Добавить регион &quot;{selectedRegionToAdd}&quot; в:
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setSelectedRegionToAdd(null);
+                }}
+                className="text-slate-400 hover:text-slate-100 transition-colors"
+              >
+                <XIcon className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 gap-3">
+                {DAYS_OF_WEEK.map((day) => {
+                  const dayRegions = getRegionsForDay(day.key);
+                  const isAlreadyAdded = dayRegions.some((r) => r.region === selectedRegionToAdd);
+                  
+                  return (
+                    <button
+                      key={day.key}
+                      onClick={() => {
+                        if (!isAlreadyAdded) {
+                          handleAddRegion(selectedRegionToAdd, day.key);
+                        }
+                      }}
+                      disabled={isAlreadyAdded}
+                      className={`p-4 rounded-lg border-2 transition-all text-left ${
+                        isAlreadyAdded
+                          ? 'border-slate-700 bg-slate-700/30 text-slate-500 cursor-not-allowed'
+                          : `bg-gradient-to-r ${day.color} border-transparent text-white hover:scale-105 active:scale-95 shadow-md hover:shadow-lg`
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold text-lg">{day.label}</div>
+                          <div className="text-sm opacity-80">
+                            {isAlreadyAdded ? 'Уже добавлен' : `${dayRegions.length} регионов`}
+                          </div>
+                        </div>
+                        {isAlreadyAdded && (
+                          <CheckCircle2 className="w-5 h-5" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
