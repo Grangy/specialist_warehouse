@@ -13,8 +13,16 @@ import {
   CheckCircle,
   Calendar,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Trophy,
+  TrendingUp
 } from 'lucide-react';
+
+interface AnimalLevel {
+  name: string;
+  emoji: string;
+  color: string;
+}
 
 interface User {
   id: string;
@@ -23,6 +31,12 @@ interface User {
   role: 'admin' | 'collector' | 'checker';
   createdAt: string;
   updatedAt: string;
+  dailyRank?: number | null;
+  dailyLevel?: AnimalLevel | null;
+  dailyPoints?: number | null;
+  monthlyRank?: number | null;
+  monthlyLevel?: AnimalLevel | null;
+  monthlyPoints?: number | null;
 }
 
 export default function UsersTab() {
@@ -288,65 +302,113 @@ export default function UsersTab() {
       )}
 
       <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 overflow-hidden shadow-xl">
-        <table className="w-full">
-          <thead className="bg-slate-900/95 backdrop-blur-sm">
-            <tr>
-              <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Логин</th>
-              <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Имя</th>
-              <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Роль</th>
-              <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Создан</th>
-              <th className="px-4 py-4 text-right text-sm font-semibold text-slate-200 uppercase tracking-wider">Действия</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700/50">
-            {users.map((user, index) => (
-              <tr 
-                key={user.id} 
-                className="hover:bg-slate-700/50 transition-all duration-200 animate-fadeIn"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <td className="px-4 py-4 text-slate-200 font-medium">{user.login}</td>
-                <td className="px-4 py-4 text-slate-200">{user.name}</td>
-                <td className="px-4 py-4">
-                  <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ${
-                    user.role === 'admin' 
-                      ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50'
-                      : user.role === 'collector'
-                      ? 'bg-blue-600/20 text-blue-300 border border-blue-500/50'
-                      : 'bg-green-600/20 text-green-300 border border-green-500/50'
-                  }`}>
-                    {user.role === 'admin' && <Shield className="w-3.5 h-3.5" />}
-                    {user.role === 'collector' && <User className="w-3.5 h-3.5" />}
-                    {user.role === 'checker' && <CheckCircle className="w-3.5 h-3.5" />}
-                    {roleLabels[user.role]}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-slate-400 text-sm flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  {new Date(user.createdAt).toLocaleDateString('ru-RU')}
-                </td>
-                <td className="px-4 py-4 text-right">
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      onClick={() => handleEdit(user)}
-                      className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white px-4 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 font-medium"
-                    >
-                      <Edit className="w-4 h-4" />
-                      Редактировать
-                    </button>
-                    <button
-                      onClick={() => handleDelete(user.id)}
-                      className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white px-4 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 font-medium"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Удалить
-                    </button>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[800px]">
+            <thead className="bg-slate-900/95 backdrop-blur-sm">
+              <tr>
+                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Логин</th>
+                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Имя</th>
+                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Роль</th>
+                <th className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider">
+                  <div className="flex items-center justify-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Рейтинг сегодня
                   </div>
-                </td>
+                </th>
+                <th className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider">
+                  <div className="flex items-center justify-center gap-2">
+                    <Trophy className="w-4 h-4" />
+                    Рейтинг в месяц
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Создан</th>
+                <th className="px-4 py-4 text-right text-sm font-semibold text-slate-200 uppercase tracking-wider">Действия</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-700/50">
+              {users.map((user, index) => (
+                <tr 
+                  key={user.id} 
+                  className="hover:bg-slate-700/50 transition-all duration-200 animate-fadeIn"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <td className="px-4 py-4 text-slate-200 font-medium">{user.login}</td>
+                  <td className="px-4 py-4 text-slate-200">{user.name}</td>
+                  <td className="px-4 py-4">
+                    <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ${
+                      user.role === 'admin' 
+                        ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50'
+                        : user.role === 'collector'
+                        ? 'bg-blue-600/20 text-blue-300 border border-blue-500/50'
+                        : 'bg-green-600/20 text-green-300 border border-green-500/50'
+                    }`}>
+                      {user.role === 'admin' && <Shield className="w-3.5 h-3.5" />}
+                      {user.role === 'collector' && <User className="w-3.5 h-3.5" />}
+                      {user.role === 'checker' && <CheckCircle className="w-3.5 h-3.5" />}
+                      {roleLabels[user.role]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 text-center">
+                    {user.dailyLevel ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold ${user.dailyLevel.color} bg-slate-700/50 border border-slate-600/50`}>
+                          <span>{user.dailyLevel.emoji}</span>
+                          <span>{user.dailyLevel.name}</span>
+                        </span>
+                        {user.dailyPoints !== null && user.dailyPoints !== undefined && (
+                          <span className="text-xs text-slate-400">
+                            {Math.round(user.dailyPoints)} баллов
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-slate-500 text-sm">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-center">
+                    {user.monthlyLevel ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold ${user.monthlyLevel.color} bg-slate-700/50 border border-slate-600/50`}>
+                          <span>{user.monthlyLevel.emoji}</span>
+                          <span>{user.monthlyLevel.name}</span>
+                        </span>
+                        {user.monthlyPoints !== null && user.monthlyPoints !== undefined && (
+                          <span className="text-xs text-slate-400">
+                            {Math.round(user.monthlyPoints)} баллов
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-slate-500 text-sm">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-slate-400 text-sm flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {new Date(user.createdAt).toLocaleDateString('ru-RU')}
+                  </td>
+                  <td className="px-4 py-4 text-right">
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => handleEdit(user)}
+                        className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white px-4 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 font-medium"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Редактировать
+                      </button>
+                      <button
+                        onClick={() => handleDelete(user.id)}
+                        className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white px-4 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 font-medium"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Удалить
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

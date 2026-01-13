@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { hashPassword } from '@/lib/auth';
+import { getAnimalLevel } from '@/lib/ranking/levels';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,73 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(users);
+    // Получаем текущую дату
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    // Получаем статистику для каждого пользователя
+    const usersWithStats = await Promise.all(
+      users.map(async (user) => {
+        let dailyStats = null;
+        let monthlyStats = null;
+
+        try {
+          if ('dailyStats' in prisma && typeof (prisma as any).dailyStats?.findUnique === 'function') {
+            dailyStats = await (prisma as any).dailyStats.findUnique({
+              where: {
+                userId_date: {
+                  userId: user.id,
+                  date: today,
+                },
+              },
+            });
+          }
+        } catch (error: any) {
+          // Модель еще не доступна
+        }
+
+        try {
+          if ('monthlyStats' in prisma && typeof (prisma as any).monthlyStats?.findUnique === 'function') {
+            monthlyStats = await (prisma as any).monthlyStats.findUnique({
+              where: {
+                userId_year_month: {
+                  userId: user.id,
+                  year: currentYear,
+                  month: currentMonth,
+                },
+              },
+            });
+          }
+        } catch (error: any) {
+          // Модель еще не доступна
+        }
+
+        const dailyLevel = dailyStats?.dailyRank ? getAnimalLevel(dailyStats.dailyRank) : null;
+        const monthlyLevel = monthlyStats?.monthlyRank ? getAnimalLevel(monthlyStats.monthlyRank) : null;
+
+        return {
+          ...user,
+          dailyRank: dailyStats?.dailyRank || null,
+          dailyLevel: dailyLevel ? {
+            name: dailyLevel.name,
+            emoji: dailyLevel.emoji,
+            color: dailyLevel.color,
+          } : null,
+          dailyPoints: dailyStats?.dayPoints || null,
+          monthlyRank: monthlyStats?.monthlyRank || null,
+          monthlyLevel: monthlyLevel ? {
+            name: monthlyLevel.name,
+            emoji: monthlyLevel.emoji,
+            color: monthlyLevel.color,
+          } : null,
+          monthlyPoints: monthlyStats?.monthPoints || null,
+        };
+      })
+    );
+
+    return NextResponse.json(usersWithStats);
   } catch (error) {
     console.error('Ошибка при получении пользователей:', error);
     return NextResponse.json(
