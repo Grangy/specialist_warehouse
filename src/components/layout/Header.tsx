@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PackageIcon } from '@/components/icons/PackageIcon';
-import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star } from 'lucide-react';
+import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X } from 'lucide-react';
 
 interface HeaderProps {
   newCount: number;
@@ -47,6 +47,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
   const [isHidden, setIsHidden] = useState(false);
   const [rankingStats, setRankingStats] = useState<RankingStats | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [profilePosition, setProfilePosition] = useState({ top: 80, right: 16, width: 420 });
   const router = useRouter();
 
   useEffect(() => {
@@ -63,6 +64,40 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Вычисляем позицию попапа при открытии и изменении размера окна
+  useEffect(() => {
+    if (showProfile && typeof window !== 'undefined') {
+      const updatePosition = () => {
+        const isMobile = window.innerWidth < 768;
+        setProfilePosition({
+          top: 80,
+          right: 16,
+          width: isMobile ? window.innerWidth - 32 : 420,
+        });
+      };
+      updatePosition();
+      window.addEventListener('resize', updatePosition);
+      return () => window.removeEventListener('resize', updatePosition);
+    }
+  }, [showProfile]);
+
+  // Вычисляем позицию попапа при открытии
+  useEffect(() => {
+    if (showProfile && typeof window !== 'undefined') {
+      const updatePosition = () => {
+        const isMobile = window.innerWidth < 768;
+        setProfilePosition({
+          top: 80,
+          right: 16,
+          width: isMobile ? window.innerWidth - 32 : 420,
+        });
+      };
+      updatePosition();
+      window.addEventListener('resize', updatePosition);
+      return () => window.removeEventListener('resize', updatePosition);
+    }
+  }, [showProfile]);
 
   // Загружаем состояние скрытия из localStorage
   useEffect(() => {
@@ -236,10 +271,10 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
               </div>
               
               {/* Выпадающий профиль */}
-              <div className="relative z-[100]">
+              <div className="relative">
                 <button
                   onClick={() => setShowProfile(!showProfile)}
-                  className={`flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border transition-all duration-200 touch-manipulation px-2 md:px-3 py-1.5 rounded-md shadow-sm ${
+                  className={`flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border transition-all duration-200 touch-manipulation px-2 md:px-3 py-1.5 rounded-md shadow-sm relative z-[200] ${
                     showProfile 
                       ? 'border-blue-500 bg-slate-700 shadow-md' 
                       : 'border-slate-600 hover:border-slate-500'
@@ -261,15 +296,33 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                 {/* Выпадающее меню профиля */}
                 {showProfile && (
                   <>
-                    {/* Затемнение фона */}
+                    {/* Затемнение фона - очень высокий z-index для перекрытия всех элементов включая FilterPanel */}
                     <div
-                      className="fixed inset-0 z-[90] bg-black/20 backdrop-blur-sm"
+                      className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-md"
                       onClick={() => setShowProfile(false)}
                     />
-                    {/* Выпадающее меню */}
-                    <div className="absolute right-0 top-full mt-2 w-72 md:w-80 bg-slate-800/98 backdrop-blur-md border border-slate-600/80 rounded-xl shadow-2xl z-[100] p-5 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {/* Выпадающее меню - fixed позиционирование для правильного отображения поверх всех элементов */}
+                    <div 
+                      className="fixed z-[9999] bg-slate-800/98 backdrop-blur-xl border border-slate-600/80 rounded-xl shadow-2xl p-5 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden"
+                      style={{
+                        top: `${profilePosition.top}px`,
+                        right: `${profilePosition.right}px`,
+                        left: typeof window !== 'undefined' && window.innerWidth < 768 ? '16px' : 'auto',
+                        width: typeof window !== 'undefined' && window.innerWidth < 768 ? `${profilePosition.width}px` : '420px',
+                        maxWidth: '420px',
+                        maxHeight: 'calc(100vh - 100px)',
+                      }}
+                    >
+                      {/* Кнопка закрытия */}
+                      <button
+                        onClick={() => setShowProfile(false)}
+                        className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600/70 text-slate-200 hover:text-white transition-all duration-200 z-10 shadow-lg hover:shadow-xl"
+                        title="Закрыть"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
                       {/* Заголовок профиля */}
-                      <div className="border-b border-slate-700/50 pb-3 mb-4">
+                      <div className="border-b border-slate-700/50 pb-3 mb-4 pr-8">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
                             <UserIcon className="w-5 h-5 text-white" />
