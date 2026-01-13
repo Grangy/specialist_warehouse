@@ -660,24 +660,22 @@ export default function RegionPrioritiesTab() {
         </div>
       )}
 
-      {/* Сетка с днями недели (2 столбца на ПК для лучшей читаемости) */}
-      <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 p-6 shadow-xl">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {DAYS_OF_WEEK.map((day) => {
-            const dayRegions = getRegionsForDay(day.key);
-            return (
-              <DayColumn
-                key={day.key}
-                day={day}
-                regions={dayRegions}
-                onMoveUp={(regionId) => moveRegionUp(day.key, regionId)}
-                onMoveDown={(regionId) => moveRegionDown(day.key, regionId)}
-                onRemove={(regionId) => handleRemoveRegion(regionId, day.key)}
-                onCopy={copyDayToAllDays}
-              />
-            );
-          })}
-        </div>
+      {/* Вертикальный список дней недели, каждый во всю ширину */}
+      <div className="space-y-6">
+        {DAYS_OF_WEEK.map((day) => {
+          const dayRegions = getRegionsForDay(day.key);
+          return (
+            <DaySection
+              key={day.key}
+              day={day}
+              regions={dayRegions}
+              onMoveUp={(regionId) => moveRegionUp(day.key, regionId)}
+              onMoveDown={(regionId) => moveRegionDown(day.key, regionId)}
+              onRemove={(regionId) => handleRemoveRegion(regionId, day.key)}
+              onCopy={copyDayToAllDays}
+            />
+          );
+        })}
       </div>
 
       {/* Список доступных регионов */}
@@ -770,7 +768,7 @@ export default function RegionPrioritiesTab() {
   );
 }
 
-interface DayColumnProps {
+interface DaySectionProps {
   day: typeof DAYS_OF_WEEK[0];
   regions: RegionPriority[];
   onMoveUp: (regionId: string) => void;
@@ -779,50 +777,55 @@ interface DayColumnProps {
   onCopy: (day: DayOfWeek) => void;
 }
 
-function DayColumn({ day, regions, onMoveUp, onMoveDown, onRemove, onCopy }: DayColumnProps) {
+function DaySection({ day, regions, onMoveUp, onMoveDown, onRemove, onCopy }: DaySectionProps) {
   return (
-    <div className="bg-slate-900/50 rounded-lg border-2 border-slate-700/50 p-4 min-h-[500px] flex flex-col">
-      {/* Заголовок столбца */}
-      <div className={`bg-gradient-to-r ${day.color} rounded-lg p-4 mb-4 shadow-lg`}>
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <div className="text-white font-bold text-xl">{day.short}</div>
-            <div className="text-white/90 text-sm font-medium">{day.label}</div>
+    <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 shadow-xl overflow-hidden">
+      {/* Заголовок секции дня */}
+      <div className={`bg-gradient-to-r ${day.color} p-6 shadow-lg`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div>
+              <h3 className="text-white font-bold text-2xl mb-1">{day.label}</h3>
+              <div className="text-white/90 text-sm flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
+                <span className="font-medium">{regions.length} {regions.length === 1 ? 'регион' : regions.length < 5 ? 'региона' : 'регионов'}</span>
+              </div>
+            </div>
           </div>
           <button
             onClick={() => onCopy(day.key)}
-            className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all hover:scale-110 active:scale-95"
+            className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all hover:scale-105 active:scale-95 flex items-center gap-2 text-white font-medium"
             title={`Скопировать приоритеты ${day.label} на все дни`}
           >
-            <Copy className="w-5 h-5 text-white" />
+            <Copy className="w-5 h-5" />
+            <span className="hidden sm:inline">Копировать</span>
           </button>
-        </div>
-        <div className="text-white/80 text-sm flex items-center gap-2">
-          <MapPin className="w-4 h-4" />
-          <span className="font-medium">{regions.length} {regions.length === 1 ? 'регион' : regions.length < 5 ? 'региона' : 'регионов'}</span>
         </div>
       </div>
 
-      {/* Список регионов */}
-      <div className="flex-1 space-y-3 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
+      {/* Список регионов во всю ширину */}
+      <div className="p-6">
         {regions.length === 0 ? (
-          <div className="text-center py-8 text-slate-500 text-sm">
-            <MapPin className="w-8 h-8 mx-auto mb-2 opacity-30" />
-            <p>Нет регионов</p>
+          <div className="text-center py-12 text-slate-500">
+            <MapPin className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="text-lg">Нет регионов</p>
+            <p className="text-sm mt-1">Добавьте регионы из списка ниже</p>
           </div>
         ) : (
-          regions.map((region, index) => (
-            <RegionItem
-              key={`${day.key}-${region.id}`}
-              region={region}
-              day={day.key}
-              index={index}
-              total={regions.length}
-              onMoveUp={onMoveUp}
-              onMoveDown={onMoveDown}
-              onRemove={onRemove}
-            />
-          ))
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {regions.map((region, index) => (
+              <RegionItem
+                key={`${day.key}-${region.id}`}
+                region={region}
+                day={day.key}
+                index={index}
+                total={regions.length}
+                onMoveUp={onMoveUp}
+                onMoveDown={onMoveDown}
+                onRemove={onRemove}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -841,38 +844,42 @@ interface RegionItemProps {
 
 function RegionItem({ region, day, index, total, onMoveUp, onMoveDown, onRemove }: RegionItemProps) {
   return (
-    <div className="bg-slate-800/70 border-2 border-slate-600/50 rounded-lg p-4 flex items-center gap-3 hover:border-purple-500/50 transition-all group shadow-md hover:shadow-lg hover:bg-slate-800/90">
-      <div className="flex-1 flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 bg-purple-600/20 text-purple-300 rounded-full flex items-center justify-center font-bold text-sm border-2 border-purple-500/50 flex-shrink-0">
-          {index + 1}
+    <div className="bg-slate-900/70 border-2 border-slate-600/50 rounded-lg p-5 hover:border-purple-500/50 transition-all group shadow-md hover:shadow-lg hover:bg-slate-900/90 flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-10 h-10 bg-purple-600/20 text-purple-300 rounded-full flex items-center justify-center font-bold text-base border-2 border-purple-500/50 flex-shrink-0">
+            {index + 1}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-slate-200 font-semibold text-lg break-words leading-tight">{region.region}</div>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-slate-200 font-semibold text-base break-words leading-tight">{region.region}</div>
-        </div>
+        <button
+          onClick={() => onRemove(region.id)}
+          className="p-2 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg transition-all hover:scale-110 active:scale-95 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+          title="Удалить из дня"
+        >
+          <Trash2 className="w-5 h-5" />
+        </button>
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-2 justify-end">
         <button
           onClick={() => onMoveUp(region.id)}
           disabled={index === 0}
-          className="p-2 bg-slate-700/70 hover:bg-slate-600 text-slate-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95 shadow-sm hover:shadow-md"
+          className="px-4 py-2 bg-slate-700/70 hover:bg-slate-600 text-slate-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-105 active:scale-95 shadow-sm hover:shadow-md flex items-center gap-2 text-sm font-medium"
           title="Переместить вверх"
         >
-          <ChevronUp className="w-5 h-5" />
+          <ChevronUp className="w-4 h-4" />
+          <span>Вверх</span>
         </button>
         <button
           onClick={() => onMoveDown(region.id)}
           disabled={index === total - 1}
-          className="p-2 bg-slate-700/70 hover:bg-slate-600 text-slate-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95 shadow-sm hover:shadow-md"
+          className="px-4 py-2 bg-slate-700/70 hover:bg-slate-600 text-slate-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-105 active:scale-95 shadow-sm hover:shadow-md flex items-center gap-2 text-sm font-medium"
           title="Переместить вниз"
         >
-          <ChevronDown className="w-5 h-5" />
-        </button>
-        <button
-          onClick={() => onRemove(region.id)}
-          className="p-2 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg transition-all hover:scale-110 active:scale-95 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:shadow-md"
-          title="Удалить из дня"
-        >
-          <Trash2 className="w-4 h-4" />
+          <ChevronDown className="w-4 h-4" />
+          <span>Вниз</span>
         </button>
       </div>
     </div>
