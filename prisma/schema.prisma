@@ -25,61 +25,64 @@ enum ShipmentStatus {
 }
 
 model User {
-  id        String          @id @default(cuid())
-  login     String          @unique
-  password  String
-  name      String
-  role      UserRole        @default(collector)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  sessions  Session[]
-  collectorTasks ShipmentTask[] @relation("CollectorTasks") // Задания, начатые пользователем как сборщик
-  checkerTasks   ShipmentTask[] @relation("CheckerTasks") // Задания, подтвержденные пользователем как проверяльщик
+  id             String           @id @default(cuid())
+  login          String           @unique
+  password       String
+  name           String
+  role           UserRole         @default(collector)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  sessions       Session[]
+  collectorTasks ShipmentTask[]   @relation("CollectorTasks") // Задания, начатые пользователем как сборщик
+  checkerTasks   ShipmentTask[]   @relation("CheckerTasks") // Задания, подтвержденные пользователем как проверяльщик
+  taskStatistics TaskStatistics[] @relation("UserTaskStatistics")
+  dailyStats     DailyStats[]
+  monthlyStats   MonthlyStats[]
 
   @@map("users")
 }
 
 model Shipment {
-  id              String          @id @default(cuid())
-  number          String          @unique
-  createdAt       DateTime        @default(now()) @map("created_at")
-  customerName    String          @map("customer_name")
-  destination     String
-  itemsCount      Int             @map("items_count")
-  totalQty        Int             @map("total_qty")
-  weight          Float?
-  comment         String          @default("")
-  status          ShipmentStatus  @default(new)
-  businessRegion  String?         @map("business_region")
-  collectorName   String?         @map("collector_name")
-  confirmedAt     DateTime?       @map("confirmed_at") // Время подтверждения заказа (когда все задания подтверждены)
-  exportedTo1C    Boolean         @default(false) @map("exported_to_1c") // Флаг выгрузки заказа в 1С
-  exportedTo1CAt  DateTime?       @map("exported_to_1c_at") // Время выгрузки заказа в 1С
-  places          Int?            // Количество мест (сохраняется при отправке в офис)
-  deleted         Boolean         @default(false) // Флаг удаления заказа (мягкое удаление)
-  deletedAt       DateTime?       @map("deleted_at") // Время удаления заказа
-  lines           ShipmentLine[]
-  tasks           ShipmentTask[]
-  locks           ShipmentLock[]
+  id             String         @id @default(cuid())
+  number         String         @unique
+  createdAt      DateTime       @default(now()) @map("created_at")
+  customerName   String         @map("customer_name")
+  destination    String
+  itemsCount     Int            @map("items_count")
+  totalQty       Int            @map("total_qty")
+  weight         Float?
+  comment        String         @default("")
+  status         ShipmentStatus @default(new)
+  businessRegion String?        @map("business_region")
+  collectorName  String?        @map("collector_name")
+  confirmedAt    DateTime?      @map("confirmed_at") // Время подтверждения заказа (когда все задания подтверждены)
+  exportedTo1C   Boolean        @default(false) @map("exported_to_1c") // Флаг выгрузки заказа в 1С
+  exportedTo1CAt DateTime?      @map("exported_to_1c_at") // Время выгрузки заказа в 1С
+  places         Int? // Количество мест (сохраняется при отправке в офис)
+  deleted        Boolean        @default(false) // Флаг удаления заказа (мягкое удаление)
+  deletedAt      DateTime?      @map("deleted_at") // Время удаления заказа
+  lines          ShipmentLine[]
+  tasks          ShipmentTask[]
+  locks          ShipmentLock[]
 
   @@map("shipments")
 }
 
 model ShipmentLine {
-  id           String            @id @default(cuid())
-  shipmentId   String            @map("shipment_id")
+  id           String             @id @default(cuid())
+  shipmentId   String             @map("shipment_id")
   sku          String
-  art          String?           // Дополнительный артикул от 1С (для отображения)
+  art          String? // Дополнительный артикул от 1С (для отображения)
   name         String
   qty          Int
   uom          String
   location     String?
-  warehouse    String?           // Склад: "Склад 1", "Склад 2", "Склад 3"
-  collectedQty Int?              @map("collected_qty") // Количество собранное сборщиком
-  checked      Boolean           @default(false) // Флаг собранности (для сборки)
-  confirmedQty Int?             @map("confirmed_qty") // Количество подтвержденное проверяльщиком
-  confirmed   Boolean           @default(false) // Флаг подтверждения (для проверки)
-  shipment     Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  warehouse    String? // Склад: "Склад 1", "Склад 2", "Склад 3"
+  collectedQty Int?               @map("collected_qty") // Количество собранное сборщиком
+  checked      Boolean            @default(false) // Флаг собранности (для сборки)
+  confirmedQty Int?               @map("confirmed_qty") // Количество подтвержденное проверяльщиком
+  confirmed    Boolean            @default(false) // Флаг подтверждения (для проверки)
+  shipment     Shipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   taskLines    ShipmentTaskLine[]
 
   @@map("shipment_lines")
@@ -97,53 +100,54 @@ model ShipmentLock {
 }
 
 model ShipmentTask {
-  id           String            @id @default(cuid())
-  shipmentId   String            @map("shipment_id")
-  warehouse    String            // "Склад 1", "Склад 2", "Склад 3"
-  status       ShipmentStatus    @default(new)
-  createdAt    DateTime          @default(now()) @map("created_at")
-  collectorName String?          @map("collector_name")
-  collectorId  String?           @map("collector_id") // ID пользователя, начавшего сборку
-  startedAt   DateTime?         @map("started_at") // Время начала сборки
-  completedAt DateTime?         @map("completed_at") // Время завершения сборки (когда переведено в pending_confirmation)
-  checkerName  String?           @map("checker_name") // Имя проверяльщика
-  checkerId    String?           @map("checker_id") // ID проверяльщика
-  confirmedAt DateTime?         @map("confirmed_at") // Время подтверждения задания проверяльщиком
-  totalItems  Int?              @map("total_items") // Общее количество позиций в задании
-  totalUnits  Int?              @map("total_units") // Общее количество единиц в задании
-  timePer100Items Float?        @map("time_per_100_items") // Время на 100 позиций в секундах
-  places      Int?              // Количество мест для этого задания (сохраняется при подтверждении)
-  shipment     Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  collector    User?             @relation("CollectorTasks", fields: [collectorId], references: [id], onDelete: SetNull)
-  checker      User?             @relation("CheckerTasks", fields: [checkerId], references: [id], onDelete: SetNull)
-  lines        ShipmentTaskLine[]
-  locks        ShipmentTaskLock[]
+  id              String             @id @default(cuid())
+  shipmentId      String             @map("shipment_id")
+  warehouse       String // "Склад 1", "Склад 2", "Склад 3"
+  status          ShipmentStatus     @default(new)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  collectorName   String?            @map("collector_name")
+  collectorId     String?            @map("collector_id") // ID пользователя, начавшего сборку
+  startedAt       DateTime?          @map("started_at") // Время начала сборки
+  completedAt     DateTime?          @map("completed_at") // Время завершения сборки (когда переведено в pending_confirmation)
+  checkerName     String?            @map("checker_name") // Имя проверяльщика
+  checkerId       String?            @map("checker_id") // ID проверяльщика
+  confirmedAt     DateTime?          @map("confirmed_at") // Время подтверждения задания проверяльщиком
+  totalItems      Int?               @map("total_items") // Общее количество позиций в задании
+  totalUnits      Int?               @map("total_units") // Общее количество единиц в задании
+  timePer100Items Float?             @map("time_per_100_items") // Время на 100 позиций в секундах
+  places          Int? // Количество мест для этого задания (сохраняется при подтверждении)
+  shipment        Shipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  collector       User?              @relation("CollectorTasks", fields: [collectorId], references: [id], onDelete: SetNull)
+  checker         User?              @relation("CheckerTasks", fields: [checkerId], references: [id], onDelete: SetNull)
+  lines           ShipmentTaskLine[]
+  locks           ShipmentTaskLock[]
+  statistics      TaskStatistics?
 
   @@map("shipment_tasks")
 }
 
 model ShipmentTaskLine {
-  id             String        @id @default(cuid())
-  taskId         String        @map("task_id")
-  shipmentLineId String        @map("shipment_line_id")
-  qty            Int           // Количество в этом задании
-  collectedQty   Int?           @map("collected_qty") // Количество собранное сборщиком
-  checked        Boolean       @default(false) // Флаг собранности (для сборки)
-  confirmedQty   Int?          @map("confirmed_qty") // Количество подтвержденное проверяльщиком
-  confirmed      Boolean       @default(false) // Флаг подтверждения (для проверки)
-  task           ShipmentTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  shipmentLine   ShipmentLine  @relation(fields: [shipmentLineId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  taskId         String       @map("task_id")
+  shipmentLineId String       @map("shipment_line_id")
+  qty            Int // Количество в этом задании
+  collectedQty   Int?         @map("collected_qty") // Количество собранное сборщиком
+  checked        Boolean      @default(false) // Флаг собранности (для сборки)
+  confirmedQty   Int?         @map("confirmed_qty") // Количество подтвержденное проверяльщиком
+  confirmed      Boolean      @default(false) // Флаг подтверждения (для проверки)
+  task           ShipmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  shipmentLine   ShipmentLine @relation(fields: [shipmentLineId], references: [id], onDelete: Cascade)
 
   @@map("shipment_task_lines")
 }
 
 model ShipmentTaskLock {
-  id           String        @id @default(cuid())
-  taskId       String        @map("task_id")
-  userId       String        @map("user_id")
-  lockedAt     DateTime      @default(now()) @map("locked_at")
+  id            String       @id @default(cuid())
+  taskId        String       @map("task_id")
+  userId        String       @map("user_id")
+  lockedAt      DateTime     @default(now()) @map("locked_at")
   lastHeartbeat DateTime     @default(now()) @map("last_heartbeat")
-  task         ShipmentTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task          ShipmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@unique([taskId])
   @@map("shipment_task_locks")
@@ -160,17 +164,171 @@ model Session {
 }
 
 model RegionPriority {
-  id        String   @id @default(cuid())
-  region    String   @unique // Название региона (например, "Москва")
-  priority  Int      @default(0) // Приоритет: чем меньше число, тем выше приоритет (для обратной совместимости)
+  id                String   @id @default(cuid())
+  region            String   @unique // Название региона (например, "Москва")
+  priority          Int      @default(0) // Приоритет: чем меньше число, тем выше приоритет (для обратной совместимости)
   // Приоритеты по дням недели (0=понедельник, 4=пятница)
-  priorityMonday    Int?  @default(0) @map("priority_monday")
-  priorityTuesday   Int?  @default(0) @map("priority_tuesday")
-  priorityWednesday Int?  @default(0) @map("priority_wednesday")
-  priorityThursday  Int?  @default(0) @map("priority_thursday")
-  priorityFriday     Int?  @default(0) @map("priority_friday")
+  priorityMonday    Int?     @default(0) @map("priority_monday")
+  priorityTuesday   Int?     @default(0) @map("priority_tuesday")
+  priorityWednesday Int?     @default(0) @map("priority_wednesday")
+  priorityThursday  Int?     @default(0) @map("priority_thursday")
+  priorityFriday    Int?     @default(0) @map("priority_friday")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("region_priorities")
+}
+
+// Статистика по заданию (расчетные метрики)
+model TaskStatistics {
+  id         String @id @default(cuid())
+  taskId     String @unique @map("task_id")
+  userId     String @map("user_id") // ID сборщика
+  shipmentId String @map("shipment_id")
+  warehouse  String
+
+  // Время
+  taskTimeSec    Float  @map("task_time_sec") // task_end - task_start
+  pickTimeSec    Float? @map("pick_time_sec") // Σ task_time_sec (активная сборка)
+  elapsedTimeSec Float? @map("elapsed_time_sec") // max(task_end) - min(task_start)
+  gapTimeSec     Float? @map("gap_time_sec") // elapsed_time_sec - pick_time_sec
+
+  // Количества
+  positions Int // Количество позиций
+  units     Int // Количество единиц
+
+  // Скорость
+  pph         Float? // positions per hour
+  uph         Float? // units per hour
+  secPerPos   Float? @map("sec_per_pos")
+  secPerUnit  Float? @map("sec_per_unit")
+  unitsPerPos Float? @map("units_per_pos")
+
+  // Сложность
+  warehousesCount Int    @default(1) @map("warehouses_count")
+  switches        Int    @default(0) // warehouses_count - 1
+  density         Float? // units_per_pos
+
+  // Очки и эффективность
+  expectedTimeSec   Float? @map("expected_time_sec") // A*positions + B*units + C*switches
+  efficiency        Float? // expected_time_sec / pick_time_sec
+  efficiencyClamped Float? @map("efficiency_clamped") // clamp(eff, 0.5, 1.5)
+  basePoints        Float? @map("base_points") // positions + K*units + M*switches
+  orderPoints       Float? @map("order_points") // base_points * eff_clamped
+
+  // Нормативы (на момент расчета)
+  normA       Float?  @map("norm_a") // Норматив секунд на 1 позицию
+  normB       Float?  @map("norm_b") // Норматив секунд на 1 единицу
+  normC       Float?  @map("norm_c") // Штраф за переключение склада
+  normVersion String? @map("norm_version")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("region_priorities")
+  task ShipmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User         @relation("UserTaskStatistics", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("task_statistics")
+}
+
+// Статистика за день
+model DailyStats {
+  id     String   @id @default(cuid())
+  userId String   @map("user_id")
+  date   DateTime @map("date") // Дата (без времени)
+
+  // Суммарные метрики
+  positions      Int   @default(0)
+  units          Int   @default(0)
+  orders         Int   @default(0)
+  pickTimeSec    Float @default(0) @map("pick_time_sec")
+  gapTimeSec     Float @default(0) @map("gap_time_sec")
+  elapsedTimeSec Float @default(0) @map("elapsed_time_sec")
+
+  // Скорость за день
+  dayPph   Float? @map("day_pph") // Σpositions * 3600 / Σpick_time_sec
+  dayUph   Float? @map("day_uph") // Σunits * 3600 / Σpick_time_sec
+  gapShare Float? @map("gap_share") // Σgap_time_sec / Σelapsed_time_sec
+
+  // Очки
+  dayPoints Float @default(0) @map("day_points") // Σ order_points
+  dailyRank Int?  @map("daily_rank") // Ранг за день (1-10)
+
+  // Средняя эффективность
+  avgEfficiency Float? @map("avg_efficiency")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievements DailyAchievement[]
+
+  @@unique([userId, date])
+  @@map("daily_stats")
+}
+
+// Статистика за месяц
+model MonthlyStats {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  year   Int
+  month  Int // 1-12
+
+  // Суммарные метрики
+  totalPositions   Int   @default(0) @map("total_positions")
+  totalUnits       Int   @default(0) @map("total_units")
+  totalOrders      Int   @default(0) @map("total_orders")
+  totalPickTimeSec Float @default(0) @map("total_pick_time_sec")
+
+  // Очки
+  monthPoints Float @default(0) @map("month_points") // Σ day_points
+  monthlyRank Int?  @map("monthly_rank") // Ранг за месяц (1-10)
+
+  // Средние показатели
+  avgPph        Float? @map("avg_pph")
+  avgUph        Float? @map("avg_uph")
+  avgEfficiency Float? @map("avg_efficiency")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, month])
+  @@map("monthly_stats")
+}
+
+// Нормативы (A, B, C)
+model Norm {
+  id            String   @id @default(cuid())
+  warehouse     String? // null = общий норматив
+  normA         Float    @map("norm_a") // Норматив секунд на 1 позицию
+  normB         Float    @map("norm_b") // Норматив секунд на 1 единицу
+  normC         Float    @map("norm_c") // Штраф за переключение склада (секунды)
+  normVersion   String   @default("1.0") @map("norm_version")
+  effectiveFrom DateTime @default(now()) @map("effective_from")
+  isActive      Boolean  @default(true) @map("is_active")
+
+  // Коэффициенты для base_points
+  coefficientK Float @default(0.3) @map("coefficient_k") // Обычно 0.2-0.4
+  coefficientM Float @default(3.0) @map("coefficient_m") // Обычно 2-5
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([warehouse, normVersion, effectiveFrom])
+  @@map("norms")
+}
+
+// Достижения за день
+model DailyAchievement {
+  id               String   @id @default(cuid())
+  dailyStatsId     String   @map("daily_stats_id")
+  achievementType  String   @map("achievement_type") // best_pph_today, best_uph_today, zero_mismatch_day, fastest_order, streak_eff_gt_1, multi_warehouse_master
+  achievementValue String?  @map("achievement_value") // JSON с деталями
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  dailyStats DailyStats @relation(fields: [dailyStatsId], references: [id], onDelete: Cascade)
+
+  @@map("daily_achievements")
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PackageIcon } from '@/components/icons/PackageIcon';
-import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown } from 'lucide-react';
+import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp } from 'lucide-react';
 
 interface HeaderProps {
   newCount: number;
@@ -18,15 +18,51 @@ interface User {
   role: 'admin' | 'collector' | 'checker';
 }
 
+interface RankingStats {
+  daily: {
+    points: number;
+    rank: number | null;
+    positions: number;
+    units: number;
+    orders: number;
+    pph: number | null;
+    uph: number | null;
+    efficiency: number | null;
+    achievements: Array<{ type: string; value: string | null }>;
+  } | null;
+  monthly: {
+    points: number;
+    rank: number | null;
+    positions: number;
+    units: number;
+    orders: number;
+    pph: number | null;
+    uph: number | null;
+    efficiency: number | null;
+  } | null;
+}
+
 export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isHidden, setIsHidden] = useState(false);
+  const [rankingStats, setRankingStats] = useState<RankingStats | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     loadUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadRankingStats();
+      // Обновляем статистику каждые 30 секунд
+      const interval = setInterval(loadRankingStats, 30000);
+      return () => clearInterval(interval);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   // Загружаем состояние скрытия из localStorage
   useEffect(() => {
@@ -91,6 +127,18 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
         setUser(data.user);
       } else {
         router.push('/login');
+      }
+    } catch (error) {
+      // Игнорируем ошибки сети
+    }
+  };
+
+  const loadRankingStats = async () => {
+    try {
+      const res = await fetch('/api/ranking/stats');
+      if (res.ok) {
+        const data = await res.json();
+        setRankingStats(data);
       }
     } catch (error) {
       // Игнорируем ошибки сети
@@ -169,6 +217,113 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
             </div>
           </div>
           
+          {/* Прогрессбар и профиль - только для сборщиков */}
+          {user?.role === 'collector' && rankingStats && (
+            <div className="flex items-center gap-2 md:gap-3">
+              {/* Прогрессбар дневных баллов */}
+              {rankingStats.daily && (
+                <div className="hidden sm:flex flex-col items-end gap-0.5">
+                  <div className="text-[9px] text-slate-400">День: {Math.round(rankingStats.daily.points)}</div>
+                  <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-300"
+                      style={{
+                        width: `${Math.min(100, (rankingStats.daily.points / 100) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Выпадающий профиль */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfile(!showProfile)}
+                  className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-slate-500 text-slate-200 px-2 md:px-3 py-1.5 rounded transition-all duration-150 touch-manipulation"
+                  title="Профиль"
+                >
+                  <UserIcon className="w-4 h-4" />
+                  {rankingStats.daily?.rank && (
+                    <span className="hidden md:inline text-xs font-semibold text-yellow-400">
+                      #{rankingStats.daily.rank}
+                    </span>
+                  )}
+                </button>
+                
+                {/* Выпадающее меню профиля */}
+                {showProfile && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowProfile(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50 p-4">
+                      <div className="space-y-3">
+                        {/* Дневная статистика */}
+                        {rankingStats.daily && (
+                          <div className="border-b border-slate-700 pb-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <TrendingUp className="w-4 h-4 text-blue-400" />
+                              <span className="text-sm font-semibold text-slate-200">День</span>
+                            </div>
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Баллы:</span>
+                                <span className="text-slate-200 font-semibold">{Math.round(rankingStats.daily.points)}</span>
+                              </div>
+                              {rankingStats.daily.rank && (
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Ранг:</span>
+                                  <span className="text-yellow-400 font-semibold">#{rankingStats.daily.rank}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Заказов:</span>
+                                <span className="text-slate-200">{rankingStats.daily.orders}</span>
+                              </div>
+                              {rankingStats.daily.pph && (
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">PPH:</span>
+                                  <span className="text-slate-200">{Math.round(rankingStats.daily.pph)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Месячная статистика */}
+                        {rankingStats.monthly && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Trophy className="w-4 h-4 text-yellow-400" />
+                              <span className="text-sm font-semibold text-slate-200">Месяц</span>
+                            </div>
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Баллы:</span>
+                                <span className="text-slate-200 font-semibold">{Math.round(rankingStats.monthly.points)}</span>
+                              </div>
+                              {rankingStats.monthly.rank && (
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Ранг:</span>
+                                  <span className="text-yellow-400 font-semibold">#{rankingStats.monthly.rank}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Заказов:</span>
+                                <span className="text-slate-200">{rankingStats.monthly.orders}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Кнопки - компактные на мобильных */}
           <div className="flex items-center gap-1.5 md:gap-2.5">
             {/* Кнопка скрытия хедера (только на мобильных) */}
