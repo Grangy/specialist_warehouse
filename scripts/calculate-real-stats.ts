@@ -268,7 +268,14 @@ async function main() {
       },
     });
 
-    console.log(`   ✅ Найдено завершенных заданий: ${completedTasks.length}\n`);
+    console.log(`   ✅ Найдено завершенных заданий: ${completedTasks.length}`);
+    
+    // Отладочная информация о первом задании
+    if (completedTasks.length > 0) {
+      const firstTask = completedTasks[0];
+      console.log(`   📋 Пример задания: id=${firstTask.id.substring(0, 8)}..., totalItems=${firstTask.totalItems}, lines.length=${firstTask.lines?.length || 0}, hasLines=${!!firstTask.lines}`);
+    }
+    console.log('');
 
     if (completedTasks.length === 0) {
       console.log('⚠️  Нет завершенных заданий для расчета статистики');
