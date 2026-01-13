@@ -446,28 +446,32 @@ export function ConfirmModal({
                             >
                               {line.name}
                             </div>
-                            {/* Артикул - обрезанный, если длинный */}
-                            {line.art && (
-                              <div 
-                                className="text-[10px] text-slate-400 mt-0.5 truncate"
-                                title={line.art}
-                                style={{ 
-                                  maxWidth: '100%',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap'
-                                }}
-                              >
-                                {truncateArt(line.art, 10, 4, 3)}
-                              </div>
-                            )}
-                            {/* Количество - только собранное количество */}
-                            <div className="mt-0.5">
-                              <span className={`text-[11px] font-semibold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                            {/* Артикул и количество в одну строку */}
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              {line.art && (
+                                <div 
+                                  className="text-[10px] text-slate-400 truncate flex-shrink-0"
+                                  title={line.art}
+                                  style={{ 
+                                    maxWidth: '100%',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {truncateArt(line.art, 10, 4, 3)}
+                                </div>
+                              )}
+                              {/* Разделитель между артикулом и количеством */}
+                              {line.art && (
+                                <span className="text-slate-600 text-[10px]">•</span>
+                              )}
+                              {/* Количество - только собранное количество */}
+                              <span className={`text-[11px] font-semibold whitespace-nowrap ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
                                 {state.collectedQty} {line.uom || 'шт'}
                               </span>
-                              {isZero && <span className="text-red-400 ml-1 text-[10px]">⚠</span>}
-                              {hasShortage && !isZero && <span className="text-yellow-500 ml-1 text-[10px]">⚠</span>}
+                              {isZero && <span className="text-red-400 text-[10px]">⚠</span>}
+                              {hasShortage && !isZero && <span className="text-yellow-500 text-[10px]">⚠</span>}
                             </div>
                           </div>
                         </div>
