@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PackageIcon } from '@/components/icons/PackageIcon';
-import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp } from 'lucide-react';
+import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star } from 'lucide-react';
 
 interface HeaderProps {
   newCount: number;
@@ -218,34 +218,42 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
           </div>
           
           {/* Прогрессбар и профиль - только для сборщиков */}
-          {user?.role === 'collector' && rankingStats && (
+          {user?.role === 'collector' && (
             <div className="flex items-center gap-2 md:gap-3">
-              {/* Прогрессбар дневных баллов */}
-              {rankingStats.daily && (
-                <div className="hidden sm:flex flex-col items-end gap-0.5">
-                  <div className="text-[9px] text-slate-400">День: {Math.round(rankingStats.daily.points)}</div>
-                  <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-300"
-                      style={{
-                        width: `${Math.min(100, (rankingStats.daily.points / 100) * 100)}%`,
-                      }}
-                    />
-                  </div>
+              {/* Прогрессбар дневных баллов - всегда показываем */}
+              <div className="hidden sm:flex flex-col items-end gap-0.5">
+                <div className="text-[9px] text-slate-400">
+                  День: {rankingStats?.daily ? Math.round(rankingStats.daily.points) : '0'}
                 </div>
-              )}
+                <div className="w-24 h-1.5 bg-slate-700/50 rounded-full overflow-hidden shadow-inner">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 via-blue-400 to-cyan-400 transition-all duration-500 ease-out shadow-sm"
+                    style={{
+                      width: `${Math.min(100, rankingStats?.daily?.points ? (rankingStats.daily.points / 100) * 100 : 0)}%`,
+                    }}
+                  />
+                </div>
+              </div>
               
               {/* Выпадающий профиль */}
-              <div className="relative">
+              <div className="relative z-[100]">
                 <button
                   onClick={() => setShowProfile(!showProfile)}
-                  className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-slate-500 text-slate-200 px-2 md:px-3 py-1.5 rounded transition-all duration-150 touch-manipulation"
-                  title="Профиль"
+                  className={`flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border transition-all duration-200 touch-manipulation px-2 md:px-3 py-1.5 rounded-md shadow-sm ${
+                    showProfile 
+                      ? 'border-blue-500 bg-slate-700 shadow-md' 
+                      : 'border-slate-600 hover:border-slate-500'
+                  }`}
+                  title="Профиль и статистика"
                 >
-                  <UserIcon className="w-4 h-4" />
-                  {rankingStats.daily?.rank && (
-                    <span className="hidden md:inline text-xs font-semibold text-yellow-400">
+                  <UserIcon className="w-4 h-4 text-slate-200" />
+                  {rankingStats?.daily?.rank ? (
+                    <span className="hidden md:inline text-xs font-bold text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">
                       #{rankingStats.daily.rank}
+                    </span>
+                  ) : (
+                    <span className="hidden md:inline text-xs font-medium text-slate-400">
+                      Профиль
                     </span>
                   )}
                 </button>
@@ -253,66 +261,211 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                 {/* Выпадающее меню профиля */}
                 {showProfile && (
                   <>
+                    {/* Затемнение фона */}
                     <div
-                      className="fixed inset-0 z-40"
+                      className="fixed inset-0 z-[90] bg-black/20 backdrop-blur-sm"
                       onClick={() => setShowProfile(false)}
                     />
-                    <div className="absolute right-0 top-full mt-2 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50 p-4">
-                      <div className="space-y-3">
+                    {/* Выпадающее меню */}
+                    <div className="absolute right-0 top-full mt-2 w-72 md:w-80 bg-slate-800/98 backdrop-blur-md border border-slate-600/80 rounded-xl shadow-2xl z-[100] p-5 animate-in fade-in slide-in-from-top-2 duration-200">
+                      {/* Заголовок профиля */}
+                      <div className="border-b border-slate-700/50 pb-3 mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
+                            <UserIcon className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-slate-100 truncate">{user.name}</div>
+                            <div className="text-xs text-slate-400">{roleLabels[user.role]}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 max-h-[70vh] overflow-y-auto">
                         {/* Дневная статистика */}
-                        {rankingStats.daily && (
-                          <div className="border-b border-slate-700 pb-3">
-                            <div className="flex items-center gap-2 mb-2">
+                        <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/50">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
                               <TrendingUp className="w-4 h-4 text-blue-400" />
-                              <span className="text-sm font-semibold text-slate-200">День</span>
                             </div>
-                            <div className="space-y-1 text-xs">
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Баллы:</span>
-                                <span className="text-slate-200 font-semibold">{Math.round(rankingStats.daily.points)}</span>
+                            <span className="text-sm font-bold text-slate-200">Статистика за день</span>
+                          </div>
+                          {rankingStats?.daily ? (
+                            <div className="space-y-2 text-xs">
+                              <div className="flex items-center justify-between py-1">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                  <Target className="w-3.5 h-3.5" />
+                                  <span>Баллы:</span>
+                                </div>
+                                <span className="text-slate-100 font-bold text-sm">{Math.round(rankingStats.daily.points)}</span>
                               </div>
                               {rankingStats.daily.rank && (
-                                <div className="flex justify-between">
-                                  <span className="text-slate-400">Ранг:</span>
-                                  <span className="text-yellow-400 font-semibold">#{rankingStats.daily.rank}</span>
+                                <div className="flex items-center justify-between py-1 bg-yellow-400/10 rounded px-2 py-1.5">
+                                  <div className="flex items-center gap-2 text-slate-300">
+                                    <Award className="w-3.5 h-3.5 text-yellow-400" />
+                                    <span>Ранг:</span>
+                                  </div>
+                                  <span className="text-yellow-400 font-bold text-sm">#{rankingStats.daily.rank}</span>
                                 </div>
                               )}
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Заказов:</span>
-                                <span className="text-slate-200">{rankingStats.daily.orders}</span>
+                              <div className="flex items-center justify-between py-1">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                  <PackageIconLucide className="w-3.5 h-3.5" />
+                                  <span>Заказов:</span>
+                                </div>
+                                <span className="text-slate-200 font-semibold">{rankingStats.daily.orders}</span>
+                              </div>
+                              <div className="flex items-center justify-between py-1">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                  <BarChart3 className="w-3.5 h-3.5" />
+                                  <span>Позиций:</span>
+                                </div>
+                                <span className="text-slate-200 font-semibold">{rankingStats.daily.positions}</span>
+                              </div>
+                              <div className="flex items-center justify-between py-1">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                  <PackageIconLucide className="w-3.5 h-3.5" />
+                                  <span>Единиц:</span>
+                                </div>
+                                <span className="text-slate-200 font-semibold">{rankingStats.daily.units}</span>
                               </div>
                               {rankingStats.daily.pph && (
-                                <div className="flex justify-between">
-                                  <span className="text-slate-400">PPH:</span>
-                                  <span className="text-slate-200">{Math.round(rankingStats.daily.pph)}</span>
+                                <div className="flex items-center justify-between py-1">
+                                  <div className="flex items-center gap-2 text-slate-400">
+                                    <Zap className="w-3.5 h-3.5" />
+                                    <span>PPH:</span>
+                                  </div>
+                                  <span className="text-blue-400 font-semibold">{Math.round(rankingStats.daily.pph)}</span>
+                                </div>
+                              )}
+                              {rankingStats.daily.uph && (
+                                <div className="flex items-center justify-between py-1">
+                                  <div className="flex items-center gap-2 text-slate-400">
+                                    <Zap className="w-3.5 h-3.5" />
+                                    <span>UPH:</span>
+                                  </div>
+                                  <span className="text-blue-400 font-semibold">{Math.round(rankingStats.daily.uph)}</span>
+                                </div>
+                              )}
+                              {rankingStats.daily.efficiency && (
+                                <div className="flex items-center justify-between py-1">
+                                  <div className="flex items-center gap-2 text-slate-400">
+                                    <Star className="w-3.5 h-3.5" />
+                                    <span>Эффективность:</span>
+                                  </div>
+                                  <span className={`font-semibold ${rankingStats.daily.efficiency >= 1 ? 'text-green-400' : 'text-yellow-400'}`}>
+                                    {(rankingStats.daily.efficiency * 100).toFixed(0)}%
+                                  </span>
                                 </div>
                               )}
                             </div>
-                          </div>
-                        )}
+                          ) : (
+                            <div className="text-center py-4">
+                              <div className="text-slate-500 text-xs mb-2">Нет данных за сегодня</div>
+                              <div className="text-slate-600 text-[10px]">Начните работу, чтобы увидеть статистику</div>
+                            </div>
+                          )}
+                        </div>
                         
                         {/* Месячная статистика */}
-                        {rankingStats.monthly && (
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
+                        <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/50">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
                               <Trophy className="w-4 h-4 text-yellow-400" />
-                              <span className="text-sm font-semibold text-slate-200">Месяц</span>
                             </div>
-                            <div className="space-y-1 text-xs">
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Баллы:</span>
-                                <span className="text-slate-200 font-semibold">{Math.round(rankingStats.monthly.points)}</span>
+                            <span className="text-sm font-bold text-slate-200">Статистика за месяц</span>
+                          </div>
+                          {rankingStats?.monthly ? (
+                            <div className="space-y-2 text-xs">
+                              <div className="flex items-center justify-between py-1">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                  <Target className="w-3.5 h-3.5" />
+                                  <span>Баллы:</span>
+                                </div>
+                                <span className="text-slate-100 font-bold text-sm">{Math.round(rankingStats.monthly.points)}</span>
                               </div>
                               {rankingStats.monthly.rank && (
-                                <div className="flex justify-between">
-                                  <span className="text-slate-400">Ранг:</span>
-                                  <span className="text-yellow-400 font-semibold">#{rankingStats.monthly.rank}</span>
+                                <div className="flex items-center justify-between py-1 bg-yellow-400/10 rounded px-2 py-1.5">
+                                  <div className="flex items-center gap-2 text-slate-300">
+                                    <Award className="w-3.5 h-3.5 text-yellow-400" />
+                                    <span>Ранг:</span>
+                                  </div>
+                                  <span className="text-yellow-400 font-bold text-sm">#{rankingStats.monthly.rank}</span>
                                 </div>
                               )}
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Заказов:</span>
-                                <span className="text-slate-200">{rankingStats.monthly.orders}</span>
+                              <div className="flex items-center justify-between py-1">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                  <PackageIconLucide className="w-3.5 h-3.5" />
+                                  <span>Заказов:</span>
+                                </div>
+                                <span className="text-slate-200 font-semibold">{rankingStats.monthly.orders}</span>
                               </div>
+                              <div className="flex items-center justify-between py-1">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                  <BarChart3 className="w-3.5 h-3.5" />
+                                  <span>Позиций:</span>
+                                </div>
+                                <span className="text-slate-200 font-semibold">{rankingStats.monthly.positions}</span>
+                              </div>
+                              <div className="flex items-center justify-between py-1">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                  <PackageIconLucide className="w-3.5 h-3.5" />
+                                  <span>Единиц:</span>
+                                </div>
+                                <span className="text-slate-200 font-semibold">{rankingStats.monthly.units}</span>
+                              </div>
+                              {rankingStats.monthly.pph && (
+                                <div className="flex items-center justify-between py-1">
+                                  <div className="flex items-center gap-2 text-slate-400">
+                                    <Zap className="w-3.5 h-3.5" />
+                                    <span>Средний PPH:</span>
+                                  </div>
+                                  <span className="text-blue-400 font-semibold">{Math.round(rankingStats.monthly.pph)}</span>
+                                </div>
+                              )}
+                              {rankingStats.monthly.uph && (
+                                <div className="flex items-center justify-between py-1">
+                                  <div className="flex items-center gap-2 text-slate-400">
+                                    <Zap className="w-3.5 h-3.5" />
+                                    <span>Средний UPH:</span>
+                                  </div>
+                                  <span className="text-blue-400 font-semibold">{Math.round(rankingStats.monthly.uph)}</span>
+                                </div>
+                              )}
+                              {rankingStats.monthly.efficiency && (
+                                <div className="flex items-center justify-between py-1">
+                                  <div className="flex items-center gap-2 text-slate-400">
+                                    <Star className="w-3.5 h-3.5" />
+                                    <span>Средняя эффективность:</span>
+                                  </div>
+                                  <span className={`font-semibold ${rankingStats.monthly.efficiency >= 1 ? 'text-green-400' : 'text-yellow-400'}`}>
+                                    {(rankingStats.monthly.efficiency * 100).toFixed(0)}%
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-center py-4">
+                              <div className="text-slate-500 text-xs mb-2">Нет данных за месяц</div>
+                              <div className="text-slate-600 text-[10px]">Данные появятся после завершения заданий</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Достижения (если есть) */}
+                        {rankingStats?.daily?.achievements && rankingStats.daily.achievements.length > 0 && (
+                          <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 rounded-lg p-3 border border-purple-500/30">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Star className="w-4 h-4 text-purple-400" />
+                              <span className="text-xs font-semibold text-purple-300">Достижения сегодня</span>
+                            </div>
+                            <div className="space-y-1">
+                              {rankingStats.daily.achievements.map((achievement, idx) => (
+                                <div key={idx} className="text-[10px] text-purple-200 flex items-center gap-1.5">
+                                  <span className="text-purple-400">★</span>
+                                  <span>{achievement.type}</span>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         )}
