@@ -19,6 +19,18 @@ interface ShipmentGridProps {
   userRole?: 'admin' | 'collector' | 'checker' | null;
 }
 
+interface WaitingShipmentCardProps {
+  shipment: Shipment;
+  tasks?: Array<{
+    id: string;
+    warehouse?: string;
+    status: string;
+    collector_name?: string;
+    created_at: string;
+  }>;
+  userRole?: 'admin' | 'collector' | 'checker' | null;
+}
+
 export function ShipmentGrid({
   shipments,
   isLoading,
@@ -53,6 +65,7 @@ export function ShipmentGrid({
               key={shipment.id}
               shipment={shipment}
               tasks={shipment.tasks}
+              userRole={userRole}
             />
           );
         }

@@ -490,39 +490,49 @@ export async function GET(request: NextRequest) {
       where.status = { in: allowedStatuses };
     }
 
+    // Получаем приоритеты регионов для сортировки и фильтрации
+    const regionPriorities = await prisma.regionPriority.findMany();
+    
+    // Определяем текущий день недели (0 = понедельник, 4 = пятница)
+    const today = new Date();
+    const dayOfWeek = (today.getDay() + 6) % 7; // Преобразуем воскресенье (0) в 6, понедельник (1) в 0
+    const currentDay = Math.min(dayOfWeek, 4); // Ограничиваем пн-пт (0-4)
+    
+    // Создаем карту приоритетов с учетом текущего дня недели
+    // И карту регионов, доступных для сборщиков в текущий день
+    const priorityMap = new Map<string, number>();
+    const collectorVisibleRegions = new Set<string>(); // Регионы, которые сборщик видит сегодня
+    
+    regionPriorities.forEach((p) => {
+      let dayPriority: number | null = null;
+      switch (currentDay) {
+        case 0: // Понедельник
+          dayPriority = p.priorityMonday ?? null;
+          break;
+        case 1: // Вторник
+          dayPriority = p.priorityTuesday ?? null;
+          break;
+        case 2: // Среда
+          dayPriority = p.priorityWednesday ?? null;
+          break;
+        case 3: // Четверг
+          dayPriority = p.priorityThursday ?? null;
+          break;
+        case 4: // Пятница
+          dayPriority = p.priorityFriday ?? null;
+          break;
+      }
+      
+      priorityMap.set(p.region, dayPriority ?? 9999);
+      
+      // Если регион имеет приоритет для текущего дня, он виден сборщику
+      if (dayPriority !== null && dayPriority !== undefined) {
+        collectorVisibleRegions.add(p.region);
+      }
+    });
+
     // Если запрошены processed заказы, возвращаем заказы напрямую
     if (status === 'processed') {
-      // Получаем приоритеты регионов для сортировки
-      const regionPriorities = await prisma.regionPriority.findMany();
-      
-      // Определяем текущий день недели (0 = понедельник, 4 = пятница)
-      const today = new Date();
-      const dayOfWeek = (today.getDay() + 6) % 7; // Преобразуем воскресенье (0) в 6, понедельник (1) в 0
-      const currentDay = Math.min(dayOfWeek, 4); // Ограничиваем пн-пт (0-4)
-      
-      // Создаем карту приоритетов с учетом текущего дня недели
-      const priorityMap = new Map<string, number>();
-      regionPriorities.forEach((p) => {
-        let dayPriority: number | null = null;
-        switch (currentDay) {
-          case 0: // Понедельник
-            dayPriority = p.priorityMonday ?? p.priority ?? null;
-            break;
-          case 1: // Вторник
-            dayPriority = p.priorityTuesday ?? p.priority ?? null;
-            break;
-          case 2: // Среда
-            dayPriority = p.priorityWednesday ?? p.priority ?? null;
-            break;
-          case 3: // Четверг
-            dayPriority = p.priorityThursday ?? p.priority ?? null;
-            break;
-          case 4: // Пятница
-            dayPriority = p.priorityFriday ?? p.priority ?? null;
-            break;
-        }
-        priorityMap.set(p.region, dayPriority ?? 9999);
-      });
 
       const processedShipments = await prisma.shipment.findMany({
         where: {
@@ -572,6 +582,11 @@ export async function GET(request: NextRequest) {
           .map((task) => task.collectorName)
           .filter((name, index, self) => self.indexOf(name) === index); // Уникальные имена
         
+        // Определяем, виден ли заказ сборщику (используем уже созданную переменную collectorVisibleRegions)
+        const isVisibleToCollector = shipment.businessRegion 
+          ? collectorVisibleRegions.has(shipment.businessRegion)
+          : true;
+        
         return {
           id: shipment.id,
           shipment_id: shipment.id,
@@ -591,17 +606,15 @@ export async function GET(request: NextRequest) {
           confirmed_at: shipment.confirmedAt?.toISOString() || null,
           tasks_count: shipment.tasks.length,
           warehouses: Array.from(new Set(shipment.tasks.map((t) => t.warehouse))),
+          collector_visible: isVisibleToCollector, // Виден ли заказ сборщику
         };
       });
 
       return NextResponse.json(result);
     }
 
-    // Получаем приоритеты регионов для сортировки
-    const regionPriorities = await prisma.regionPriority.findMany();
-    const priorityMap = new Map(
-      regionPriorities.map((p) => [p.region, p.priority])
-    );
+    // Используем уже созданные переменные priorityMap и collectorVisibleRegions
+    // (они были созданы выше для processed заказов)
 
     // Получаем задания вместо заказов
     // ВАЖНО: Получаем ВСЕ задания заказа (без фильтрации) для правильного подсчета прогресса
@@ -664,6 +677,15 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
+      // Для сборщиков: фильтруем заказы по дням недели
+      // Если регион не в приоритетах текущего дня, сборщик не видит заказы этого региона
+      if (user.role === 'collector' && shipment.businessRegion) {
+        if (!collectorVisibleRegions.has(shipment.businessRegion)) {
+          console.log(`[API] Пропускаем заказ ${shipment.number}: регион "${shipment.businessRegion}" не в приоритетах для сборщика в текущий день недели`);
+          continue;
+        }
+      }
+
       // Подсчитываем прогресс подтверждения для заказа ПО ВСЕМ заданиям
       const allShipmentTasks = shipment.tasks || [];
       const confirmedTasksCount = allShipmentTasks.filter((t: any) => t.status === 'processed').length;
@@ -719,6 +741,11 @@ export async function GET(request: NextRequest) {
           confirmed: taskLine.confirmed, // Флаг подтверждения (для проверки)
         }));
 
+        // Определяем, виден ли заказ сборщику (для проверяльщиков и админов)
+        const isVisibleToCollector = shipment.businessRegion 
+          ? collectorVisibleRegions.has(shipment.businessRegion)
+          : true; // Если региона нет, считаем видимым
+
         tasks.push({
           id: task.id,
           task_id: task.id, // ID задания для режима подтверждения
@@ -747,6 +774,8 @@ export async function GET(request: NextRequest) {
             confirmed: confirmedTasksCount,
             total: totalTasksCount,
           },
+          // Флаг видимости для сборщика (для проверяльщиков и админов)
+          collector_visible: isVisibleToCollector,
         });
       }
     }

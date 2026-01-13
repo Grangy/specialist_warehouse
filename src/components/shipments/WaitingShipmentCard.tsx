@@ -8,6 +8,7 @@ import {
   CheckCircle2, 
   Warehouse,
   ShoppingCart,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface WaitingShipmentCardProps {
@@ -19,14 +20,24 @@ interface WaitingShipmentCardProps {
     collector_name?: string;
     created_at: string;
   }>;
+  userRole?: 'admin' | 'collector' | 'checker' | null;
 }
 
 export function WaitingShipmentCard({ 
   shipment,
-  tasks = []
+  tasks = [],
+  userRole
 }: WaitingShipmentCardProps) {
+  const isNotVisibleToCollector = userRole !== 'collector' && shipment.collector_visible === false;
+  const cardBorderClass = isNotVisibleToCollector 
+    ? 'border-orange-500 border-dashed' 
+    : 'border-orange-500';
+  const cardBgClass = isNotVisibleToCollector 
+    ? 'bg-slate-900 opacity-90' 
+    : 'bg-slate-900';
+
   return (
-    <div className="bg-slate-900 border-2 border-orange-500 rounded-xl p-5 shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col">
+    <div className={`${cardBgClass} border-2 ${cardBorderClass} rounded-xl p-5 shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -46,6 +57,13 @@ export function WaitingShipmentCard({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 {shipment.business_region}
+              </span>
+            )}
+            {/* Пометка для проверяльщиков и админов: сборщик не видит этот заказ */}
+            {userRole !== 'collector' && shipment.collector_visible === false && (
+              <span className="text-xs bg-orange-900/50 text-orange-300 px-2 py-1 rounded border border-orange-500/50 flex items-center gap-1 ml-2">
+                <AlertTriangle className="w-3 h-3" />
+                Сборщик не видит
               </span>
             )}
             <span className="bg-orange-600 text-white text-xs font-semibold px-2 py-1 rounded flex items-center gap-1.5">

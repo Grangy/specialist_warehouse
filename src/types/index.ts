@@ -54,6 +54,8 @@ export interface Shipment {
   confirmed_at?: string | null;
   task_id?: string; // ID задания (для режима подтверждения)
   tasks?: ShipmentTask[]; // Массив заданий для режима ожидания
+  collector_visible?: boolean; // Виден ли заказ сборщику (для проверяльщиков и админов)
+  places?: number | null; // Количество мест для задания
 }
 
 export type Tab = 'new' | 'processed' | 'waiting';
