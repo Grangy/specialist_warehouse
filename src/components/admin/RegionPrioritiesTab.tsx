@@ -660,9 +660,9 @@ export default function RegionPrioritiesTab() {
         </div>
       )}
 
-      {/* Сетка с 5 столбцами (дни недели) */}
+      {/* Сетка с днями недели (2 столбца на ПК для лучшей читаемости) */}
       <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 p-6 shadow-xl">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {DAYS_OF_WEEK.map((day) => {
             const dayRegions = getRegionsForDay(day.key);
             return (
@@ -781,30 +781,30 @@ interface DayColumnProps {
 
 function DayColumn({ day, regions, onMoveUp, onMoveDown, onRemove, onCopy }: DayColumnProps) {
   return (
-    <div className="bg-slate-900/50 rounded-lg border-2 border-slate-700/50 p-4 min-h-[400px] flex flex-col">
+    <div className="bg-slate-900/50 rounded-lg border-2 border-slate-700/50 p-4 min-h-[500px] flex flex-col">
       {/* Заголовок столбца */}
-      <div className={`bg-gradient-to-r ${day.color} rounded-lg p-3 mb-3 shadow-lg`}>
-        <div className="flex items-center justify-between">
+      <div className={`bg-gradient-to-r ${day.color} rounded-lg p-4 mb-4 shadow-lg`}>
+        <div className="flex items-center justify-between mb-2">
           <div>
-            <div className="text-white font-bold text-lg">{day.short}</div>
-            <div className="text-white/80 text-xs">{day.label}</div>
+            <div className="text-white font-bold text-xl">{day.short}</div>
+            <div className="text-white/90 text-sm font-medium">{day.label}</div>
           </div>
           <button
             onClick={() => onCopy(day.key)}
-            className="p-1.5 bg-white/20 hover:bg-white/30 rounded transition-all hover:scale-110 active:scale-95"
+            className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all hover:scale-110 active:scale-95"
             title={`Скопировать приоритеты ${day.label} на все дни`}
           >
-            <Copy className="w-4 h-4 text-white" />
+            <Copy className="w-5 h-5 text-white" />
           </button>
         </div>
-        <div className="mt-2 text-white/70 text-xs flex items-center gap-1">
-          <MapPin className="w-3 h-3" />
-          {regions.length} регионов
+        <div className="text-white/80 text-sm flex items-center gap-2">
+          <MapPin className="w-4 h-4" />
+          <span className="font-medium">{regions.length} {regions.length === 1 ? 'регион' : regions.length < 5 ? 'региона' : 'регионов'}</span>
         </div>
       </div>
 
       {/* Список регионов */}
-      <div className="flex-1 space-y-2 overflow-y-auto max-h-[500px] pr-1">
+      <div className="flex-1 space-y-3 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
         {regions.length === 0 ? (
           <div className="text-center py-8 text-slate-500 text-sm">
             <MapPin className="w-8 h-8 mx-auto mb-2 opacity-30" />
@@ -841,38 +841,38 @@ interface RegionItemProps {
 
 function RegionItem({ region, day, index, total, onMoveUp, onMoveDown, onRemove }: RegionItemProps) {
   return (
-    <div className="bg-slate-800/70 border-2 border-slate-600/50 rounded-lg p-3 flex items-center gap-2 hover:border-purple-500/50 transition-all group shadow-md hover:shadow-lg">
-      <div className="flex-1 flex items-center gap-2 min-w-0">
-        <div className="w-6 h-6 bg-purple-600/20 text-purple-300 rounded-full flex items-center justify-center font-bold text-xs border border-purple-500/50 flex-shrink-0">
+    <div className="bg-slate-800/70 border-2 border-slate-600/50 rounded-lg p-4 flex items-center gap-3 hover:border-purple-500/50 transition-all group shadow-md hover:shadow-lg hover:bg-slate-800/90">
+      <div className="flex-1 flex items-center gap-3 min-w-0">
+        <div className="w-8 h-8 bg-purple-600/20 text-purple-300 rounded-full flex items-center justify-center font-bold text-sm border-2 border-purple-500/50 flex-shrink-0">
           {index + 1}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-slate-200 font-semibold text-sm truncate">{region.region}</div>
+          <div className="text-slate-200 font-semibold text-base break-words leading-tight">{region.region}</div>
         </div>
       </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={() => onMoveUp(region.id)}
           disabled={index === 0}
-          className="p-1.5 bg-slate-700/50 hover:bg-slate-600 text-slate-300 rounded transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95"
+          className="p-2 bg-slate-700/70 hover:bg-slate-600 text-slate-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95 shadow-sm hover:shadow-md"
           title="Переместить вверх"
         >
-          <ChevronUp className="w-4 h-4" />
+          <ChevronUp className="w-5 h-5" />
         </button>
         <button
           onClick={() => onMoveDown(region.id)}
           disabled={index === total - 1}
-          className="p-1.5 bg-slate-700/50 hover:bg-slate-600 text-slate-300 rounded transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95"
+          className="p-2 bg-slate-700/70 hover:bg-slate-600 text-slate-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95 shadow-sm hover:shadow-md"
           title="Переместить вниз"
         >
-          <ChevronDown className="w-4 h-4" />
+          <ChevronDown className="w-5 h-5" />
         </button>
         <button
           onClick={() => onRemove(region.id)}
-          className="p-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded transition-all hover:scale-110 active:scale-95 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="p-2 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg transition-all hover:scale-110 active:scale-95 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:shadow-md"
           title="Удалить из дня"
         >
-          <Trash2 className="w-3 h-3" />
+          <Trash2 className="w-4 h-4" />
         </button>
       </div>
     </div>
