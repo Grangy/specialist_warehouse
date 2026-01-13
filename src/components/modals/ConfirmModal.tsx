@@ -68,6 +68,9 @@ export function ConfirmModal({
     }
   });
 
+  // Состояние для отображения предупреждения о несобранных товарах
+  const [showZeroItemsWarning, setShowZeroItemsWarning] = useState(true);
+
   // Сохраняем выбор вида отображения в localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -107,6 +110,27 @@ export function ConfirmModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checklistState]);
+
+  // Автоматическое скрытие предупреждения о несобранных товарах через 10 секунд
+  useEffect(() => {
+    if (!isOpen || !currentShipment) {
+      // При закрытии модала сбрасываем состояние
+      setShowZeroItemsWarning(true);
+      return;
+    }
+
+    // При открытии модала показываем предупреждение
+    setShowZeroItemsWarning(true);
+
+    // Скрываем предупреждение через 10 секунд
+    const timer = setTimeout(() => {
+      setShowZeroItemsWarning(false);
+    }, 10000); // 10 секунд
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [isOpen, currentShipment]);
 
   if (!currentShipment || !isOpen) return null;
 
@@ -180,8 +204,8 @@ export function ConfirmModal({
         subtitle={`${currentShipment.shipment_number || currentShipment.number || 'N/A'}${currentShipment.warehouse ? ` - ${currentShipment.warehouse}` : ''}${currentShipment.collector_name ? ` | Сборку начал: ${currentShipment.collector_name}` : ''}`}
       footer={
         <div className="space-y-4">
-          {warnings.hasZeroItems && (
-            <div className="bg-red-900/40 border-2 border-red-500/60 rounded-lg p-4 shadow-lg shadow-red-500/20 animate-pulse">
+          {warnings.hasZeroItems && showZeroItemsWarning && (
+            <div className="bg-red-900/40 border-2 border-red-500/60 rounded-lg p-4 shadow-lg shadow-red-500/20 animate-pulse transition-opacity duration-500">
               <div className="flex items-center gap-2 mb-2">
                 <svg className="w-6 h-6 text-red-400 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
