@@ -23,39 +23,77 @@ export async function GET(request: NextRequest) {
     const currentMonth = now.getMonth() + 1;
 
     // Получаем статистику за сегодня
-    // ВАЖНО: После применения миграции и генерации Prisma Client раскомментировать
-    // const dailyStats = await prisma.dailyStats.findUnique({
-    //   where: {
-    //     userId_date: {
-    //       userId: user.id,
-    //       date: today,
-    //     },
-    //   },
-    //   include: {
-    //     achievements: true,
-    //   },
-    // });
+    // Проверяем наличие модели в Prisma Client (после применения миграции)
+    let dailyStats = null;
+    let monthlyStats = null;
 
-    // Получаем статистику за текущий месяц
-    // const monthlyStats = await prisma.monthlyStats.findUnique({
-    //   where: {
-    //     userId_year_month: {
-    //       userId: user.id,
-    //       year: currentYear,
-    //       month: currentMonth,
-    //     },
-    //   },
-    // });
+    try {
+      // Проверяем, доступна ли модель dailyStats в Prisma Client
+      if ('dailyStats' in prisma && typeof (prisma as any).dailyStats?.findUnique === 'function') {
+        dailyStats = await (prisma as any).dailyStats.findUnique({
+          where: {
+            userId_date: {
+              userId: user.id,
+              date: today,
+            },
+          },
+          include: {
+            achievements: true,
+          },
+        });
+      }
+    } catch (error: any) {
+      // Модель еще не доступна (миграция не применена)
+      console.log('[API Ranking Stats] DailyStats модель еще не доступна:', error.message);
+    }
 
-    // Временная заглушка до применения миграции
-    const dailyStats = null;
-    const monthlyStats = null;
+    try {
+      // Проверяем, доступна ли модель monthlyStats в Prisma Client
+      if ('monthlyStats' in prisma && typeof (prisma as any).monthlyStats?.findUnique === 'function') {
+        monthlyStats = await (prisma as any).monthlyStats.findUnique({
+          where: {
+            userId_year_month: {
+              userId: user.id,
+              year: currentYear,
+              month: currentMonth,
+            },
+          },
+        });
+      }
+    } catch (error: any) {
+      // Модель еще не доступна (миграция не применена)
+      console.log('[API Ranking Stats] MonthlyStats модель еще не доступна:', error.message);
+    }
 
-    // ВАЖНО: После применения миграции и генерации Prisma Client раскомментировать код выше
-    // и удалить эту временную заглушку
     return NextResponse.json({
-      daily: null, // Временно до применения миграции
-      monthly: null, // Временно до применения миграции
+      daily: dailyStats
+        ? {
+            points: dailyStats.dayPoints,
+            rank: dailyStats.dailyRank,
+            positions: dailyStats.positions,
+            units: dailyStats.units,
+            orders: dailyStats.orders,
+            pph: dailyStats.dayPph,
+            uph: dailyStats.dayUph,
+            efficiency: dailyStats.avgEfficiency,
+            achievements: dailyStats.achievements?.map((a: any) => ({
+              type: a.achievementType,
+              value: a.achievementValue,
+            })) || [],
+          }
+        : null,
+      monthly: monthlyStats
+        ? {
+            points: monthlyStats.monthPoints,
+            rank: monthlyStats.monthlyRank,
+            positions: monthlyStats.totalPositions,
+            units: monthlyStats.totalUnits,
+            orders: monthlyStats.totalOrders,
+            pph: monthlyStats.avgPph,
+            uph: monthlyStats.avgUph,
+            efficiency: monthlyStats.avgEfficiency,
+          }
+        : null,
     });
   } catch (error: any) {
     console.error('[API Ranking Stats] Ошибка:', error);
