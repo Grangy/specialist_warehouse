@@ -295,8 +295,8 @@ export function ConfirmModal({
       <div className="overflow-y-auto overflow-x-hidden max-h-[60vh] border border-slate-700/50 rounded-lg shadow-inner">
         {viewMode === 'compact' ? (
           // Минималистичный компактный список
-          <div className="divide-y divide-slate-800">
-            {sortedIndices.map((originalIndex) => {
+          <div className="divide-y divide-white/20">
+            {sortedIndices.map((originalIndex, mapIndex) => {
                 const line = currentShipment.lines[originalIndex];
                 const index = originalIndex;
                 const state = checklistState[index] || {
@@ -313,12 +313,16 @@ export function ConfirmModal({
                 if (isRemoving) return null;
 
                 return (
-                  <div
-                    key={index}
-                    className={`px-1.5 py-0.5 transition-all ${
-                      isConfirmed ? 'bg-green-900/10 border-l border-l-green-500/50' : 'bg-slate-900/30 hover:bg-slate-800/50'
-                    } ${isEditing ? 'bg-blue-900/20 border-l border-l-blue-500/50' : ''}`}
-                  >
+                  <div key={index}>
+                    {/* Разделитель между позициями (белая линия) */}
+                    {mapIndex > 0 && (
+                      <div className="w-full h-px bg-white/30"></div>
+                    )}
+                    <div
+                      className={`px-1.5 py-0.5 transition-all ${
+                        isConfirmed ? 'bg-green-900/10 border-l border-l-green-500/50' : 'bg-slate-900/30 hover:bg-slate-800/50'
+                      } ${isEditing ? 'bg-blue-900/20 border-l border-l-blue-500/50' : ''}`}
+                    >
                     {isEditing ? (
                       // Режим редактирования в компактном виде - все в одну строку
                       <div className="flex items-center justify-between gap-1.5 py-0.5">
@@ -447,6 +451,7 @@ export function ConfirmModal({
                         </div>
                       </div>
                     )}
+                    </div>
                   </div>
                 );
               })}
@@ -479,7 +484,7 @@ export function ConfirmModal({
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-white/20">
             {currentShipment.lines
               .map((_, index) => index)
               .sort((a, b) => {
@@ -487,7 +492,7 @@ export function ConfirmModal({
                 const bConfirmed = checklistState[b]?.confirmed || false;
                 return aConfirmed === bConfirmed ? 0 : aConfirmed ? 1 : -1;
               })
-              .map((originalIndex) => {
+              .map((originalIndex, mapIndex) => {
                 const line = currentShipment.lines[originalIndex];
                 const index = originalIndex;
               const state = checklistState[index] || {
@@ -501,17 +506,23 @@ export function ConfirmModal({
               const isZero = state.collectedQty === 0;
               const isRemoving = removingItems.has(index);
 
-              const rowClassName = `${isConfirmed ? 'bg-green-900/15 border-l-2 border-l-green-500/50' : 'bg-slate-900/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-slate-700/50 ${
+              const rowClassName = `${isConfirmed ? 'bg-green-900/15 border-l-2 border-l-green-500/50' : 'bg-slate-900/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-white/20 ${
                 isRemoving ? 'item-removing' : ''
               }`;
 
               return (
                 <Fragment key={index}>
+                  {/* Разделитель между позициями (белая линия) */}
+                  {mapIndex > 0 && (
+                    <tr key={`divider-${index}`}>
+                      <td colSpan={7} className="h-px bg-white/30 p-0"></td>
+                    </tr>
+                  )}
                   {isEditing ? (
                     // Режим редактирования: 2 строки
                     <>
                       {/* Первая строка: Название */}
-                      <tr className={`${rowClassName} bg-blue-900/20 border-l-2 border-l-blue-500/50 shadow-md`}>
+                      <tr className={`${rowClassName} bg-blue-900/20 border-l-2 border-l-blue-500/50 shadow-md border-b border-white/20`}>
                         <td colSpan={7} className="px-3 py-3 border-b border-slate-700/50">
                           <div 
                             className="text-sm leading-relaxed cursor-pointer hover:text-blue-400 transition-all duration-200 break-words font-medium text-slate-100"
@@ -531,7 +542,7 @@ export function ConfirmModal({
                         </td>
                       </tr>
                       {/* Вторая строка: информация слева, управление количеством справа */}
-                      <tr className={`${rowClassName} bg-blue-900/20 border-l-2 border-l-blue-500/50 shadow-md`}>
+                      <tr className={`${rowClassName} bg-blue-900/20 border-l-2 border-l-blue-500/50 shadow-md border-b border-white/20`}>
                         <td colSpan={7} className="px-3 py-3">
                           <div className="flex items-center justify-between gap-2">
                             {/* Левая часть: информация */}

@@ -362,7 +362,7 @@ export function CollectModal({
           {/* Grid layout для планшетов */}
           {isTablet && (
             <div className="tablet-products-grid tablet-show-grid p-2">
-              {sortedIndices.map((originalIndex) => {
+              {sortedIndices.map((originalIndex, mapIndex) => {
                 const line = currentShipment.lines[originalIndex];
                 const index = originalIndex;
                 const state = checklistState[index] || { collected: false, qty: line.qty, collectedQty: line.qty };
@@ -377,10 +377,14 @@ export function CollectModal({
                   : 'bg-slate-900/50 border-slate-700';
                 
                 return (
-                  <div
-                    key={index}
-                    className={`tablet-product-card ${cardBg} border ${isRemoving ? 'item-removing' : ''}`}
-                  >
+                  <div key={index}>
+                    {/* Разделитель между позициями (белая линия) */}
+                    {mapIndex > 0 && (
+                      <div className="w-full h-px bg-white/30 my-2"></div>
+                    )}
+                    <div
+                      className={`tablet-product-card ${cardBg} border ${isRemoving ? 'item-removing' : ''}`}
+                    >
                     {/* Статус */}
                     <div className="flex items-center gap-2">
                       {isCollected ? (
@@ -518,6 +522,7 @@ export function CollectModal({
                     {isCollected && hasShortage && (
                       <div className="text-xs text-yellow-500">⚠ Недостаток: {line.qty - state.collectedQty}</div>
                     )}
+                    </div>
                   </div>
                 );
               })}
@@ -548,8 +553,8 @@ export function CollectModal({
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
-              {sortedIndices.map((originalIndex) => {
+            <tbody className="divide-y divide-white/20">
+              {sortedIndices.map((originalIndex, mapIndex) => {
                 const line = currentShipment.lines[originalIndex];
                 const index = originalIndex;
                 const state = checklistState[index] || { collected: false, qty: line.qty, collectedQty: line.qty };
@@ -562,12 +567,18 @@ export function CollectModal({
                 
                 if (isEditing) {
                   return (
-                    <tr
-                      key={index}
-                      className={`${isCollected ? (isZero ? 'bg-red-900/20 border-l-2 border-l-red-500/50' : 'bg-green-900/20 border-l-2 border-l-green-500/50') : 'bg-blue-900/20 border-l-2 border-l-blue-500/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-slate-700/50 shadow-md ${
-                        isRemoving ? 'item-removing' : ''
-                      }`}
-                    >
+                    <Fragment key={index}>
+                      {/* Разделитель между позициями (белая линия) */}
+                      {mapIndex > 0 && (
+                        <tr key={`divider-${index}`}>
+                          <td colSpan={totalColumns} className="h-px bg-white/30 p-0"></td>
+                        </tr>
+                      )}
+                      <tr
+                        className={`${isCollected ? (isZero ? 'bg-red-900/20 border-l-2 border-l-red-500/50' : 'bg-green-900/20 border-l-2 border-l-green-500/50') : 'bg-blue-900/20 border-l-2 border-l-blue-500/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-white/20 shadow-md ${
+                          isRemoving ? 'item-removing' : ''
+                        }`}
+                      >
                       <td colSpan={totalColumns} className="px-3 py-3">
                         <div className="space-y-1.5">
                           {/* Строка 1: Название (может быть в 3 строки) */}
@@ -662,16 +673,23 @@ export function CollectModal({
                         </div>
                       </td>
                     </tr>
+                    </Fragment>
                   );
                 }
 
                 // Обычный режим - таблица: 1 товар = 2 строки
-                const rowClassName = `${isCollected ? (isZero ? 'bg-red-900/15 border-l-2 border-l-red-500/50' : 'bg-green-900/15 border-l-2 border-l-green-500/50') : 'bg-slate-900/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-slate-700/50 ${
+                const rowClassName = `${isCollected ? (isZero ? 'bg-red-900/15 border-l-2 border-l-red-500/50' : 'bg-green-900/15 border-l-2 border-l-green-500/50') : 'bg-slate-900/50'} hover:bg-slate-800/70 transition-all duration-300 border-b border-white/20 ${
                   isRemoving ? 'item-removing' : ''
                 }`;
 
                 return (
                   <Fragment key={index}>
+                    {/* Разделитель между позициями (белая линия) */}
+                    {mapIndex > 0 && (
+                      <tr key={`divider-${index}`}>
+                        <td colSpan={totalColumns} className="h-px bg-white/30 p-0"></td>
+                      </tr>
+                    )}
                     {/* Первая строка: Название товара (1 столбец на всю ширину) */}
                     <tr className={rowClassName}>
                       <td rowSpan={2} className="px-3 py-3 text-center border-b border-slate-700/50 align-middle hidden md:table-cell" style={{ width: '60px', minWidth: '60px' }}>
