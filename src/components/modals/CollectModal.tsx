@@ -447,7 +447,7 @@ export function CollectModal({
                     {/* Количество (только факт) */}
                     <div className="flex items-center justify-center">
                       <div className={`text-2xl font-bold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>
-                        {state.collectedQty}
+                        {state.collectedQty} <span className="text-base text-slate-400">{line.uom || 'шт'}</span>
                       </div>
                     </div>
                     
@@ -473,6 +473,7 @@ export function CollectModal({
                             }}
                             className="bg-slate-800 border border-slate-600 text-slate-100 rounded px-1 text-center font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
                           />
+                          <span className="text-slate-400 text-xs">{line.uom || 'шт'}</span>
                           <button
                             onClick={() => onUpdateCollectedQty(index, state.collectedQty + 1)}
                             className="bg-slate-700 hover:bg-slate-600 text-slate-100 rounded transition-colors flex items-center justify-center font-bold disabled:opacity-50"
@@ -520,7 +521,7 @@ export function CollectModal({
                       <div className="text-xs text-red-400 font-semibold">⚠ Не собрано</div>
                     )}
                     {isCollected && hasShortage && (
-                      <div className="text-xs text-yellow-500">⚠ Недостаток: {line.qty - state.collectedQty}</div>
+                      <div className="text-xs text-yellow-500">⚠ Недостаток: {line.qty - state.collectedQty} {line.uom || 'шт'}</div>
                     )}
                     </div>
                   </div>
@@ -645,6 +646,7 @@ export function CollectModal({
                                   className="w-12 bg-slate-800/90 border-2 border-slate-600/50 text-slate-100 rounded-md px-1 py-1 text-center text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200"
                                   autoFocus
                                 />
+                                <span className="text-slate-400 text-xs">{line.uom || 'шт'}</span>
                                 <button
                                   onClick={() => onUpdateCollectedQty(index, state.collectedQty + 1)}
                                   className="w-6 h-6 bg-slate-700/90 hover:bg-slate-600 text-slate-100 rounded-md transition-all duration-200 flex items-center justify-center text-xs font-bold shadow-md hover:shadow-lg hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
@@ -772,14 +774,14 @@ export function CollectModal({
                                 {line.location || '—'}
                               </div>
                               <div className="text-xl font-bold whitespace-nowrap flex-shrink-0 ml-auto">
-                                <span className={`${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span>
+                                <span className={`${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span> <span className="text-sm text-slate-400">{line.uom || 'шт'}</span>
                               </div>
                             </div>
                             {isCollected && isZero && (
                               <div className="text-[10px] text-red-400 font-semibold">Не собрано</div>
                             )}
                             {isCollected && hasShortage && (
-                              <div className="text-[10px] text-yellow-500">Недостаток: {line.qty - state.collectedQty}</div>
+                              <div className="text-[10px] text-yellow-500">Недостаток: {line.qty - state.collectedQty} {line.uom || 'шт'}</div>
                             )}
                           </div>
                           {/* Правая часть: кнопки */}
@@ -840,13 +842,13 @@ export function CollectModal({
                       </td>
                       <td className="px-3 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle" style={{ width: '120px', minWidth: '120px' }}>
                         <div className={`text-2xl font-bold ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>
-                          {state.collectedQty}
+                          {state.collectedQty} <span className="text-base text-slate-400">{line.uom || 'шт'}</span>
                         </div>
                         {isCollected && isZero && (
                           <div className="text-[10px] text-red-400 font-semibold mt-1">Не собрано</div>
                         )}
                         {isCollected && hasShortage && (
-                          <div className="text-[10px] text-yellow-500 mt-1">Недостаток: {line.qty - state.collectedQty}</div>
+                          <div className="text-[10px] text-yellow-500 mt-1">Недостаток: {line.qty - state.collectedQty} {line.uom || 'шт'}</div>
                         )}
                       </td>
                       <td className="px-3 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle" style={{ width: '180px', minWidth: '180px' }}>
