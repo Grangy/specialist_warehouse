@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { getAnimalLevel } from '@/lib/ranking/levels';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,11 +66,19 @@ export async function GET(request: NextRequest) {
       console.log('[API Ranking Stats] MonthlyStats модель еще не доступна:', error.message);
     }
 
+    // Получаем уровни животных для рангов
+    const dailyLevel = dailyStats?.dailyRank ? getAnimalLevel(dailyStats.dailyRank) : null;
+    const monthlyLevel = monthlyStats?.monthlyRank ? getAnimalLevel(monthlyStats.monthlyRank) : null;
+
     return NextResponse.json({
       daily: dailyStats
         ? {
             points: dailyStats.dayPoints,
             rank: dailyStats.dailyRank,
+            levelName: dailyLevel?.name || null,
+            levelEmoji: dailyLevel?.emoji || null,
+            levelDescription: dailyLevel?.description || null,
+            levelColor: dailyLevel?.color || null,
             positions: dailyStats.positions,
             units: dailyStats.units,
             orders: dailyStats.orders,
@@ -86,6 +95,10 @@ export async function GET(request: NextRequest) {
         ? {
             points: monthlyStats.monthPoints,
             rank: monthlyStats.monthlyRank,
+            levelName: monthlyLevel?.name || null,
+            levelEmoji: monthlyLevel?.emoji || null,
+            levelDescription: monthlyLevel?.description || null,
+            levelColor: monthlyLevel?.color || null,
             positions: monthlyStats.totalPositions,
             units: monthlyStats.totalUnits,
             orders: monthlyStats.totalOrders,

@@ -22,6 +22,10 @@ interface RankingStats {
   daily: {
     points: number;
     rank: number | null;
+    levelName: string | null;
+    levelEmoji: string | null;
+    levelDescription: string | null;
+    levelColor: string | null;
     positions: number;
     units: number;
     orders: number;
@@ -33,6 +37,10 @@ interface RankingStats {
   monthly: {
     points: number;
     rank: number | null;
+    levelName: string | null;
+    levelEmoji: string | null;
+    levelDescription: string | null;
+    levelColor: string | null;
     positions: number;
     units: number;
     orders: number;
@@ -266,9 +274,9 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                   title="Профиль и статистика"
                 >
                   <UserIcon className="w-4 h-4 text-slate-200" />
-                  {rankingStats?.daily?.rank ? (
-                    <span className="hidden md:inline text-xs font-bold text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">
-                      #{rankingStats.daily.rank}
+                  {rankingStats?.daily?.levelEmoji && rankingStats.daily.levelName ? (
+                    <span className={`hidden md:inline text-xs font-bold px-1.5 py-0.5 rounded ${rankingStats.daily.levelColor || 'text-yellow-400'} ${rankingStats.daily.levelColor?.replace('text-', 'bg-') || 'bg-yellow-400'}/10`}>
+                      {rankingStats.daily.levelEmoji} {rankingStats.daily.levelName}
                     </span>
                   ) : (
                     <span className="hidden md:inline text-xs font-medium text-slate-400">
@@ -344,13 +352,15 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                                 </div>
                                 <span className="text-slate-100 font-bold text-sm">{Math.round(rankingStats.daily.points)}</span>
                               </div>
-                              {rankingStats.daily.rank && (
+                              {rankingStats.daily.levelEmoji && rankingStats.daily.levelName && (
                                 <div className="flex items-center justify-between py-1 bg-yellow-400/10 rounded px-2 py-1.5">
                                   <div className="flex items-center gap-2 text-slate-300">
                                     <Award className="w-3.5 h-3.5 text-yellow-400" />
-                                    <span>Ранг:</span>
+                                    <span>Уровень:</span>
                                   </div>
-                                  <span className="text-yellow-400 font-bold text-sm">#{rankingStats.daily.rank}</span>
+                                  <span className={`font-bold text-sm ${rankingStats.daily.levelColor || 'text-yellow-400'}`}>
+                                    {rankingStats.daily.levelEmoji} {rankingStats.daily.levelName}
+                                  </span>
                                 </div>
                               )}
                               <div className="flex items-center justify-between py-1">
@@ -429,13 +439,15 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                                 </div>
                                 <span className="text-slate-100 font-bold text-sm">{Math.round(rankingStats.monthly.points)}</span>
                               </div>
-                              {rankingStats.monthly.rank && (
+                              {rankingStats.monthly.levelEmoji && rankingStats.monthly.levelName && (
                                 <div className="flex items-center justify-between py-1 bg-yellow-400/10 rounded px-2 py-1.5">
                                   <div className="flex items-center gap-2 text-slate-300">
                                     <Award className="w-3.5 h-3.5 text-yellow-400" />
-                                    <span>Ранг:</span>
+                                    <span>Уровень:</span>
                                   </div>
-                                  <span className="text-yellow-400 font-bold text-sm">#{rankingStats.monthly.rank}</span>
+                                  <span className={`font-bold text-sm ${rankingStats.monthly.levelColor || 'text-yellow-400'}`}>
+                                    {rankingStats.monthly.levelEmoji} {rankingStats.monthly.levelName}
+                                  </span>
                                 </div>
                               )}
                               <div className="flex items-center justify-between py-1">
