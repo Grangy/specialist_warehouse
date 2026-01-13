@@ -281,55 +281,57 @@ export function ConfirmModal({
         </div>
       }
     >
-      <div className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm mb-3 flex items-center justify-between text-xs gap-3 py-2 border-b border-slate-700/50">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Информация о клиенте и локации (регионе) без префиксов */}
-          {currentShipment.customer_name && (
-            <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.customer_name}>
-              {currentShipment.customer_name}
-            </div>
-          )}
-          {currentShipment.business_region && (
-            <>
-              {currentShipment.customer_name && (
-                <div className="h-4 w-px bg-slate-600"></div>
-              )}
-              <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.business_region}>
-                {currentShipment.business_region}
-              </div>
-            </>
-          )}
-        </div>
-        {/* Переключатель вида отображения - компактные кнопки К/П */}
-        <div className="flex items-center gap-1 bg-slate-800/50 rounded-md p-0.5 border border-slate-700/50 flex-shrink-0">
-          <button
-            onClick={() => setViewMode('compact')}
-            className={`px-2 py-1 rounded text-xs font-bold transition-all min-w-[28px] ${
-              viewMode === 'compact'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-            title="Компактный вид"
-          >
-            К
-          </button>
-          <button
-            onClick={() => setViewMode('detailed')}
-            className={`px-2 py-1 rounded text-xs font-bold transition-all min-w-[28px] ${
-              viewMode === 'detailed'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-            title="Подробный вид"
-          >
-            П
-          </button>
-        </div>
-      </div>
       <div className="overflow-y-auto overflow-x-hidden max-h-[60vh] border border-slate-700/50 rounded-lg shadow-inner">
-        {viewMode === 'compact' ? (
-          // Минималистичный компактный список
-          <div className="divide-y divide-white/20">
+        {/* Sticky блок с клиентом и переключателем режима - внутри скроллируемого контейнера */}
+        <div className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm mb-3 flex items-center justify-between text-xs gap-3 py-2 px-3 border-b border-slate-700/50 -mx-px -mt-px">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            {/* Информация о клиенте и локации (регионе) без префиксов */}
+            {currentShipment.customer_name && (
+              <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.customer_name}>
+                {currentShipment.customer_name}
+              </div>
+            )}
+            {currentShipment.business_region && (
+              <>
+                {currentShipment.customer_name && (
+                  <div className="h-4 w-px bg-slate-600"></div>
+                )}
+                <div className="text-slate-200 font-semibold truncate min-w-0" title={currentShipment.business_region}>
+                  {currentShipment.business_region}
+                </div>
+              </>
+            )}
+          </div>
+          {/* Переключатель вида отображения - компактные кнопки К/П */}
+          <div className="flex items-center gap-1 bg-slate-800/50 rounded-md p-0.5 border border-slate-700/50 flex-shrink-0">
+            <button
+              onClick={() => setViewMode('compact')}
+              className={`px-2 py-1 rounded text-xs font-bold transition-all min-w-[28px] ${
+                viewMode === 'compact'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Компактный вид"
+            >
+              К
+            </button>
+            <button
+              onClick={() => setViewMode('detailed')}
+              className={`px-2 py-1 rounded text-xs font-bold transition-all min-w-[28px] ${
+                viewMode === 'detailed'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Подробный вид"
+            >
+              П
+            </button>
+          </div>
+        </div>
+        <div className="px-3 -mx-3">
+          {viewMode === 'compact' ? (
+            // Минималистичный компактный список
+            <div className="divide-y divide-white/20">
             {sortedIndices.map((originalIndex, mapIndex) => {
                 const line = currentShipment.lines[originalIndex];
                 const index = originalIndex;
@@ -493,10 +495,10 @@ export function ConfirmModal({
                   </div>
                 );
               })}
-          </div>
-        ) : (
-          // Текущий подробный вид (таблица)
-          <table className="w-full border-collapse">
+            </div>
+          ) : (
+            // Текущий подробный вид (таблица)
+            <table className="w-full border-collapse">
           <thead className="bg-slate-800/95 backdrop-blur-sm sticky top-0 z-10 hidden md:table-header-group shadow-sm">
             <tr>
               <th className="px-3 py-3 text-center text-xs font-semibold text-slate-200 uppercase border-b border-slate-600" style={{ width: '60px', minWidth: '60px' }}>
@@ -907,9 +909,10 @@ export function ConfirmModal({
                 </Fragment>
               );
             })}
-          </tbody>
-        </table>
-        )}
+            </tbody>
+          </table>
+          )}
+        </div>
       </div>
     </Modal>
     
