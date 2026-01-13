@@ -137,8 +137,12 @@ export function Modal({
   return (
     <div
       ref={modalRef}
-      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-0 md:p-4"
-      style={{ touchAction: 'pan-y', overscrollBehavior: 'none' }}
+      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-0 md:p-4"
+      style={{ 
+        touchAction: 'pan-y', 
+        overscrollBehavior: 'none',
+        zIndex: 10000, // Выше хедера (z-100) и попапа профиля (z-99999), но ниже попапа профиля
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
@@ -147,7 +151,7 @@ export function Modal({
     >
       <div
         className={`bg-slate-800 rounded-none md:rounded-lg shadow-2xl max-w-7xl w-full h-full md:h-auto md:max-h-[95vh] overflow-hidden border-0 md:border border-slate-700 flex flex-col ${className}`}
-        style={{ touchAction: 'auto' }}
+        style={{ touchAction: 'auto', zIndex: 10001 }}
       >
         <div className="flex items-center justify-between p-4 md:p-6 border-b border-slate-700 sticky top-0 bg-slate-800 z-20 flex-shrink-0">
           <div className="flex-1 min-w-0">

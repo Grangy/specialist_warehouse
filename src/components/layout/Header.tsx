@@ -209,7 +209,7 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
         className={`bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/80 px-3 md:px-4 py-2 md:py-2.5 transition-transform duration-300 ease-in-out shadow-sm ${
           isHidden ? 'md:translate-y-0 -translate-y-full md:block hidden' : 'translate-y-0'
         }`}
-        style={{ position: 'relative', zIndex: 100 }}
+        style={{ position: 'relative', zIndex: 50 }}
       >
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-3 max-w-7xl mx-auto">
           {/* Логотип и приветствие - компактнее */}
