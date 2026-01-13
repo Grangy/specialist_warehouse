@@ -174,6 +174,63 @@ export async function POST(request: NextRequest) {
 
     await Promise.all(updatePromises);
 
+    // Обработка заказов с success: true, но пустым id
+    // Если 1С отправляет success: true с пустым id, это может означать, что заказ был успешно обработан,
+    // но 1С не смог вернуть правильный id. В этом случае попробуем найти недавно отправленные заказы
+    // и пометить их как выгруженные (только если они еще не помечены).
+    // ВАЖНО: Используем порядок заказов - если 1С отправляет заказы в том же порядке, что и мы,
+    // то заказы с пустым id соответствуют первым невыгруженным заказам из предыдущего ответа.
+    const successOrdersWithEmptyId = orders.filter(
+      (o: { id: string; success: boolean; number?: string }) => 
+        o.success === true && (!o.id || o.id.trim() === '') && (!o.number || o.number.trim() === '')
+    );
+
+    if (successOrdersWithEmptyId.length > 0) {
+      console.log(`[Sync-1C] [${requestId}] ⚠️ Найдено ${successOrdersWithEmptyId.length} заказов с success: true, но пустым id и number`);
+      console.log(`[Sync-1C] [${requestId}] Попытка сопоставить с недавно отправленными заказами...`);
+      
+      // Получаем недавно отправленные заказы (которые были в предыдущем ответе)
+      // Берем заказы со статусом processed, не выгруженные, отсортированные по дате подтверждения (старые первыми)
+      // Ограничиваем временным окном: только заказы, подтвержденные в последние 24 часа
+      const oneDayAgo = new Date();
+      oneDayAgo.setHours(oneDayAgo.getHours() - 24);
+      
+      const recentlyReadyShipments = await prisma.shipment.findMany({
+        where: {
+          status: 'processed',
+          exportedTo1C: false,
+          exportedTo1CAt: null,
+          deleted: false,
+          confirmedAt: {
+            gte: oneDayAgo, // Только недавно подтвержденные заказы
+          },
+        },
+        select: { id: true, number: true, exportedTo1C: true, exportedTo1CAt: true, confirmedAt: true },
+        orderBy: { confirmedAt: 'asc' }, // Старые первыми (те, что были отправлены раньше)
+        take: successOrdersWithEmptyId.length, // Берем столько, сколько заказов с пустым id
+      });
+
+      console.log(`[Sync-1C] [${requestId}] Найдено ${recentlyReadyShipments.length} недавно готовых заказов для сопоставления (из ${successOrdersWithEmptyId.length} необходимых)`);
+
+      if (recentlyReadyShipments.length > 0) {
+        // Помечаем найденные заказы как выгруженные
+        for (const shipment of recentlyReadyShipments) {
+          if (!shipment.exportedTo1C && !shipment.exportedTo1CAt) {
+            await prisma.shipment.update({
+              where: { id: shipment.id },
+              data: {
+                exportedTo1C: true,
+                exportedTo1CAt: new Date(),
+              },
+            });
+            console.log(`[Sync-1C] [${requestId}] ✅ Заказ ${shipment.number} (${shipment.id}) помечен как выгруженный в 1С (сопоставлен с success: true, но пустым id)`);
+          }
+        }
+      } else {
+        console.warn(`[Sync-1C] [${requestId}] ⚠️ Не удалось найти заказы для сопоставления с ${successOrdersWithEmptyId.length} заказами с пустым id`);
+      }
+    }
+
     // ДИАГНОСТИКА: Логируем все заказы со статусом processed перед фильтрацией
     const allProcessedBeforeFilter = await prisma.shipment.findMany({
       where: {
