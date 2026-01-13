@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Fragment, useMemo, useEffect } from 'react';
+import { useState, Fragment, useMemo, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
 import { NameModal } from '@/components/modals/NameModal';
@@ -71,6 +71,10 @@ export function ConfirmModal({
   // Состояние для отображения предупреждения о несобранных товарах
   const [showZeroItemsWarning, setShowZeroItemsWarning] = useState(true);
 
+  // Состояние для отслеживания первого клика по кнопке подтверждения в компактном режиме
+  const [pendingConfirmIndex, setPendingConfirmIndex] = useState<number | null>(null);
+  const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Сохраняем выбор вида отображения в localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -131,6 +135,37 @@ export function ConfirmModal({
       clearTimeout(timer);
     };
   }, [isOpen, currentShipment]);
+
+  // Очистка таймера подтверждения при размонтировании
+  useEffect(() => {
+    return () => {
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Обработчик двойного клика для подтверждения в компактном режиме
+  const handleCompactConfirmClick = (index: number) => {
+    if (pendingConfirmIndex === index) {
+      // Второй клик - подтверждаем
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+      setPendingConfirmIndex(null);
+      onConfirmItem(index);
+    } else {
+      // Первый клик - устанавливаем состояние ожидания
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+      setPendingConfirmIndex(index);
+      // Сбрасываем состояние через 1 секунду, если не было второго клика
+      confirmTimeoutRef.current = setTimeout(() => {
+        setPendingConfirmIndex(null);
+      }, 1000);
+    }
+  };
 
   if (!currentShipment || !isOpen) return null;
 
@@ -481,11 +516,15 @@ export function ConfirmModal({
                           </button>
                           {!isConfirmed && (
                             <button
-                              onClick={() => onConfirmItem(index)}
-                              className="px-1 py-0.5 bg-green-600/90 hover:bg-green-500 text-white text-[8px] font-semibold rounded transition-all"
-                              title="Подтвердить"
+                              onClick={() => handleCompactConfirmClick(index)}
+                              className={`px-1 py-0.5 text-white text-[8px] font-semibold rounded transition-all ${
+                                pendingConfirmIndex === index
+                                  ? 'bg-yellow-600/90 hover:bg-yellow-500 animate-pulse'
+                                  : 'bg-green-600/90 hover:bg-green-500'
+                              }`}
+                              title={pendingConfirmIndex === index ? 'Нажмите еще раз для подтверждения' : 'Подтвердить (2 клика)'}
                             >
-                              ✓
+                              {pendingConfirmIndex === index ? '✓' : '✓'}
                             </button>
                           )}
                         </div>
