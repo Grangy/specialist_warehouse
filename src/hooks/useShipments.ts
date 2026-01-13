@@ -108,13 +108,15 @@ export function useShipments() {
       if (
         eventType === 'shipment:created' ||
         eventType === 'shipment:updated' ||
-        eventType === 'shipment:status_changed'
+        eventType === 'shipment:status_changed' ||
+        eventType === 'shipment:locked' ||
+        eventType === 'shipment:unlocked'
       ) {
         console.log(`[useShipments] Получено событие ${eventType}, обновляем список заказов`);
         // Небольшая задержка для гарантии, что данные в БД обновлены
         setTimeout(() => {
           loadShipments();
-        }, 500);
+        }, 300);
       }
     },
     onError: (error) => {

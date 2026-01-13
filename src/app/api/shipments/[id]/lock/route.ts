@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { emitShipmentEvent } from '@/lib/sseEvents';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +70,13 @@ export async function POST(
           
           console.log(`[LOCK] Блокировка задания ${id} активна (heartbeat: ${timeSinceHeartbeat}ms назад). Пользователь ${user.name} (${user.id}) перехватывает сборку у ${lockUser?.name || existingLock.userId}${lockUser?.role === 'admin' ? ' (админ)' : ''}`);
           
+          // Отправляем SSE событие о разблокировке перед удалением (модал закрыт другим пользователем)
+          emitShipmentEvent('shipment:unlocked', {
+            taskId: id,
+            shipmentId: task.shipmentId,
+            userId: existingLock.userId,
+          });
+          
           // Удаляем активную блокировку - теперь можно перехватывать даже активные блокировки
           await prisma.shipmentTaskLock.delete({
             where: { id: existingLock.id },
@@ -81,6 +89,13 @@ export async function POST(
           });
           
           console.log(`[LOCK] Блокировка задания ${id} неактивна (heartbeat: ${timeSinceHeartbeat}ms назад, таймаут: ${HEARTBEAT_TIMEOUT}ms). Пользователь ${user.name} (${user.id}) перехватывает сборку у ${lockUser?.name || existingLock.userId}`);
+          
+          // Отправляем SSE событие о разблокировке перед удалением (модал закрыт)
+          emitShipmentEvent('shipment:unlocked', {
+            taskId: id,
+            shipmentId: task.shipmentId,
+            userId: existingLock.userId,
+          });
           
           // Удаляем неактивную блокировку
           await prisma.shipmentTaskLock.delete({
@@ -102,6 +117,15 @@ export async function POST(
           // Это не должно происходить, но на всякий случай проверяем
           console.warn(`[LOCK] Предупреждение: блокировка принадлежит пользователю ${user.id}, но collectorId = ${task.collectorId}`);
         }
+        
+        // Отправляем SSE событие о блокировке (модал все еще открыт)
+        emitShipmentEvent('shipment:locked', {
+          taskId: id,
+          shipmentId: task.shipmentId,
+          userId: user.id,
+          userName: user.name,
+        });
+        
         return NextResponse.json({ success: true });
       }
     }
@@ -123,6 +147,14 @@ export async function POST(
         collectorId: user.id,
         startedAt: new Date(),
       },
+    });
+
+    // Отправляем SSE событие о блокировке задания (модал открыт)
+    emitShipmentEvent('shipment:locked', {
+      taskId: id,
+      shipmentId: task.shipmentId,
+      userId: user.id,
+      userName: user.name,
     });
 
     return NextResponse.json({ 

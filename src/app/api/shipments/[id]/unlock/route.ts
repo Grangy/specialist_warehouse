@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { emitShipmentEvent } from '@/lib/sseEvents';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,8 +39,20 @@ export async function POST(
       );
     }
 
+    // Сохраняем taskId перед удалением блокировки
+    const taskId = task.id;
+    const shipmentId = task.shipmentId;
+
     await prisma.shipmentTaskLock.delete({
       where: { id: lock.id },
+    });
+
+    // Отправляем SSE событие о разблокировке задания (модал закрыт)
+    emitShipmentEvent('shipment:unlocked', {
+      taskId,
+      shipmentId,
+      userId: user.id,
+      userName: user.name,
     });
 
     return NextResponse.json({ success: true });

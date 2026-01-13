@@ -714,9 +714,24 @@ export async function GET(request: NextRequest) {
         }
         // Для режима ожидания показываем все задания (включая processed)
 
-        // Проверяем блокировку, но не пропускаем - показываем все задания
-        // Блокировка будет проверяться на фронтенде
+        // Проверяем блокировку
         const lock = task.locks[0];
+        
+        // Для сборщиков: скрываем задания, которые заблокированы другими сборщиками (модал открыт)
+        if (user.role === 'collector' && lock && lock.userId !== user.id) {
+          // Проверяем, активна ли блокировка (heartbeat не старше 30 секунд)
+          const now = Date.now();
+          const lastHeartbeatTime = lock.lastHeartbeat.getTime();
+          const timeSinceHeartbeat = now - lastHeartbeatTime;
+          const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 секунд
+          const isActive = timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
+          
+          // Если блокировка активна (модал открыт другим сборщиком), скрываем задание
+          if (isActive) {
+            console.log(`[API] Пропускаем задание ${task.id}: заблокировано другим сборщиком (активная блокировка)`);
+            continue;
+          }
+        }
 
         // Пропускаем задания из обработанных заказов (если не запрошены явно)
         if (!status && shipment.status === 'processed') {
