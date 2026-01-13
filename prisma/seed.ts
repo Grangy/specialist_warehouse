@@ -32,9 +32,9 @@ async function main() {
   console.log('Начинаем seed...');
 
   // Создаем пользователей
-  const adminPassword = await hashPassword('YOUR_PASSWORD');
-  const collectorPassword = await hashPassword('collector123');
-  const checkerPassword = await hashPassword('checker123');
+  const adminPassword = await hashPassword(process.env.ADMIN_PASSWORD || 'YOUR_PASSWORD');
+  const collectorPassword = await hashPassword(process.env.COLLECTOR_PASSWORD || 'collector123');
+  const checkerPassword = await hashPassword(process.env.CHECKER_PASSWORD || 'checker123');
 
   const admin = await prisma.user.upsert({
     where: { login: 'admin' },

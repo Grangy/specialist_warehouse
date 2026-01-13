@@ -112,7 +112,7 @@ export default function LoginPage() {
               Тестовые пользователи:
             </p>
             <div className="mt-2 text-xs text-slate-400 space-y-1">
-              <div>Админ: admin / admin123</div>
+              <div>Админ: admin / YOUR_PASSWORD</div>
               <div>Сборщик: collector / collector123</div>
               <div>Проверка: checker / checker123</div>
             </div>
