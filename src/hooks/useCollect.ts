@@ -170,6 +170,7 @@ export function useCollect(options?: UseCollectOptions) {
       // Устанавливаем состояние синхронно в правильном порядке
       setChecklistState(initialState);
       setEditState({});
+      setChangedLocations({}); // Очищаем список измененных мест при открытии нового модального окна
       setLockedShipmentId(actualShipment.id);
       // Устанавливаем currentShipment последним, чтобы isOpen стал true
       setCurrentShipment(actualShipment);
