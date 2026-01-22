@@ -42,6 +42,13 @@ export async function GET(
                 login: true,
               },
             },
+            checker: {
+              select: {
+                id: true,
+                name: true,
+                login: true,
+              },
+            },
             lines: {
               include: {
                 shipmentLine: true,
@@ -100,6 +107,11 @@ export async function GET(
         collectorLogin: task.collector?.login || null,
         startedAt: task.startedAt?.toISOString() || null,
         completedAt: task.completedAt?.toISOString() || null,
+        checkerId: task.checkerId,
+        checkerName: task.checkerName,
+        checkerLogin: task.checker?.login || null,
+        checkerStartedAt: task.completedAt?.toISOString() || null, // Время начала проверки = когда задание перешло в pending_confirmation
+        checkerConfirmedAt: task.confirmedAt?.toISOString() || null, // Время окончания проверки = когда проверяльщик подтвердил задание
         totalItems: task.totalItems || task.lines.length,
         totalUnits: task.totalUnits || task.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
         timePer100Items: task.timePer100Items,

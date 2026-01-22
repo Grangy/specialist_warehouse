@@ -28,6 +28,11 @@ interface ShipmentDetails {
     collectorLogin: string | null;
     startedAt: string | null;
     completedAt: string | null;
+    checkerId: string | null;
+    checkerName: string | null;
+    checkerLogin: string | null;
+    checkerStartedAt: string | null;
+    checkerConfirmedAt: string | null;
     totalItems: number;
     totalUnits: number;
     timePer100Items: number | null;
@@ -335,8 +340,14 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                         <div className="flex items-center gap-4 text-sm text-slate-400">
                           {task.collectorName && (
                             <div className="flex items-center gap-1">
-                              <User className="w-3 h-3" />
-                              {task.collectorName}
+                              <User className="w-3 h-3 text-green-400" />
+                              <span className="text-green-300">{task.collectorName}</span>
+                            </div>
+                          )}
+                          {task.checkerName && (
+                            <div className="flex items-center gap-1">
+                              <User className="w-3 h-3 text-purple-400" />
+                              <span className="text-purple-300">{task.checkerName}</span>
                             </div>
                           )}
                           <span>{task.totalItems} позиций</span>
@@ -352,6 +363,18 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                           <CheckCircle2 className="w-3 h-3" />
                           Завершение сборки: {formatDateTime(task.completedAt)}
                         </div>
+                        {task.checkerName && (
+                          <>
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-purple-400" />
+                              Начало проверки: {formatDateTime(task.checkerStartedAt)}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-purple-400" />
+                              Завершение проверки: {formatDateTime(task.checkerConfirmedAt)}
+                            </div>
+                          </>
+                        )}
                         {task.timePer100Items && (
                           <div className="col-span-2 text-slate-400">
                             Время на 100 позиций: {formatTime(task.timePer100Items)}
