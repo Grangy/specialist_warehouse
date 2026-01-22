@@ -19,6 +19,9 @@ export function useConfirm(options?: UseConfirmOptions) {
   const { showToast, showError, showSuccess } = useToast();
 
   const openModal = useCallback((shipment: Shipment) => {
+    // Очищаем список измененных мест при открытии нового модального окна
+    setChangedLocations({});
+    
     setCurrentShipment(shipment);
 
     // Инициализируем состояние чеклиста
