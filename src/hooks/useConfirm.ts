@@ -15,6 +15,7 @@ export function useConfirm(options?: UseConfirmOptions) {
   const [checklistState, setChecklistState] = useState<Record<number, ConfirmChecklistState>>({});
   const [editState, setEditState] = useState<Record<number, boolean>>({});
   const [removingItems, setRemovingItems] = useState<Set<number>>(new Set());
+  const [changedLocations, setChangedLocations] = useState<Record<number, string>>({}); // Отслеживаем измененные места
   const { showToast, showError, showSuccess } = useToast();
 
   const openModal = useCallback((shipment: Shipment) => {
@@ -55,10 +56,46 @@ export function useConfirm(options?: UseConfirmOptions) {
   }, []);
 
   const closeModal = useCallback(async () => {
+    // ПРИНУДИТЕЛЬНО сохраняем все измененные места перед закрытием
+    if (currentShipment && Object.keys(changedLocations).length > 0) {
+      try {
+        console.log('[useConfirm] Сохраняем измененные места перед закрытием:', changedLocations);
+        const savePromises = Object.entries(changedLocations).map(async ([lineIndexStr, location]) => {
+          const lineIndex = parseInt(lineIndexStr, 10);
+          const line = currentShipment.lines[lineIndex];
+          if (line) {
+            try {
+              const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  sku: line.sku,
+                  location: location || null,
+                }),
+              });
+              if (!response.ok) {
+                throw new Error('Ошибка при сохранении места');
+              }
+              console.log(`[useConfirm] Место сохранено для позиции ${lineIndex} (${line.sku}): ${location}`);
+            } catch (error) {
+              console.error(`[useConfirm] Ошибка при сохранении места для позиции ${lineIndex}:`, error);
+            }
+          }
+        });
+        await Promise.all(savePromises);
+        console.log('[useConfirm] Все измененные места сохранены');
+      } catch (error) {
+        console.error('[useConfirm] Ошибка при сохранении измененных мест:', error);
+      }
+    }
+    
     setCurrentShipment(null);
     setChecklistState({});
     setEditState({});
     setRemovingItems(new Set());
+    setChangedLocations({}); // Очищаем список измененных мест
     
     // Обновляем данные на фронтенде после закрытия модального окна
     if (onClose) {
@@ -68,7 +105,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         console.error('Ошибка при обновлении данных после закрытия:', error);
       }
     }
-  }, [onClose]);
+  }, [onClose, currentShipment, changedLocations]);
 
   const updateCollectedQty = useCallback(async (lineIndex: number, qty: number) => {
     if (!currentShipment) return;
@@ -257,7 +294,13 @@ export function useConfirm(options?: UseConfirmOptions) {
       };
     });
 
-    // Сохраняем location в БД через API
+    // Добавляем в список измененных мест для принудительного сохранения при закрытии
+    setChangedLocations((prev) => ({
+      ...prev,
+      [lineIndex]: location,
+    }));
+
+    // ПРИНУДИТЕЛЬНО сохраняем location в БД через API сразу
     try {
       const shipmentId = currentShipment.id;
       const response = await fetch(`/api/shipments/${shipmentId}/update-location`, {
@@ -275,10 +318,11 @@ export function useConfirm(options?: UseConfirmOptions) {
         throw new Error('Ошибка при сохранении места');
       }
 
-      console.log(`[useConfirm] Место обновлено для позиции ${lineIndex} (${line.sku}): ${location}`);
+      console.log(`[useConfirm] Место обновлено и сохранено для позиции ${lineIndex} (${line.sku}): ${location}`);
     } catch (error) {
       console.error('[useConfirm] Ошибка при сохранении места:', error);
       showError('Не удалось сохранить место');
+      // Не удаляем из changedLocations, чтобы попытаться сохранить при закрытии
     }
   }, [currentShipment, showError]);
 

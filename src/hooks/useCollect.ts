@@ -18,6 +18,7 @@ export function useCollect(options?: UseCollectOptions) {
   const [editState, setEditState] = useState<Record<number, boolean>>({});
   const [lockedShipmentId, setLockedShipmentId] = useState<string | null>(null);
   const [removingItems, setRemovingItems] = useState<Set<number>>(new Set());
+  const [changedLocations, setChangedLocations] = useState<Record<number, string>>({}); // Отслеживаем измененные места
   const { showToast, showError, showSuccess } = useToast();
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -192,8 +193,40 @@ export function useCollect(options?: UseCollectOptions) {
     // Останавливаем heartbeat
     stopHeartbeat();
     
-    // НЕ сохраняем прогресс при закрытии - сохранение происходит только при действии "Сдвиньте" слайдера
-    // Это позволяет пользователю закрыть модальное окно без потери несохраненных изменений
+    // ПРИНУДИТЕЛЬНО сохраняем все измененные места перед закрытием
+    if (currentShipment && Object.keys(changedLocations).length > 0) {
+      try {
+        console.log('[useCollect] Сохраняем измененные места перед закрытием:', changedLocations);
+        const savePromises = Object.entries(changedLocations).map(async ([lineIndexStr, location]) => {
+          const lineIndex = parseInt(lineIndexStr, 10);
+          const line = currentShipment.lines[lineIndex];
+          if (line) {
+            try {
+              const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  sku: line.sku,
+                  location: location || null,
+                }),
+              });
+              if (!response.ok) {
+                throw new Error('Ошибка при сохранении места');
+              }
+              console.log(`[useCollect] Место сохранено для позиции ${lineIndex} (${line.sku}): ${location}`);
+            } catch (error) {
+              console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, error);
+            }
+          }
+        });
+        await Promise.all(savePromises);
+        console.log('[useCollect] Все измененные места сохранены');
+      } catch (error) {
+        console.error('[useCollect] Ошибка при сохранении измененных мест:', error);
+      }
+    }
     
     if (lockedShipmentId) {
       try {
@@ -207,6 +240,7 @@ export function useCollect(options?: UseCollectOptions) {
     setChecklistState({});
     setEditState({});
     setRemovingItems(new Set());
+    setChangedLocations({}); // Очищаем список измененных мест
     
     // Обновляем данные на фронтенде после закрытия модального окна
     if (onClose) {
@@ -216,7 +250,7 @@ export function useCollect(options?: UseCollectOptions) {
         console.error('Ошибка при обновлении данных после закрытия:', error);
       }
     }
-  }, [lockedShipmentId, onClose, stopHeartbeat]);
+  }, [lockedShipmentId, onClose, stopHeartbeat, currentShipment, changedLocations]);
 
   const updateCollected = useCallback(async (lineIndex: number, collected: boolean) => {
     if (collected) {
@@ -513,7 +547,13 @@ export function useCollect(options?: UseCollectOptions) {
       };
     });
 
-    // Сохраняем location в БД через API
+    // Добавляем в список измененных мест для принудительного сохранения при закрытии
+    setChangedLocations((prev) => ({
+      ...prev,
+      [lineIndex]: location,
+    }));
+
+    // ПРИНУДИТЕЛЬНО сохраняем location в БД через API сразу
     try {
       const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
         method: 'POST',
@@ -530,10 +570,11 @@ export function useCollect(options?: UseCollectOptions) {
         throw new Error('Ошибка при сохранении места');
       }
 
-      console.log(`[useCollect] Место обновлено для позиции ${lineIndex} (${line.sku}): ${location}`);
+      console.log(`[useCollect] Место обновлено и сохранено для позиции ${lineIndex} (${line.sku}): ${location}`);
     } catch (error) {
       console.error('[useCollect] Ошибка при сохранении места:', error);
       showError('Не удалось сохранить место');
+      // Не удаляем из changedLocations, чтобы попытаться сохранить при закрытии
     }
   }, [currentShipment, showError]);
 
