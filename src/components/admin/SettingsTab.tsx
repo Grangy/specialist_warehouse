@@ -13,6 +13,7 @@ export default function SettingsTab() {
 
   useEffect(() => {
     loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSettings = async () => {
@@ -146,7 +147,7 @@ export default function SettingsTab() {
                 Синхронизация с 1С
               </h3>
               <p className="text-sm text-slate-400 mb-4">
-                При включении этой настройки система не будет создавать заказы, которые уже были завершены (статус "processed").
+                При включении этой настройки система не будет создавать заказы, которые уже были завершены (статус &quot;processed&quot;).
                 Завершенные заказы будут пропускаться при синхронизации с 1С.
               </p>
               <label className="flex items-center gap-3 cursor-pointer group">
