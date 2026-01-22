@@ -812,7 +812,26 @@ export async function GET(request: NextRequest) {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
-    console.log(`[API] Возвращаем заданий после фильтрации: ${tasks.length}`);
+    // Для сборщиков: если включена настройка "видит только первый заказ", ограничиваем список
+    if (user.role === 'collector') {
+      try {
+        const setting = await prisma.systemSettings.findUnique({
+          where: { key: 'collector_sees_only_first_order' },
+        });
+        
+        if (setting) {
+          const isEnabled = setting.value === 'true' || JSON.parse(setting.value) === true;
+          if (isEnabled && tasks.length > 0) {
+            // Показываем только первый заказ (первое задание)
+            return NextResponse.json([tasks[0]]);
+          }
+        }
+      } catch (error) {
+        // Игнорируем ошибки при получении настройки, продолжаем работу
+        console.error('[API] Ошибка при получении настройки collector_sees_only_first_order:', error);
+      }
+    }
+
     return NextResponse.json(tasks);
   } catch (error: any) {
     console.error('Ошибка при получении заказов:', error);

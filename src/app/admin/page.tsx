@@ -8,9 +8,10 @@ import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
 import ActiveShipmentsTab from '@/components/admin/ActiveShipmentsTab';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import RegionPrioritiesTab from '@/components/admin/RegionPrioritiesTab';
+import SettingsTab from '@/components/admin/SettingsTab';
 import { useToast } from '@/hooks/useToast';
 
-type Tab = 'users' | 'active' | 'shipments' | 'analytics' | 'regions';
+type Tab = 'users' | 'active' | 'shipments' | 'analytics' | 'regions' | 'settings';
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('users');
@@ -125,6 +126,17 @@ export default function AdminPage() {
             <MapPin className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'regions' ? 'scale-110' : 'group-hover:scale-110'}`} />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Приоритеты регионов</span>
           </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+              activeTab === 'settings'
+                ? 'bg-gradient-to-r from-gray-600 to-gray-500 text-white shadow-lg shadow-gray-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <Settings className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'settings' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <span className="font-medium text-sm md:text-base whitespace-nowrap">Настройки</span>
+          </button>
         </nav>
         <div className="p-2 md:p-4 border-t border-slate-700/50 space-y-1 md:space-y-2">
           <button
@@ -205,6 +217,7 @@ export default function AdminPage() {
           {activeTab === 'shipments' && <CompletedShipmentsTab />}
           {activeTab === 'analytics' && <AnalyticsTab />}
           {activeTab === 'regions' && <RegionPrioritiesTab />}
+          {activeTab === 'settings' && <SettingsTab />}
         </div>
       </main>
     </div>

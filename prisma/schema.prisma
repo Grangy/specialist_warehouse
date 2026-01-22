@@ -332,3 +332,14 @@ model DailyAchievement {
 
   @@map("daily_achievements")
 }
+
+// Системные настройки
+model SystemSettings {
+  id    String @id @default(cuid())
+  key   String @unique // Ключ настройки (например, "collector_sees_only_first_order")
+  value String // Значение настройки (JSON строка или простое значение)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
