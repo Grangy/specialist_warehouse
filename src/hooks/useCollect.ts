@@ -41,8 +41,6 @@ export function useCollect(options?: UseCollectOptions) {
         console.error('[useCollect] Ошибка при отправке heartbeat:', error);
       });
     }, HEARTBEAT_INTERVAL);
-
-    console.log('[useCollect] Heartbeat запущен для задания:', shipmentId);
   }, []);
 
   // Функция для остановки heartbeat
@@ -50,30 +48,23 @@ export function useCollect(options?: UseCollectOptions) {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
-      console.log('[useCollect] Heartbeat остановлен');
     }
   }, []);
 
   const openModal = useCallback(async (shipment: Shipment) => {
     // Предотвращаем множественные открытия
     if (currentShipment !== null) {
-      console.log('Модальное окно уже открыто, игнорируем повторное открытие');
       return;
     }
 
     try {
-      console.log('Открытие модального окна для заказа:', shipment.id);
-      
       // Блокируем заказ
       let lockResponse;
       try {
         lockResponse = await shipmentsApi.lock(shipment.id);
-        console.log('Ответ блокировки:', lockResponse);
       } catch (error: any) {
         // Обрабатываем ошибку блокировки (например, 409 Conflict)
         console.error('[useCollect] Ошибка блокировки:', error);
-        console.error('[useCollect] Тип ошибки:', typeof error);
-        console.error('[useCollect] Содержимое ошибки:', JSON.stringify(error, null, 2));
         
         // Извлекаем сообщение из ошибки
         let message = 'Задание уже начато другим сборщиком. Только администратор может вмешаться в сборку.';
@@ -85,7 +76,6 @@ export function useCollect(options?: UseCollectOptions) {
           message = error;
         }
         
-        console.log('[useCollect] Показываем ошибку пользователю:', message);
         showError(message);
         return;
       }
@@ -95,27 +85,10 @@ export function useCollect(options?: UseCollectOptions) {
         showError(message);
         return;
       }
-
-      console.log('Блокировка успешна, открываем модальное окно');
       
       // Используем переданные данные заказа (они уже актуальны, так как загружаются через useShipments)
       // НЕ вызываем getAll() здесь, чтобы избежать лишних запросов и возможных циклов обновления
       const actualShipment = shipment;
-      
-      // Логируем данные заказа для отладки, ВКЛЮЧАЯ location
-      console.log('🔵 [useCollect.openModal] Данные заказа для инициализации:', {
-        id: actualShipment.id,
-        number: actualShipment.number || actualShipment.shipment_number,
-        linesCount: actualShipment.lines?.length || 0,
-        lines: actualShipment.lines?.map((line: any, idx: number) => ({
-          index: idx,
-          sku: line.sku,
-          qty: line.qty,
-          location: line.location || 'null',
-          collected_qty: line.collected_qty,
-          checked: line.checked,
-        })) || []
-      });
       
       // Инициализируем состояние чеклиста ПЕРЕД установкой currentShipment
       // Загружаем сохраненный прогресс из БД, если он есть
@@ -143,21 +116,9 @@ export function useCollect(options?: UseCollectOptions) {
           // НЕ используем collected_qty для определения collected, так как пользователь может установить количество, но еще не отметить как собранное
           const isCollected = isChecked;
           
-          // Аудит: логируем нулевые позиции
-          if (hasSavedQty && line.collected_qty === 0) {
-            console.log(`[useCollect] Загружена нулевая позиция ${index} (${line.sku}): collected_qty=0, checked=${isChecked}`);
-          }
-          
-          // Логируем для отладки (только если что-то не так)
+          // Логируем только если что-то не так
           if (isCollected && line.checked !== true) {
-            console.warn(`[useCollect] Позиция ${index} (${line.sku}) помечена как собранная некорректно:`, {
-              checked: line.checked,
-              collected_qty: line.collected_qty,
-              savedQty,
-              qty: line.qty,
-              isChecked,
-              isCollected
-            });
+            console.warn(`[useCollect] Позиция ${index} (${line.sku}) помечена как собранная некорректно`);
           }
           
           initialState[index] = {
@@ -178,14 +139,8 @@ export function useCollect(options?: UseCollectOptions) {
       
       // Запускаем heartbeat для отслеживания активности
       startHeartbeat(actualShipment.id);
-      
-      console.log('[useCollect] Состояние модального окна установлено:', {
-        shipmentId: actualShipment.id,
-        linesCount: actualShipment.lines?.length || 0,
-        initialStateKeys: Object.keys(initialState).length
-      });
     } catch (error: any) {
-      console.error('Ошибка блокировки заказа:', error);
+      console.error('[useCollect] Ошибка блокировки заказа:', error);
       const errorMessage = error?.message || 'Не удалось заблокировать заказ';
       showError(errorMessage);
     }
@@ -198,20 +153,11 @@ export function useCollect(options?: UseCollectOptions) {
     // ПРИНУДИТЕЛЬНО сохраняем все измененные места перед закрытием
     if (currentShipment && Object.keys(changedLocations).length > 0) {
       try {
-        console.log('🔵 [useCollect.closeModal] Сохраняем измененные места перед закрытием:', {
-          shipmentId: currentShipment.id,
-          changedLocations,
-          count: Object.keys(changedLocations).length,
-        });
         const savePromises = Object.entries(changedLocations).map(async ([lineIndexStr, location]) => {
           const lineIndex = parseInt(lineIndexStr, 10);
           const line = currentShipment.lines[lineIndex];
           if (line) {
             try {
-              console.log(`🟡 [useCollect.closeModal] Сохранение места для позиции ${lineIndex}:`, {
-                sku: line.sku,
-                location: location || 'null',
-              });
               const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
                 method: 'POST',
                 headers: {
@@ -224,27 +170,19 @@ export function useCollect(options?: UseCollectOptions) {
               });
               if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`🔴 [useCollect.closeModal] ОШИБКА при сохранении места для позиции ${lineIndex}:`, {
+                console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, {
                   status: response.status,
-                  statusText: response.statusText,
                   error: errorText,
                 });
-                throw new Error(`Ошибка при сохранении места: ${response.status}`);
               }
-              const result = await response.json();
-              console.log(`🟢 [useCollect.closeModal] Место сохранено для позиции ${lineIndex} (${line.sku}):`, {
-                location: location || 'null',
-                apiResponse: result,
-              });
             } catch (error) {
-              console.error(`🔴 [useCollect.closeModal] ОШИБКА при сохранении места для позиции ${lineIndex}:`, error);
+              console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, error);
             }
           }
         });
         await Promise.all(savePromises);
-        console.log('🟢 [useCollect.closeModal] Все измененные места сохранены');
       } catch (error) {
-        console.error('🔴 [useCollect.closeModal] ОШИБКА при сохранении измененных мест:', error);
+        console.error('[useCollect] Ошибка при сохранении измененных мест:', error);
       }
     }
     
@@ -319,11 +257,6 @@ export function useCollect(options?: UseCollectOptions) {
                 qty = state.collectedQty ?? line.qty;
               }
               
-              // Аудит: логируем нулевые позиции
-              if (state.collected && qty === 0) {
-                console.log(`[useCollect] Сохраняем нулевую позицию ${idx} (${line.sku}): collected_qty=0, checked=true`);
-              }
-              
               return {
                 sku: line.sku,
                 collected_qty: qty, // Может быть 0, 1, 2, ... или null
@@ -331,16 +264,8 @@ export function useCollect(options?: UseCollectOptions) {
               };
             });
             
-            console.log('[useCollect] Сохраняем прогресс после отметки товара:', {
-              shipmentId: currentShipment.id,
-              linesData: linesData.map(l => ({ sku: l.sku, collected_qty: l.collected_qty }))
-            });
-            
             // Сохраняем асинхронно, не блокируя обновление UI
             shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
-              .then((response) => {
-                console.log('[useCollect] Прогресс сохранен после отметки как собранного:', response);
-              })
               .catch((error) => {
                 console.error('[useCollect] Ошибка при сохранении прогресса:', error);
               });
@@ -389,11 +314,6 @@ export function useCollect(options?: UseCollectOptions) {
               qty = state.collectedQty;
             }
             
-            // Аудит: логируем нулевые позиции
-            if (qty === 0) {
-              console.log(`[useCollect] Сохраняем нулевую позицию при отмене ${idx} (${line.sku}): collected_qty=0, checked=${state.collected}`);
-            }
-            
             return {
               sku: line.sku,
               collected_qty: qty, // Может быть 0, 1, 2, ... или null
@@ -401,15 +321,7 @@ export function useCollect(options?: UseCollectOptions) {
             };
           });
           
-          console.log('[useCollect] Сохраняем прогресс после отмены сборки:', {
-            shipmentId: currentShipment.id,
-            linesData: linesData.map(l => ({ sku: l.sku, collected_qty: l.collected_qty }))
-          });
-          
           shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
-            .then((response) => {
-              console.log('[useCollect] Прогресс сохранен после отмены сборки:', response);
-            })
             .catch((error) => {
               console.error('[useCollect] Ошибка при сохранении прогресса:', error);
             });
@@ -443,11 +355,6 @@ export function useCollect(options?: UseCollectOptions) {
       }
       newState[lineIndex].collectedQty = newQty;
       
-      console.log(`[useCollect] Обновлено локальное состояние для позиции ${lineIndex}:`, {
-        newQty,
-        collected: newState[lineIndex].collected,
-        sku: line.sku
-      });
       
       return newState;
     });
@@ -499,23 +406,8 @@ export function useCollect(options?: UseCollectOptions) {
         checked: state.collected || false, // Явно передаем checked
       }];
       
-      // Аудит: логируем нулевые позиции
-      if (collectedQty === 0) {
-        console.log(`[useCollect] Сохраняем нулевую позицию после редактирования ${lineIndex} (${line.sku}): collected_qty=0, checked=${state.collected}`);
-      }
-      
-      console.log(`[useCollect] Сохраняем прогресс после редактирования позиции ${lineIndex}:`, {
-        sku: line.sku,
-        collected_qty: linesData[0].collected_qty,
-        checked: linesData[0].checked,
-        shipmentId: currentShipment.id
-      });
-      
       // Сохраняем асинхронно, не блокируя обновление UI
       shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
-        .then((response) => {
-          console.log(`[useCollect] Прогресс сохранен после редактирования позиции ${lineIndex}:`, response);
-        })
         .catch((error) => {
           console.error('[useCollect] Ошибка при сохранении прогресса после редактирования:', error);
         });
@@ -549,24 +441,15 @@ export function useCollect(options?: UseCollectOptions) {
 
   const updateLocation = useCallback(async (lineIndex: number, location: string) => {
     if (!currentShipment) {
-      console.error('🔴 [useCollect.updateLocation] ОШИБКА: currentShipment отсутствует');
+      console.error('[useCollect] Ошибка: currentShipment отсутствует');
       return;
     }
     
     const line = currentShipment.lines[lineIndex];
     if (!line) {
-      console.error(`🔴 [useCollect.updateLocation] ОШИБКА: Позиция ${lineIndex} не найдена`);
+      console.error(`[useCollect] Ошибка: Позиция ${lineIndex} не найдена`);
       return;
     }
-
-    const oldLocation = line.location || 'null';
-    console.log(`🔵 [useCollect.updateLocation] НАЧАЛО обновления места:`, {
-      shipmentId: currentShipment.id,
-      lineIndex,
-      sku: line.sku,
-      oldLocation,
-      newLocation: location || 'null',
-    });
 
     // Обновляем location в локальном состоянии shipment
     setCurrentShipment((prev) => {
@@ -576,10 +459,6 @@ export function useCollect(options?: UseCollectOptions) {
         ...newLines[lineIndex],
         location: location || undefined,
       };
-      console.log(`🟡 [useCollect.updateLocation] Локальное состояние обновлено:`, {
-        lineIndex,
-        newLocation: newLines[lineIndex].location || 'null',
-      });
       return {
         ...prev,
         lines: newLines,
@@ -587,23 +466,13 @@ export function useCollect(options?: UseCollectOptions) {
     });
 
     // Добавляем в список измененных мест для принудительного сохранения при закрытии
-    setChangedLocations((prev) => {
-      const updated = {
-        ...prev,
-        [lineIndex]: location,
-      };
-      console.log(`🟡 [useCollect.updateLocation] Добавлено в changedLocations:`, updated);
-      return updated;
-    });
+    setChangedLocations((prev) => ({
+      ...prev,
+      [lineIndex]: location,
+    }));
 
     // СТРОГОЕ и ПРИНУДИТЕЛЬНОЕ сохранение location в БД через API сразу
     try {
-      console.log(`🟡 [useCollect.updateLocation] Отправка запроса в API:`, {
-        shipmentId: currentShipment.id,
-        sku: line.sku,
-        location: location || null,
-      });
-
       const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
         method: 'POST',
         headers: {
@@ -617,32 +486,14 @@ export function useCollect(options?: UseCollectOptions) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`🔴 [useCollect.updateLocation] ОШИБКА API:`, {
+        console.error(`[useCollect] Ошибка API при сохранении места:`, {
           status: response.status,
-          statusText: response.statusText,
           error: errorText,
         });
-        throw new Error(`Ошибка при сохранении места: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log(`🟢 [useCollect.updateLocation] Место УСПЕШНО сохранено в БД:`, {
-        lineIndex,
-        sku: line.sku,
-        oldLocation,
-        newLocation: location || 'null',
-        apiResponse: result,
-      });
-
-      // Проверяем, что API вернул правильное место
-      if (result.location !== (location || null)) {
-        console.error(`🔴 [useCollect.updateLocation] КРИТИЧЕСКАЯ ОШИБКА: API вернул неправильное место!`, {
-          expected: location || null,
-          actual: result.location,
-        });
+        throw new Error(`Ошибка при сохранении места: ${response.status}`);
       }
     } catch (error) {
-      console.error('🔴 [useCollect.updateLocation] ОШИБКА при сохранении места:', error);
+      console.error('[useCollect] Ошибка при сохранении места:', error);
       showError('Не удалось сохранить место');
       // Не удаляем из changedLocations, чтобы попытаться сохранить при закрытии
     }
@@ -655,13 +506,9 @@ export function useCollect(options?: UseCollectOptions) {
     }
 
     const shipmentId = currentShipment.id;
-    console.log('[useCollect] Начинаем подтверждение обработки для заказа:', shipmentId);
 
     try {
       // ВАЖНО: Сохраняем прогресс в БД перед отправкой на подтверждение
-      // Это происходит при действии "Сдвиньте" слайдера
-      console.log('[useCollect] Сохраняем финальный прогресс перед подтверждением...');
-      
       // Используем функциональное обновление для получения актуального состояния
       let finalChecklistState = checklistState;
       
@@ -679,11 +526,6 @@ export function useCollect(options?: UseCollectOptions) {
           qty = state.collectedQty ?? line.qty;
         }
         
-        // Аудит: логируем нулевые позиции
-        if (state.collected && qty === 0) {
-          console.log(`[useCollect] Сохраняем нулевую позицию при финальном подтверждении ${idx} (${line.sku}): collected_qty=0, checked=true`);
-        }
-        
         return {
           sku: line.sku,
           collected_qty: qty, // Может быть 0, 1, 2, ... или null
@@ -691,14 +533,8 @@ export function useCollect(options?: UseCollectOptions) {
         };
       });
       
-      console.log('[useCollect] Сохраняем финальный прогресс:', {
-        shipmentId,
-        linesData: progressLinesData.map(l => ({ sku: l.sku, collected_qty: l.collected_qty }))
-      });
-      
       // Сохраняем прогресс в БД
-      const saveResponse = await shipmentsApi.saveProgress(shipmentId, { lines: progressLinesData });
-      console.log('[useCollect] Прогресс сохранен в БД перед подтверждением:', saveResponse);
+      await shipmentsApi.saveProgress(shipmentId, { lines: progressLinesData });
 
       // Подготавливаем данные для отправки на подтверждение
       const linesData = currentShipment.lines.map((line, index) => ({
@@ -706,13 +542,10 @@ export function useCollect(options?: UseCollectOptions) {
         collected_qty: finalChecklistState[index]?.collectedQty ?? line.qty,
       }));
 
-      console.log('[useCollect] Отправляем данные на подтверждение:', { shipmentId, linesCount: linesData.length });
-
       const response = await shipmentsApi.markPendingConfirmation(shipmentId, {
         lines: linesData,
       });
 
-      console.log('[useCollect] Заказ успешно отправлен на подтверждение:', response);
       showSuccess('Заказ успешно отправлен на подтверждение');
       
       // Закрываем модальное окно перед возвратом

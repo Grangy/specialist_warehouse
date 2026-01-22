@@ -22,22 +22,6 @@ export function useConfirm(options?: UseConfirmOptions) {
     // Очищаем список измененных мест при открытии нового модального окна
     setChangedLocations({});
     
-    // Логируем данные заказа для отладки, ВКЛЮЧАЯ location
-    console.log('🔵 [useConfirm.openModal] Данные заказа для инициализации:', {
-      id: shipment.id,
-      number: shipment.number || shipment.shipment_number,
-      linesCount: shipment.lines?.length || 0,
-      lines: shipment.lines?.map((line: any, idx: number) => ({
-        index: idx,
-        sku: line.sku,
-        qty: line.qty,
-        location: line.location || 'null',
-        collected_qty: line.collected_qty,
-        confirmed_qty: line.confirmed_qty,
-        confirmed: line.confirmed,
-      })) || []
-    });
-    
     setCurrentShipment(shipment);
 
     // Инициализируем состояние чеклиста
@@ -78,20 +62,11 @@ export function useConfirm(options?: UseConfirmOptions) {
     // ПРИНУДИТЕЛЬНО сохраняем все измененные места перед закрытием
     if (currentShipment && Object.keys(changedLocations).length > 0) {
       try {
-        console.log('🔵 [useConfirm.closeModal] Сохраняем измененные места перед закрытием:', {
-          shipmentId: currentShipment.id,
-          changedLocations,
-          count: Object.keys(changedLocations).length,
-        });
         const savePromises = Object.entries(changedLocations).map(async ([lineIndexStr, location]) => {
           const lineIndex = parseInt(lineIndexStr, 10);
           const line = currentShipment.lines[lineIndex];
           if (line) {
             try {
-              console.log(`🟡 [useConfirm.closeModal] Сохранение места для позиции ${lineIndex}:`, {
-                sku: line.sku,
-                location: location || 'null',
-              });
               const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
                 method: 'POST',
                 headers: {
@@ -104,27 +79,19 @@ export function useConfirm(options?: UseConfirmOptions) {
               });
               if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`🔴 [useConfirm.closeModal] ОШИБКА при сохранении места для позиции ${lineIndex}:`, {
+                console.error(`[useConfirm] Ошибка при сохранении места для позиции ${lineIndex}:`, {
                   status: response.status,
-                  statusText: response.statusText,
                   error: errorText,
                 });
-                throw new Error(`Ошибка при сохранении места: ${response.status}`);
               }
-              const result = await response.json();
-              console.log(`🟢 [useConfirm.closeModal] Место сохранено для позиции ${lineIndex} (${line.sku}):`, {
-                location: location || 'null',
-                apiResponse: result,
-              });
             } catch (error) {
-              console.error(`🔴 [useConfirm.closeModal] ОШИБКА при сохранении места для позиции ${lineIndex}:`, error);
+              console.error(`[useConfirm] Ошибка при сохранении места для позиции ${lineIndex}:`, error);
             }
           }
         });
         await Promise.all(savePromises);
-        console.log('🟢 [useConfirm.closeModal] Все измененные места сохранены');
       } catch (error) {
-        console.error('🔴 [useConfirm.closeModal] ОШИБКА при сохранении измененных мест:', error);
+        console.error('[useConfirm] Ошибка при сохранении измененных мест:', error);
       }
     }
     
@@ -196,17 +163,8 @@ export function useConfirm(options?: UseConfirmOptions) {
         }
       });
       
-      console.log(`[useConfirm] Сохраняем прогресс ПРОВЕРКИ для позиции ${lineIndex}:`, {
-        newQty,
-        taskId,
-        linesData: linesData.map(l => ({ sku: l.sku, confirmed_qty: l.confirmed_qty }))
-      });
-      
       // Сохраняем асинхронно через новый API для прогресса проверки
       shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
-        .then((response) => {
-          console.log(`[useConfirm] Прогресс ПРОВЕРКИ сохранен для позиции ${lineIndex}:`, response);
-        })
         .catch((error) => {
           console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ:', error);
         });
@@ -267,9 +225,6 @@ export function useConfirm(options?: UseConfirmOptions) {
       });
       
       shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
-        .then((response) => {
-          console.log(`[useConfirm] Прогресс ПРОВЕРКИ сохранен после редактирования позиции ${lineIndex}:`, response);
-        })
         .catch((error) => {
           console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после редактирования:', error);
         });
@@ -313,24 +268,15 @@ export function useConfirm(options?: UseConfirmOptions) {
 
   const updateLocation = useCallback(async (lineIndex: number, location: string) => {
     if (!currentShipment) {
-      console.error('🔴 [useConfirm.updateLocation] ОШИБКА: currentShipment отсутствует');
+      console.error('[useConfirm] Ошибка: currentShipment отсутствует');
       return;
     }
     
     const line = currentShipment.lines[lineIndex];
     if (!line) {
-      console.error(`🔴 [useConfirm.updateLocation] ОШИБКА: Позиция ${lineIndex} не найдена`);
+      console.error(`[useConfirm] Ошибка: Позиция ${lineIndex} не найдена`);
       return;
     }
-
-    const oldLocation = line.location || 'null';
-    console.log(`🔵 [useConfirm.updateLocation] НАЧАЛО обновления места:`, {
-      shipmentId: currentShipment.id,
-      lineIndex,
-      sku: line.sku,
-      oldLocation,
-      newLocation: location || 'null',
-    });
 
     // Обновляем location в локальном состоянии shipment
     setCurrentShipment((prev) => {
@@ -340,10 +286,6 @@ export function useConfirm(options?: UseConfirmOptions) {
         ...newLines[lineIndex],
         location: location || undefined,
       };
-      console.log(`🟡 [useConfirm.updateLocation] Локальное состояние обновлено:`, {
-        lineIndex,
-        newLocation: newLines[lineIndex].location || 'null',
-      });
       return {
         ...prev,
         lines: newLines,
@@ -351,24 +293,14 @@ export function useConfirm(options?: UseConfirmOptions) {
     });
 
     // Добавляем в список измененных мест для принудительного сохранения при закрытии
-    setChangedLocations((prev) => {
-      const updated = {
-        ...prev,
-        [lineIndex]: location,
-      };
-      console.log(`🟡 [useConfirm.updateLocation] Добавлено в changedLocations:`, updated);
-      return updated;
-    });
+    setChangedLocations((prev) => ({
+      ...prev,
+      [lineIndex]: location,
+    }));
 
     // СТРОГОЕ и ПРИНУДИТЕЛЬНОЕ сохранение location в БД через API сразу
     try {
       const shipmentId = currentShipment.id;
-      console.log(`🟡 [useConfirm.updateLocation] Отправка запроса в API:`, {
-        shipmentId,
-        sku: line.sku,
-        location: location || null,
-      });
-
       const response = await fetch(`/api/shipments/${shipmentId}/update-location`, {
         method: 'POST',
         headers: {
@@ -382,32 +314,14 @@ export function useConfirm(options?: UseConfirmOptions) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`🔴 [useConfirm.updateLocation] ОШИБКА API:`, {
+        console.error(`[useConfirm] Ошибка API при сохранении места:`, {
           status: response.status,
-          statusText: response.statusText,
           error: errorText,
         });
-        throw new Error(`Ошибка при сохранении места: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log(`🟢 [useConfirm.updateLocation] Место УСПЕШНО сохранено в БД:`, {
-        lineIndex,
-        sku: line.sku,
-        oldLocation,
-        newLocation: location || 'null',
-        apiResponse: result,
-      });
-
-      // Проверяем, что API вернул правильное место
-      if (result.location !== (location || null)) {
-        console.error(`🔴 [useConfirm.updateLocation] КРИТИЧЕСКАЯ ОШИБКА: API вернул неправильное место!`, {
-          expected: location || null,
-          actual: result.location,
-        });
+        throw new Error(`Ошибка при сохранении места: ${response.status}`);
       }
     } catch (error) {
-      console.error('🔴 [useConfirm.updateLocation] ОШИБКА при сохранении места:', error);
+      console.error('[useConfirm] Ошибка при сохранении места:', error);
       showError('Не удалось сохранить место');
       // Не удаляем из changedLocations, чтобы попытаться сохранить при закрытии
     }
@@ -463,9 +377,6 @@ export function useConfirm(options?: UseConfirmOptions) {
           });
           
           shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
-            .then((response) => {
-              console.log(`[useConfirm] Прогресс ПРОВЕРКИ сохранен после подтверждения позиции ${lineIndex}:`, response);
-            })
             .catch((error) => {
               console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после подтверждения:', error);
             });
@@ -531,8 +442,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         const shipmentNumber = (response as any)?.shipment_number || currentShipment.shipment_number || currentShipment.number || 'N/A';
         const tasksCount = (response as any)?.tasks_progress?.total || 0;
         
-        console.log('✅ Заказ отправлен в офис:', shipmentNumber, `(${tasksCount} заданий)`);
-        showSuccess(`✅ Все задания подтверждены! Заказ ${shipmentNumber} отправлен в офис.`);
+        showSuccess(`Все задания подтверждены! Заказ ${shipmentNumber} отправлен в офис.`);
         
         const result = {
           completed: true,
@@ -636,7 +546,6 @@ export function useConfirm(options?: UseConfirmOptions) {
         const shipmentNumber = (response as any)?.shipment_number || shipment.shipment_number || shipment.number || 'N/A';
         const tasksCount = (response as any)?.tasks_progress?.total || 0;
         
-        console.log('✅ Заказ отправлен в офис:', shipmentNumber, `(${tasksCount} заданий)`);
         
         const result = {
           completed: true,

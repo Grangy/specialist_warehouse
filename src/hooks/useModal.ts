@@ -13,7 +13,6 @@ export function useModal() {
   }, []);
 
   const close = useCallback(() => {
-    window.console.log('🟡 [useModal] close() вызван');
     setIsOpen(false);
     if (typeof window !== 'undefined') {
       document.body.style.overflow = '';

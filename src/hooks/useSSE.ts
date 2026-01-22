@@ -51,7 +51,6 @@ export function useSSE(options: SSEOptions = {}) {
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
-        console.log('[SSE] Подключение установлено');
         isConnectingRef.current = false;
         reconnectAttemptsRef.current = 0;
         onOpen?.();
@@ -71,8 +70,6 @@ export function useSSE(options: SSEOptions = {}) {
         // Пытаемся переподключиться
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current++;
-          console.log(`[SSE] Попытка переподключения ${reconnectAttemptsRef.current}/${maxReconnectAttempts}...`);
-          
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, reconnectInterval);
@@ -89,31 +86,26 @@ export function useSSE(options: SSEOptions = {}) {
 
       eventSource.addEventListener('shipment:created', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
-        console.log('[SSE] Новый заказ создан:', data);
         onEvent?.('shipment:created', data);
       });
 
       eventSource.addEventListener('shipment:updated', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
-        console.log('[SSE] Заказ обновлен:', data);
         onEvent?.('shipment:updated', data);
       });
 
       eventSource.addEventListener('shipment:status_changed', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
-        console.log('[SSE] Статус заказа изменился:', data);
         onEvent?.('shipment:status_changed', data);
       });
 
       eventSource.addEventListener('shipment:locked', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
-        console.log('[SSE] Задание заблокировано (модал открыт):', data);
         onEvent?.('shipment:locked', data);
       });
 
       eventSource.addEventListener('shipment:unlocked', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
-        console.log('[SSE] Задание разблокировано (модал закрыт):', data);
         onEvent?.('shipment:unlocked', data);
       });
 

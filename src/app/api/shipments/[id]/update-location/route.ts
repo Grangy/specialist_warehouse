@@ -23,16 +23,8 @@ export async function POST(
     const body = await request.json();
     const { sku, location } = body;
 
-    console.log(`🔵 [update-location] ЗАПРОС на обновление места:`, {
-      id,
-      sku,
-      location: location || 'null',
-      userId: user.id,
-      userName: user.name,
-    });
-
     if (!sku) {
-      console.error(`🔴 [update-location] ОШИБКА: SKU не передан`);
+      console.error('[update-location] Ошибка: SKU не передан');
       return NextResponse.json(
         { error: 'SKU обязателен' },
         { status: 400 }
@@ -56,11 +48,6 @@ export async function POST(
 
     if (task) {
       // Это taskId, находим позицию через задание
-      console.log(`🟡 [update-location] Найдено задание (taskId):`, {
-        taskId: id,
-        shipmentId: task.shipmentId,
-      });
-      
       actualShipmentId = task.shipmentId;
       
       // Ищем ShipmentTaskLine по taskId и sku
@@ -68,25 +55,9 @@ export async function POST(
       
       if (taskLine) {
         shipmentLine = taskLine.shipmentLine;
-        console.log(`🟡 [update-location] Найдена позиция через задание:`, {
-          taskLineId: taskLine.id,
-          shipmentLineId: shipmentLine.id,
-          sku: shipmentLine.sku,
-        });
-      } else {
-        console.error(`🔴 [update-location] ОШИБКА: Позиция не найдена в задании`, {
-          taskId: id,
-          sku,
-          availableSkus: task.lines.map((tl) => tl.shipmentLine.sku),
-        });
       }
     } else {
       // Это shipmentId, ищем напрямую
-      console.log(`🟡 [update-location] Ищем позицию по shipmentId:`, {
-        shipmentId: id,
-        sku,
-      });
-      
       actualShipmentId = id;
       shipmentLine = await prisma.shipmentLine.findFirst({
         where: {
@@ -97,25 +68,16 @@ export async function POST(
     }
 
     if (!shipmentLine) {
-      console.error(`🔴 [update-location] ОШИБКА: Позиция не найдена`, {
+      console.error('[update-location] Ошибка: Позиция не найдена', {
         id,
         sku,
         isTaskId: !!task,
-        shipmentId: actualShipmentId,
       });
       return NextResponse.json(
         { error: 'Позиция заказа не найдена' },
         { status: 404 }
       );
     }
-
-    console.log(`🟡 [update-location] Найдена позиция:`, {
-      lineId: shipmentLine.id,
-      shipmentId: actualShipmentId,
-      currentLocation: shipmentLine.location || 'null',
-      newLocation: location || 'null',
-      isTaskId: !!task,
-    });
 
     // СТРОГОЕ обновление location в БД с проверкой результата
     const updatedLine = await prisma.shipmentLine.update({
@@ -125,18 +87,9 @@ export async function POST(
       },
     });
 
-    console.log(`🟢 [update-location] Место ОБНОВЛЕНО в БД:`, {
-      lineId: updatedLine.id,
-      sku: updatedLine.sku,
-      oldLocation: shipmentLine.location || 'null',
-      newLocation: updatedLine.location || 'null',
-      shipmentId: actualShipmentId,
-      taskId: task?.id || null,
-    });
-
     // Проверяем, что обновление действительно произошло
     if (updatedLine.location !== (location || null)) {
-      console.error(`🔴 [update-location] КРИТИЧЕСКАЯ ОШИБКА: Место не обновилось!`, {
+      console.error('[update-location] Критическая ошибка: Место не обновилось', {
         expected: location || null,
         actual: updatedLine.location,
       });
@@ -148,7 +101,7 @@ export async function POST(
       location: updatedLine.location,
     });
   } catch (error) {
-    console.error('🔴 [update-location] ОШИБКА при обновлении места:', error);
+    console.error('[update-location] Ошибка при обновлении места:', error);
     return NextResponse.json(
       { error: 'Ошибка сервера при обновлении места' },
       { status: 500 }

@@ -112,7 +112,6 @@ export function useShipments() {
         eventType === 'shipment:locked' ||
         eventType === 'shipment:unlocked'
       ) {
-        console.log(`[useShipments] Получено событие ${eventType}, обновляем список заказов`);
         // Небольшая задержка для гарантии, что данные в БД обновлены
         setTimeout(() => {
           loadShipments();
@@ -121,12 +120,6 @@ export function useShipments() {
     },
     onError: (error) => {
       console.error('[useShipments] Ошибка SSE:', error);
-    },
-    onOpen: () => {
-      console.log('[useShipments] SSE подключение установлено');
-    },
-    onClose: () => {
-      console.log('[useShipments] SSE подключение закрыто');
     },
   });
 
