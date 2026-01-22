@@ -18,6 +18,7 @@ interface CollectModalProps {
   onClose: () => void;
   onUpdateCollected: (lineIndex: number, collected: boolean) => void;
   onUpdateCollectedQty: (lineIndex: number, qty: number) => void;
+  onUpdateLocation?: (lineIndex: number, location: string) => void;
   onStartEditQty: (lineIndex: number) => void;
   onConfirmEditQty: (lineIndex: number) => void;
   onCancelEditQty: (lineIndex: number) => void;
@@ -35,6 +36,7 @@ export function CollectModal({
   onClose,
   onUpdateCollected,
   onUpdateCollectedQty,
+  onUpdateLocation,
   onStartEditQty,
   onConfirmEditQty,
   onCancelEditQty,
@@ -88,12 +90,14 @@ export function CollectModal({
 
   const handleNameClick = (line: any, index: number) => {
     const state = checklistState[index] || { collected: false, qty: line.qty, collectedQty: line.qty };
+    // Используем актуальное location из currentShipment (может быть обновлено)
+    const currentLine = currentShipment?.lines[index];
     setSelectedLine({
       index,
       name: line.name,
       sku: line.sku,
       art: line.art,
-      location: line.location || '—',
+      location: (currentLine?.location || line.location) || '—',
       qty: line.qty,
       collected: state.collectedQty,
       uom: line.uom || '',
@@ -123,6 +127,7 @@ export function CollectModal({
       };
       if (!nextState.collected && !removingItems.has(nextIndex)) {
         const nextLine = currentShipment.lines[nextIndex];
+        // Используем актуальное location из currentShipment
         setSelectedLine({
           index: nextIndex,
           name: nextLine.name,
@@ -933,6 +938,7 @@ export function CollectModal({
           isEditing={editState[selectedLine.index] || false}
           onUpdateCollected={onUpdateCollected}
           onUpdateCollectedQty={onUpdateCollectedQty}
+          onUpdateLocation={onUpdateLocation}
           onStartEditQty={onStartEditQty}
           onConfirmEditQty={onConfirmEditQty}
           onCancelEditQty={onCancelEditQty}

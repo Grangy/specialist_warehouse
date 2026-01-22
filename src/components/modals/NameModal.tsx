@@ -20,6 +20,7 @@ interface NameModalProps {
   isEditing?: boolean;
   onUpdateCollected?: (lineIndex: number, collected: boolean) => void;
   onUpdateCollectedQty?: (lineIndex: number, qty: number) => void;
+  onUpdateLocation?: (lineIndex: number, location: string) => void;
   onStartEditQty?: (lineIndex: number) => void;
   onConfirmEditQty?: (lineIndex: number) => void;
   onCancelEditQty?: (lineIndex: number) => void;
@@ -45,6 +46,7 @@ export function NameModal({
   isEditing = false,
   onUpdateCollected,
   onUpdateCollectedQty,
+  onUpdateLocation,
   onStartEditQty,
   onConfirmEditQty,
   onCancelEditQty,
@@ -55,6 +57,8 @@ export function NameModal({
 }: NameModalProps) {
   const [localCollectedQty, setLocalCollectedQty] = useState(collected);
   const [localIsEditing, setLocalIsEditing] = useState(false);
+  const [localLocation, setLocalLocation] = useState(location);
+  const [isEditingLocation, setIsEditingLocation] = useState(false);
 
   // Синхронизируем локальное состояние с пропсами
   useEffect(() => {
@@ -64,6 +68,11 @@ export function NameModal({
   useEffect(() => {
     setLocalIsEditing(isEditing);
   }, [isEditing]);
+
+  useEffect(() => {
+    setLocalLocation(location);
+    setIsEditingLocation(false); // Сбрасываем режим редактирования при изменении location извне
+  }, [location]);
 
   const hasCollectionFeatures = lineIndex !== undefined && 
     onUpdateCollected && 
@@ -103,6 +112,25 @@ export function NameModal({
     if (onCancelEditQty && lineIndex !== undefined) {
       onCancelEditQty(lineIndex);
     }
+  };
+
+  const handleUpdateLocation = (newLocation: string) => {
+    setLocalLocation(newLocation);
+    if (onUpdateLocation && lineIndex !== undefined) {
+      onUpdateLocation(lineIndex, newLocation);
+    }
+  };
+
+  const handleSaveLocation = () => {
+    setIsEditingLocation(false);
+    if (onUpdateLocation && lineIndex !== undefined) {
+      onUpdateLocation(lineIndex, localLocation);
+    }
+  };
+
+  const handleCancelLocationEdit = () => {
+    setIsEditingLocation(false);
+    setLocalLocation(location); // Восстанавливаем исходное значение
   };
 
   const handleConfirm = async () => {
@@ -149,8 +177,48 @@ export function NameModal({
             </div>
           )}
           <div>
-            <div className="text-base md:text-lg text-slate-400 mb-3">Место</div>
-            <p className="text-2xl md:text-3xl text-blue-400 font-bold">{location || '—'}</p>
+            <div className="text-base md:text-lg text-slate-400 mb-3 flex items-center justify-between">
+              <span>Место</span>
+              {lineIndex !== undefined && onUpdateLocation && (
+                <button
+                  onClick={() => setIsEditingLocation(true)}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Изменить
+                </button>
+              )}
+            </div>
+            {isEditingLocation ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={localLocation}
+                  onChange={(e) => setLocalLocation(e.target.value)}
+                  className="w-full bg-slate-800/90 border-2 border-blue-500/50 text-slate-100 rounded-lg px-4 py-3 text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200"
+                  autoFocus
+                  placeholder="Введите место"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveLocation}
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold text-sm rounded-lg transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+                  >
+                    Сохранить
+                  </button>
+                  <button
+                    onClick={handleCancelLocationEdit}
+                    className="flex-1 px-4 py-2 bg-slate-700/90 hover:bg-slate-600 text-slate-200 font-semibold text-sm rounded-lg transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-2xl md:text-3xl text-blue-400 font-bold">{localLocation || '—'}</p>
+            )}
           </div>
           <div>
             <div className="text-base md:text-lg text-slate-400 mb-3">Требуется</div>

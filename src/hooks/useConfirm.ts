@@ -237,6 +237,51 @@ export function useConfirm(options?: UseConfirmOptions) {
     });
   }, [currentShipment, checklistState]);
 
+  const updateLocation = useCallback(async (lineIndex: number, location: string) => {
+    if (!currentShipment) return;
+    
+    const line = currentShipment.lines[lineIndex];
+    if (!line) return;
+
+    // Обновляем location в локальном состоянии shipment
+    setCurrentShipment((prev) => {
+      if (!prev) return prev;
+      const newLines = [...prev.lines];
+      newLines[lineIndex] = {
+        ...newLines[lineIndex],
+        location: location || null,
+      };
+      return {
+        ...prev,
+        lines: newLines,
+      };
+    });
+
+    // Сохраняем location в БД через API
+    try {
+      const shipmentId = currentShipment.id;
+      const response = await fetch(`/api/shipments/${shipmentId}/update-location`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sku: line.sku,
+          location: location || null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка при сохранении места');
+      }
+
+      console.log(`[useConfirm] Место обновлено для позиции ${lineIndex} (${line.sku}): ${location}`);
+    } catch (error) {
+      console.error('[useConfirm] Ошибка при сохранении места:', error);
+      showError('Не удалось сохранить место');
+    }
+  }, [currentShipment, showError]);
+
   const confirmItem = useCallback((lineIndex: number) => {
     // Помечаем товар как "улетающий" и запускаем анимацию
     setRemovingItems((prev) => new Set(prev).add(lineIndex));
@@ -494,6 +539,7 @@ export function useConfirm(options?: UseConfirmOptions) {
     openModal,
     closeModal,
     updateCollectedQty,
+    updateLocation,
     startEditQty,
     confirmEditQty,
     cancelEditQty,

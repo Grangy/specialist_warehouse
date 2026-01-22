@@ -338,6 +338,7 @@ export default function Home() {
         onClose={collectHook.closeModal}
         onUpdateCollected={collectHook.updateCollected}
         onUpdateCollectedQty={collectHook.updateCollectedQty}
+        onUpdateLocation={collectHook.updateLocation}
         onStartEditQty={collectHook.startEditQty}
         onConfirmEditQty={collectHook.confirmEditQty}
         onCancelEditQty={collectHook.cancelEditQty}
@@ -353,6 +354,7 @@ export default function Home() {
         isOpen={confirmHook.isOpen}
         onClose={confirmHook.closeModal}
         onUpdateCollectedQty={confirmHook.updateCollectedQty}
+        onUpdateLocation={confirmHook.updateLocation}
         onStartEditQty={confirmHook.startEditQty}
         onConfirmEditQty={confirmHook.confirmEditQty}
         onCancelEditQty={confirmHook.cancelEditQty}

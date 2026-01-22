@@ -15,6 +15,7 @@ interface ConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpdateCollectedQty: (lineIndex: number, qty: number) => void;
+  onUpdateLocation?: (lineIndex: number, location: string) => void;
   onStartEditQty: (lineIndex: number) => void;
   onConfirmEditQty: (lineIndex: number) => void;
   onCancelEditQty: (lineIndex: number) => void;
@@ -38,6 +39,7 @@ export function ConfirmModal({
   isOpen,
   onClose,
   onUpdateCollectedQty,
+  onUpdateLocation,
   onStartEditQty,
   onConfirmEditQty,
   onCancelEditQty,
@@ -201,12 +203,14 @@ export function ConfirmModal({
       collectedQty: line.collected_qty !== undefined ? line.collected_qty : line.qty,
       confirmed: false,
     };
+    // Используем актуальное location из currentShipment (может быть обновлено)
+    const currentLine = currentShipment?.lines[index];
     setSelectedLine({
       index,
       name: line.name,
       sku: line.sku,
       art: line.art,
-      location: line.location || '—',
+      location: (currentLine?.location || line.location) || '—',
       qty: line.qty,
       collected: state.collectedQty,
     });
@@ -237,6 +241,7 @@ export function ConfirmModal({
       };
       if (!nextState.confirmed) {
         const nextLine = currentShipment.lines[nextIndex];
+        // Используем актуальное location из currentShipment
         setSelectedLine({
           index: nextIndex,
           name: nextLine.name,
@@ -989,6 +994,7 @@ export function ConfirmModal({
         checklistState={checklistState[selectedLine.index]}
         isEditing={editState[selectedLine.index] || false}
         onUpdateCollectedQty={onUpdateCollectedQty}
+        onUpdateLocation={onUpdateLocation}
         onStartEditQty={onStartEditQty}
         onConfirmEditQty={onConfirmEditQty}
         onCancelEditQty={onCancelEditQty}

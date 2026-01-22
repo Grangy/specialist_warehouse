@@ -493,6 +493,50 @@ export function useCollect(options?: UseCollectOptions) {
     });
   }, [currentShipment]);
 
+  const updateLocation = useCallback(async (lineIndex: number, location: string) => {
+    if (!currentShipment) return;
+    
+    const line = currentShipment.lines[lineIndex];
+    if (!line) return;
+
+    // Обновляем location в локальном состоянии shipment
+    setCurrentShipment((prev) => {
+      if (!prev) return prev;
+      const newLines = [...prev.lines];
+      newLines[lineIndex] = {
+        ...newLines[lineIndex],
+        location: location || null,
+      };
+      return {
+        ...prev,
+        lines: newLines,
+      };
+    });
+
+    // Сохраняем location в БД через API
+    try {
+      const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sku: line.sku,
+          location: location || null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка при сохранении места');
+      }
+
+      console.log(`[useCollect] Место обновлено для позиции ${lineIndex} (${line.sku}): ${location}`);
+    } catch (error) {
+      console.error('[useCollect] Ошибка при сохранении места:', error);
+      showError('Не удалось сохранить место');
+    }
+  }, [currentShipment, showError]);
+
   const confirmProcessing = useCallback(async () => {
     if (!currentShipment) {
       console.error('confirmProcessing вызван без currentShipment');
@@ -698,6 +742,7 @@ export function useCollect(options?: UseCollectOptions) {
     closeModal,
     updateCollected,
     updateCollectedQty,
+    updateLocation,
     startEditQty,
     confirmEditQty,
     cancelEditQty,
