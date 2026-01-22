@@ -681,7 +681,6 @@ export async function GET(request: NextRequest) {
       // Если регион не в приоритетах текущего дня, сборщик не видит заказы этого региона
       if (user.role === 'collector' && shipment.businessRegion) {
         if (!collectorVisibleRegions.has(shipment.businessRegion)) {
-          console.log(`[API] Пропускаем заказ ${shipment.number}: регион "${shipment.businessRegion}" не в приоритетах для сборщика в текущий день недели`);
           continue;
         }
       }
@@ -694,21 +693,17 @@ export async function GET(request: NextRequest) {
       // Для режима ожидания показываем все задания (включая processed)
       // Режим ожидания: есть подтвержденные задания, но не все
       const isWaitingMode = !taskStatusFilter && confirmedTasksCount > 0 && confirmedTasksCount < totalTasksCount;
-      
-      console.log(`[API] Заказ ${shipment.number}: всего заданий=${totalTasksCount}, подтверждено=${confirmedTasksCount}, прогресс=${confirmedTasksCount}/${totalTasksCount}, isWaitingMode=${isWaitingMode}`);
 
       for (const task of shipment.tasks) {
         // Фильтруем задания по статусу для отображения (если указан фильтр)
         if (taskStatusFilter) {
           if (task.status !== taskStatusFilter) {
-            console.log(`[API] Пропускаем задание ${task.id}: статус ${task.status} не соответствует фильтру ${taskStatusFilter}`);
             continue; // Пропускаем задания с другим статусом
           }
         } else if (!isWaitingMode) {
           // Если фильтр не указан и не режим ожидания, показываем только new и pending_confirmation
           // НЕ показываем processed задания
           if (task.status !== 'new' && task.status !== 'pending_confirmation') {
-            console.log(`[API] Пропускаем задание ${task.id}: статус ${task.status} (показываем только new и pending_confirmation)`);
             continue;
           }
         }
@@ -728,18 +723,14 @@ export async function GET(request: NextRequest) {
           
           // Если блокировка активна (модал открыт другим сборщиком), скрываем задание
           if (isActive) {
-            console.log(`[API] Пропускаем задание ${task.id}: заблокировано другим сборщиком (активная блокировка)`);
             continue;
           }
         }
 
         // Пропускаем задания из обработанных заказов (если не запрошены явно)
         if (!status && shipment.status === 'processed') {
-          console.log(`[API] Пропускаем задание ${task.id}: заказ ${shipment.number} имеет статус processed`);
           continue;
         }
-        
-        console.log(`[API] Включаем задание ${task.id}: статус=${task.status}, заказ=${shipment.number}`);
 
         // Собираем позиции задания
         const taskLines = task.lines.map((taskLine) => ({
@@ -826,10 +817,9 @@ export async function GET(request: NextRequest) {
             return NextResponse.json([tasks[0]]);
           }
         }
-      } catch (error) {
-        // Игнорируем ошибки при получении настройки, продолжаем работу
-        console.error('[API] Ошибка при получении настройки collector_sees_only_first_order:', error);
-      }
+        } catch (error) {
+          // Игнорируем ошибки при получении настройки, продолжаем работу
+        }
     }
 
     return NextResponse.json(tasks);
