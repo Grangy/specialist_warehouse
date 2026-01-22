@@ -803,7 +803,7 @@ export async function GET(request: NextRequest) {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
-    // Для сборщиков: если включена настройка "видит только первый заказ", ограничиваем список
+    // Для сборщиков: если включена настройка "видит только первый заказ", ограничиваем список по складам
     if (user.role === 'collector') {
       try {
         const setting = await prisma.systemSettings.findUnique({
@@ -813,8 +813,26 @@ export async function GET(request: NextRequest) {
         if (setting) {
           const isEnabled = setting.value === 'true' || JSON.parse(setting.value) === true;
           if (isEnabled && tasks.length > 0) {
-            // Показываем только первый заказ (первое задание)
-            return NextResponse.json([tasks[0]]);
+            // Группируем задания по складам
+            const tasksByWarehouse = new Map<string, typeof tasks>();
+            
+            tasks.forEach((task) => {
+              const warehouse = task.warehouse || 'Неизвестный склад';
+              if (!tasksByWarehouse.has(warehouse)) {
+                tasksByWarehouse.set(warehouse, []);
+              }
+              tasksByWarehouse.get(warehouse)!.push(task);
+            });
+            
+            // Для каждого склада берем только первое задание
+            const filteredTasks: typeof tasks = [];
+            tasksByWarehouse.forEach((warehouseTasks) => {
+              if (warehouseTasks.length > 0) {
+                filteredTasks.push(warehouseTasks[0]);
+              }
+            });
+            
+            return NextResponse.json(filteredTasks);
           }
         }
         } catch (error) {
