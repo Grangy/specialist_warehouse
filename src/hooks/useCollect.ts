@@ -505,7 +505,7 @@ export function useCollect(options?: UseCollectOptions) {
       const newLines = [...prev.lines];
       newLines[lineIndex] = {
         ...newLines[lineIndex],
-        location: location || null,
+        location: location || undefined,
       };
       return {
         ...prev,
