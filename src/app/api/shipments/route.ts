@@ -161,6 +161,32 @@ export async function POST(request: NextRequest) {
     });
 
     if (existing) {
+      // Проверяем настройку: пропускать завершенные заказы
+      let skipCompleted = false;
+      try {
+        const setting = await prisma.systemSettings.findUnique({
+          where: { key: 'skip_completed_shipments' },
+        });
+        if (setting) {
+          skipCompleted = setting.value === 'true' || JSON.parse(setting.value) === true;
+        }
+      } catch (error) {
+        // Игнорируем ошибки при получении настройки
+      }
+
+      // Если заказ уже завершен (processed) и настройка включена, не создаем его снова
+      if (skipCompleted && existing.status === 'processed') {
+        console.log(`[API CREATE] Заказ ${number} уже завершен (status: processed), пропускаем создание (настройка skip_completed_shipments включена)`);
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Заказ ${number} уже завершен и не будет создан повторно`,
+            skipped: true,
+          },
+          { status: 200 }
+        );
+      }
+
       // Если заказ уже существует, удаляем его и все связанные данные
       // чтобы создать новый с непроверенными позициями
       console.log(`Заказ ${number} уже существует, удаляем старый и создаем новый`);

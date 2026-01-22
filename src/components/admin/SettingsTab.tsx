@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/useToast';
 
 export default function SettingsTab() {
   const [collectorSeesOnlyFirstOrder, setCollectorSeesOnlyFirstOrder] = useState(false);
+  const [skipCompletedShipments, setSkipCompletedShipments] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { showToast, showError, showSuccess } = useToast();
@@ -26,6 +27,9 @@ export default function SettingsTab() {
         setCollectorSeesOnlyFirstOrder(
           data.settings.collector_sees_only_first_order === true
         );
+        setSkipCompletedShipments(
+          data.settings.skip_completed_shipments === true
+        );
       }
     } catch (error) {
       console.error('[SettingsTab] Ошибка при загрузке настроек:', error);
@@ -38,20 +42,38 @@ export default function SettingsTab() {
   const saveSettings = async () => {
     try {
       setIsSaving(true);
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          key: 'collector_sees_only_first_order',
-          value: collectorSeesOnlyFirstOrder,
+      
+      // Сохраняем обе настройки
+      const promises = [
+        fetch('/api/settings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            key: 'collector_sees_only_first_order',
+            value: collectorSeesOnlyFirstOrder,
+          }),
         }),
-      });
+        fetch('/api/settings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            key: 'skip_completed_shipments',
+            value: skipCompletedShipments,
+          }),
+        }),
+      ];
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Ошибка при сохранении настроек');
+      const responses = await Promise.all(promises);
+      
+      for (const response of responses) {
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Ошибка при сохранении настроек');
+        }
       }
 
       showSuccess('Настройки успешно сохранены');
@@ -88,7 +110,7 @@ export default function SettingsTab() {
 
       <div className="bg-slate-900/50 border border-slate-700/50 rounded-lg p-6 space-y-6">
         {/* Настройка для сборщиков */}
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-slate-100 mb-2">
@@ -113,6 +135,35 @@ export default function SettingsTab() {
                 {collectorSeesOnlyFirstOrder
                   ? 'Включено: сборщики видят только первый доступный заказ'
                   : 'Выключено: сборщики видят все доступные заказы'}
+              </p>
+            </div>
+          </div>
+
+          {/* Настройка для синхронизации с 1С */}
+          <div className="flex items-start justify-between gap-4 border-t border-slate-700/50 pt-6">
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-slate-100 mb-2">
+                Синхронизация с 1С
+              </h3>
+              <p className="text-sm text-slate-400 mb-4">
+                При включении этой настройки система не будет создавать заказы, которые уже были завершены (статус "processed").
+                Завершенные заказы будут пропускаться при синхронизации с 1С.
+              </p>
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={skipCompletedShipments}
+                  onChange={(e) => setSkipCompletedShipments(e.target.checked)}
+                  className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900 cursor-pointer transition-all"
+                />
+                <span className="text-base font-medium text-slate-200 group-hover:text-slate-100 transition-colors">
+                  Пропускать завершенные заказы при синхронизации
+                </span>
+              </label>
+              <p className="text-xs text-slate-500 mt-2 ml-8">
+                {skipCompletedShipments
+                  ? 'Включено: завершенные заказы не будут создаваться повторно'
+                  : 'Выключено: все заказы будут создаваться, даже если они уже завершены'}
               </p>
             </div>
           </div>
