@@ -102,8 +102,8 @@ export function useCollect(options?: UseCollectOptions) {
       // НЕ вызываем getAll() здесь, чтобы избежать лишних запросов и возможных циклов обновления
       const actualShipment = shipment;
       
-      // Логируем данные заказа для отладки
-      console.log('[useCollect] Данные заказа для инициализации:', {
+      // Логируем данные заказа для отладки, ВКЛЮЧАЯ location
+      console.log('🔵 [useCollect.openModal] Данные заказа для инициализации:', {
         id: actualShipment.id,
         number: actualShipment.number || actualShipment.shipment_number,
         linesCount: actualShipment.lines?.length || 0,
@@ -111,6 +111,7 @@ export function useCollect(options?: UseCollectOptions) {
           index: idx,
           sku: line.sku,
           qty: line.qty,
+          location: line.location || 'null',
           collected_qty: line.collected_qty,
           checked: line.checked,
         })) || []
@@ -197,12 +198,20 @@ export function useCollect(options?: UseCollectOptions) {
     // ПРИНУДИТЕЛЬНО сохраняем все измененные места перед закрытием
     if (currentShipment && Object.keys(changedLocations).length > 0) {
       try {
-        console.log('[useCollect] Сохраняем измененные места перед закрытием:', changedLocations);
+        console.log('🔵 [useCollect.closeModal] Сохраняем измененные места перед закрытием:', {
+          shipmentId: currentShipment.id,
+          changedLocations,
+          count: Object.keys(changedLocations).length,
+        });
         const savePromises = Object.entries(changedLocations).map(async ([lineIndexStr, location]) => {
           const lineIndex = parseInt(lineIndexStr, 10);
           const line = currentShipment.lines[lineIndex];
           if (line) {
             try {
+              console.log(`🟡 [useCollect.closeModal] Сохранение места для позиции ${lineIndex}:`, {
+                sku: line.sku,
+                location: location || 'null',
+              });
               const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
                 method: 'POST',
                 headers: {
@@ -214,18 +223,28 @@ export function useCollect(options?: UseCollectOptions) {
                 }),
               });
               if (!response.ok) {
-                throw new Error('Ошибка при сохранении места');
+                const errorText = await response.text();
+                console.error(`🔴 [useCollect.closeModal] ОШИБКА при сохранении места для позиции ${lineIndex}:`, {
+                  status: response.status,
+                  statusText: response.statusText,
+                  error: errorText,
+                });
+                throw new Error(`Ошибка при сохранении места: ${response.status}`);
               }
-              console.log(`[useCollect] Место сохранено для позиции ${lineIndex} (${line.sku}): ${location}`);
+              const result = await response.json();
+              console.log(`🟢 [useCollect.closeModal] Место сохранено для позиции ${lineIndex} (${line.sku}):`, {
+                location: location || 'null',
+                apiResponse: result,
+              });
             } catch (error) {
-              console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, error);
+              console.error(`🔴 [useCollect.closeModal] ОШИБКА при сохранении места для позиции ${lineIndex}:`, error);
             }
           }
         });
         await Promise.all(savePromises);
-        console.log('[useCollect] Все измененные места сохранены');
+        console.log('🟢 [useCollect.closeModal] Все измененные места сохранены');
       } catch (error) {
-        console.error('[useCollect] Ошибка при сохранении измененных мест:', error);
+        console.error('🔴 [useCollect.closeModal] ОШИБКА при сохранении измененных мест:', error);
       }
     }
     
@@ -529,10 +548,25 @@ export function useCollect(options?: UseCollectOptions) {
   }, [currentShipment]);
 
   const updateLocation = useCallback(async (lineIndex: number, location: string) => {
-    if (!currentShipment) return;
+    if (!currentShipment) {
+      console.error('🔴 [useCollect.updateLocation] ОШИБКА: currentShipment отсутствует');
+      return;
+    }
     
     const line = currentShipment.lines[lineIndex];
-    if (!line) return;
+    if (!line) {
+      console.error(`🔴 [useCollect.updateLocation] ОШИБКА: Позиция ${lineIndex} не найдена`);
+      return;
+    }
+
+    const oldLocation = line.location || 'null';
+    console.log(`🔵 [useCollect.updateLocation] НАЧАЛО обновления места:`, {
+      shipmentId: currentShipment.id,
+      lineIndex,
+      sku: line.sku,
+      oldLocation,
+      newLocation: location || 'null',
+    });
 
     // Обновляем location в локальном состоянии shipment
     setCurrentShipment((prev) => {
@@ -542,6 +576,10 @@ export function useCollect(options?: UseCollectOptions) {
         ...newLines[lineIndex],
         location: location || undefined,
       };
+      console.log(`🟡 [useCollect.updateLocation] Локальное состояние обновлено:`, {
+        lineIndex,
+        newLocation: newLines[lineIndex].location || 'null',
+      });
       return {
         ...prev,
         lines: newLines,
@@ -549,13 +587,23 @@ export function useCollect(options?: UseCollectOptions) {
     });
 
     // Добавляем в список измененных мест для принудительного сохранения при закрытии
-    setChangedLocations((prev) => ({
-      ...prev,
-      [lineIndex]: location,
-    }));
+    setChangedLocations((prev) => {
+      const updated = {
+        ...prev,
+        [lineIndex]: location,
+      };
+      console.log(`🟡 [useCollect.updateLocation] Добавлено в changedLocations:`, updated);
+      return updated;
+    });
 
-    // ПРИНУДИТЕЛЬНО сохраняем location в БД через API сразу
+    // СТРОГОЕ и ПРИНУДИТЕЛЬНОЕ сохранение location в БД через API сразу
     try {
+      console.log(`🟡 [useCollect.updateLocation] Отправка запроса в API:`, {
+        shipmentId: currentShipment.id,
+        sku: line.sku,
+        location: location || null,
+      });
+
       const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
         method: 'POST',
         headers: {
@@ -568,12 +616,33 @@ export function useCollect(options?: UseCollectOptions) {
       });
 
       if (!response.ok) {
-        throw new Error('Ошибка при сохранении места');
+        const errorText = await response.text();
+        console.error(`🔴 [useCollect.updateLocation] ОШИБКА API:`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+        });
+        throw new Error(`Ошибка при сохранении места: ${response.status} ${response.statusText}`);
       }
 
-      console.log(`[useCollect] Место обновлено и сохранено для позиции ${lineIndex} (${line.sku}): ${location}`);
+      const result = await response.json();
+      console.log(`🟢 [useCollect.updateLocation] Место УСПЕШНО сохранено в БД:`, {
+        lineIndex,
+        sku: line.sku,
+        oldLocation,
+        newLocation: location || 'null',
+        apiResponse: result,
+      });
+
+      // Проверяем, что API вернул правильное место
+      if (result.location !== (location || null)) {
+        console.error(`🔴 [useCollect.updateLocation] КРИТИЧЕСКАЯ ОШИБКА: API вернул неправильное место!`, {
+          expected: location || null,
+          actual: result.location,
+        });
+      }
     } catch (error) {
-      console.error('[useCollect] Ошибка при сохранении места:', error);
+      console.error('🔴 [useCollect.updateLocation] ОШИБКА при сохранении места:', error);
       showError('Не удалось сохранить место');
       // Не удаляем из changedLocations, чтобы попытаться сохранить при закрытии
     }

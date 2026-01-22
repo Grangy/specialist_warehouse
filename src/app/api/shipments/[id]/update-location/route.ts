@@ -23,7 +23,16 @@ export async function POST(
     const body = await request.json();
     const { sku, location } = body;
 
+    console.log(`🔵 [update-location] ЗАПРОС на обновление места:`, {
+      shipmentId: id,
+      sku,
+      location: location || 'null',
+      userId: user.id,
+      userName: user.name,
+    });
+
     if (!sku) {
+      console.error(`🔴 [update-location] ОШИБКА: SKU не передан`);
       return NextResponse.json(
         { error: 'SKU обязателен' },
         { status: 400 }
@@ -39,28 +48,53 @@ export async function POST(
     });
 
     if (!shipmentLine) {
+      console.error(`🔴 [update-location] ОШИБКА: Позиция не найдена`, {
+        shipmentId: id,
+        sku,
+      });
       return NextResponse.json(
         { error: 'Позиция заказа не найдена' },
         { status: 404 }
       );
     }
 
-    // Обновляем location
-    await prisma.shipmentLine.update({
+    console.log(`🟡 [update-location] Найдена позиция:`, {
+      lineId: shipmentLine.id,
+      currentLocation: shipmentLine.location || 'null',
+      newLocation: location || 'null',
+    });
+
+    // СТРОГОЕ обновление location в БД с проверкой результата
+    const updatedLine = await prisma.shipmentLine.update({
       where: { id: shipmentLine.id },
       data: {
         location: location || null,
       },
     });
 
-    console.log(`[update-location] Место обновлено для позиции ${sku} в заказе ${id}: ${location || 'null'}`);
+    console.log(`🟢 [update-location] Место ОБНОВЛЕНО в БД:`, {
+      lineId: updatedLine.id,
+      sku: updatedLine.sku,
+      oldLocation: shipmentLine.location || 'null',
+      newLocation: updatedLine.location || 'null',
+      shipmentId: id,
+    });
+
+    // Проверяем, что обновление действительно произошло
+    if (updatedLine.location !== (location || null)) {
+      console.error(`🔴 [update-location] КРИТИЧЕСКАЯ ОШИБКА: Место не обновилось!`, {
+        expected: location || null,
+        actual: updatedLine.location,
+      });
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Место успешно обновлено',
+      location: updatedLine.location,
     });
   } catch (error) {
-    console.error('Ошибка при обновлении места:', error);
+    console.error('🔴 [update-location] ОШИБКА при обновлении места:', error);
     return NextResponse.json(
       { error: 'Ошибка сервера при обновлении места' },
       { status: 500 }
