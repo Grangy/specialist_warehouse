@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
 
       for (const stat of collectorTaskStats) {
         const user = stat.user;
-        if (user.role === 'collector' || user.role === 'admin') {
+        if (user.role === 'collector') {
           const key = user.id;
           if (!collectorMap.has(key)) {
             collectorMap.set(key, {
@@ -411,7 +411,7 @@ export async function GET(request: NextRequest) {
 
       for (const stat of collectorTaskStats) {
         const user = stat.user;
-        if (user.role === 'collector' || user.role === 'admin') {
+        if (user.role === 'collector') {
           const key = user.id;
           if (!collectorMap.has(key)) {
             collectorMap.set(key, {
@@ -715,7 +715,7 @@ export async function GET(request: NextRequest) {
 
       for (const stat of collectorTaskStats) {
         const user = stat.user;
-        if (user.role === 'collector' || user.role === 'admin') {
+        if (user.role === 'collector') {
           const key = user.id;
           if (!collectorMap.has(key)) {
             collectorMap.set(key, {

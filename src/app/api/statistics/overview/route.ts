@@ -40,10 +40,20 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Получаем всех пользователей-админов для исключения
+    const adminUsers = await prisma.user.findMany({
+      where: { role: 'admin' },
+      select: { id: true },
+    });
+    const adminUserIds = adminUsers.map(u => u.id);
+
     const todayDailyStats = await prisma.dailyStats.findMany({
       where: {
         date: {
           gte: today,
+        },
+        userId: {
+          notIn: adminUserIds,
         },
       },
     });
@@ -58,6 +68,9 @@ export async function GET(request: NextRequest) {
       where: {
         date: {
           gte: weekStart,
+        },
+        userId: {
+          notIn: adminUserIds,
         },
       },
     });
@@ -75,6 +88,9 @@ export async function GET(request: NextRequest) {
       where: {
         year: currentYear,
         month: currentMonth,
+        userId: {
+          notIn: adminUserIds,
+        },
       },
     });
 
@@ -93,7 +109,7 @@ export async function GET(request: NextRequest) {
     const totalUsers = await prisma.user.count({
       where: {
         role: {
-          in: ['collector', 'checker', 'admin'],
+          in: ['collector', 'checker'],
         },
       },
     });
