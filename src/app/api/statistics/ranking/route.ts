@@ -67,147 +67,17 @@ export async function GET(request: NextRequest) {
     const checkerRankings: RankingEntry[] = [];
 
     if (period === 'today') {
-      // Для сегодня используем DailyStats
-      const dailyStats = await prisma.dailyStats.findMany({
+      // Для сегодня используем TaskStatistics напрямую, чтобы разделить сборщиков и проверяльщиков
+      
+      // Сборщики: TaskStatistics с roleType='collector' за сегодня
+      const collectorTaskStats = await prisma.taskStatistics.findMany({
         where: {
-          date: {
-            gte: startDate,
-            lte: endDate,
-          },
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              role: true,
+          roleType: 'collector',
+          task: {
+            completedAt: {
+              gte: startDate,
+              lte: endDate,
             },
-          },
-        },
-        orderBy: {
-          dayPoints: 'desc',
-        },
-      });
-
-      for (const stat of dailyStats) {
-        const user = stat.user;
-        if (user.role === 'collector' || user.role === 'admin') {
-          const level = stat.dailyRank ? getAnimalLevel(stat.dailyRank) : null;
-          collectorRankings.push({
-            userId: user.id,
-            userName: user.name,
-            role: user.role,
-            positions: stat.positions,
-            units: stat.units,
-            orders: stat.orders,
-            points: stat.dayPoints,
-            rank: stat.dailyRank,
-            level: level ? {
-              name: level.name,
-              emoji: level.emoji,
-              color: level.color,
-            } : null,
-            pph: stat.dayPph,
-            uph: stat.dayUph,
-            efficiency: stat.avgEfficiency,
-          });
-        } else if (user.role === 'checker') {
-          const level = stat.dailyRank ? getAnimalLevel(stat.dailyRank) : null;
-          checkerRankings.push({
-            userId: user.id,
-            userName: user.name,
-            role: user.role,
-            positions: stat.positions,
-            units: stat.units,
-            orders: stat.orders,
-            points: stat.dayPoints,
-            rank: stat.dailyRank,
-            level: level ? {
-              name: level.name,
-              emoji: level.emoji,
-              color: level.color,
-            } : null,
-            pph: stat.dayPph,
-            uph: stat.dayUph,
-            efficiency: stat.avgEfficiency,
-          });
-        }
-      }
-    } else if (period === 'month') {
-      // Для месяца используем MonthlyStats
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
-
-      const monthlyStats = await prisma.monthlyStats.findMany({
-        where: {
-          year: currentYear,
-          month: currentMonth,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              role: true,
-            },
-          },
-        },
-        orderBy: {
-          monthPoints: 'desc',
-        },
-      });
-
-      for (const stat of monthlyStats) {
-        const user = stat.user;
-        if (user.role === 'collector' || user.role === 'admin') {
-          const level = stat.monthlyRank ? getAnimalLevel(stat.monthlyRank) : null;
-          collectorRankings.push({
-            userId: user.id,
-            userName: user.name,
-            role: user.role,
-            positions: stat.totalPositions,
-            units: stat.totalUnits,
-            orders: stat.totalOrders,
-            points: stat.monthPoints,
-            rank: stat.monthlyRank,
-            level: level ? {
-              name: level.name,
-              emoji: level.emoji,
-              color: level.color,
-            } : null,
-            pph: stat.avgPph,
-            uph: stat.avgUph,
-            efficiency: stat.avgEfficiency,
-          });
-        } else if (user.role === 'checker') {
-          const level = stat.monthlyRank ? getAnimalLevel(stat.monthlyRank) : null;
-          checkerRankings.push({
-            userId: user.id,
-            userName: user.name,
-            role: user.role,
-            positions: stat.totalPositions,
-            units: stat.totalUnits,
-            orders: stat.totalOrders,
-            points: stat.monthPoints,
-            rank: stat.monthlyRank,
-            level: level ? {
-              name: level.name,
-              emoji: level.emoji,
-              color: level.color,
-            } : null,
-            pph: stat.avgPph,
-            uph: stat.avgUph,
-            efficiency: stat.avgEfficiency,
-          });
-        }
-      }
-    } else if (period === 'week') {
-      // Для недели суммируем DailyStats
-      const dailyStats = await prisma.dailyStats.findMany({
-        where: {
-          date: {
-            gte: startDate,
-            lte: endDate,
           },
         },
         include: {
@@ -222,7 +92,7 @@ export async function GET(request: NextRequest) {
       });
 
       // Группируем по пользователям
-      const userStatsMap = new Map<string, {
+      const collectorMap = new Map<string, {
         userId: string;
         userName: string;
         role: string;
@@ -234,39 +104,37 @@ export async function GET(request: NextRequest) {
         efficiencies: number[];
       }>();
 
-      for (const stat of dailyStats) {
+      for (const stat of collectorTaskStats) {
         const user = stat.user;
-        const key = user.id;
-
-        if (!userStatsMap.has(key)) {
-          userStatsMap.set(key, {
-            userId: user.id,
-            userName: user.name,
-            role: user.role,
-            positions: 0,
-            units: 0,
-            orders: new Set(),
-            points: 0,
-            totalPickTimeSec: 0,
-            efficiencies: [],
-          });
+        if (user.role === 'collector' || user.role === 'admin') {
+          const key = user.id;
+          if (!collectorMap.has(key)) {
+            collectorMap.set(key, {
+              userId: user.id,
+              userName: user.name,
+              role: user.role,
+              positions: 0,
+              units: 0,
+              orders: new Set(),
+              points: 0,
+              totalPickTimeSec: 0,
+              efficiencies: [],
+            });
+          }
+          const userStat = collectorMap.get(key)!;
+          userStat.positions += stat.positions;
+          userStat.units += stat.units;
+          userStat.orders.add(stat.shipmentId);
+          userStat.points += stat.orderPoints || 0;
+          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+          if (stat.efficiencyClamped) {
+            userStat.efficiencies.push(stat.efficiencyClamped);
+          }
         }
-
-        const userStat = userStatsMap.get(key)!;
-        userStat.positions += stat.positions;
-        userStat.units += stat.units;
-        userStat.points += stat.dayPoints;
-        userStat.totalPickTimeSec += stat.pickTimeSec;
-        if (stat.avgEfficiency) {
-          userStat.efficiencies.push(stat.avgEfficiency);
-        }
-        // Для orders используем уникальные shipmentId из TaskStatistics
-        // Но здесь мы не можем их получить, поэтому используем сумму orders
-        // Это приблизительно, но для недели это нормально
       }
 
-      // Преобразуем в массив и рассчитываем метрики
-      const weekStats = Array.from(userStatsMap.values()).map(userStat => {
+      // Преобразуем в массив и добавляем метрики
+      for (const userStat of collectorMap.values()) {
         const pph = userStat.totalPickTimeSec > 0
           ? (userStat.positions * 3600) / userStat.totalPickTimeSec
           : null;
@@ -277,67 +145,669 @@ export async function GET(request: NextRequest) {
           ? userStat.efficiencies.reduce((a, b) => a + b, 0) / userStat.efficiencies.length
           : null;
 
-        return {
-          ...userStat,
-          orders: userStat.orders.size || 0, // Приблизительно
+        collectorRankings.push({
+          userId: userStat.userId,
+          userName: userStat.userName,
+          role: userStat.role,
+          positions: userStat.positions,
+          units: userStat.units,
+          orders: userStat.orders.size,
+          points: userStat.points,
+          rank: null, // Ранг будет рассчитан ниже
+          level: null,
           pph,
           uph,
           efficiency,
-        };
+        });
+      }
+
+      // Проверяльщики: TaskStatistics с roleType='checker' за сегодня
+      const checkerTaskStats = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'checker',
+          task: {
+            confirmedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
       });
 
-      // Сортируем по баллам
-      weekStats.sort((a, b) => b.points - a.points);
+      // Группируем по пользователям
+      const checkerMap = new Map<string, {
+        userId: string;
+        userName: string;
+        role: string;
+        positions: number;
+        units: number;
+        orders: Set<string>;
+        points: number;
+        totalPickTimeSec: number;
+        efficiencies: number[];
+      }>();
 
-      // Рассчитываем ранги
-      const allPoints = weekStats.map(s => s.points).filter(p => p > 0);
-      const sorted = [...allPoints].sort((a, b) => a - b);
-      const percentiles = [
-        sorted[Math.floor(sorted.length * 0.1)],
-        sorted[Math.floor(sorted.length * 0.2)],
-        sorted[Math.floor(sorted.length * 0.3)],
-        sorted[Math.floor(sorted.length * 0.4)],
-        sorted[Math.floor(sorted.length * 0.5)],
-        sorted[Math.floor(sorted.length * 0.6)],
-        sorted[Math.floor(sorted.length * 0.7)],
-        sorted[Math.floor(sorted.length * 0.8)],
-        sorted[Math.floor(sorted.length * 0.9)],
-      ];
-
-      for (const stat of weekStats) {
-        let rank = 10;
-        for (let i = 0; i < percentiles.length; i++) {
-          if (stat.points <= percentiles[i]) {
-            rank = i + 1;
-            break;
+      for (const stat of checkerTaskStats) {
+        const user = stat.user;
+        if (user.role === 'checker') {
+          const key = user.id;
+          if (!checkerMap.has(key)) {
+            checkerMap.set(key, {
+              userId: user.id,
+              userName: user.name,
+              role: user.role,
+              positions: 0,
+              units: 0,
+              orders: new Set(),
+              points: 0,
+              totalPickTimeSec: 0,
+              efficiencies: [],
+            });
+          }
+          const userStat = checkerMap.get(key)!;
+          userStat.positions += stat.positions;
+          userStat.units += stat.units;
+          userStat.orders.add(stat.shipmentId);
+          userStat.points += stat.orderPoints || 0;
+          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+          if (stat.efficiencyClamped) {
+            userStat.efficiencies.push(stat.efficiencyClamped);
           }
         }
+      }
 
-        const level = rank <= 10 ? getAnimalLevel(rank) : null;
+      // Преобразуем в массив и добавляем метрики
+      for (const userStat of checkerMap.values()) {
+        const pph = userStat.totalPickTimeSec > 0
+          ? (userStat.positions * 3600) / userStat.totalPickTimeSec
+          : null;
+        const uph = userStat.totalPickTimeSec > 0
+          ? (userStat.units * 3600) / userStat.totalPickTimeSec
+          : null;
+        const efficiency = userStat.efficiencies.length > 0
+          ? userStat.efficiencies.reduce((a, b) => a + b, 0) / userStat.efficiencies.length
+          : null;
 
-        const entry: RankingEntry = {
-          userId: stat.userId,
-          userName: stat.userName,
-          role: stat.role,
-          positions: stat.positions,
-          units: stat.units,
-          orders: stat.orders,
-          points: stat.points,
-          rank,
-          level: level ? {
-            name: level.name,
-            emoji: level.emoji,
-            color: level.color,
-          } : null,
-          pph: stat.pph,
-          uph: stat.uph,
-          efficiency: stat.efficiency,
-        };
+        checkerRankings.push({
+          userId: userStat.userId,
+          userName: userStat.userName,
+          role: userStat.role,
+          positions: userStat.positions,
+          units: userStat.units,
+          orders: userStat.orders.size,
+          points: userStat.points,
+          rank: null, // Ранг будет рассчитан ниже
+          level: null,
+          pph,
+          uph,
+          efficiency,
+        });
+      }
 
-        if (stat.role === 'collector' || stat.role === 'admin') {
-          collectorRankings.push(entry);
-        } else if (stat.role === 'checker') {
-          checkerRankings.push(entry);
+      // Сортируем и рассчитываем ранги
+      collectorRankings.sort((a, b) => b.points - a.points);
+      checkerRankings.sort((a, b) => b.points - a.points);
+
+      // Рассчитываем ранги для сборщиков
+      const collectorPoints = collectorRankings.map(s => s.points).filter(p => p > 0);
+      if (collectorPoints.length > 0) {
+        const sorted = [...collectorPoints].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of collectorRankings) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
+        }
+      }
+
+      // Рассчитываем ранги для проверяльщиков
+      const checkerPoints = checkerRankings.map(s => s.points).filter(p => p > 0);
+      if (checkerPoints.length > 0) {
+        const sorted = [...checkerPoints].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of checkerRankings) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
+        }
+      }
+    } else if (period === 'month') {
+      // Для месяца используем TaskStatistics напрямую, чтобы разделить сборщиков и проверяльщиков
+      
+      // Сборщики: TaskStatistics с roleType='collector' за месяц
+      const collectorTaskStats = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          task: {
+            completedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      // Группируем по пользователям
+      const collectorMap = new Map<string, {
+        userId: string;
+        userName: string;
+        role: string;
+        positions: number;
+        units: number;
+        orders: Set<string>;
+        points: number;
+        totalPickTimeSec: number;
+        efficiencies: number[];
+      }>();
+
+      for (const stat of collectorTaskStats) {
+        const user = stat.user;
+        if (user.role === 'collector' || user.role === 'admin') {
+          const key = user.id;
+          if (!collectorMap.has(key)) {
+            collectorMap.set(key, {
+              userId: user.id,
+              userName: user.name,
+              role: user.role,
+              positions: 0,
+              units: 0,
+              orders: new Set(),
+              points: 0,
+              totalPickTimeSec: 0,
+              efficiencies: [],
+            });
+          }
+          const userStat = collectorMap.get(key)!;
+          userStat.positions += stat.positions;
+          userStat.units += stat.units;
+          userStat.orders.add(stat.shipmentId);
+          userStat.points += stat.orderPoints || 0;
+          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+          if (stat.efficiencyClamped) {
+            userStat.efficiencies.push(stat.efficiencyClamped);
+          }
+        }
+      }
+
+      // Преобразуем в массив и добавляем метрики
+      for (const userStat of collectorMap.values()) {
+        const pph = userStat.totalPickTimeSec > 0
+          ? (userStat.positions * 3600) / userStat.totalPickTimeSec
+          : null;
+        const uph = userStat.totalPickTimeSec > 0
+          ? (userStat.units * 3600) / userStat.totalPickTimeSec
+          : null;
+        const efficiency = userStat.efficiencies.length > 0
+          ? userStat.efficiencies.reduce((a, b) => a + b, 0) / userStat.efficiencies.length
+          : null;
+
+        collectorRankings.push({
+          userId: userStat.userId,
+          userName: userStat.userName,
+          role: userStat.role,
+          positions: userStat.positions,
+          units: userStat.units,
+          orders: userStat.orders.size,
+          points: userStat.points,
+          rank: null,
+          level: null,
+          pph,
+          uph,
+          efficiency,
+        });
+      }
+
+      // Проверяльщики: TaskStatistics с roleType='checker' за месяц
+      const checkerTaskStats = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'checker',
+          task: {
+            confirmedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      // Группируем по пользователям
+      const checkerMap = new Map<string, {
+        userId: string;
+        userName: string;
+        role: string;
+        positions: number;
+        units: number;
+        orders: Set<string>;
+        points: number;
+        totalPickTimeSec: number;
+        efficiencies: number[];
+      }>();
+
+      for (const stat of checkerTaskStats) {
+        const user = stat.user;
+        if (user.role === 'checker') {
+          const key = user.id;
+          if (!checkerMap.has(key)) {
+            checkerMap.set(key, {
+              userId: user.id,
+              userName: user.name,
+              role: user.role,
+              positions: 0,
+              units: 0,
+              orders: new Set(),
+              points: 0,
+              totalPickTimeSec: 0,
+              efficiencies: [],
+            });
+          }
+          const userStat = checkerMap.get(key)!;
+          userStat.positions += stat.positions;
+          userStat.units += stat.units;
+          userStat.orders.add(stat.shipmentId);
+          userStat.points += stat.orderPoints || 0;
+          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+          if (stat.efficiencyClamped) {
+            userStat.efficiencies.push(stat.efficiencyClamped);
+          }
+        }
+      }
+
+      // Преобразуем в массив и добавляем метрики
+      for (const userStat of checkerMap.values()) {
+        const pph = userStat.totalPickTimeSec > 0
+          ? (userStat.positions * 3600) / userStat.totalPickTimeSec
+          : null;
+        const uph = userStat.totalPickTimeSec > 0
+          ? (userStat.units * 3600) / userStat.totalPickTimeSec
+          : null;
+        const efficiency = userStat.efficiencies.length > 0
+          ? userStat.efficiencies.reduce((a, b) => a + b, 0) / userStat.efficiencies.length
+          : null;
+
+        checkerRankings.push({
+          userId: userStat.userId,
+          userName: userStat.userName,
+          role: userStat.role,
+          positions: userStat.positions,
+          units: userStat.units,
+          orders: userStat.orders.size,
+          points: userStat.points,
+          rank: null,
+          level: null,
+          pph,
+          uph,
+          efficiency,
+        });
+      }
+
+      // Сортируем и рассчитываем ранги
+      collectorRankings.sort((a, b) => b.points - a.points);
+      checkerRankings.sort((a, b) => b.points - a.points);
+
+      // Рассчитываем ранги для сборщиков
+      const collectorPoints = collectorRankings.map(s => s.points).filter(p => p > 0);
+      if (collectorPoints.length > 0) {
+        const sorted = [...collectorPoints].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of collectorRankings) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
+        }
+      }
+
+      // Рассчитываем ранги для проверяльщиков
+      const checkerPoints = checkerRankings.map(s => s.points).filter(p => p > 0);
+      if (checkerPoints.length > 0) {
+        const sorted = [...checkerPoints].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of checkerRankings) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
+        }
+      }
+    } else if (period === 'week') {
+      // Для недели используем TaskStatistics напрямую, чтобы разделить сборщиков и проверяльщиков
+      
+      // Сборщики: TaskStatistics с roleType='collector' за неделю
+      const collectorTaskStats = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          task: {
+            completedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      // Группируем по пользователям
+      const collectorMap = new Map<string, {
+        userId: string;
+        userName: string;
+        role: string;
+        positions: number;
+        units: number;
+        orders: Set<string>;
+        points: number;
+        totalPickTimeSec: number;
+        efficiencies: number[];
+      }>();
+
+      for (const stat of collectorTaskStats) {
+        const user = stat.user;
+        if (user.role === 'collector' || user.role === 'admin') {
+          const key = user.id;
+          if (!collectorMap.has(key)) {
+            collectorMap.set(key, {
+              userId: user.id,
+              userName: user.name,
+              role: user.role,
+              positions: 0,
+              units: 0,
+              orders: new Set(),
+              points: 0,
+              totalPickTimeSec: 0,
+              efficiencies: [],
+            });
+          }
+          const userStat = collectorMap.get(key)!;
+          userStat.positions += stat.positions;
+          userStat.units += stat.units;
+          userStat.orders.add(stat.shipmentId);
+          userStat.points += stat.orderPoints || 0;
+          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+          if (stat.efficiencyClamped) {
+            userStat.efficiencies.push(stat.efficiencyClamped);
+          }
+        }
+      }
+
+      // Преобразуем в массив и добавляем метрики
+      for (const userStat of collectorMap.values()) {
+        const pph = userStat.totalPickTimeSec > 0
+          ? (userStat.positions * 3600) / userStat.totalPickTimeSec
+          : null;
+        const uph = userStat.totalPickTimeSec > 0
+          ? (userStat.units * 3600) / userStat.totalPickTimeSec
+          : null;
+        const efficiency = userStat.efficiencies.length > 0
+          ? userStat.efficiencies.reduce((a, b) => a + b, 0) / userStat.efficiencies.length
+          : null;
+
+        collectorRankings.push({
+          userId: userStat.userId,
+          userName: userStat.userName,
+          role: userStat.role,
+          positions: userStat.positions,
+          units: userStat.units,
+          orders: userStat.orders.size,
+          points: userStat.points,
+          rank: null,
+          level: null,
+          pph,
+          uph,
+          efficiency,
+        });
+      }
+
+      // Проверяльщики: TaskStatistics с roleType='checker' за неделю
+      const checkerTaskStats = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'checker',
+          task: {
+            confirmedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      // Группируем по пользователям
+      const checkerMap = new Map<string, {
+        userId: string;
+        userName: string;
+        role: string;
+        positions: number;
+        units: number;
+        orders: Set<string>;
+        points: number;
+        totalPickTimeSec: number;
+        efficiencies: number[];
+      }>();
+
+      for (const stat of checkerTaskStats) {
+        const user = stat.user;
+        if (user.role === 'checker') {
+          const key = user.id;
+          if (!checkerMap.has(key)) {
+            checkerMap.set(key, {
+              userId: user.id,
+              userName: user.name,
+              role: user.role,
+              positions: 0,
+              units: 0,
+              orders: new Set(),
+              points: 0,
+              totalPickTimeSec: 0,
+              efficiencies: [],
+            });
+          }
+          const userStat = checkerMap.get(key)!;
+          userStat.positions += stat.positions;
+          userStat.units += stat.units;
+          userStat.orders.add(stat.shipmentId);
+          userStat.points += stat.orderPoints || 0;
+          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+          if (stat.efficiencyClamped) {
+            userStat.efficiencies.push(stat.efficiencyClamped);
+          }
+        }
+      }
+
+      // Преобразуем в массив и добавляем метрики
+      for (const userStat of checkerMap.values()) {
+        const pph = userStat.totalPickTimeSec > 0
+          ? (userStat.positions * 3600) / userStat.totalPickTimeSec
+          : null;
+        const uph = userStat.totalPickTimeSec > 0
+          ? (userStat.units * 3600) / userStat.totalPickTimeSec
+          : null;
+        const efficiency = userStat.efficiencies.length > 0
+          ? userStat.efficiencies.reduce((a, b) => a + b, 0) / userStat.efficiencies.length
+          : null;
+
+        checkerRankings.push({
+          userId: userStat.userId,
+          userName: userStat.userName,
+          role: userStat.role,
+          positions: userStat.positions,
+          units: userStat.units,
+          orders: userStat.orders.size,
+          points: userStat.points,
+          rank: null,
+          level: null,
+          pph,
+          uph,
+          efficiency,
+        });
+      }
+
+      // Сортируем и рассчитываем ранги
+      collectorRankings.sort((a, b) => b.points - a.points);
+      checkerRankings.sort((a, b) => b.points - a.points);
+
+      // Рассчитываем ранги для сборщиков
+      const collectorPoints = collectorRankings.map(s => s.points).filter(p => p > 0);
+      if (collectorPoints.length > 0) {
+        const sorted = [...collectorPoints].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of collectorRankings) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
+        }
+      }
+
+      // Рассчитываем ранги для проверяльщиков
+      const checkerPoints = checkerRankings.map(s => s.points).filter(p => p > 0);
+      if (checkerPoints.length > 0) {
+        const sorted = [...checkerPoints].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of checkerRankings) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
         }
       }
     }
