@@ -71,6 +71,7 @@ export default function StatisticsTab() {
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
   const [collectors, setCollectors] = useState<RankingEntry[]>([]);
   const [checkers, setCheckers] = useState<RankingEntry[]>([]);
+  const [allRankings, setAllRankings] = useState<RankingEntry[]>([]);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showPointsInfo, setShowPointsInfo] = useState(false);
@@ -94,6 +95,7 @@ export default function StatisticsTab() {
         const rankingData = await rankingRes.json();
         setCollectors(rankingData.collectors || []);
         setCheckers(rankingData.checkers || []);
+        setAllRankings(rankingData.all || []);
       }
 
       if (overviewRes.ok) {
@@ -292,6 +294,88 @@ export default function StatisticsTab() {
           Месяц
         </button>
       </div>
+
+      {/* Общий топ дня (только для периода "today") */}
+      {period === 'today' && allRankings.length > 0 && (
+        <div className="bg-gradient-to-br from-yellow-900/20 to-orange-900/20 border border-yellow-500/30 rounded-xl p-6 backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+              <Trophy className="w-6 h-6 text-yellow-400" />
+              Общий топ дня
+            </h3>
+            <span className="text-sm text-slate-400">{allRankings.length} участников</span>
+          </div>
+
+          <div className="space-y-3">
+            {allRankings.slice(0, 10).map((user, index) => (
+              <div
+                key={user.userId}
+                onClick={() => {
+                  setSelectedUserId(user.userId);
+                  setSelectedUserName(user.userName);
+                }}
+                className={`bg-slate-800/50 border rounded-lg p-4 transition-all hover:bg-slate-800/70 cursor-pointer ${
+                  index === 0
+                    ? 'border-yellow-500/50 bg-gradient-to-r from-yellow-900/30 to-transparent'
+                    : index === 1
+                    ? 'border-slate-400/50 bg-gradient-to-r from-slate-700/30 to-transparent'
+                    : index === 2
+                    ? 'border-orange-500/50 bg-gradient-to-r from-orange-900/20 to-transparent'
+                    : 'border-slate-700/50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                      index === 0
+                        ? 'bg-yellow-500 text-yellow-900'
+                        : index === 1
+                        ? 'bg-slate-400 text-slate-900'
+                        : index === 2
+                        ? 'bg-orange-500 text-orange-900'
+                        : 'bg-slate-700 text-slate-300'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-100 truncate">{user.userName}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          user.role === 'collector' 
+                            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                            : 'bg-green-500/20 text-green-400 border border-green-500/30'
+                        }`}>
+                          {user.role === 'collector' ? 'Сборщик' : 'Проверяльщик'}
+                        </span>
+                        {user.level && (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${user.level.color} bg-slate-700/50`}>
+                            <span>{user.level.emoji}</span>
+                            <span>{user.level.name}</span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 mt-1 text-xs text-slate-400">
+                        <span>📦 {user.positions} поз.</span>
+                        <span>📊 {user.units} ед.</span>
+                        <span>📋 {user.orders} зак.</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-slate-100">{formatPoints(user.points)}</div>
+                    <div className="text-xs text-slate-400">баллов</div>
+                    {user.pph && (
+                      <div className="text-xs text-slate-500 mt-1">
+                        {formatPPH(user.pph)} PPH
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Рейтинг сборщиков */}

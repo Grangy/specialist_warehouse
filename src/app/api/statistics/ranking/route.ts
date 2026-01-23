@@ -370,6 +370,7 @@ export async function GET(request: NextRequest) {
           entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
         }
       }
+
     } else if (period === 'month') {
       // Для месяца используем TaskStatistics напрямую, чтобы разделить сборщиков и проверяльщиков
       
@@ -980,11 +981,69 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    // Для периода "today" добавляем общий топ (объединяем сборщиков и проверяльщиков)
+    const response: any = {
       period,
       collectors: collectorRankings,
       checkers: checkerRankings,
-    });
+    };
+    
+    if (period === 'today') {
+      // Создаем общий топ для сегодня
+      const allRankingsToday: RankingEntry[] = [];
+      
+      // Добавляем сборщиков
+      for (const collector of collectorRankings) {
+        allRankingsToday.push({
+          ...collector,
+          role: 'collector',
+        });
+      }
+      
+      // Добавляем проверяльщиков (у них уже суммированы сборки + проверки)
+      for (const checker of checkerRankings) {
+        allRankingsToday.push({
+          ...checker,
+          role: 'checker',
+        });
+      }
+      
+      // Сортируем всех по баллам
+      allRankingsToday.sort((a, b) => b.points - a.points);
+      
+      // Рассчитываем ранги для общего топа
+      const allPointsToday = allRankingsToday.map(s => s.points).filter(p => p > 0);
+      if (allPointsToday.length > 0) {
+        const sorted = [...allPointsToday].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of allRankingsToday) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
+        }
+      }
+      
+      response.all = allRankingsToday;
+    }
+    
+    return NextResponse.json(response);
   } catch (error: any) {
     console.error('[API Statistics Ranking] Ошибка:', error);
     return NextResponse.json(
