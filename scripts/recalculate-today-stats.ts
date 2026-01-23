@@ -151,16 +151,16 @@ async function recalculateTodayStats() {
       },
     });
 
-    const monthTotalPositions = dailyStats.reduce((sum, s) => sum + s.positions, 0);
-    const monthTotalUnits = dailyStats.reduce((sum, s) => sum + s.units, 0);
-    const monthTotalOrders = dailyStats.reduce((sum, s) => sum + s.orders, 0);
-    const monthTotalPickTimeSec = dailyStats.reduce((sum, s) => sum + s.pickTimeSec, 0);
-    const monthPoints = dailyStats.reduce((sum, s) => sum + s.dayPoints, 0);
+    const monthTotalPositions = dailyStats.reduce((sum: number, s: any) => sum + s.positions, 0);
+    const monthTotalUnits = dailyStats.reduce((sum: number, s: any) => sum + s.units, 0);
+    const monthTotalOrders = dailyStats.reduce((sum: number, s: any) => sum + s.orders, 0);
+    const monthTotalPickTimeSec = dailyStats.reduce((sum: number, s: any) => sum + s.pickTimeSec, 0);
+    const monthPoints = dailyStats.reduce((sum: number, s: any) => sum + s.dayPoints, 0);
 
     const avgPph = monthTotalPickTimeSec > 0 ? (monthTotalPositions * 3600) / monthTotalPickTimeSec : null;
     const avgUph = monthTotalPickTimeSec > 0 ? (monthTotalUnits * 3600) / monthTotalPickTimeSec : null;
     const avgEfficiencyMonth = dailyStats.length > 0
-      ? dailyStats.reduce((sum, s) => sum + (s.avgEfficiency || 0), 0) / dailyStats.length
+      ? dailyStats.reduce((sum: number, s: any) => sum + (s.avgEfficiency || 0), 0) / dailyStats.length
       : null;
 
     await prisma.monthlyStats.upsert({
@@ -210,7 +210,7 @@ async function recalculateTodayStats() {
     select: { id: true, dayPoints: true },
   });
 
-  const allDailyPoints = allDailyStats.map(s => s.dayPoints).filter(p => p > 0);
+  const allDailyPoints = allDailyStats.map((s: any) => s.dayPoints).filter((p: number) => p > 0);
 
   if (allDailyPoints.length > 0) {
     const sorted = [...allDailyPoints].sort((a, b) => a - b);
@@ -252,7 +252,7 @@ async function recalculateTodayStats() {
     select: { id: true, monthPoints: true },
   });
 
-  const allMonthlyPoints = allMonthlyStats.map(s => s.monthPoints).filter(p => p > 0);
+  const allMonthlyPoints = allMonthlyStats.map((s: any) => s.monthPoints).filter((p: number) => p > 0);
 
   if (allMonthlyPoints.length > 0) {
     const sorted = [...allMonthlyPoints].sort((a, b) => a - b);
