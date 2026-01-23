@@ -34,6 +34,25 @@ interface RankingStats {
     uph: number | null;
     efficiency: number | null;
     achievements: Array<{ type: string; value: string | null }>;
+    // Раздельная статистика (только для админов)
+    collector?: {
+      points: number;
+      positions: number;
+      units: number;
+      orders: number;
+      pph: number | null;
+      uph: number | null;
+      efficiency: number | null;
+    } | null;
+    checker?: {
+      points: number;
+      positions: number;
+      units: number;
+      orders: number;
+      pph: number | null;
+      uph: number | null;
+      efficiency: number | null;
+    } | null;
   } | null;
   monthly: {
     points: number;
@@ -48,6 +67,25 @@ interface RankingStats {
     pph: number | null;
     uph: number | null;
     efficiency: number | null;
+    // Раздельная статистика (только для админов)
+    collector?: {
+      points: number;
+      positions: number;
+      units: number;
+      orders: number;
+      pph: number | null;
+      uph: number | null;
+      efficiency: number | null;
+    } | null;
+    checker?: {
+      points: number;
+      positions: number;
+      units: number;
+      orders: number;
+      pph: number | null;
+      uph: number | null;
+      efficiency: number | null;
+    } | null;
   } | null;
 }
 
