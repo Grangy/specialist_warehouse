@@ -22,6 +22,7 @@ import {
   Trash2
 } from 'lucide-react';
 import type { Shipment } from '@/types';
+import { useSSE } from '@/hooks/useSSE';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
 
 interface ShipmentStats {
@@ -53,13 +54,29 @@ export default function CompletedShipmentsTab() {
   });
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
 
+  // Подключаемся к SSE для получения обновлений в реальном времени
+  useSSE({
+    onEvent: (eventType, data) => {
+      // Обновляем список при получении событий о заказах (особенно при изменении статуса на processed)
+      if (
+        eventType === 'shipment:created' ||
+        eventType === 'shipment:updated' ||
+        eventType === 'shipment:status_changed'
+      ) {
+        // Небольшая задержка для гарантии, что данные в БД обновлены
+        setTimeout(() => {
+          loadShipments();
+        }, 300);
+      }
+    },
+    onError: (error) => {
+      console.error('[CompletedShipmentsTab] Ошибка SSE:', error);
+    },
+  });
+
   useEffect(() => {
     loadShipments();
-    // Автоматическое обновление каждые 30 секунд
-    const interval = setInterval(() => {
-      loadShipments();
-    }, 30000);
-    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadShipments = async () => {

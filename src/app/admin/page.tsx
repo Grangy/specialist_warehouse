@@ -164,11 +164,7 @@ export default function AdminPage() {
                     `Тестовый заказ создан! Номер: ${data.shipment.number}, заданий: ${data.shipment.tasks_count}`,
                     'success'
                   );
-                  // Обновляем страницу через небольшую задержку
-                  setTimeout(() => {
-                    router.push('/');
-                    router.refresh();
-                  }, 1000);
+                  // Обновления придут через SSE, не нужно перезагружать страницу
                 } else {
                   showToast(
                     data.error || 'Не удалось создать тестовый заказ',
@@ -211,7 +207,7 @@ export default function AdminPage() {
             onClick={async () => {
               await fetch('/api/auth/logout', { method: 'POST' });
               router.push('/login');
-              router.refresh();
+              // router.push уже перенаправляет, refresh не нужен
             }}
             className="w-full px-3 md:px-4 py-2 md:py-3 bg-red-600/90 hover:bg-red-500 text-white rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group shadow-md hover:shadow-lg hover:scale-105 active:scale-95 text-sm md:text-base"
           >
