@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Проверяльщики: TaskStatistics с roleType='checker' за сегодня
+      // Проверяльщики: суммируем TaskStatistics с roleType='checker' + roleType='collector' для проверяльщиков
       const checkerTaskStats = await prisma.taskStatistics.findMany({
         where: {
           roleType: 'checker',
@@ -183,7 +183,32 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      // Группируем по пользователям
+      // Также получаем сборки проверяльщиков
+      const checkerCollectorTaskStats = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          user: {
+            role: 'checker',
+          },
+          task: {
+            completedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      // Группируем по пользователям (суммируем проверки + сборки)
       const checkerMap = new Map<string, {
         userId: string;
         userName: string;
@@ -196,7 +221,38 @@ export async function GET(request: NextRequest) {
         efficiencies: number[];
       }>();
 
+      // Добавляем данные от проверок
       for (const stat of checkerTaskStats) {
+        const user = stat.user;
+        if (user.role === 'checker') {
+          const key = user.id;
+          if (!checkerMap.has(key)) {
+            checkerMap.set(key, {
+              userId: user.id,
+              userName: user.name,
+              role: user.role,
+              positions: 0,
+              units: 0,
+              orders: new Set(),
+              points: 0,
+              totalPickTimeSec: 0,
+              efficiencies: [],
+            });
+          }
+          const userStat = checkerMap.get(key)!;
+          userStat.positions += stat.positions;
+          userStat.units += stat.units;
+          userStat.orders.add(stat.shipmentId);
+          userStat.points += stat.orderPoints || 0;
+          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+          if (stat.efficiencyClamped) {
+            userStat.efficiencies.push(stat.efficiencyClamped);
+          }
+        }
+      }
+
+      // Добавляем данные от сборок проверяльщиков
+      for (const stat of checkerCollectorTaskStats) {
         const user = stat.user;
         if (user.role === 'checker') {
           const key = user.id;
@@ -409,7 +465,7 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Проверяльщики: TaskStatistics с roleType='checker' за месяц
+      // Проверяльщики: суммируем TaskStatistics с roleType='checker' + roleType='collector' для проверяльщиков
       const checkerTaskStats = await prisma.taskStatistics.findMany({
         where: {
           roleType: 'checker',
@@ -431,7 +487,32 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      // Группируем по пользователям
+      // Также получаем сборки проверяльщиков
+      const checkerCollectorTaskStats = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          user: {
+            role: 'checker',
+          },
+          task: {
+            completedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      // Группируем по пользователям (суммируем проверки + сборки)
       const checkerMap = new Map<string, {
         userId: string;
         userName: string;
@@ -444,7 +525,38 @@ export async function GET(request: NextRequest) {
         efficiencies: number[];
       }>();
 
+      // Добавляем данные от проверок
       for (const stat of checkerTaskStats) {
+        const user = stat.user;
+        if (user.role === 'checker') {
+          const key = user.id;
+          if (!checkerMap.has(key)) {
+            checkerMap.set(key, {
+              userId: user.id,
+              userName: user.name,
+              role: user.role,
+              positions: 0,
+              units: 0,
+              orders: new Set(),
+              points: 0,
+              totalPickTimeSec: 0,
+              efficiencies: [],
+            });
+          }
+          const userStat = checkerMap.get(key)!;
+          userStat.positions += stat.positions;
+          userStat.units += stat.units;
+          userStat.orders.add(stat.shipmentId);
+          userStat.points += stat.orderPoints || 0;
+          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+          if (stat.efficiencyClamped) {
+            userStat.efficiencies.push(stat.efficiencyClamped);
+          }
+        }
+      }
+
+      // Добавляем данные от сборок проверяльщиков
+      for (const stat of checkerCollectorTaskStats) {
         const user = stat.user;
         if (user.role === 'checker') {
           const key = user.id;
@@ -657,7 +769,7 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Проверяльщики: TaskStatistics с roleType='checker' за неделю
+      // Проверяльщики: суммируем TaskStatistics с roleType='checker' + roleType='collector' для проверяльщиков
       const checkerTaskStats = await prisma.taskStatistics.findMany({
         where: {
           roleType: 'checker',
@@ -679,7 +791,32 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      // Группируем по пользователям
+      // Также получаем сборки проверяльщиков
+      const checkerCollectorTaskStats = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          user: {
+            role: 'checker',
+          },
+          task: {
+            completedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      // Группируем по пользователям (суммируем проверки + сборки)
       const checkerMap = new Map<string, {
         userId: string;
         userName: string;
@@ -692,7 +829,38 @@ export async function GET(request: NextRequest) {
         efficiencies: number[];
       }>();
 
+      // Добавляем данные от проверок
       for (const stat of checkerTaskStats) {
+        const user = stat.user;
+        if (user.role === 'checker') {
+          const key = user.id;
+          if (!checkerMap.has(key)) {
+            checkerMap.set(key, {
+              userId: user.id,
+              userName: user.name,
+              role: user.role,
+              positions: 0,
+              units: 0,
+              orders: new Set(),
+              points: 0,
+              totalPickTimeSec: 0,
+              efficiencies: [],
+            });
+          }
+          const userStat = checkerMap.get(key)!;
+          userStat.positions += stat.positions;
+          userStat.units += stat.units;
+          userStat.orders.add(stat.shipmentId);
+          userStat.points += stat.orderPoints || 0;
+          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+          if (stat.efficiencyClamped) {
+            userStat.efficiencies.push(stat.efficiencyClamped);
+          }
+        }
+      }
+
+      // Добавляем данные от сборок проверяльщиков
+      for (const stat of checkerCollectorTaskStats) {
         const user = stat.user;
         if (user.role === 'checker') {
           const key = user.id;

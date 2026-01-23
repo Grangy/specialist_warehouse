@@ -114,14 +114,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (user.role === 'checker' || user.role === 'admin') {
-      const filtered = checkerStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null);
-      if (filtered.length > 0) {
-        const totalPositions = filtered.reduce((sum, s) => sum + s.positions, 0);
-        const totalUnits = filtered.reduce((sum, s) => sum + s.units, 0);
-        const totalOrders = new Set(filtered.map(s => s.shipmentId)).size;
-        const totalPickTimeSec = filtered.reduce((sum, s) => sum + (s.pickTimeSec || 0), 0);
-        const totalPoints = filtered.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
-        const avgEfficiency = filtered.reduce((sum, s) => sum + (s.efficiencyClamped || 0), 0) / filtered.length;
+      // Для проверяльщиков суммируем сборки + проверки
+      const checkerFiltered = checkerStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null);
+      const collectorFilteredForChecker = user.role === 'checker' 
+        ? collectorStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null)
+        : [];
+      
+      const allFiltered = [...checkerFiltered, ...collectorFilteredForChecker];
+      
+      if (allFiltered.length > 0) {
+        const totalPositions = allFiltered.reduce((sum, s) => sum + s.positions, 0);
+        const totalUnits = allFiltered.reduce((sum, s) => sum + s.units, 0);
+        const totalOrders = new Set(allFiltered.map(s => s.shipmentId)).size;
+        const totalPickTimeSec = allFiltered.reduce((sum, s) => sum + (s.pickTimeSec || 0), 0);
+        const totalPoints = allFiltered.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
+        const avgEfficiency = allFiltered.reduce((sum, s) => sum + (s.efficiencyClamped || 0), 0) / allFiltered.length;
         const pph = totalPickTimeSec > 0 ? (totalPositions * 3600) / totalPickTimeSec : null;
         const uph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
 
@@ -168,14 +175,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (user.role === 'checker' || user.role === 'admin') {
-      const filtered = checkerStatsMonth.filter((s) => s.positions > 0 && s.orderPoints !== null);
-      if (filtered.length > 0) {
-        const totalPositions = filtered.reduce((sum, s) => sum + s.positions, 0);
-        const totalUnits = filtered.reduce((sum, s) => sum + s.units, 0);
-        const totalOrders = new Set(filtered.map(s => s.shipmentId)).size;
-        const totalPickTimeSec = filtered.reduce((sum, s) => sum + (s.pickTimeSec || 0), 0);
-        const totalPoints = filtered.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
-        const avgEfficiency = filtered.reduce((sum, s) => sum + (s.efficiencyClamped || 0), 0) / filtered.length;
+      // Для проверяльщиков суммируем сборки + проверки
+      const checkerFiltered = checkerStatsMonth.filter((s) => s.positions > 0 && s.orderPoints !== null);
+      const collectorFilteredForChecker = user.role === 'checker'
+        ? collectorStatsMonth.filter((s) => s.positions > 0 && s.orderPoints !== null)
+        : [];
+      
+      const allFiltered = [...checkerFiltered, ...collectorFilteredForChecker];
+      
+      if (allFiltered.length > 0) {
+        const totalPositions = allFiltered.reduce((sum, s) => sum + s.positions, 0);
+        const totalUnits = allFiltered.reduce((sum, s) => sum + s.units, 0);
+        const totalOrders = new Set(allFiltered.map(s => s.shipmentId)).size;
+        const totalPickTimeSec = allFiltered.reduce((sum, s) => sum + (s.pickTimeSec || 0), 0);
+        const totalPoints = allFiltered.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
+        const avgEfficiency = allFiltered.reduce((sum, s) => sum + (s.efficiencyClamped || 0), 0) / allFiltered.length;
         const pph = totalPickTimeSec > 0 ? (totalPositions * 3600) / totalPickTimeSec : null;
         const uph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
 
@@ -192,7 +206,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Рассчитываем ранги так же, как в админке - раздельно для сборщиков и проверяльщиков
-    // Получаем все TaskStatistics за сегодня для расчета рангов
+    // Получаем все TaskStatistics за сегодня для расчета рангов (с информацией о пользователе)
     const allCollectorStatsToday = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'collector',
@@ -200,6 +214,14 @@ export async function GET(request: NextRequest) {
           completedAt: {
             gte: today,
             lte: todayEnd,
+          },
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            role: true,
           },
         },
       },
@@ -212,6 +234,14 @@ export async function GET(request: NextRequest) {
           confirmedAt: {
             gte: today,
             lte: todayEnd,
+          },
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            role: true,
           },
         },
       },
@@ -252,9 +282,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Группируем по пользователям и рассчитываем ранги для проверяльщиков за сегодня
+    // Для проверяльщиков суммируем сборки + проверки
     const checkerMapToday = new Map<string, number>();
+    // Добавляем баллы от проверок
     for (const stat of allCheckerStatsToday) {
       if (stat.orderPoints && stat.orderPoints > 0) {
+        const current = checkerMapToday.get(stat.userId) || 0;
+        checkerMapToday.set(stat.userId, current + stat.orderPoints);
+      }
+    }
+    // Добавляем баллы от сборок для проверяльщиков
+    for (const stat of allCollectorStatsToday) {
+      if (stat.user.role === 'checker' && stat.orderPoints && stat.orderPoints > 0) {
         const current = checkerMapToday.get(stat.userId) || 0;
         checkerMapToday.set(stat.userId, current + stat.orderPoints);
       }
@@ -309,7 +348,7 @@ export async function GET(request: NextRequest) {
       console.error('[API Ranking Stats] Ошибка при получении достижений:', error.message);
     }
 
-    // Получаем все TaskStatistics за месяц для расчета рангов
+    // Получаем все TaskStatistics за месяц для расчета рангов (с информацией о пользователе)
     const allCollectorStatsMonth = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'collector',
@@ -317,6 +356,14 @@ export async function GET(request: NextRequest) {
           completedAt: {
             gte: monthStart,
             lte: monthEnd,
+          },
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            role: true,
           },
         },
       },
@@ -329,6 +376,14 @@ export async function GET(request: NextRequest) {
           confirmedAt: {
             gte: monthStart,
             lte: monthEnd,
+          },
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            role: true,
           },
         },
       },
@@ -369,9 +424,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Группируем по пользователям и рассчитываем ранги для проверяльщиков за месяц
+    // Для проверяльщиков суммируем сборки + проверки
     const checkerMapMonth = new Map<string, number>();
+    // Добавляем баллы от проверок
     for (const stat of allCheckerStatsMonth) {
       if (stat.orderPoints && stat.orderPoints > 0) {
+        const current = checkerMapMonth.get(stat.userId) || 0;
+        checkerMapMonth.set(stat.userId, current + stat.orderPoints);
+      }
+    }
+    // Добавляем баллы от сборок для проверяльщиков
+    for (const stat of allCollectorStatsMonth) {
+      if (stat.user.role === 'checker' && stat.orderPoints && stat.orderPoints > 0) {
         const current = checkerMapMonth.get(stat.userId) || 0;
         checkerMapMonth.set(stat.userId, current + stat.orderPoints);
       }
