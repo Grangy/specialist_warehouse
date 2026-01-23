@@ -379,33 +379,42 @@ async function updateDailyStats(userId: string, date: Date, stats: any) {
   const dayStart = new Date(date);
   dayStart.setHours(0, 0, 0, 0);
 
-  // Получаем все TaskStatistics пользователя за этот день
-  // Используем completedAt для сборщиков и confirmedAt для проверяльщиков
-  const allDayStats = await prisma.taskStatistics.findMany({
+  // Получаем все TaskStatistics пользователя
+  // ВАЖНО: Фильтруем по дате на уровне запроса для производительности
+  const dayEnd = new Date(dayStart);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  // Получаем TaskStatistics с задачами, которые завершены в этот день
+  // Для сборщиков: completedAt в этот день
+  // Для проверяльщиков: confirmedAt в этот день
+  const collectorStats = await prisma.taskStatistics.findMany({
     where: {
       userId,
-    },
-    include: {
+      roleType: 'collector',
       task: {
-        select: {
-          completedAt: true,
-          confirmedAt: true,
+        completedAt: {
+          gte: dayStart,
+          lte: dayEnd,
         },
       },
     },
   });
 
-  // Фильтруем по дате: для сборщиков используем completedAt, для проверяльщиков - confirmedAt
-  const filteredDayStats = allDayStats.filter((stat) => {
-    // Для сборщиков используем completedAt, для проверяльщиков - confirmedAt
-    const taskDate = stat.roleType === 'checker' 
-      ? stat.task.confirmedAt 
-      : stat.task.completedAt;
-    if (!taskDate) return false;
-    const taskDayStart = new Date(taskDate);
-    taskDayStart.setHours(0, 0, 0, 0);
-    return taskDayStart.getTime() === dayStart.getTime();
-  }).filter((stat) => {
+  const checkerStats = await prisma.taskStatistics.findMany({
+    where: {
+      userId,
+      roleType: 'checker',
+      task: {
+        confirmedAt: {
+          gte: dayStart,
+          lte: dayEnd,
+        },
+      },
+    },
+  });
+
+  // Объединяем статистики
+  const filteredDayStats = [...collectorStats, ...checkerStats].filter((stat) => {
     // Дополнительная проверка: убеждаемся, что у статистики есть валидные данные
     return stat.positions > 0 && stat.orderPoints !== null && stat.orderPoints !== undefined;
   });
