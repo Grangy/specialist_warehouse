@@ -65,6 +65,8 @@ interface OverviewData {
   };
 }
 
+import UserStatsModal from './UserStatsModal';
+
 export default function StatisticsTab() {
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
   const [collectors, setCollectors] = useState<RankingEntry[]>([]);
@@ -72,6 +74,8 @@ export default function StatisticsTab() {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showPointsInfo, setShowPointsInfo] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserName, setSelectedUserName] = useState('');
 
   useEffect(() => {
     loadData();
@@ -310,7 +314,11 @@ export default function StatisticsTab() {
               {collectors.slice(0, 10).map((user, index) => (
                 <div
                   key={user.userId}
-                  className={`bg-slate-800/50 border rounded-lg p-4 transition-all hover:bg-slate-800/70 ${
+                  onClick={() => {
+                    setSelectedUserId(user.userId);
+                    setSelectedUserName(user.userName);
+                  }}
+                  className={`bg-slate-800/50 border rounded-lg p-4 transition-all hover:bg-slate-800/70 cursor-pointer ${
                     index === 0
                       ? 'border-yellow-500/50 bg-gradient-to-r from-yellow-900/20 to-transparent'
                       : index === 1
@@ -386,7 +394,11 @@ export default function StatisticsTab() {
               {checkers.slice(0, 10).map((user, index) => (
                 <div
                   key={user.userId}
-                  className={`bg-slate-800/50 border rounded-lg p-4 transition-all hover:bg-slate-800/70 ${
+                  onClick={() => {
+                    setSelectedUserId(user.userId);
+                    setSelectedUserName(user.userName);
+                  }}
+                  className={`bg-slate-800/50 border rounded-lg p-4 transition-all hover:bg-slate-800/70 cursor-pointer ${
                     index === 0
                       ? 'border-yellow-500/50 bg-gradient-to-r from-yellow-900/20 to-transparent'
                       : index === 1
@@ -442,6 +454,16 @@ export default function StatisticsTab() {
           )}
         </div>
       </div>
+
+      {/* Модальное окно с детальной статистикой */}
+      <UserStatsModal
+        userId={selectedUserId}
+        userName={selectedUserName}
+        onClose={() => {
+          setSelectedUserId(null);
+          setSelectedUserName('');
+        }}
+      />
     </div>
   );
 }
