@@ -191,12 +191,104 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Получаем ранги из DailyStats/MonthlyStats (они рассчитываются на основе объединенных данных)
-    let dailyStatsForRank = null;
-    let monthlyStatsForRank = null;
+    // Рассчитываем ранги так же, как в админке - раздельно для сборщиков и проверяльщиков
+    // Получаем все TaskStatistics за сегодня для расчета рангов
+    const allCollectorStatsToday = await prisma.taskStatistics.findMany({
+      where: {
+        roleType: 'collector',
+        task: {
+          completedAt: {
+            gte: today,
+            lte: todayEnd,
+          },
+        },
+      },
+    });
 
+    const allCheckerStatsToday = await prisma.taskStatistics.findMany({
+      where: {
+        roleType: 'checker',
+        task: {
+          confirmedAt: {
+            gte: today,
+            lte: todayEnd,
+          },
+        },
+      },
+    });
+
+    // Группируем по пользователям и рассчитываем ранги для сборщиков за сегодня
+    const collectorMapToday = new Map<string, number>();
+    for (const stat of allCollectorStatsToday) {
+      if (stat.orderPoints && stat.orderPoints > 0) {
+        const current = collectorMapToday.get(stat.userId) || 0;
+        collectorMapToday.set(stat.userId, current + stat.orderPoints);
+      }
+    }
+    const collectorPointsToday = Array.from(collectorMapToday.values()).filter(p => p > 0);
+    // Рассчитываем ранг для сборщика (если пользователь сборщик или админ с данными сборщика)
+    if (collectorPointsToday.length > 0 && dailyCollector && (user.role === 'collector' || user.role === 'admin')) {
+      const sorted = [...collectorPointsToday].sort((a, b) => a - b);
+      const percentiles = [
+        sorted[Math.floor(sorted.length * 0.1)],
+        sorted[Math.floor(sorted.length * 0.2)],
+        sorted[Math.floor(sorted.length * 0.3)],
+        sorted[Math.floor(sorted.length * 0.4)],
+        sorted[Math.floor(sorted.length * 0.5)],
+        sorted[Math.floor(sorted.length * 0.6)],
+        sorted[Math.floor(sorted.length * 0.7)],
+        sorted[Math.floor(sorted.length * 0.8)],
+        sorted[Math.floor(sorted.length * 0.9)],
+      ];
+      let rank = 10;
+      for (let i = 0; i < percentiles.length; i++) {
+        if (dailyCollector.points <= percentiles[i]) {
+          rank = i + 1;
+          break;
+        }
+      }
+      dailyRank = rank;
+      dailyLevel = getAnimalLevel(rank);
+    }
+
+    // Группируем по пользователям и рассчитываем ранги для проверяльщиков за сегодня
+    const checkerMapToday = new Map<string, number>();
+    for (const stat of allCheckerStatsToday) {
+      if (stat.orderPoints && stat.orderPoints > 0) {
+        const current = checkerMapToday.get(stat.userId) || 0;
+        checkerMapToday.set(stat.userId, current + stat.orderPoints);
+      }
+    }
+    const checkerPointsToday = Array.from(checkerMapToday.values()).filter(p => p > 0);
+    // Рассчитываем ранг для проверяльщика (если пользователь проверяльщик)
+    // Для админа показываем ранг сборщика по умолчанию (если есть данные сборщика)
+    if (checkerPointsToday.length > 0 && dailyChecker && user.role === 'checker') {
+      const sorted = [...checkerPointsToday].sort((a, b) => a - b);
+      const percentiles = [
+        sorted[Math.floor(sorted.length * 0.1)],
+        sorted[Math.floor(sorted.length * 0.2)],
+        sorted[Math.floor(sorted.length * 0.3)],
+        sorted[Math.floor(sorted.length * 0.4)],
+        sorted[Math.floor(sorted.length * 0.5)],
+        sorted[Math.floor(sorted.length * 0.6)],
+        sorted[Math.floor(sorted.length * 0.7)],
+        sorted[Math.floor(sorted.length * 0.8)],
+        sorted[Math.floor(sorted.length * 0.9)],
+      ];
+      let rank = 10;
+      for (let i = 0; i < percentiles.length; i++) {
+        if (dailyChecker.points <= percentiles[i]) {
+          rank = i + 1;
+          break;
+        }
+      }
+      dailyRank = rank;
+      dailyLevel = getAnimalLevel(rank);
+    }
+
+    // Получаем достижения из DailyStats
     try {
-      dailyStatsForRank = await prisma.dailyStats.findUnique({
+      const dailyStatsForAchievements = await prisma.dailyStats.findUnique({
         where: {
           userId_date: {
             userId: user.id,
@@ -207,34 +299,108 @@ export async function GET(request: NextRequest) {
           achievements: true,
         },
       });
-      if (dailyStatsForRank) {
-        dailyRank = dailyStatsForRank.dailyRank;
-        dailyLevel = dailyRank ? getAnimalLevel(dailyRank) : null;
-        dailyAchievements = dailyStatsForRank.achievements?.map((a: any) => ({
+      if (dailyStatsForAchievements) {
+        dailyAchievements = dailyStatsForAchievements.achievements?.map((a: any) => ({
           type: a.achievementType,
           value: a.achievementValue,
         })) || [];
       }
     } catch (error: any) {
-      console.error('[API Ranking Stats] Ошибка при получении DailyStats для ранга:', error.message);
+      console.error('[API Ranking Stats] Ошибка при получении достижений:', error.message);
     }
 
-    try {
-      monthlyStatsForRank = await prisma.monthlyStats.findUnique({
-        where: {
-          userId_year_month: {
-            userId: user.id,
-            year: currentYear,
-            month: currentMonth,
+    // Получаем все TaskStatistics за месяц для расчета рангов
+    const allCollectorStatsMonth = await prisma.taskStatistics.findMany({
+      where: {
+        roleType: 'collector',
+        task: {
+          completedAt: {
+            gte: monthStart,
+            lte: monthEnd,
           },
         },
-      });
-      if (monthlyStatsForRank) {
-        monthlyRank = monthlyStatsForRank.monthlyRank;
-        monthlyLevel = monthlyRank ? getAnimalLevel(monthlyRank) : null;
+      },
+    });
+
+    const allCheckerStatsMonth = await prisma.taskStatistics.findMany({
+      where: {
+        roleType: 'checker',
+        task: {
+          confirmedAt: {
+            gte: monthStart,
+            lte: monthEnd,
+          },
+        },
+      },
+    });
+
+    // Группируем по пользователям и рассчитываем ранги для сборщиков за месяц
+    const collectorMapMonth = new Map<string, number>();
+    for (const stat of allCollectorStatsMonth) {
+      if (stat.orderPoints && stat.orderPoints > 0) {
+        const current = collectorMapMonth.get(stat.userId) || 0;
+        collectorMapMonth.set(stat.userId, current + stat.orderPoints);
       }
-    } catch (error: any) {
-      console.error('[API Ranking Stats] Ошибка при получении MonthlyStats для ранга:', error.message);
+    }
+    const collectorPointsMonth = Array.from(collectorMapMonth.values()).filter(p => p > 0);
+    // Рассчитываем ранг для сборщика (если пользователь сборщик или админ с данными сборщика)
+    if (collectorPointsMonth.length > 0 && monthlyCollector && (user.role === 'collector' || user.role === 'admin')) {
+      const sorted = [...collectorPointsMonth].sort((a, b) => a - b);
+      const percentiles = [
+        sorted[Math.floor(sorted.length * 0.1)],
+        sorted[Math.floor(sorted.length * 0.2)],
+        sorted[Math.floor(sorted.length * 0.3)],
+        sorted[Math.floor(sorted.length * 0.4)],
+        sorted[Math.floor(sorted.length * 0.5)],
+        sorted[Math.floor(sorted.length * 0.6)],
+        sorted[Math.floor(sorted.length * 0.7)],
+        sorted[Math.floor(sorted.length * 0.8)],
+        sorted[Math.floor(sorted.length * 0.9)],
+      ];
+      let rank = 10;
+      for (let i = 0; i < percentiles.length; i++) {
+        if (monthlyCollector.points <= percentiles[i]) {
+          rank = i + 1;
+          break;
+        }
+      }
+      monthlyRank = rank;
+      monthlyLevel = getAnimalLevel(rank);
+    }
+
+    // Группируем по пользователям и рассчитываем ранги для проверяльщиков за месяц
+    const checkerMapMonth = new Map<string, number>();
+    for (const stat of allCheckerStatsMonth) {
+      if (stat.orderPoints && stat.orderPoints > 0) {
+        const current = checkerMapMonth.get(stat.userId) || 0;
+        checkerMapMonth.set(stat.userId, current + stat.orderPoints);
+      }
+    }
+    const checkerPointsMonth = Array.from(checkerMapMonth.values()).filter(p => p > 0);
+    // Рассчитываем ранг для проверяльщика (если пользователь проверяльщик)
+    // Для админа показываем ранг сборщика по умолчанию (если есть данные сборщика)
+    if (checkerPointsMonth.length > 0 && monthlyChecker && user.role === 'checker') {
+      const sorted = [...checkerPointsMonth].sort((a, b) => a - b);
+      const percentiles = [
+        sorted[Math.floor(sorted.length * 0.1)],
+        sorted[Math.floor(sorted.length * 0.2)],
+        sorted[Math.floor(sorted.length * 0.3)],
+        sorted[Math.floor(sorted.length * 0.4)],
+        sorted[Math.floor(sorted.length * 0.5)],
+        sorted[Math.floor(sorted.length * 0.6)],
+        sorted[Math.floor(sorted.length * 0.7)],
+        sorted[Math.floor(sorted.length * 0.8)],
+        sorted[Math.floor(sorted.length * 0.9)],
+      ];
+      let rank = 10;
+      for (let i = 0; i < percentiles.length; i++) {
+        if (monthlyChecker.points <= percentiles[i]) {
+          rank = i + 1;
+          break;
+        }
+      }
+      monthlyRank = rank;
+      monthlyLevel = getAnimalLevel(rank);
     }
 
     // Определяем какую статистику показывать (в зависимости от роли)
