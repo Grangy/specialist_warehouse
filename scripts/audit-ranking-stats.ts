@@ -129,10 +129,10 @@ async function auditUserStats(userId: string, userName: string) {
     where: {
       userId,
     },
-    orderBy: {
-      year: 'desc',
-      month: 'desc',
-    },
+    orderBy: [
+      { year: 'desc' },
+      { month: 'desc' },
+    ],
     take: 10,
   });
 
