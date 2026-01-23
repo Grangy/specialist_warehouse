@@ -19,6 +19,7 @@ export function SwipeConfirmButton({
   textId,
 }: SwipeConfirmButtonProps) {
   const isDraggingRef = useRef(false);
+  const disabledRef = useRef(disabled);
   const handlersRef = useRef<{
     handleStart?: (e: TouchEvent | MouseEvent) => void;
     handleMove?: (e: TouchEvent | MouseEvent) => void;
@@ -27,8 +28,15 @@ export function SwipeConfirmButton({
     mouseUpHandler?: (e: MouseEvent) => void;
   }>({});
 
+  // Обновляем ref при изменении disabled, чтобы обработчики всегда имели актуальное значение
   useEffect(() => {
-    if (disabled) return;
+    disabledRef.current = disabled;
+  }, [disabled]);
+
+  useEffect(() => {
+    // ВАЖНО: Всегда устанавливаем обработчики, даже если disabled
+    // Проверка disabled будет внутри обработчиков, чтобы события всегда могли быть получены
+    // Это позволяет кнопке работать, когда disabled меняется с true на false
 
     // Небольшая задержка, чтобы убедиться, что элементы отрендерились
     const initTimeout = setTimeout(() => {
@@ -61,6 +69,22 @@ export function SwipeConfirmButton({
       let hasConfirmed = false;
 
       const updateSlider = () => {
+        // Проверяем disabled через ref
+        if (disabledRef.current) {
+          // Если disabled, сбрасываем слайдер в начальное положение
+          slider.style.width = '60px';
+          if (text) {
+            text.style.left = '60px';
+            text.style.paddingLeft = '8px';
+            text.innerHTML = '<span class="text-2xl">→</span>';
+            text.style.color = '';
+            text.style.fontWeight = '';
+          }
+          track.classList.remove('completed');
+          hasConfirmed = false;
+          return;
+        }
+
         const trackWidth = track.offsetWidth;
         const minWidth = 60;
         const maxWidth = trackWidth - minWidth;
@@ -80,7 +104,10 @@ export function SwipeConfirmButton({
           slider.style.background = '#10b981';
 
           setTimeout(() => {
-            onConfirm();
+            // Проверяем disabled через ref перед вызовом onConfirm
+            if (!disabledRef.current) {
+              onConfirm();
+            }
           }, 150);
         } else if (percentage < SWIPE_THRESHOLD && hasConfirmed) {
           hasConfirmed = false;
@@ -100,7 +127,12 @@ export function SwipeConfirmButton({
       };
 
       const handleStart = (e: TouchEvent | MouseEvent) => {
-        if (hasConfirmed || disabled) return;
+        // Проверяем disabled через ref, чтобы всегда иметь актуальное значение
+        if (hasConfirmed || disabledRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         const touch = 'touches' in e ? e.touches[0] : e;
         const trackRect = track.getBoundingClientRect();
         startX = touch.clientX - trackRect.left;
@@ -113,7 +145,12 @@ export function SwipeConfirmButton({
       };
 
       const handleMove = (e: TouchEvent | MouseEvent) => {
-        if (!isDraggingRef.current || hasConfirmed || disabled) return;
+        // Проверяем disabled через ref
+        if (!isDraggingRef.current || hasConfirmed || disabledRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         const touch = 'touches' in e ? e.touches[0] : e;
         const trackRect = track.getBoundingClientRect();
         currentX = touch.clientX - trackRect.left;
@@ -127,6 +164,23 @@ export function SwipeConfirmButton({
         isDraggingRef.current = false;
         slider.style.transition = 'width 0.3s ease-out';
         track.classList.remove('swiping');
+
+        // Если disabled, сбрасываем в начальное положение
+        if (disabledRef.current) {
+          slider.style.width = '60px';
+          startX = 0;
+          currentX = 0;
+          hasConfirmed = false;
+          if (text) {
+            text.style.left = '60px';
+            text.style.paddingLeft = '8px';
+            text.innerHTML = '<span class="text-2xl">→</span>';
+            text.style.color = '';
+            text.style.fontWeight = '';
+          }
+          track.classList.remove('completed');
+          return;
+        }
 
         if (!hasConfirmed) {
           slider.style.width = '60px';
@@ -186,7 +240,11 @@ export function SwipeConfirmButton({
         }
       }
     };
-  }, [disabled, trackId, sliderId, textId, onConfirm]);
+    // ВАЖНО: Убираем disabled из зависимостей, чтобы обработчики не пересоздавались
+    // при изменении disabled. Вместо этого проверяем disabled внутри обработчиков.
+    // Также добавляем disabled в зависимости для обновления логики, но не пересоздаем обработчики
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackId, sliderId, textId, onConfirm]);
 
   return null; // Компонент не рендерит ничего, только добавляет обработчики
 }

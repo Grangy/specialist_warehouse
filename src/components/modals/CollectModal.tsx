@@ -304,7 +304,8 @@ export function CollectModal({
                   style={{ 
                     touchAction: 'pan-x', 
                     cursor: isReady() ? 'grab' : 'not-allowed',
-                    pointerEvents: isReady() ? 'auto' : 'none'
+                    // Убираем pointerEvents: 'none', чтобы обработчики всегда могли получать события
+                    // Проверка disabled будет в SwipeConfirmButton
                   }}
                 >
                   <div
