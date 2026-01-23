@@ -62,6 +62,8 @@ export async function POST(
     const timePer100Items = totalItems > 0 ? (timeElapsed / totalItems) * 100 : null;
 
     // Обновляем статус задания, имя сборщика и аналитические данные
+    // ВАЖНО: Если пользователь - проверяльщик, работающий в режиме сборки, 
+    // он также записывается как сборщик (collectorName и collectorId)
     await prisma.shipmentTask.update({
       where: { id },
       data: {
