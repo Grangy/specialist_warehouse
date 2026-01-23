@@ -166,16 +166,16 @@ export default function StatisticsTab() {
           <div className="space-y-4 text-slate-300">
             <div>
               <h4 className="font-semibold text-slate-100 mb-2">1. Базовые очки (base_points)</h4>
-              <p className="text-sm">base_points = positions + K × units + M × switches</p>
+              <p className="text-sm">base_points = positions + M × switches</p>
               <p className="text-xs text-slate-400 mt-1">
-                Где K = 0.3 (коэффициент для единиц), M = 3 (коэффициент за переключение склада)
+                Где M = 3 (коэффициент за переключение склада). <strong>Единицы не учитываются</strong> - трудозатратность одинаковая независимо от количества единиц.
               </p>
             </div>
             <div>
               <h4 className="font-semibold text-slate-100 mb-2">2. Ожидаемое время (expected_time)</h4>
-              <p className="text-sm">expected_time = A × positions + B × units + C × switches</p>
+              <p className="text-sm">expected_time = A × positions + C × switches</p>
               <p className="text-xs text-slate-400 mt-1">
-                Где A = 30 сек/позиция, B = 2 сек/единица, C = 120 сек за переключение склада
+                Где A = 30 сек/позиция (основной показатель), C = 120 сек за переключение склада. <strong>Единицы не учитываются</strong>.
               </p>
             </div>
             <div>
