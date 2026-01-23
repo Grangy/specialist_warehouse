@@ -29,41 +29,37 @@ export async function GET(request: NextRequest) {
     let monthlyStats = null;
 
     try {
-      // Проверяем, доступна ли модель dailyStats в Prisma Client
-      if ('dailyStats' in prisma && typeof (prisma as any).dailyStats?.findUnique === 'function') {
-        dailyStats = await (prisma as any).dailyStats.findUnique({
-          where: {
-            userId_date: {
-              userId: user.id,
-              date: today,
-            },
+      // Получаем статистику за сегодня
+      dailyStats = await prisma.dailyStats.findUnique({
+        where: {
+          userId_date: {
+            userId: user.id,
+            date: today,
           },
-          include: {
-            achievements: true,
-          },
-        });
-      }
+        },
+        include: {
+          achievements: true,
+        },
+      });
     } catch (error: any) {
-      // Модель еще не доступна (миграция не применена)
-      console.log('[API Ranking Stats] DailyStats модель еще не доступна:', error.message);
+      console.error('[API Ranking Stats] Ошибка при получении DailyStats:', error.message);
+      // Продолжаем работу, dailyStats останется null
     }
 
     try {
-      // Проверяем, доступна ли модель monthlyStats в Prisma Client
-      if ('monthlyStats' in prisma && typeof (prisma as any).monthlyStats?.findUnique === 'function') {
-        monthlyStats = await (prisma as any).monthlyStats.findUnique({
-          where: {
-            userId_year_month: {
-              userId: user.id,
-              year: currentYear,
-              month: currentMonth,
-            },
+      // Получаем статистику за текущий месяц
+      monthlyStats = await prisma.monthlyStats.findUnique({
+        where: {
+          userId_year_month: {
+            userId: user.id,
+            year: currentYear,
+            month: currentMonth,
           },
-        });
-      }
+        },
+      });
     } catch (error: any) {
-      // Модель еще не доступна (миграция не применена)
-      console.log('[API Ranking Stats] MonthlyStats модель еще не доступна:', error.message);
+      console.error('[API Ranking Stats] Ошибка при получении MonthlyStats:', error.message);
+      // Продолжаем работу, monthlyStats останется null
     }
 
     // Получаем уровни животных для рангов

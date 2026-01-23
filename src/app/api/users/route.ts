@@ -41,34 +41,30 @@ export async function GET(request: NextRequest) {
         let monthlyStats = null;
 
         try {
-          if ('dailyStats' in prisma && typeof (prisma as any).dailyStats?.findUnique === 'function') {
-            dailyStats = await (prisma as any).dailyStats.findUnique({
-              where: {
-                userId_date: {
-                  userId: user.id,
-                  date: today,
-                },
+          dailyStats = await prisma.dailyStats.findUnique({
+            where: {
+              userId_date: {
+                userId: user.id,
+                date: today,
               },
-            });
-          }
+            },
+          });
         } catch (error: any) {
-          // Модель еще не доступна
+          console.error(`[API Users] Ошибка при получении DailyStats для пользователя ${user.id}:`, error.message);
         }
 
         try {
-          if ('monthlyStats' in prisma && typeof (prisma as any).monthlyStats?.findUnique === 'function') {
-            monthlyStats = await (prisma as any).monthlyStats.findUnique({
-              where: {
-                userId_year_month: {
-                  userId: user.id,
-                  year: currentYear,
-                  month: currentMonth,
-                },
+          monthlyStats = await prisma.monthlyStats.findUnique({
+            where: {
+              userId_year_month: {
+                userId: user.id,
+                year: currentYear,
+                month: currentMonth,
               },
-            });
-          }
+            },
+          });
         } catch (error: any) {
-          // Модель еще не доступна
+          console.error(`[API Users] Ошибка при получении MonthlyStats для пользователя ${user.id}:`, error.message);
         }
 
         const dailyLevel = dailyStats?.dailyRank ? getAnimalLevel(dailyStats.dailyRank) : null;
