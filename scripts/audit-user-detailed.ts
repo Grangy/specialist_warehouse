@@ -31,23 +31,20 @@ async function auditUserDetailed(userName: string) {
   console.log(`\n🔍 ДЕТАЛЬНЫЙ АУДИТ ПОЛЬЗОВАТЕЛЯ: ${userName}`);
   console.log('='.repeat(100));
 
-  // Находим пользователя
-  const user = await prisma.user.findFirst({
-    where: {
-      name: {
-        contains: userName,
-        mode: 'insensitive',
-      },
-    },
+  // Находим пользователя (SQLite не поддерживает mode: 'insensitive', поэтому ищем вручную)
+  const allUsers = await prisma.user.findMany({
+    select: { id: true, name: true, login: true, role: true, createdAt: true },
+    orderBy: { name: 'asc' },
   });
+
+  // Ищем пользователя без учета регистра
+  const user = allUsers.find((u: any) => 
+    u.name.toLowerCase().includes(userName.toLowerCase())
+  );
 
   if (!user) {
     console.log(`❌ Пользователь "${userName}" не найден!`);
     console.log(`\nДоступные пользователи:`);
-    const allUsers = await prisma.user.findMany({
-      select: { id: true, name: true, role: true },
-      orderBy: { name: 'asc' },
-    });
     allUsers.forEach((u: any) => {
       console.log(`   - ${u.name} (${u.role})`);
     });
