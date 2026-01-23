@@ -1,0 +1,589 @@
+/**
+ * Утилита для автоматического обновления статистики после завершения задания
+ */
+
+import { prisma } from '@/lib/prisma';
+import { calculateTaskStatistics } from './calculations';
+import { getAnimalLevel } from './levels';
+
+/**
+ * Получить или создать нормы
+ */
+async function getOrCreateNorm(warehouse: string | null = null) {
+  const existing = await prisma.norm.findFirst({
+    where: {
+      warehouse: warehouse,
+      isActive: true,
+    },
+    orderBy: {
+      effectiveFrom: 'desc',
+    },
+  });
+
+  if (existing) {
+    return {
+      normA: existing.normA,
+      normB: existing.normB,
+      normC: existing.normC,
+      coefficientK: existing.coefficientK,
+      coefficientM: existing.coefficientM,
+    };
+  }
+
+  // Нормы по умолчанию
+  return {
+    normA: 30,
+    normB: 2,
+    normC: 120,
+    coefficientK: 0.3,
+    coefficientM: 3.0,
+  };
+}
+
+/**
+ * Рассчитать ранг по перцентилям
+ */
+function calculateRankByPercentiles(value: number, allValues: number[]): number {
+  if (allValues.length === 0) return 1;
+  
+  const sorted = [...allValues].sort((a, b) => a - b);
+  const percentiles = [
+    sorted[Math.floor(sorted.length * 0.1)], // P10
+    sorted[Math.floor(sorted.length * 0.2)], // P20
+    sorted[Math.floor(sorted.length * 0.3)], // P30
+    sorted[Math.floor(sorted.length * 0.4)], // P40
+    sorted[Math.floor(sorted.length * 0.5)], // P50
+    sorted[Math.floor(sorted.length * 0.6)], // P60
+    sorted[Math.floor(sorted.length * 0.7)], // P70
+    sorted[Math.floor(sorted.length * 0.8)], // P80
+    sorted[Math.floor(sorted.length * 0.9)], // P90
+  ];
+
+  for (let i = 0; i < percentiles.length; i++) {
+    if (value <= percentiles[i]) {
+      return i + 1;
+    }
+  }
+  return 10;
+}
+
+/**
+ * Обновить статистику для сборщика после завершения сборки
+ */
+export async function updateCollectorStats(taskId: string) {
+  try {
+    const task = await prisma.shipmentTask.findUnique({
+      where: { id: taskId },
+      include: {
+        lines: {
+          include: {
+            shipmentLine: true,
+          },
+        },
+        shipment: {
+          include: {
+            tasks: {
+              where: {
+                collectorId: taskId ? undefined : undefined, // Получаем все задания заказа
+              },
+            },
+          },
+        },
+        collector: true,
+      },
+    });
+
+    if (!task || !task.collectorId || !task.completedAt || !task.startedAt) {
+      return; // Нет данных для расчета
+    }
+
+    // Получаем все задания заказа для правильного расчета
+    const allTasks = await prisma.shipmentTask.findMany({
+      where: { shipmentId: task.shipmentId },
+      include: {
+        lines: {
+          include: {
+            shipmentLine: true,
+          },
+        },
+      },
+    });
+
+    const positions = task.lines.length;
+    const units = task.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0);
+
+    if (positions === 0) {
+      return; // Нет позиций для расчета
+    }
+
+    const norm = await getOrCreateNorm(task.warehouse);
+
+    // Подготавливаем данные для расчета
+    const taskData = {
+      taskId: task.id,
+      userId: task.collectorId,
+      shipmentId: task.shipmentId,
+      warehouse: task.warehouse,
+      startedAt: task.startedAt,
+      completedAt: task.completedAt,
+      positions,
+      units,
+    };
+
+    const shipmentData = {
+      shipmentId: task.shipmentId,
+      createdAt: task.shipment.createdAt,
+      confirmedAt: task.shipment.confirmedAt,
+      warehousesCount: new Set(allTasks.map(t => t.warehouse)).size,
+      tasks: allTasks.map(t => ({
+        taskId: t.id,
+        userId: t.collectorId || '',
+        shipmentId: t.shipmentId,
+        warehouse: t.warehouse,
+        startedAt: t.startedAt,
+        completedAt: t.completedAt,
+        positions: t.lines.length,
+        units: t.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
+      })),
+    };
+
+    const stats = calculateTaskStatistics(taskData, shipmentData, norm);
+
+    // Сохраняем TaskStatistics для сборщика
+    await prisma.taskStatistics.upsert({
+      where: {
+        taskId_userId_roleType: {
+          taskId: task.id,
+          userId: task.collectorId,
+          roleType: 'collector',
+        },
+      },
+      update: {
+        shipmentId: task.shipmentId,
+        warehouse: task.warehouse,
+        taskTimeSec: stats.taskTimeSec,
+        pickTimeSec: stats.pickTimeSec,
+        elapsedTimeSec: stats.elapsedTimeSec,
+        gapTimeSec: stats.gapTimeSec,
+        positions: stats.taskTimeSec > 0 ? positions : 0,
+        units: stats.taskTimeSec > 0 ? units : 0,
+        pph: stats.pph,
+        uph: stats.uph,
+        secPerPos: stats.secPerPos,
+        secPerUnit: stats.secPerUnit,
+        unitsPerPos: stats.unitsPerPos,
+        warehousesCount: shipmentData.warehousesCount,
+        switches: stats.switches,
+        density: stats.density,
+        expectedTimeSec: stats.expectedTimeSec,
+        efficiency: stats.efficiency,
+        efficiencyClamped: stats.efficiencyClamped,
+        basePoints: stats.basePoints,
+        orderPoints: stats.orderPoints,
+        normA: norm.normA,
+        normB: norm.normB,
+        normC: norm.normC,
+        normVersion: '1.0',
+      },
+      create: {
+        taskId: task.id,
+        userId: task.collectorId,
+        roleType: 'collector',
+        shipmentId: task.shipmentId,
+        warehouse: task.warehouse,
+        taskTimeSec: stats.taskTimeSec,
+        pickTimeSec: stats.pickTimeSec,
+        elapsedTimeSec: stats.elapsedTimeSec,
+        gapTimeSec: stats.gapTimeSec,
+        positions: stats.taskTimeSec > 0 ? positions : 0,
+        units: stats.taskTimeSec > 0 ? units : 0,
+        pph: stats.pph,
+        uph: stats.uph,
+        secPerPos: stats.secPerPos,
+        secPerUnit: stats.secPerUnit,
+        unitsPerPos: stats.unitsPerPos,
+        warehousesCount: shipmentData.warehousesCount,
+        switches: stats.switches,
+        density: stats.density,
+        expectedTimeSec: stats.expectedTimeSec,
+        efficiency: stats.efficiency,
+        efficiencyClamped: stats.efficiencyClamped,
+        basePoints: stats.basePoints,
+        orderPoints: stats.orderPoints,
+        normA: norm.normA,
+        normB: norm.normB,
+        normC: norm.normC,
+        normVersion: '1.0',
+      },
+    });
+
+    // Обновляем дневную статистику
+    await updateDailyStats(task.collectorId, task.completedAt, stats);
+
+    // Обновляем месячную статистику
+    await updateMonthlyStats(task.collectorId, task.completedAt, stats);
+
+  } catch (error) {
+    console.error(`[updateCollectorStats] Ошибка при обновлении статистики для задания ${taskId}:`, error);
+  }
+}
+
+/**
+ * Обновить статистику для проверяльщика после завершения проверки
+ */
+export async function updateCheckerStats(taskId: string) {
+  try {
+    const task = await prisma.shipmentTask.findUnique({
+      where: { id: taskId },
+      include: {
+        lines: {
+          include: {
+            shipmentLine: true,
+          },
+        },
+        shipment: {
+          include: {
+            tasks: true,
+          },
+        },
+        checker: true,
+      },
+    });
+
+    if (!task || !task.checkerId || !task.confirmedAt || !task.completedAt) {
+      return; // Нет данных для расчета
+    }
+
+    // Для проверяльщика время = confirmedAt - completedAt
+    const checkTimeSec = (task.confirmedAt.getTime() - task.completedAt.getTime()) / 1000;
+
+    if (checkTimeSec <= 0) {
+      return; // Некорректное время
+    }
+
+    const positions = task.lines.length;
+    const units = task.lines.reduce((sum, line) => sum + (line.confirmedQty || line.collectedQty || line.qty), 0);
+
+    if (positions === 0) {
+      return; // Нет позиций для расчета
+    }
+
+    const norm = await getOrCreateNorm(task.warehouse);
+
+    // Для проверяльщика используем время проверки
+    const taskData = {
+      taskId: task.id,
+      userId: task.checkerId,
+      shipmentId: task.shipmentId,
+      warehouse: task.warehouse,
+      startedAt: task.completedAt, // Начало проверки = завершение сборки
+      completedAt: task.confirmedAt, // Конец проверки = подтверждение
+      positions,
+      units,
+    };
+
+    const shipmentData = {
+      shipmentId: task.shipmentId,
+      createdAt: task.shipment.createdAt,
+      confirmedAt: task.shipment.confirmedAt,
+      warehousesCount: new Set(task.shipment.tasks.map(t => t.warehouse)).size,
+      tasks: [taskData], // Для проверяльщика считаем только его задание
+    };
+
+    const stats = calculateTaskStatistics(taskData, shipmentData, norm);
+
+    // Сохраняем TaskStatistics для проверяльщика
+    // Теперь можем создать отдельную запись с roleType = 'checker'
+    await prisma.taskStatistics.upsert({
+      where: {
+        taskId_userId_roleType: {
+          taskId: task.id,
+          userId: task.checkerId,
+          roleType: 'checker',
+        },
+      },
+      update: {
+        shipmentId: task.shipmentId,
+        warehouse: task.warehouse,
+        taskTimeSec: stats.taskTimeSec,
+        pickTimeSec: stats.pickTimeSec,
+        elapsedTimeSec: stats.elapsedTimeSec,
+        gapTimeSec: stats.gapTimeSec,
+        positions: positions,
+        units: units,
+        pph: stats.pph,
+        uph: stats.uph,
+        secPerPos: stats.secPerPos,
+        secPerUnit: stats.secPerUnit,
+        unitsPerPos: stats.unitsPerPos,
+        warehousesCount: shipmentData.warehousesCount,
+        switches: stats.switches,
+        density: stats.density,
+        expectedTimeSec: stats.expectedTimeSec,
+        efficiency: stats.efficiency,
+        efficiencyClamped: stats.efficiencyClamped,
+        basePoints: stats.basePoints,
+        orderPoints: stats.orderPoints,
+        normA: norm.normA,
+        normB: norm.normB,
+        normC: norm.normC,
+        normVersion: '1.0',
+      },
+      create: {
+        taskId: task.id,
+        userId: task.checkerId,
+        roleType: 'checker',
+        shipmentId: task.shipmentId,
+        warehouse: task.warehouse,
+        taskTimeSec: stats.taskTimeSec,
+        pickTimeSec: stats.pickTimeSec,
+        elapsedTimeSec: stats.elapsedTimeSec,
+        gapTimeSec: stats.gapTimeSec,
+        positions: positions,
+        units: units,
+        pph: stats.pph,
+        uph: stats.uph,
+        secPerPos: stats.secPerPos,
+        secPerUnit: stats.secPerUnit,
+        unitsPerPos: stats.unitsPerPos,
+        warehousesCount: shipmentData.warehousesCount,
+        switches: stats.switches,
+        density: stats.density,
+        expectedTimeSec: stats.expectedTimeSec,
+        efficiency: stats.efficiency,
+        efficiencyClamped: stats.efficiencyClamped,
+        basePoints: stats.basePoints,
+        orderPoints: stats.orderPoints,
+        normA: norm.normA,
+        normB: norm.normB,
+        normC: norm.normC,
+        normVersion: '1.0',
+      },
+    });
+
+    // Обновляем дневную статистику для проверяльщика
+    await updateDailyStats(task.checkerId, task.confirmedAt, stats);
+
+    // Обновляем месячную статистику для проверяльщика
+    await updateMonthlyStats(task.checkerId, task.confirmedAt, stats);
+
+  } catch (error) {
+    console.error(`[updateCheckerStats] Ошибка при обновлении статистики для задания ${taskId}:`, error);
+  }
+}
+
+/**
+ * Обновить дневную статистику
+ */
+async function updateDailyStats(userId: string, date: Date, stats: any) {
+  const dayStart = new Date(date);
+  dayStart.setHours(0, 0, 0, 0);
+
+  // Получаем все TaskStatistics пользователя за этот день
+  // Используем completedAt для сборщиков и confirmedAt для проверяльщиков
+  const allDayStats = await prisma.taskStatistics.findMany({
+    where: {
+      userId,
+    },
+    include: {
+      task: {
+        select: {
+          completedAt: true,
+          confirmedAt: true,
+        },
+      },
+    },
+  });
+
+  // Фильтруем по дате: для сборщиков используем completedAt, для проверяльщиков - confirmedAt
+  const filteredDayStats = allDayStats.filter((stat) => {
+    // Для сборщиков используем completedAt, для проверяльщиков - confirmedAt
+    const taskDate = stat.roleType === 'checker' 
+      ? stat.task.confirmedAt 
+      : stat.task.completedAt;
+    if (!taskDate) return false;
+    const taskDayStart = new Date(taskDate);
+    taskDayStart.setHours(0, 0, 0, 0);
+    return taskDayStart.getTime() === dayStart.getTime();
+  }).filter((stat) => {
+    // Дополнительная проверка: убеждаемся, что у статистики есть валидные данные
+    return stat.positions > 0 && stat.orderPoints !== null && stat.orderPoints !== undefined;
+  });
+
+  const totalPositions = filteredDayStats.reduce((sum, s) => sum + s.positions, 0);
+  const totalUnits = filteredDayStats.reduce((sum, s) => sum + s.units, 0);
+  const totalOrders = new Set(filteredDayStats.map(s => s.shipmentId)).size;
+  const totalPickTimeSec = filteredDayStats.reduce((sum, s) => sum + (s.pickTimeSec || 0), 0);
+  const totalGapTimeSec = filteredDayStats.reduce((sum, s) => sum + (s.gapTimeSec || 0), 0);
+  const totalElapsedTimeSec = filteredDayStats.reduce((sum, s) => sum + (s.elapsedTimeSec || 0), 0);
+  const totalOrderPoints = filteredDayStats.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
+  const avgEfficiency = filteredDayStats.length > 0
+    ? filteredDayStats.reduce((sum, s) => sum + (s.efficiencyClamped || 0), 0) / filteredDayStats.length
+    : null;
+
+  const dayPph = totalPickTimeSec > 0 ? (totalPositions * 3600) / totalPickTimeSec : null;
+  const dayUph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
+  const gapShare = totalElapsedTimeSec > 0 ? totalGapTimeSec / totalElapsedTimeSec : null;
+
+  await prisma.dailyStats.upsert({
+    where: {
+      userId_date: {
+        userId,
+        date: dayStart,
+      },
+    },
+    update: {
+      positions: totalPositions,
+      units: totalUnits,
+      orders: totalOrders,
+      pickTimeSec: totalPickTimeSec,
+      gapTimeSec: totalGapTimeSec,
+      elapsedTimeSec: totalElapsedTimeSec,
+      dayPph,
+      dayUph,
+      gapShare,
+      dayPoints: totalOrderPoints,
+      avgEfficiency,
+    },
+    create: {
+      userId,
+      date: dayStart,
+      positions: totalPositions,
+      units: totalUnits,
+      orders: totalOrders,
+      pickTimeSec: totalPickTimeSec,
+      gapTimeSec: totalGapTimeSec,
+      elapsedTimeSec: totalElapsedTimeSec,
+      dayPph,
+      dayUph,
+      gapShare,
+      dayPoints: totalOrderPoints,
+      avgEfficiency,
+    },
+  });
+
+  // Обновляем ранги для всех дневных статистик
+  await updateDailyRanks();
+}
+
+/**
+ * Обновить месячную статистику
+ */
+async function updateMonthlyStats(userId: string, date: Date, stats: any) {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+
+  // Получаем все дневные статистики пользователя за этот месяц
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+  const dailyStats = await prisma.dailyStats.findMany({
+    where: {
+      userId,
+      date: {
+        gte: monthStart,
+        lte: monthEnd,
+      },
+    },
+  });
+
+  const totalPositions = dailyStats.reduce((sum, s) => sum + s.positions, 0);
+  const totalUnits = dailyStats.reduce((sum, s) => sum + s.units, 0);
+  const totalOrders = dailyStats.reduce((sum, s) => sum + s.orders, 0);
+  const totalPickTimeSec = dailyStats.reduce((sum, s) => sum + s.pickTimeSec, 0);
+  const monthPoints = dailyStats.reduce((sum, s) => sum + s.dayPoints, 0);
+
+  const avgPph = totalPickTimeSec > 0 ? (totalPositions * 3600) / totalPickTimeSec : null;
+  const avgUph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
+  const avgEfficiency = dailyStats.length > 0
+    ? dailyStats.reduce((sum, s) => sum + (s.avgEfficiency || 0), 0) / dailyStats.length
+    : null;
+
+  await prisma.monthlyStats.upsert({
+    where: {
+      userId_year_month: {
+        userId,
+        year,
+        month,
+      },
+    },
+    update: {
+      totalPositions,
+      totalUnits,
+      totalOrders,
+      totalPickTimeSec,
+      monthPoints,
+      avgPph,
+      avgUph,
+      avgEfficiency,
+    },
+    create: {
+      userId,
+      year,
+      month,
+      totalPositions,
+      totalUnits,
+      totalOrders,
+      totalPickTimeSec,
+      monthPoints,
+      avgPph,
+      avgUph,
+      avgEfficiency,
+    },
+  });
+
+  // Обновляем ранги для всех месячных статистик
+  await updateMonthlyRanks();
+}
+
+/**
+ * Обновить ранги для всех дневных статистик
+ */
+async function updateDailyRanks() {
+  const allDailyStats = await prisma.dailyStats.findMany({
+    where: {
+      dayPoints: { gt: 0 },
+    },
+    select: { id: true, dayPoints: true },
+  });
+
+  const allDailyPoints = allDailyStats.map(s => s.dayPoints).filter(p => p > 0);
+
+  if (allDailyPoints.length === 0) return;
+
+  for (const dailyStat of allDailyStats) {
+    if (dailyStat.dayPoints > 0) {
+      const rank = calculateRankByPercentiles(dailyStat.dayPoints, allDailyPoints);
+      await prisma.dailyStats.update({
+        where: { id: dailyStat.id },
+        data: { dailyRank: rank },
+      });
+    }
+  }
+}
+
+/**
+ * Обновить ранги для всех месячных статистик
+ */
+async function updateMonthlyRanks() {
+  const allMonthlyStats = await prisma.monthlyStats.findMany({
+    where: {
+      monthPoints: { gt: 0 },
+    },
+    select: { id: true, monthPoints: true },
+  });
+
+  const allMonthlyPoints = allMonthlyStats.map(s => s.monthPoints).filter(p => p > 0);
+
+  if (allMonthlyPoints.length === 0) return;
+
+  for (const monthlyStat of allMonthlyStats) {
+    if (monthlyStat.monthPoints > 0) {
+      const rank = calculateRankByPercentiles(monthlyStat.monthPoints, allMonthlyPoints);
+      await prisma.monthlyStats.update({
+        where: { id: monthlyStat.id },
+        data: { monthlyRank: rank },
+      });
+    }
+  }
+}

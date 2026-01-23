@@ -568,12 +568,17 @@ async function main() {
             efficiencies.push(stats.efficiency);
           }
 
-          // Создаем TaskStatistics
+          // Создаем TaskStatistics для сборщика
           try {
             await prisma.taskStatistics.upsert({
-              where: { taskId: task.id },
+              where: {
+                taskId_userId_roleType: {
+                  taskId: task.id,
+                  userId: stats.userId,
+                  roleType: 'collector',
+                },
+              },
               update: {
-                userId: stats.userId,
                 shipmentId: stats.shipmentId,
                 warehouse: stats.warehouse,
                 taskTimeSec: stats.taskTimeSec,
@@ -603,6 +608,7 @@ async function main() {
               create: {
                 taskId: stats.taskId,
                 userId: stats.userId,
+                roleType: 'collector',
                 shipmentId: stats.shipmentId,
                 warehouse: stats.warehouse,
                 taskTimeSec: stats.taskTimeSec,
@@ -855,9 +861,14 @@ async function main() {
           // Создаем TaskStatistics для проверяльщика
           try {
             await prisma.taskStatistics.upsert({
-              where: { taskId: task.id },
+              where: {
+                taskId_userId_roleType: {
+                  taskId: task.id,
+                  userId: stats.userId,
+                  roleType: 'checker',
+                },
+              },
               update: {
-                userId: stats.userId,
                 shipmentId: stats.shipmentId,
                 warehouse: stats.warehouse,
                 taskTimeSec: stats.taskTimeSec,
@@ -887,6 +898,7 @@ async function main() {
               create: {
                 taskId: stats.taskId,
                 userId: stats.userId,
+                roleType: 'checker',
                 shipmentId: stats.shipmentId,
                 warehouse: stats.warehouse,
                 taskTimeSec: stats.taskTimeSec,

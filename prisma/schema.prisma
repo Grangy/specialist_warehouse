@@ -121,7 +121,7 @@ model ShipmentTask {
   checker         User?              @relation("CheckerTasks", fields: [checkerId], references: [id], onDelete: SetNull)
   lines           ShipmentTaskLine[]
   locks           ShipmentTaskLock[]
-  statistics      TaskStatistics?
+  statistics      TaskStatistics[] // Может быть несколько статистик: для сборщика и проверяльщика
 
   @@map("shipment_tasks")
 }
@@ -182,8 +182,9 @@ model RegionPriority {
 // Статистика по заданию (расчетные метрики)
 model TaskStatistics {
   id         String @id @default(cuid())
-  taskId     String @unique @map("task_id")
-  userId     String @map("user_id") // ID сборщика
+  taskId     String @map("task_id")
+  userId     String @map("user_id") // ID сборщика или проверяльщика
+  roleType   String @default("collector") @map("role_type") // "collector" или "checker"
   shipmentId String @map("shipment_id")
   warehouse  String
 
@@ -228,6 +229,7 @@ model TaskStatistics {
   task ShipmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User         @relation("UserTaskStatistics", fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([taskId, userId, roleType]) // Составной уникальный ключ: одно задание может иметь статистику и для сборщика, и для проверяльщика
   @@map("task_statistics")
 }
 

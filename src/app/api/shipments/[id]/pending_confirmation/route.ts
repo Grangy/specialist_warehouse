@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, canAccessStatus } from '@/lib/middleware';
+import { updateCollectorStats } from '@/lib/ranking/updateStats';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,6 +133,11 @@ export async function POST(
     });
     const totalTasks = allTasks.length;
     const completedTasks = allTasks.filter(t => t.status === 'processed').length;
+
+    // Обновляем статистику для сборщика (в фоне, не блокируем ответ)
+    updateCollectorStats(id).catch((error) => {
+      console.error('[API PendingConfirmation] Ошибка при обновлении статистики сборщика:', error);
+    });
 
     return NextResponse.json({
       success: true,

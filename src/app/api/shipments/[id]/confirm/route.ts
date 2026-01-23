@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { areAllTasksConfirmed } from '@/lib/shipmentTasks';
+import { updateCheckerStats } from '@/lib/ranking/updateStats';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,15 +57,21 @@ export async function POST(
     }
 
     // Обновляем статус задания и сохраняем информацию о проверяльщике
+    const confirmedAt = new Date();
     await prisma.shipmentTask.update({
       where: { id },
       data: { 
         status: 'processed',
         checkerId: user.id,
         checkerName: user.name,
-        confirmedAt: new Date(),
+        confirmedAt: confirmedAt,
         places: places !== undefined ? places : undefined, // Сохраняем количество мест для этого задания
       },
+    });
+
+    // Обновляем статистику для проверяльщика (в фоне, не блокируем ответ)
+    updateCheckerStats(id).catch((error) => {
+      console.error('[API Confirm] Ошибка при обновлении статистики проверяльщика:', error);
     });
 
     // Обновляем количества в задании, если они переданы
