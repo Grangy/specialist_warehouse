@@ -42,6 +42,9 @@ export interface Shipment {
   collector_name?: string;
   collector_id?: string;
   collectors?: string[];
+  checker_name?: string;
+  checker_id?: string;
+  checkers?: string[];
   started_at?: string;
   business_region?: string;
   locked?: boolean;

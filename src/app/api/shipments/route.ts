@@ -576,6 +576,13 @@ export async function GET(request: NextRequest) {
                   login: true,
                 },
               },
+              checker: {
+                select: {
+                  id: true,
+                  name: true,
+                  login: true,
+                },
+              },
             },
           },
         },
@@ -608,6 +615,12 @@ export async function GET(request: NextRequest) {
           .map((task) => task.collectorName)
           .filter((name, index, self) => self.indexOf(name) === index); // Уникальные имена
         
+        // Собираем всех уникальных проверяльщиков из всех tasks
+        const checkers = shipment.tasks
+          .filter((task) => task.checkerName)
+          .map((task) => task.checkerName)
+          .filter((name, index, self) => self.indexOf(name) === index); // Уникальные имена
+        
         // Определяем, виден ли заказ сборщику (используем уже созданную переменную collectorVisibleRegions)
         const isVisibleToCollector = shipment.businessRegion 
           ? collectorVisibleRegions.has(shipment.businessRegion)
@@ -629,6 +642,8 @@ export async function GET(request: NextRequest) {
           business_region: shipment.businessRegion,
           collector_name: collectors.length > 0 ? collectors.join(', ') : null,
           collectors: collectors,
+          checker_name: checkers.length > 0 ? checkers.join(', ') : null,
+          checkers: checkers,
           confirmed_at: shipment.confirmedAt?.toISOString() || null,
           tasks_count: shipment.tasks.length,
           warehouses: Array.from(new Set(shipment.tasks.map((t) => t.warehouse))),
