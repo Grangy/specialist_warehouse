@@ -226,10 +226,8 @@ export function useShipments() {
 
         // Фильтр по складу
         // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-        // ВАЖНО: Проверяем явно userRole === 'collector', чтобы не применять фильтр если userRole === null
-        if (userRole === 'collector') {
-          // Для сборщиков фильтр по складу не применяется
-        } else if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
+        // Для остальных ролей (admin, checker) применяем фильтр по складу
+        if (userRole !== 'collector' && filters.warehouse && shipment.warehouse !== filters.warehouse) {
           return false;
         }
 
@@ -305,11 +303,8 @@ export function useShipments() {
 
       // Фильтр по складу
       // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      // Даже если выбрано "Все склады" (filters.warehouse === ""), для сборщиков фильтр не применяется
-      // ВАЖНО: Проверяем явно userRole === 'collector', чтобы не применять фильтр если userRole === null
-      if (userRole === 'collector') {
-        // Для сборщиков фильтр по складу не применяется - показываем все задания, которые вернул сервер
-      } else if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
+      // Для остальных ролей (admin, checker) применяем фильтр по складу
+      if (userRole !== 'collector' && filters.warehouse && shipment.warehouse !== filters.warehouse) {
         return false;
       }
 
@@ -374,10 +369,8 @@ export function useShipments() {
       let filtered = shipments.filter((s) => s.status === 'new');
       // Фильтруем по выбранному складу, если он указан
       // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      // ВАЖНО: Проверяем явно userRole === 'collector'
-      if (userRole === 'collector') {
-        // Для сборщиков фильтр не применяется
-      } else if (filters.warehouse) {
+      // Для остальных ролей (admin, checker) применяем фильтр по складу
+      if (userRole !== 'collector' && filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
@@ -390,10 +383,8 @@ export function useShipments() {
       let filtered = shipments.filter((s) => s.status === 'pending_confirmation');
       // Фильтруем по выбранному складу, если он указан
       // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      // ВАЖНО: Проверяем явно userRole === 'collector'
-      if (userRole === 'collector') {
-        // Для сборщиков фильтр не применяется
-      } else if (filters.warehouse) {
+      // Для остальных ролей (admin, checker) применяем фильтр по складу
+      if (userRole !== 'collector' && filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
@@ -411,10 +402,8 @@ export function useShipments() {
       });
       // Фильтруем по выбранному складу, если он указан
       // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      // ВАЖНО: Проверяем явно userRole === 'collector'
-      if (userRole === 'collector') {
-        // Для сборщиков фильтр не применяется
-      } else if (filters.warehouse) {
+      // Для остальных ролей (admin, checker) применяем фильтр по складу
+      if (userRole !== 'collector' && filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
