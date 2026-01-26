@@ -223,7 +223,8 @@ export function useShipments() {
         }
 
         // Фильтр по складу
-        if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
+        // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
+        if (userRole !== 'collector' && filters.warehouse && shipment.warehouse !== filters.warehouse) {
           return false;
         }
 
@@ -275,7 +276,8 @@ export function useShipments() {
       }
 
       // Фильтр по складу
-      if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
+      // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
+      if (userRole !== 'collector' && filters.warehouse && shipment.warehouse !== filters.warehouse) {
         return false;
       }
 
@@ -306,7 +308,7 @@ export function useShipments() {
       // Если регионы одинаковые, сортируем по количеству позиций (от большего к меньшему)
       return bPositions - aPositions;
     });
-  }, [shipments, currentTab, filters]);
+  }, [shipments, currentTab, filters, userRole]);
 
   const warehouses = useMemo(() => {
     const uniqueWarehouses = new Set<string>();
@@ -322,24 +324,26 @@ export function useShipments() {
     () => {
       let filtered = shipments.filter((s) => s.status === 'new');
       // Фильтруем по выбранному складу, если он указан
-      if (filters.warehouse) {
+      // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
+      if (userRole !== 'collector' && filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
     },
-    [shipments, filters.warehouse]
+    [shipments, filters.warehouse, userRole]
   );
 
   const pendingCount = useMemo(
     () => {
       let filtered = shipments.filter((s) => s.status === 'pending_confirmation');
       // Фильтруем по выбранному складу, если он указан
-      if (filters.warehouse) {
+      // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
+      if (userRole !== 'collector' && filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
     },
-    [shipments, filters.warehouse]
+    [shipments, filters.warehouse, userRole]
   );
 
   const waitingCount = useMemo(
@@ -351,12 +355,13 @@ export function useShipments() {
         return confirmed > 0 && confirmed < total;
       });
       // Фильтруем по выбранному складу, если он указан
-      if (filters.warehouse) {
+      // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
+      if (userRole !== 'collector' && filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
     },
-    [shipments, filters.warehouse]
+    [shipments, filters.warehouse, userRole]
   );
 
   // Обертка для setFilters с сохранением склада в localStorage
