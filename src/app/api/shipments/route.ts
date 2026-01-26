@@ -895,7 +895,7 @@ export async function GET(request: NextRequest) {
     if (user.role === 'collector' && tasks.length > 0) {
       // АУДИТ: Логируем количество заданий до группировки
       const warehousesBeforeGrouping = new Set(tasks.map(t => t.warehouse || 'Неизвестный склад'));
-      console.log(`[COLLECTOR AUDIT] Заданий до группировки: ${tasks.length}, Складов: ${Array.from(warehousesBeforeGrouping).join(', ')}`);
+      console.log(`[COLLECTOR AUDIT] Заданий до группировки: ${tasks.length}, Складов: ${Array.from(warehousesBeforeGrouping).join(', ')}, Запрошенный статус: ${status || 'не указан'}`);
       
       // Группируем задания по складам
       const tasksByWarehouse = new Map<string, typeof tasks>();
@@ -912,12 +912,28 @@ export async function GET(request: NextRequest) {
       console.log(`[COLLECTOR AUDIT] Складов после группировки: ${tasksByWarehouse.size} (${Array.from(tasksByWarehouse.keys()).join(', ')})`);
       
       // Для каждого склада берем только первое задание (ближайшее по приоритету и дате)
+      // ВАЖНО: Если запрошен статус (например, 'new'), берем первое задание с этим статусом
       const filteredTasks: typeof tasks = [];
       tasksByWarehouse.forEach((warehouseTasks, warehouse) => {
         if (warehouseTasks.length > 0) {
-          // Берем первое задание (уже отсортировано по приоритету и дате)
-          filteredTasks.push(warehouseTasks[0]);
-          console.log(`[COLLECTOR AUDIT] Добавлено задание со склада "${warehouse}" (всего заданий на этом складе: ${warehouseTasks.length})`);
+          let taskToAdd = null;
+          
+          // Если запрошен конкретный статус, ищем первое задание с этим статусом
+          if (status) {
+            taskToAdd = warehouseTasks.find(t => t.status === status) || null;
+            if (!taskToAdd) {
+              console.log(`[COLLECTOR AUDIT] На складе "${warehouse}" нет заданий со статусом "${status}", пропускаем склад`);
+              return; // Пропускаем склад, если нет заданий с нужным статусом
+            }
+          } else {
+            // Если статус не указан, берем первое задание (уже отсортировано по приоритету и дате)
+            taskToAdd = warehouseTasks[0];
+          }
+          
+          if (taskToAdd) {
+            filteredTasks.push(taskToAdd);
+            console.log(`[COLLECTOR AUDIT] Добавлено задание со склада "${warehouse}" (статус: ${taskToAdd.status}, всего заданий на этом складе: ${warehouseTasks.length})`);
+          }
         }
       });
       

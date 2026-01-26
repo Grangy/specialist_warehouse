@@ -77,7 +77,9 @@ export function useShipments() {
       errorShownRef.current = false;
       retryCountRef.current = 0;
       
-      const data = await shipmentsApi.getAll();
+      // Для сборщиков на вкладке 'new' передаем статус 'new', чтобы сервер вернул только задания со статусом 'new' с каждого склада
+      const statusParam = (userRole === 'collector' && currentTab === 'new') ? 'new' : undefined;
+      const data = await shipmentsApi.getAll(statusParam ? { status: statusParam } : undefined);
       setShipments(data);
     } catch (error: any) {
       // Игнорируем ошибки 401 (не авторизован) - это нормально для незалогиненных пользователей
@@ -97,7 +99,7 @@ export function useShipments() {
       setIsLoading(false);
       loadingRef.current = false;
     }
-  }, [isAuthorized]); // Зависим от isAuthorized
+  }, [isAuthorized, userRole, currentTab]); // Зависим от isAuthorized, userRole и currentTab
 
   // Подключаемся к SSE для получения обновлений в реальном времени
   useSSE({
