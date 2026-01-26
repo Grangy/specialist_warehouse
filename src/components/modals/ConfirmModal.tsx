@@ -642,9 +642,35 @@ export function ConfirmModal({
             {currentShipment.lines
               .map((_, index) => index)
               .sort((a, b) => {
+                // ПРИОРИТЕТ 1: Сначала сортируем по статусу подтверждения (неподтвержденные → подтвержденные)
                 const aConfirmed = checklistState[a]?.confirmed || false;
                 const bConfirmed = checklistState[b]?.confirmed || false;
-                return aConfirmed === bConfirmed ? 0 : aConfirmed ? 1 : -1;
+                if (aConfirmed !== bConfirmed) {
+                  return aConfirmed ? 1 : -1;
+                }
+                
+                // ПРИОРИТЕТ 2: Если статус одинаковый, сортируем по ячейкам
+                // ВАЖНО: Товары БЕЗ ячеек идут ПЕРВЫМИ (выше всех)
+                const aLocation = (currentShipment.lines[a].location || '').trim();
+                const bLocation = (currentShipment.lines[b].location || '').trim();
+                
+                // Если у обоих есть ячейки, сортируем по алфавиту (А-Я)
+                if (aLocation && bLocation) {
+                  const locationCompare = aLocation.localeCompare(bLocation, 'ru', { 
+                    numeric: true, 
+                    sensitivity: 'variant'
+                  });
+                  if (locationCompare !== 0) return locationCompare;
+                } else if (!aLocation && bLocation) {
+                  // Товары БЕЗ ячеек идут ПЕРВЫМИ (выше всех)
+                  return -1;
+                } else if (aLocation && !bLocation) {
+                  // Товары с ячейками идут после товаров без ячеек
+                  return 1;
+                }
+                
+                // Если все одинаково, сохраняем исходный порядок
+                return 0;
               })
               .map((originalIndex, mapIndex) => {
                 const line = currentShipment.lines[originalIndex];

@@ -213,7 +213,8 @@ export function CollectModal({
           return aCollected ? 1 : -1;
         }
         
-        // ПРИОРИТЕТ 2: Если статус одинаковый, сортируем по местам (А-Я)
+        // ПРИОРИТЕТ 2: Если статус одинаковый, сортируем по местам
+        // ВАЖНО: Товары БЕЗ ячеек идут ПЕРВЫМИ (выше всех)
         const aLocation = (currentShipment.lines[a].location || '').trim();
         const bLocation = (currentShipment.lines[b].location || '').trim();
         
@@ -228,10 +229,11 @@ export function CollectModal({
             sensitivity: 'variant' // Изменено с 'base' на 'variant' для учета Е и Ё
           });
           if (locationCompare !== 0) return locationCompare;
-        } else if (aLocation && !bLocation) {
-          // Товары с местами идут раньше товаров без мест
-          return -1;
         } else if (!aLocation && bLocation) {
+          // Товары БЕЗ ячеек идут ПЕРВЫМИ (выше всех)
+          return -1;
+        } else if (aLocation && !bLocation) {
+          // Товары с ячейками идут после товаров без ячеек
           return 1;
         }
         
