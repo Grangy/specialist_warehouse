@@ -55,11 +55,11 @@ export function RegionsStatsTab({ filters, onFiltersChange }: RegionsStatsTabPro
     <div className="space-y-4">
       <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
         <h2 className="text-lg font-semibold text-slate-200 mb-4">
-          Сборки не отправленные в 1С по регионам {warehouse && `(${warehouse})`}
+          Активные сборки по регионам {warehouse && `(${warehouse})`}
         </h2>
         {stats.length === 0 ? (
           <div className="text-center py-8 text-slate-400">
-            Нет сборок, не отправленных в 1С
+            Нет активных сборок
           </div>
         ) : (
           <div className="space-y-2">

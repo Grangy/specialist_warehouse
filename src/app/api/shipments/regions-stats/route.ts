@@ -24,13 +24,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse') || null;
 
-    // Получаем все задания со статусом 'processed' (обработанные, но не отправленные в 1С)
+    // Получаем все активные задания (статусы 'new' и 'pending_confirmation')
     // Если указан склад, фильтруем по нему
     const whereClause: any = {
-      status: 'processed', // Только обработанные задания
+      status: { in: ['new', 'pending_confirmation'] }, // Активные сборки
       shipment: {
         deleted: false,
-        exportedTo1C: false, // Не отправленные в 1С
       },
     };
 
@@ -54,11 +53,6 @@ export async function GET(request: NextRequest) {
     const regionStats = new Map<string, number>();
 
     for (const task of tasks) {
-      // Дополнительная проверка: убеждаемся, что заказ не отправлен в 1С
-      if (task.shipment.exportedTo1C) {
-        continue; // Пропускаем уже отправленные в 1С
-      }
-      
       const region = task.shipment.businessRegion || 'Без региона';
       const currentCount = regionStats.get(region) || 0;
       regionStats.set(region, currentCount + 1); // Считаем количество заданий (сборок)
