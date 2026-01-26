@@ -591,7 +591,7 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      // Сортируем по приоритету региона, затем по дате создания
+      // Сортируем по приоритету региона, затем внутри региона по количеству позиций (от большего к меньшему), затем по дате
       processedShipments.sort((a, b) => {
         const aPriority = a.businessRegion
           ? priorityMap.get(a.businessRegion) ?? 9999
@@ -600,11 +600,17 @@ export async function GET(request: NextRequest) {
           ? priorityMap.get(b.businessRegion) ?? 9999
           : 9999;
 
+        // Сначала по приоритету региона
         if (aPriority !== bPriority) {
           return aPriority - bPriority; // Меньше приоритет = выше в списке
         }
 
-        // Если приоритеты равны, сортируем по дате создания (новые сверху)
+        // Если приоритеты равны (один регион), сортируем по количеству позиций (от большего к меньшему)
+        if (a.itemsCount !== b.itemsCount) {
+          return b.itemsCount - a.itemsCount; // Больше позиций = выше в списке
+        }
+
+        // Если количество позиций одинаково, сортируем по дате создания (новые сверху)
         return b.createdAt.getTime() - a.createdAt.getTime();
       });
 
@@ -694,11 +700,17 @@ export async function GET(request: NextRequest) {
         ? priorityMap.get(b.businessRegion) ?? 9999
         : 9999;
 
+      // Сначала по приоритету региона
       if (aPriority !== bPriority) {
         return aPriority - bPriority; // Меньше приоритет = выше в списке
       }
 
-      // Если приоритеты равны, сортируем по дате создания (новые сверху)
+      // Если приоритеты равны (один регион), сортируем по количеству позиций (от большего к меньшему)
+      if (a.itemsCount !== b.itemsCount) {
+        return b.itemsCount - a.itemsCount; // Больше позиций = выше в списке
+      }
+
+      // Если количество позиций одинаково, сортируем по дате создания (новые сверху)
       return b.createdAt.getTime() - a.createdAt.getTime();
     });
 
@@ -873,7 +885,7 @@ export async function GET(request: NextRequest) {
       console.log(`[COLLECTOR SERVER AUDIT] Всего заданий перед группировкой: ${tasks.length}, Складов: ${warehousesInTasks.size} (${Array.from(warehousesInTasks).join(', ')})`);
     }
     
-    // Сортируем задания по приоритету региона заказа, затем по дате создания
+    // Сортируем задания: сначала по приоритету региона, затем внутри региона по количеству позиций (от большего к меньшему), затем по дате
     tasks.sort((a, b) => {
       const aPriority = a.business_region
         ? priorityMap.get(a.business_region) ?? 9999
@@ -882,11 +894,19 @@ export async function GET(request: NextRequest) {
         ? priorityMap.get(b.business_region) ?? 9999
         : 9999;
 
+      // Сначала по приоритету региона
       if (aPriority !== bPriority) {
         return aPriority - bPriority; // Меньше приоритет = выше в списке
       }
 
-      // Если приоритеты равны, сортируем по дате создания (новые сверху)
+      // Если приоритеты равны (один регион), сортируем по количеству позиций (от большего к меньшему)
+      const aItemsCount = a.items_count || a.lines?.length || 0;
+      const bItemsCount = b.items_count || b.lines?.length || 0;
+      if (aItemsCount !== bItemsCount) {
+        return bItemsCount - aItemsCount; // Больше позиций = выше в списке
+      }
+
+      // Если количество позиций одинаково, сортируем по дате создания (новые сверху)
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
@@ -942,7 +962,7 @@ export async function GET(request: NextRequest) {
       // АУДИТ: Логируем финальное количество
       console.log(`[COLLECTOR AUDIT] Итого возвращается заданий: ${filteredTasks.length}`);
       
-      // Сортируем результат: сначала по приоритету региона, затем по дате
+      // Сортируем результат: сначала по приоритету региона, затем внутри региона по количеству позиций (от большего к меньшему), затем по дате
       filteredTasks.sort((a, b) => {
         const aPriority = a.business_region
           ? priorityMap.get(a.business_region) ?? 9999
@@ -951,10 +971,19 @@ export async function GET(request: NextRequest) {
           ? priorityMap.get(b.business_region) ?? 9999
           : 9999;
 
+        // Сначала по приоритету региона
         if (aPriority !== bPriority) {
           return aPriority - bPriority;
         }
 
+        // Если приоритеты равны (один регион), сортируем по количеству позиций (от большего к меньшему)
+        const aItemsCount = a.items_count || a.lines?.length || 0;
+        const bItemsCount = b.items_count || b.lines?.length || 0;
+        if (aItemsCount !== bItemsCount) {
+          return bItemsCount - aItemsCount; // Больше позиций = выше в списке
+        }
+
+        // Если количество позиций одинаково, сортируем по дате создания (новые сверху)
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
       
