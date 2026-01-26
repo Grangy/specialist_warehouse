@@ -24,7 +24,8 @@
     "db:restore": "tsx scripts/restore-database.ts",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:status": "prisma migrate status",
-    "db:migrate:safe": "./scripts/apply-migration-safely.sh"
+    "db:migrate:safe": "./scripts/apply-migration-safely.sh",
+    "audit:dictator": "tsx scripts/audit-dictator-points.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
