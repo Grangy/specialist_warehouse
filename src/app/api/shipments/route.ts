@@ -768,9 +768,9 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Для проверяльщиков: скрываем задания, которые активно собираются сборщиками
-        // (задание заблокировано сборщиком или начато сборщиком)
-        if (user.role === 'checker') {
+        // Для проверяльщиков в режиме сборки: скрываем задания, которые уже взял сборщик
+        // Проверяем для статуса 'new' (режим сборки)
+        if (user.role === 'checker' && task.status === 'new') {
           // Проверяем, есть ли активная блокировка от сборщика
           if (lock) {
             const lockUser = await prisma.user.findUnique({
@@ -794,8 +794,8 @@ export async function GET(request: NextRequest) {
           }
           
           // Также проверяем, начал ли сборщик работу (collectorId установлен и startedAt есть)
-          // и задание еще не завершено (status === 'new')
-          if (task.collectorId && task.startedAt && task.status === 'new') {
+          // Если сборщик начал работу, скрываем задание для проверяльщика в режиме сборки
+          if (task.collectorId && task.startedAt) {
             const collector = await prisma.user.findUnique({
               where: { id: task.collectorId },
               select: { role: true },
@@ -884,41 +884,46 @@ export async function GET(request: NextRequest) {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
-    // Для сборщиков: если включена настройка "видит только первый заказ", ограничиваем список по складам
-    if (user.role === 'collector') {
-      try {
-        const setting = await prisma.systemSettings.findUnique({
-          where: { key: 'collector_sees_only_first_order' },
-        });
-        
-        if (setting) {
-          const isEnabled = setting.value === 'true' || JSON.parse(setting.value) === true;
-          if (isEnabled && tasks.length > 0) {
-            // Группируем задания по складам
-            const tasksByWarehouse = new Map<string, typeof tasks>();
-            
-            tasks.forEach((task) => {
-              const warehouse = task.warehouse || 'Неизвестный склад';
-              if (!tasksByWarehouse.has(warehouse)) {
-                tasksByWarehouse.set(warehouse, []);
-              }
-              tasksByWarehouse.get(warehouse)!.push(task);
-            });
-            
-            // Для каждого склада берем только первое задание
-            const filteredTasks: typeof tasks = [];
-            tasksByWarehouse.forEach((warehouseTasks) => {
-              if (warehouseTasks.length > 0) {
-                filteredTasks.push(warehouseTasks[0]);
-              }
-            });
-            
-            return NextResponse.json(filteredTasks);
-          }
+    // Для сборщиков: показываем по 1 заказу с каждого склада (ближайший)
+    // Это позволяет сборщику видеть работу со всех складов, а не только с выбранного
+    if (user.role === 'collector' && tasks.length > 0) {
+      // Группируем задания по складам
+      const tasksByWarehouse = new Map<string, typeof tasks>();
+      
+      tasks.forEach((task) => {
+        const warehouse = task.warehouse || 'Неизвестный склад';
+        if (!tasksByWarehouse.has(warehouse)) {
+          tasksByWarehouse.set(warehouse, []);
         }
-        } catch (error) {
-          // Игнорируем ошибки при получении настройки, продолжаем работу
+        tasksByWarehouse.get(warehouse)!.push(task);
+      });
+      
+      // Для каждого склада берем только первое задание (ближайшее по приоритету и дате)
+      const filteredTasks: typeof tasks = [];
+      tasksByWarehouse.forEach((warehouseTasks) => {
+        if (warehouseTasks.length > 0) {
+          // Берем первое задание (уже отсортировано по приоритету и дате)
+          filteredTasks.push(warehouseTasks[0]);
         }
+      });
+      
+      // Сортируем результат: сначала по приоритету региона, затем по дате
+      filteredTasks.sort((a, b) => {
+        const aPriority = a.business_region
+          ? priorityMap.get(a.business_region) ?? 9999
+          : 9999;
+        const bPriority = b.business_region
+          ? priorityMap.get(b.business_region) ?? 9999
+          : 9999;
+
+        if (aPriority !== bPriority) {
+          return aPriority - bPriority;
+        }
+
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+      
+      return NextResponse.json(filteredTasks);
     }
 
     return NextResponse.json(tasks);
