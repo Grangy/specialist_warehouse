@@ -919,7 +919,9 @@ export async function GET(request: NextRequest) {
           let taskToAdd = null;
           
           // Если запрошен конкретный статус, ищем первое задание с этим статусом
+          // ВАЖНО: Задания уже отсортированы по приоритету региона и дате, поэтому берем первое
           if (status) {
+            // Ищем первое задание с нужным статусом (они уже отсортированы по приоритету)
             taskToAdd = warehouseTasks.find(t => t.status === status) || null;
             if (!taskToAdd) {
               console.log(`[COLLECTOR AUDIT] На складе "${warehouse}" нет заданий со статусом "${status}", пропускаем склад`);

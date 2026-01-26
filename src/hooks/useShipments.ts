@@ -239,25 +239,34 @@ export function useShipments() {
         return true;
       });
 
-      // Сортируем: сначала по бизнес-региону (алфавитно), затем по количеству позиций (от большего к меньшему)
-      return filtered.sort((a, b) => {
-        const aRegion = (a.business_region || '').trim();
-        const bRegion = (b.business_region || '').trim();
-        const aPositions = a.lines?.length || 0;
-        const bPositions = b.lines?.length || 0;
+      // Сортируем задания
+      // Для сборщиков и проверяльщиков: НЕ сортируем на фронтенде, так как сервер уже отсортировал
+      // по приоритету регионов (согласно дням недели) и дате создания
+      // Для админов: сортируем по алфавиту регионов, затем по количеству позиций
+      if (userRole === 'admin') {
+        return filtered.sort((a, b) => {
+          const aRegion = (a.business_region || '').trim();
+          const bRegion = (b.business_region || '').trim();
+          const aPositions = a.lines?.length || 0;
+          const bPositions = b.lines?.length || 0;
 
-        // Сначала сортируем по региону (алфавитно)
-        if (aRegion !== bRegion) {
-          // Регионы без названия идут в конец
-          if (!aRegion && bRegion) return 1;
-          if (aRegion && !bRegion) return -1;
-          if (!aRegion && !bRegion) return 0;
-          return aRegion.localeCompare(bRegion, 'ru', { sensitivity: 'base' });
-        }
+          // Сначала сортируем по региону (алфавитно)
+          if (aRegion !== bRegion) {
+            // Регионы без названия идут в конец
+            if (!aRegion && bRegion) return 1;
+            if (aRegion && !bRegion) return -1;
+            if (!aRegion && !bRegion) return 0;
+            return aRegion.localeCompare(bRegion, 'ru', { sensitivity: 'base' });
+          }
 
-        // Если регионы одинаковые, сортируем по количеству позиций (от большего к меньшему)
-        return bPositions - aPositions;
-      });
+          // Если регионы одинаковые, сортируем по количеству позиций (от большего к меньшему)
+          return bPositions - aPositions;
+        });
+      }
+      
+      // Для сборщиков и проверяльщиков возвращаем задания в том порядке, как их вернул сервер
+      // (уже отсортированы по приоритету регионов согласно дням недели)
+      return filtered;
     }
     
     const filtered = shipments.filter((shipment) => {
@@ -333,25 +342,34 @@ export function useShipments() {
       console.log(`[COLLECTOR FRONTEND AUDIT] filters.warehouse: "${filters.warehouse}", Все задания:`, shipments.map(s => ({ warehouse: s.warehouse, number: s.number })));
     }
 
-    // Сортируем: сначала по бизнес-региону (алфавитно), затем по количеству позиций (от большего к меньшему)
-    return filtered.sort((a, b) => {
-      const aRegion = (a.business_region || '').trim();
-      const bRegion = (b.business_region || '').trim();
-      const aPositions = a.lines?.length || 0;
-      const bPositions = b.lines?.length || 0;
+    // Сортируем задания
+    // Для сборщиков и проверяльщиков: НЕ сортируем на фронтенде, так как сервер уже отсортировал
+    // по приоритету регионов (согласно дням недели) и дате создания
+    // Для админов: сортируем по алфавиту регионов, затем по количеству позиций
+    if (userRole === 'admin') {
+      return filtered.sort((a, b) => {
+        const aRegion = (a.business_region || '').trim();
+        const bRegion = (b.business_region || '').trim();
+        const aPositions = a.lines?.length || 0;
+        const bPositions = b.lines?.length || 0;
 
-      // Сначала сортируем по региону (алфавитно)
-      if (aRegion !== bRegion) {
-        // Регионы без названия идут в конец
-        if (!aRegion && bRegion) return 1;
-        if (aRegion && !bRegion) return -1;
-        if (!aRegion && !bRegion) return 0;
-        return aRegion.localeCompare(bRegion, 'ru', { sensitivity: 'base' });
-      }
+        // Сначала сортируем по региону (алфавитно)
+        if (aRegion !== bRegion) {
+          // Регионы без названия идут в конец
+          if (!aRegion && bRegion) return 1;
+          if (aRegion && !bRegion) return -1;
+          if (!aRegion && !bRegion) return 0;
+          return aRegion.localeCompare(bRegion, 'ru', { sensitivity: 'base' });
+        }
 
-      // Если регионы одинаковые, сортируем по количеству позиций (от большего к меньшему)
-      return bPositions - aPositions;
-    });
+        // Если регионы одинаковые, сортируем по количеству позиций (от большего к меньшему)
+        return bPositions - aPositions;
+      });
+    }
+    
+    // Для сборщиков и проверяльщиков возвращаем задания в том порядке, как их вернул сервер
+    // (уже отсортированы по приоритету регионов согласно дням недели)
+    return filtered;
   }, [shipments, currentTab, filters, userRole]);
 
   const warehouses = useMemo(() => {
