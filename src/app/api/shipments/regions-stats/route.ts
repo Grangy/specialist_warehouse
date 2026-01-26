@@ -47,26 +47,37 @@ export async function GET(request: NextRequest) {
             businessRegion: true,
           },
         },
+        lines: {
+          select: {
+            id: true, // Считаем количество позиций в задании
+          },
+        },
       },
     });
 
-    // Группируем задания по регионам
+    // Группируем задания по регионам и считаем количество позиций
     const regionStats = new Map<string, number>();
 
     for (const task of tasks) {
       const region = task.shipment.businessRegion || 'Без региона';
+      const itemsCount = task.lines.length; // Количество позиций в задании
       const currentCount = regionStats.get(region) || 0;
-      regionStats.set(region, currentCount + 1);
+      regionStats.set(region, currentCount + itemsCount);
     }
 
-    // Преобразуем в массив объектов
+    // Преобразуем в массив объектов и сортируем по количеству позиций (от большего к меньшему)
     const stats = Array.from(regionStats.entries())
       .map(([region, count]) => ({
         region,
         count,
       }))
       .sort((a, b) => {
-        // Сортируем: сначала регионы с названиями, потом "Без региона"
+        // Сортируем по количеству позиций от большего к меньшему
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        // Если количество одинаковое, сортируем по названию региона
+        // "Без региона" всегда в конце
         if (a.region === 'Без региона') return 1;
         if (b.region === 'Без региона') return -1;
         return a.region.localeCompare(b.region, 'ru');

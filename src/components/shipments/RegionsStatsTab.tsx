@@ -69,7 +69,9 @@ export function RegionsStatsTab({ filters, onFiltersChange }: RegionsStatsTabPro
                 className="flex items-center justify-between bg-slate-800 rounded-lg px-4 py-3 border border-slate-700"
               >
                 <span className="text-slate-200 font-medium">{stat.region}</span>
-                <span className="text-blue-400 font-bold text-lg">{stat.count}</span>
+                <span className="text-blue-400 font-bold text-lg">
+                  {stat.count} {stat.count === 1 ? 'позиция' : stat.count < 5 ? 'позиции' : 'позиций'}
+                </span>
               </div>
             ))}
           </div>
