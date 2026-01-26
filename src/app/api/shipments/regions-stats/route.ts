@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
       regionStats.set(region, currentCount + 1); // Считаем количество заданий (сборок)
     }
 
-    // Преобразуем в массив объектов и сортируем по количеству сборок (от большего к меньшему)
+    // Преобразуем в массив объектов и сортируем: сначала активные регионы, затем остальные
     const stats = Array.from(regionStats.entries())
       .map(([region, count]) => ({
         region,
@@ -102,10 +102,15 @@ export async function GET(request: NextRequest) {
         isActiveToday: activeRegionsToday.has(region), // Помечаем активные регионы
       }))
       .sort((a, b) => {
-        // Сортируем по количеству сборок от большего к меньшему
+        // Сначала сортируем по активности: активные регионы выше всех
+        if (a.isActiveToday && !b.isActiveToday) return -1; // a активен, b нет - a выше
+        if (!a.isActiveToday && b.isActiveToday) return 1;  // a не активен, b активен - b выше
+        
+        // Если оба активны или оба неактивны, сортируем по количеству сборок (от большего к меньшему)
         if (b.count !== a.count) {
           return b.count - a.count;
         }
+        
         // Если количество одинаковое, сортируем по названию региона
         // "Без региона" всегда в конце
         if (a.region === 'Без региона') return 1;
