@@ -7,6 +7,7 @@ import type { FilterState } from '@/types';
 interface RegionStat {
   region: string;
   count: number;
+  isActiveToday?: boolean; // Регион активен сегодня согласно приоритетам
 }
 
 interface RegionsStatsTabProps {
@@ -66,10 +67,23 @@ export function RegionsStatsTab({ filters, onFiltersChange }: RegionsStatsTabPro
             {stats.map((stat) => (
               <div
                 key={stat.region}
-                className="flex items-center justify-between bg-slate-800 rounded-lg px-4 py-3 border border-slate-700"
+                className={`flex items-center justify-between rounded-lg px-4 py-3 border ${
+                  stat.isActiveToday
+                    ? 'bg-blue-900/30 border-blue-500/50 shadow-lg shadow-blue-500/10'
+                    : 'bg-slate-800 border-slate-700'
+                }`}
               >
-                <span className="text-slate-200 font-medium">{stat.region}</span>
-                <span className="text-blue-400 font-bold text-lg">
+                <div className="flex items-center gap-2">
+                  <span className={`font-medium ${stat.isActiveToday ? 'text-blue-200' : 'text-slate-200'}`}>
+                    {stat.region}
+                  </span>
+                  {stat.isActiveToday && (
+                    <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full border border-blue-400/30">
+                      Сегодня
+                    </span>
+                  )}
+                </div>
+                <span className={`font-bold text-lg ${stat.isActiveToday ? 'text-blue-300' : 'text-blue-400'}`}>
                   {stat.count} {stat.count === 1 ? 'сборка' : stat.count < 5 ? 'сборки' : 'сборок'}
                 </span>
               </div>

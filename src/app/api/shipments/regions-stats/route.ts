@@ -24,6 +24,42 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse') || null;
 
+    // Получаем приоритеты регионов для определения активных регионов сегодня
+    const regionPriorities = await prisma.regionPriority.findMany();
+    
+    // Определяем текущий день недели (0 = понедельник, 4 = пятница)
+    const today = new Date();
+    const dayOfWeek = (today.getDay() + 6) % 7; // Преобразуем воскресенье (0) в 6, понедельник (1) в 0
+    const currentDay = Math.min(dayOfWeek, 4); // Ограничиваем пн-пт (0-4)
+    
+    // Определяем регионы, которые активны сегодня (имеют приоритет для текущего дня)
+    const activeRegionsToday = new Set<string>();
+    regionPriorities.forEach((p) => {
+      let dayPriority: number | null = null;
+      switch (currentDay) {
+        case 0: // Понедельник
+          dayPriority = p.priorityMonday ?? null;
+          break;
+        case 1: // Вторник
+          dayPriority = p.priorityTuesday ?? null;
+          break;
+        case 2: // Среда
+          dayPriority = p.priorityWednesday ?? null;
+          break;
+        case 3: // Четверг
+          dayPriority = p.priorityThursday ?? null;
+          break;
+        case 4: // Пятница
+          dayPriority = p.priorityFriday ?? null;
+          break;
+      }
+      
+      // Если регион имеет приоритет для текущего дня, он активен сегодня
+      if (dayPriority !== null && dayPriority !== undefined) {
+        activeRegionsToday.add(p.region);
+      }
+    });
+
     // Получаем все активные задания (статусы 'new' и 'pending_confirmation')
     // Если указан склад, фильтруем по нему
     const whereClause: any = {
@@ -63,6 +99,7 @@ export async function GET(request: NextRequest) {
       .map(([region, count]) => ({
         region,
         count,
+        isActiveToday: activeRegionsToday.has(region), // Помечаем активные регионы
       }))
       .sort((a, b) => {
         // Сортируем по количеству сборок от большего к меньшему
