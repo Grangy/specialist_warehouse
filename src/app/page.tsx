@@ -10,7 +10,6 @@ import { RegionsStatsTab } from '@/components/shipments/RegionsStatsTab';
 import { CollectModal } from '@/components/modals/CollectModal';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import { DetailsModal } from '@/components/modals/DetailsModal';
-import { DictatorSelectModal } from '@/components/modals/DictatorSelectModal';
 import { NameModal } from '@/components/modals/NameModal';
 import { OrderCompletedModal } from '@/components/modals/OrderCompletedModal';
 import { SendToOfficeModal } from '@/components/modals/SendToOfficeModal';
@@ -28,8 +27,6 @@ export default function Home() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userInfo, setUserInfo] = useState<{ id: string; name: string; role: string } | null>(null);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
-  const [showDictatorModal, setShowDictatorModal] = useState(false);
-  const [pendingDictatorSelection, setPendingDictatorSelection] = useState<Shipment | null>(null);
 
   useEffect(() => {
     // Проверяем авторизацию
@@ -214,27 +211,31 @@ export default function Home() {
   };
 
   const handleConfirm = (shipment: Shipment) => {
-    // Для проверяльщика сначала показываем модальное окно выбора диктовщика
-    if (userRole === 'checker') {
-      setPendingDictatorSelection(shipment);
-      setShowDictatorModal(true);
+    // Для проверяльщика используем сохраненного диктовщика из localStorage
+    if (userRole === 'checker' && userInfo) {
+      try {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const storageKey = `dictator_${userInfo.id}_${today}`;
+        const saved = localStorage.getItem(storageKey);
+        let dictatorId: string | null = null;
+        
+        if (saved) {
+          const data = JSON.parse(saved);
+          dictatorId = data.id;
+        }
+        
+        // Устанавливаем диктовщика перед открытием модального окна
+        confirmHook.setDictatorId(dictatorId);
+      } catch (error) {
+        console.error('Ошибка при загрузке диктовщика из localStorage:', error);
+        confirmHook.setDictatorId(null);
+      }
     } else {
-      confirmHook.openModal(shipment);
+      // Для не-проверяльщиков сбрасываем диктовщика
+      confirmHook.setDictatorId(null);
     }
-  };
-
-  const handleDictatorSelect = (dictatorId: string | null) => {
-    confirmHook.setDictatorId(dictatorId);
-    if (pendingDictatorSelection) {
-      confirmHook.openModal(pendingDictatorSelection);
-      setPendingDictatorSelection(null);
-    }
-    setShowDictatorModal(false);
-  };
-
-  const handleDictatorCancel = () => {
-    setPendingDictatorSelection(null);
-    setShowDictatorModal(false);
+    
+    confirmHook.openModal(shipment);
   };
 
   const handleCollectAll = async (shipment: Shipment) => {
@@ -496,13 +497,6 @@ export default function Home() {
         onSelect={handleWarehouseSelect}
         userName={userInfo?.name}
       />
-      {userRole === 'checker' && (
-        <DictatorSelectModal
-          isOpen={showDictatorModal}
-          onSelect={handleDictatorSelect}
-          onCancel={handleDictatorCancel}
-        />
-      )}
       <CollectionCompletedModal
         isOpen={collectionCompletedModal.isOpen}
         onClose={() => {

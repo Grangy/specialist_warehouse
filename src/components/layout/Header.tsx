@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { PackageIcon } from '@/components/icons/PackageIcon';
 import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X } from 'lucide-react';
 import { getAchievementName, getAchievementEmoji } from '@/lib/ranking/achievements';
+import { DictatorSelector } from './DictatorSelector';
 
 interface HeaderProps {
   newCount: number;
@@ -372,6 +373,11 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                       </div>
 
                       <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+                        {/* Выбор диктовщика (только для проверяльщиков) */}
+                        {user.role === 'checker' && (
+                          <DictatorSelector userId={user.id} />
+                        )}
+                        
                         {/* Дневная статистика */}
                         <div className="bg-slate-900/80 rounded-lg p-3 border border-slate-700/50">
                           <div className="flex items-center gap-2.5 mb-3">
