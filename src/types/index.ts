@@ -61,7 +61,7 @@ export interface Shipment {
   places?: number | null; // Количество мест для задания
 }
 
-export type Tab = 'new' | 'processed' | 'waiting';
+export type Tab = 'new' | 'processed' | 'waiting' | 'regions';
 
 // Состояние для сборки
 export interface CollectChecklistState {

@@ -86,3 +86,4 @@ scripts/test-*.sh
 scripts/test-*.ts
 scripts/create-test-*.ts
 scripts/fill-analytics-test-data.ts
+backups/

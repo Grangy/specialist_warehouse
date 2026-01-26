@@ -35,6 +35,7 @@ model User {
   sessions       Session[]
   collectorTasks ShipmentTask[]   @relation("CollectorTasks") // Задания, начатые пользователем как сборщик
   checkerTasks   ShipmentTask[]   @relation("CheckerTasks") // Задания, подтвержденные пользователем как проверяльщик
+  dictatorTasks  ShipmentTask[]   @relation("DictatorTasks") // Задания, где пользователь был диктовщиком
   taskStatistics TaskStatistics[] @relation("UserTaskStatistics")
   dailyStats     DailyStats[]
   monthlyStats   MonthlyStats[]
@@ -111,6 +112,7 @@ model ShipmentTask {
   completedAt     DateTime?          @map("completed_at") // Время завершения сборки (когда переведено в pending_confirmation)
   checkerName     String?            @map("checker_name") // Имя проверяльщика
   checkerId       String?            @map("checker_id") // ID проверяльщика
+  dictatorId      String?            @map("dictator_id") // ID диктовщика (пользователь, с которым делятся баллы)
   confirmedAt     DateTime?          @map("confirmed_at") // Время подтверждения задания проверяльщиком
   totalItems      Int?               @map("total_items") // Общее количество позиций в задании
   totalUnits      Int?               @map("total_units") // Общее количество единиц в задании
@@ -119,6 +121,7 @@ model ShipmentTask {
   shipment        Shipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   collector       User?              @relation("CollectorTasks", fields: [collectorId], references: [id], onDelete: SetNull)
   checker         User?              @relation("CheckerTasks", fields: [checkerId], references: [id], onDelete: SetNull)
+  dictator        User?              @relation("DictatorTasks", fields: [dictatorId], references: [id], onDelete: SetNull)
   lines           ShipmentTaskLine[]
   locks           ShipmentTaskLock[]
   statistics      TaskStatistics[] // Может быть несколько статистик: для сборщика и проверяльщика

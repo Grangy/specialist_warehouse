@@ -768,6 +768,46 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // Для проверяльщиков: скрываем задания, которые активно собираются сборщиками
+        // (задание заблокировано сборщиком или начато сборщиком)
+        if (user.role === 'checker') {
+          // Проверяем, есть ли активная блокировка от сборщика
+          if (lock) {
+            const lockUser = await prisma.user.findUnique({
+              where: { id: lock.userId },
+              select: { role: true },
+            });
+            
+            // Если блокировка от сборщика (не от проверяльщика)
+            if (lockUser && lockUser.role === 'collector') {
+              const now = Date.now();
+              const lastHeartbeatTime = lock.lastHeartbeat.getTime();
+              const timeSinceHeartbeat = now - lastHeartbeatTime;
+              const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 секунд
+              const isActive = timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
+              
+              // Если блокировка активна (сборщик работает с заданием), скрываем для проверяльщика
+              if (isActive) {
+                continue;
+              }
+            }
+          }
+          
+          // Также проверяем, начал ли сборщик работу (collectorId установлен и startedAt есть)
+          // и задание еще не завершено (status === 'new')
+          if (task.collectorId && task.startedAt && task.status === 'new') {
+            const collector = await prisma.user.findUnique({
+              where: { id: task.collectorId },
+              select: { role: true },
+            });
+            
+            // Если это сборщик работает с заданием, скрываем для проверяльщика
+            if (collector && collector.role === 'collector') {
+              continue;
+            }
+          }
+        }
+
         // Пропускаем задания из обработанных заказов (если не запрошены явно)
         if (!status && shipment.status === 'processed') {
           continue;

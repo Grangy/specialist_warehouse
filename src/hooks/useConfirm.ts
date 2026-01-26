@@ -7,15 +7,21 @@ import { useToast } from './useToast';
 
 interface UseConfirmOptions {
   onClose?: () => void | Promise<void>;
+  onDictatorSelect?: (dictatorId: string | null) => void;
+}
+
+interface UseConfirmOptions {
+  onClose?: () => void | Promise<void>;
 }
 
 export function useConfirm(options?: UseConfirmOptions) {
-  const { onClose } = options || {};
+  const { onClose, onDictatorSelect } = options || {};
   const [currentShipment, setCurrentShipment] = useState<Shipment | null>(null);
   const [checklistState, setChecklistState] = useState<Record<number, ConfirmChecklistState>>({});
   const [editState, setEditState] = useState<Record<number, boolean>>({});
   const [removingItems, setRemovingItems] = useState<Set<number>>(new Set());
   const [changedLocations, setChangedLocations] = useState<Record<number, string>>({}); // Отслеживаем измененные места
+  const [dictatorId, setDictatorId] = useState<string | null>(null);
   const { showToast, showError, showSuccess } = useToast();
 
   const openModal = useCallback((shipment: Shipment) => {
@@ -393,7 +399,7 @@ export function useConfirm(options?: UseConfirmOptions) {
     }, 500);
   }, [currentShipment]);
 
-  const confirmShipment = useCallback(async (comment?: string, places?: number) => {
+  const confirmShipment = useCallback(async (comment?: string, places?: number, selectedDictatorId?: string | null) => {
     if (!currentShipment) {
       console.error('[useConfirm] Ошибка: нет данных о заказе');
       showError('Ошибка: нет данных о заказе');
@@ -421,6 +427,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         lines: Array<{ sku: string; collected_qty: number; checked: boolean }>;
         comment?: string;
         places?: number;
+        dictatorId?: string | null;
       } = {
         lines: linesData,
       };
@@ -431,6 +438,12 @@ export function useConfirm(options?: UseConfirmOptions) {
       }
       if (places !== undefined) {
         requestData.places = places;
+      }
+      // Добавляем ID диктовщика, если выбран
+      if (selectedDictatorId !== undefined) {
+        requestData.dictatorId = selectedDictatorId;
+      } else if (dictatorId !== null) {
+        requestData.dictatorId = dictatorId;
       }
 
       const response = await shipmentsApi.confirmShipment(currentShipment.id, requestData);
@@ -466,7 +479,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       showError('Не удалось подтвердить заказ: ' + (error?.message || 'Неизвестная ошибка'));
       throw error;
     }
-  }, [currentShipment, checklistState, closeModal, showSuccess, showError]);
+  }, [currentShipment, checklistState, closeModal, showSuccess, showError, dictatorId]);
 
   const getProgress = useCallback(() => {
     if (!currentShipment || !currentShipment.lines) {
@@ -576,6 +589,8 @@ export function useConfirm(options?: UseConfirmOptions) {
     editState,
     removingItems,
     isOpen: currentShipment !== null,
+    dictatorId,
+    setDictatorId,
     openModal,
     closeModal,
     updateCollectedQty,

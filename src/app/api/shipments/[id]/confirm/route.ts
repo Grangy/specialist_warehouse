@@ -27,7 +27,7 @@ export async function POST(
 
     const { id } = params; // id теперь это taskId
     const body = await request.json();
-    const { lines, comment, places } = body;
+    const { lines, comment, places, dictatorId } = body;
 
     const task = await prisma.shipmentTask.findUnique({
       where: { id },
@@ -64,6 +64,7 @@ export async function POST(
         status: 'processed',
         checkerId: user.id,
         checkerName: user.name,
+        dictatorId: dictatorId || null, // Сохраняем ID диктовщика, если указан
         confirmedAt: confirmedAt,
         places: places !== undefined ? places : undefined, // Сохраняем количество мест для этого задания
       },

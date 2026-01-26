@@ -148,7 +148,7 @@ export function useShipments() {
     if (!userRole) return false;
     if (userRole === 'admin') return true;
     if (userRole === 'collector') return tab === 'new';
-    if (userRole === 'checker') return tab === 'new' || tab === 'processed' || tab === 'waiting';
+    if (userRole === 'checker') return tab === 'new' || tab === 'processed' || tab === 'waiting' || tab === 'regions';
     return false;
   };
 
@@ -279,23 +279,44 @@ export function useShipments() {
   }, [shipments]);
 
   const newCount = useMemo(
-    () => shipments.filter((s) => s.status === 'new').length,
-    [shipments]
+    () => {
+      let filtered = shipments.filter((s) => s.status === 'new');
+      // Фильтруем по выбранному складу, если он указан
+      if (filters.warehouse) {
+        filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
+      }
+      return filtered.length;
+    },
+    [shipments, filters.warehouse]
   );
 
   const pendingCount = useMemo(
-    () => shipments.filter((s) => s.status === 'pending_confirmation').length,
-    [shipments]
+    () => {
+      let filtered = shipments.filter((s) => s.status === 'pending_confirmation');
+      // Фильтруем по выбранному складу, если он указан
+      if (filters.warehouse) {
+        filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
+      }
+      return filtered.length;
+    },
+    [shipments, filters.warehouse]
   );
 
   const waitingCount = useMemo(
-    () => shipments.filter((s) => {
-      // Заказы в ожидании: есть подтвержденные задания, но не все
-      if (!s.tasks_progress) return false;
-      const { confirmed, total } = s.tasks_progress;
-      return confirmed > 0 && confirmed < total;
-    }).length,
-    [shipments]
+    () => {
+      let filtered = shipments.filter((s) => {
+        // Заказы в ожидании: есть подтвержденные задания, но не все
+        if (!s.tasks_progress) return false;
+        const { confirmed, total } = s.tasks_progress;
+        return confirmed > 0 && confirmed < total;
+      });
+      // Фильтруем по выбранному складу, если он указан
+      if (filters.warehouse) {
+        filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
+      }
+      return filtered.length;
+    },
+    [shipments, filters.warehouse]
   );
 
   // Обертка для setFilters с сохранением склада в localStorage

@@ -248,6 +248,7 @@ export async function updateCheckerStats(taskId: string) {
           },
         },
         checker: true,
+        dictator: true,
       },
     });
 
@@ -292,6 +293,15 @@ export async function updateCheckerStats(taskId: string) {
     };
 
     const stats = calculateTaskStatistics(taskData, shipmentData, norm);
+
+    // Если указан диктовщик, делим баллы: проверяльщик получает полные баллы, диктовщик получает 0.75
+    let checkerPoints = stats.orderPoints || 0;
+    let dictatorPoints = 0;
+    
+    if (task.dictatorId && checkerPoints > 0) {
+      dictatorPoints = checkerPoints * 0.75;
+      // Проверяльщик получает полные баллы, диктовщик получает 0.75
+    }
 
     // Сохраняем TaskStatistics для проверяльщика
     // Теперь можем создать отдельную запись с roleType = 'checker'
@@ -367,6 +377,84 @@ export async function updateCheckerStats(taskId: string) {
 
     // Обновляем месячную статистику для проверяльщика
     await updateMonthlyStats(task.checkerId, task.confirmedAt, stats);
+
+    // Если указан диктовщик, создаем статистику для диктовщика с баллами 0.75
+    if (task.dictatorId && dictatorPoints > 0) {
+      // Создаем TaskStatistics для диктовщика с баллами 0.75
+      await prisma.taskStatistics.upsert({
+        where: {
+          taskId_userId_roleType: {
+            taskId: task.id,
+            userId: task.dictatorId,
+            roleType: 'checker', // Диктовщик получает баллы как проверяльщик
+          },
+        },
+        update: {
+          shipmentId: task.shipmentId,
+          warehouse: task.warehouse,
+          taskTimeSec: stats.taskTimeSec,
+          pickTimeSec: stats.pickTimeSec,
+          elapsedTimeSec: stats.elapsedTimeSec,
+          gapTimeSec: stats.gapTimeSec,
+          positions: positions,
+          units: units,
+          pph: stats.pph,
+          uph: stats.uph,
+          secPerPos: stats.secPerPos,
+          secPerUnit: stats.secPerUnit,
+          unitsPerPos: stats.unitsPerPos,
+          warehousesCount: shipmentData.warehousesCount,
+          switches: stats.switches,
+          density: stats.density,
+          expectedTimeSec: stats.expectedTimeSec,
+          efficiency: stats.efficiency,
+          efficiencyClamped: stats.efficiencyClamped,
+          basePoints: stats.basePoints,
+          orderPoints: dictatorPoints, // Диктовщик получает 0.75 от баллов
+          normA: norm.normA,
+          normB: norm.normB,
+          normC: norm.normC,
+          normVersion: '1.0',
+        },
+        create: {
+          taskId: task.id,
+          userId: task.dictatorId,
+          roleType: 'checker', // Диктовщик получает баллы как проверяльщик
+          shipmentId: task.shipmentId,
+          warehouse: task.warehouse,
+          taskTimeSec: stats.taskTimeSec,
+          pickTimeSec: stats.pickTimeSec,
+          elapsedTimeSec: stats.elapsedTimeSec,
+          gapTimeSec: stats.gapTimeSec,
+          positions: positions,
+          units: units,
+          pph: stats.pph,
+          uph: stats.uph,
+          secPerPos: stats.secPerPos,
+          secPerUnit: stats.secPerUnit,
+          unitsPerPos: stats.unitsPerPos,
+          warehousesCount: shipmentData.warehousesCount,
+          switches: stats.switches,
+          density: stats.density,
+          expectedTimeSec: stats.expectedTimeSec,
+          efficiency: stats.efficiency,
+          efficiencyClamped: stats.efficiencyClamped,
+          basePoints: stats.basePoints,
+          orderPoints: dictatorPoints, // Диктовщик получает 0.75 от баллов
+          normA: norm.normA,
+          normB: norm.normB,
+          normC: norm.normC,
+          normVersion: '1.0',
+        },
+      });
+
+      // Обновляем дневную статистику для диктовщика
+      const dictatorStats = { ...stats, orderPoints: dictatorPoints };
+      await updateDailyStats(task.dictatorId, task.confirmedAt, dictatorStats);
+
+      // Обновляем месячную статистику для диктовщика
+      await updateMonthlyStats(task.dictatorId, task.confirmedAt, dictatorStats);
+    }
 
   } catch (error) {
     console.error(`[updateCheckerStats] Ошибка при обновлении статистики для задания ${taskId}:`, error);

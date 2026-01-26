@@ -20,7 +20,14 @@ export function detectWarehouseFromLocation(
 ): string {
   // Если склад передан от 1С, используем его (но все равно проверяем location для валидации)
   if (warehouseFrom1C && typeof warehouseFrom1C === 'string') {
-    const normalized1C = warehouseFrom1C.trim();
+    let normalized1C = warehouseFrom1C.trim();
+    
+    // Заменяем "Основной склад" на "Склад 1"
+    if (normalized1C === 'Основной склад') {
+      console.log(`[WarehouseDetector] Заменяем "Основной склад" на "Склад 1"`);
+      normalized1C = 'Склад 1';
+    }
+    
     if (normalized1C === 'Склад 1' || normalized1C === 'Склад 2' || normalized1C === 'Склад 3') {
       // Если location указывает на другой склад, логируем предупреждение, но используем значение от 1С
       if (location) {
@@ -35,11 +42,18 @@ export function detectWarehouseFromLocation(
     }
   }
 
-  // Если location не указан, используем значение от 1С или Склад 1 по умолчанию
+  // Если location не указан, используем значение от 1С (с заменой "Основной склад" на "Склад 1") или Склад 1 по умолчанию
   if (!location || typeof location !== 'string') {
-    return warehouseFrom1C && typeof warehouseFrom1C === 'string' 
-      ? warehouseFrom1C.trim() 
-      : 'Склад 1';
+    if (warehouseFrom1C && typeof warehouseFrom1C === 'string') {
+      const normalized1C = warehouseFrom1C.trim();
+      // Заменяем "Основной склад" на "Склад 1"
+      if (normalized1C === 'Основной склад') {
+        console.log(`[WarehouseDetector] Заменяем "Основной склад" на "Склад 1"`);
+        return 'Склад 1';
+      }
+      return normalized1C;
+    }
+    return 'Склад 1';
   }
 
   // Определяем склад по location

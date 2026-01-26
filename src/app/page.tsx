@@ -6,9 +6,11 @@ import { Header } from '@/components/layout/Header';
 import { FilterPanel } from '@/components/layout/FilterPanel';
 import { Tabs } from '@/components/shipments/Tabs';
 import { ShipmentGrid } from '@/components/shipments/ShipmentGrid';
+import { RegionsStatsTab } from '@/components/shipments/RegionsStatsTab';
 import { CollectModal } from '@/components/modals/CollectModal';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import { DetailsModal } from '@/components/modals/DetailsModal';
+import { DictatorSelectModal } from '@/components/modals/DictatorSelectModal';
 import { NameModal } from '@/components/modals/NameModal';
 import { OrderCompletedModal } from '@/components/modals/OrderCompletedModal';
 import { SendToOfficeModal } from '@/components/modals/SendToOfficeModal';
@@ -26,6 +28,8 @@ export default function Home() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userInfo, setUserInfo] = useState<{ id: string; name: string; role: string } | null>(null);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
+  const [showDictatorModal, setShowDictatorModal] = useState(false);
+  const [pendingDictatorSelection, setPendingDictatorSelection] = useState<Shipment | null>(null);
 
   useEffect(() => {
     // Проверяем авторизацию
@@ -210,7 +214,27 @@ export default function Home() {
   };
 
   const handleConfirm = (shipment: Shipment) => {
-    confirmHook.openModal(shipment);
+    // Для проверяльщика сначала показываем модальное окно выбора диктовщика
+    if (userRole === 'checker') {
+      setPendingDictatorSelection(shipment);
+      setShowDictatorModal(true);
+    } else {
+      confirmHook.openModal(shipment);
+    }
+  };
+
+  const handleDictatorSelect = (dictatorId: string | null) => {
+    confirmHook.setDictatorId(dictatorId);
+    if (pendingDictatorSelection) {
+      confirmHook.openModal(pendingDictatorSelection);
+      setPendingDictatorSelection(null);
+    }
+    setShowDictatorModal(false);
+  };
+
+  const handleDictatorCancel = () => {
+    setPendingDictatorSelection(null);
+    setShowDictatorModal(false);
   };
 
   const handleCollectAll = async (shipment: Shipment) => {
@@ -315,18 +339,22 @@ export default function Home() {
       <FilterPanel shipments={filteredShipments} filters={filters} onFiltersChange={setFilters} />
       <main className="max-w-7xl mx-auto px-3 md:px-6 py-4 md:py-6">
         <Tabs currentTab={currentTab} newCount={newCount} pendingCount={pendingCount} waitingCount={waitingCount} onTabChange={setCurrentTab} userRole={userRole} />
-        <ShipmentGrid
-          shipments={filteredShipments}
-          isLoading={isLoading}
-          currentTab={currentTab}
-          onCollect={handleCollect}
-          onConfirm={handleConfirm}
-          onDetails={handleDetails}
-          onCollectAll={userRole === 'admin' ? handleCollectAll : undefined}
-          onConfirmAll={userRole === 'admin' ? handleConfirmAll : undefined}
-          onDeleteCollection={userRole === 'admin' ? handleDeleteCollection : undefined}
-          userRole={userRole}
-        />
+        {currentTab === 'regions' ? (
+          <RegionsStatsTab filters={filters} onFiltersChange={setFilters} />
+        ) : (
+          <ShipmentGrid
+            shipments={filteredShipments}
+            isLoading={isLoading}
+            currentTab={currentTab}
+            onCollect={handleCollect}
+            onConfirm={handleConfirm}
+            onDetails={handleDetails}
+            onCollectAll={userRole === 'admin' ? handleCollectAll : undefined}
+            onConfirmAll={userRole === 'admin' ? handleConfirmAll : undefined}
+            onDeleteCollection={userRole === 'admin' ? handleDeleteCollection : undefined}
+            userRole={userRole}
+          />
+        )}
       </main>
 
       <CollectModal
@@ -359,7 +387,7 @@ export default function Home() {
         onConfirmEditQty={confirmHook.confirmEditQty}
         onCancelEditQty={confirmHook.cancelEditQty}
         onConfirmItem={confirmHook.confirmItem}
-        onConfirmShipment={async () => {
+        onConfirmShipment={async (comment?: string, places?: number) => {
           try {
             // Проверяем, все ли товары подтверждены
             if (!confirmHook.isReady()) {
@@ -422,7 +450,7 @@ export default function Home() {
             // Если есть текущий shipment в confirmHook, используем confirmShipment
             // Иначе используем confirmAll для shipment из pendingShipmentForOffice
             if (confirmHook.currentShipment && confirmHook.isOpen) {
-              result = await confirmHook.confirmShipment(undefined, placesToSend);
+              result = await confirmHook.confirmShipment(undefined, placesToSend, confirmHook.dictatorId);
             } else if (pendingShipmentForOffice) {
               result = await confirmHook.confirmAll(pendingShipmentForOffice, undefined, placesToSend);
             } else {
@@ -468,6 +496,13 @@ export default function Home() {
         onSelect={handleWarehouseSelect}
         userName={userInfo?.name}
       />
+      {userRole === 'checker' && (
+        <DictatorSelectModal
+          isOpen={showDictatorModal}
+          onSelect={handleDictatorSelect}
+          onCancel={handleDictatorCancel}
+        />
+      )}
       <CollectionCompletedModal
         isOpen={collectionCompletedModal.isOpen}
         onClose={() => {
