@@ -448,7 +448,29 @@ export async function updateCheckerStats(taskId: string) {
         },
       });
 
+      // ВАЖНО: Явно проверяем, что TaskStatistics создана перед обновлением дневной статистики
+      // Это гарантирует, что запись доступна для запроса в updateDailyStats
+      const createdDictatorStats = await prisma.taskStatistics.findUnique({
+        where: {
+          taskId_userId_roleType: {
+            taskId: task.id,
+            userId: task.dictatorId,
+            roleType: 'checker',
+          },
+        },
+      });
+
+      if (!createdDictatorStats || createdDictatorStats.orderPoints !== dictatorPoints) {
+        console.error(
+          `[updateCheckerStats] Ошибка: TaskStatistics для диктовщика ${task.dictatorId} не создана или имеет неправильные баллы. ` +
+          `Ожидалось: ${dictatorPoints}, получено: ${createdDictatorStats?.orderPoints || 'null'}`
+        );
+        // Продолжаем выполнение, но логируем ошибку
+      }
+
       // Обновляем дневную статистику для диктовщика
+      // updateDailyStats пересчитает все статистики за день из базы данных,
+      // включая только что созданную TaskStatistics для диктовщика
       const dictatorStats = { ...stats, orderPoints: dictatorPoints };
       await updateDailyStats(task.dictatorId, task.confirmedAt, dictatorStats);
 
