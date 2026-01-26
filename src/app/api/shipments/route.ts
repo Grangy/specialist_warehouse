@@ -867,6 +867,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // АУДИТ: Логируем для сборщиков перед группировкой
+    if (user.role === 'collector') {
+      const warehousesInTasks = new Set(tasks.map(t => t.warehouse || 'Неизвестный склад'));
+      console.log(`[COLLECTOR SERVER AUDIT] Всего заданий перед группировкой: ${tasks.length}, Складов: ${warehousesInTasks.size} (${Array.from(warehousesInTasks).join(', ')})`);
+    }
+    
     // Сортируем задания по приоритету региона заказа, затем по дате создания
     tasks.sort((a, b) => {
       const aPriority = a.business_region
@@ -887,6 +893,10 @@ export async function GET(request: NextRequest) {
     // Для сборщиков: показываем по 1 заказу с каждого склада (ближайший)
     // Это позволяет сборщику видеть работу со всех складов, а не только с выбранного
     if (user.role === 'collector' && tasks.length > 0) {
+      // АУДИТ: Логируем количество заданий до группировки
+      const warehousesBeforeGrouping = new Set(tasks.map(t => t.warehouse || 'Неизвестный склад'));
+      console.log(`[COLLECTOR AUDIT] Заданий до группировки: ${tasks.length}, Складов: ${Array.from(warehousesBeforeGrouping).join(', ')}`);
+      
       // Группируем задания по складам
       const tasksByWarehouse = new Map<string, typeof tasks>();
       
@@ -898,14 +908,21 @@ export async function GET(request: NextRequest) {
         tasksByWarehouse.get(warehouse)!.push(task);
       });
       
+      // АУДИТ: Логируем количество складов после группировки
+      console.log(`[COLLECTOR AUDIT] Складов после группировки: ${tasksByWarehouse.size} (${Array.from(tasksByWarehouse.keys()).join(', ')})`);
+      
       // Для каждого склада берем только первое задание (ближайшее по приоритету и дате)
       const filteredTasks: typeof tasks = [];
-      tasksByWarehouse.forEach((warehouseTasks) => {
+      tasksByWarehouse.forEach((warehouseTasks, warehouse) => {
         if (warehouseTasks.length > 0) {
           // Берем первое задание (уже отсортировано по приоритету и дате)
           filteredTasks.push(warehouseTasks[0]);
+          console.log(`[COLLECTOR AUDIT] Добавлено задание со склада "${warehouse}" (всего заданий на этом складе: ${warehouseTasks.length})`);
         }
       });
+      
+      // АУДИТ: Логируем финальное количество
+      console.log(`[COLLECTOR AUDIT] Итого возвращается заданий: ${filteredTasks.length}`);
       
       // Сортируем результат: сначала по приоритету региона, затем по дате
       filteredTasks.sort((a, b) => {

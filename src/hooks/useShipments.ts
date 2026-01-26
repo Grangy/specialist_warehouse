@@ -277,6 +277,7 @@ export function useShipments() {
 
       // Фильтр по складу
       // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
+      // Даже если выбрано "Все склады" (filters.warehouse === ""), для сборщиков фильтр не применяется
       if (userRole !== 'collector' && filters.warehouse && shipment.warehouse !== filters.warehouse) {
         return false;
       }
@@ -288,6 +289,12 @@ export function useShipments() {
 
       return true;
     });
+    
+    // АУДИТ: Логируем для сборщиков
+    if (userRole === 'collector') {
+      const warehousesInFiltered = new Set(filtered.map(s => s.warehouse).filter(Boolean));
+      console.log(`[COLLECTOR FRONTEND AUDIT] Получено заданий: ${shipments.length}, После фильтрации: ${filtered.length}, Складов: ${warehousesInFiltered.size} (${Array.from(warehousesInFiltered).join(', ')})`);
+    }
 
     // Сортируем: сначала по бизнес-региону (алфавитно), затем по количеству позиций (от большего к меньшему)
     return filtered.sort((a, b) => {
