@@ -209,7 +209,7 @@ export function useShipments() {
         }
       });
       
-      return waitingShipments.filter((shipment) => {
+      const filtered = waitingShipments.filter((shipment) => {
         // Фильтр по поиску
         if (filters.search) {
           const searchLower = filters.search.toLowerCase();
@@ -234,9 +234,29 @@ export function useShipments() {
 
         return true;
       });
+
+      // Сортируем: сначала по бизнес-региону (алфавитно), затем по количеству позиций (от большего к меньшему)
+      return filtered.sort((a, b) => {
+        const aRegion = (a.business_region || '').trim();
+        const bRegion = (b.business_region || '').trim();
+        const aPositions = a.lines?.length || 0;
+        const bPositions = b.lines?.length || 0;
+
+        // Сначала сортируем по региону (алфавитно)
+        if (aRegion !== bRegion) {
+          // Регионы без названия идут в конец
+          if (!aRegion && bRegion) return 1;
+          if (aRegion && !bRegion) return -1;
+          if (!aRegion && !bRegion) return 0;
+          return aRegion.localeCompare(bRegion, 'ru', { sensitivity: 'base' });
+        }
+
+        // Если регионы одинаковые, сортируем по количеству позиций (от большего к меньшему)
+        return bPositions - aPositions;
+      });
     }
     
-    return shipments.filter((shipment) => {
+    const filtered = shipments.filter((shipment) => {
       // Фильтр по вкладке
       // Теперь работаем с заданиями, а не заказами
       if (currentTab === 'new' && shipment.status !== 'new') return false;
@@ -265,6 +285,26 @@ export function useShipments() {
       }
 
       return true;
+    });
+
+    // Сортируем: сначала по бизнес-региону (алфавитно), затем по количеству позиций (от большего к меньшему)
+    return filtered.sort((a, b) => {
+      const aRegion = (a.business_region || '').trim();
+      const bRegion = (b.business_region || '').trim();
+      const aPositions = a.lines?.length || 0;
+      const bPositions = b.lines?.length || 0;
+
+      // Сначала сортируем по региону (алфавитно)
+      if (aRegion !== bRegion) {
+        // Регионы без названия идут в конец
+        if (!aRegion && bRegion) return 1;
+        if (aRegion && !bRegion) return -1;
+        if (!aRegion && !bRegion) return 0;
+        return aRegion.localeCompare(bRegion, 'ru', { sensitivity: 'base' });
+      }
+
+      // Если регионы одинаковые, сортируем по количеству позиций (от большего к меньшему)
+      return bPositions - aPositions;
     });
   }, [shipments, currentTab, filters]);
 
