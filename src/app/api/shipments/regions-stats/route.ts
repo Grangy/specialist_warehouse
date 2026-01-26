@@ -24,14 +24,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse') || null;
 
-    // Получаем все задания со статусом 'new' или 'pending_confirmation'
+    // Получаем все задания со статусом 'processed' (обработанные, но не отправленные в 1С)
     // Если указан склад, фильтруем по нему
     const whereClause: any = {
-      status: {
-        in: ['new', 'pending_confirmation'],
-      },
+      status: 'processed', // Только обработанные задания
       shipment: {
         deleted: false,
+        exportedTo1C: false, // Не отправленные в 1С
       },
     };
 
@@ -45,34 +44,34 @@ export async function GET(request: NextRequest) {
         shipment: {
           select: {
             businessRegion: true,
-          },
-        },
-        lines: {
-          select: {
-            id: true, // Считаем количество позиций в задании
+            exportedTo1C: true,
           },
         },
       },
     });
 
-    // Группируем задания по регионам и считаем количество позиций
+    // Группируем задания по регионам и считаем количество сборок (заданий)
     const regionStats = new Map<string, number>();
 
     for (const task of tasks) {
+      // Дополнительная проверка: убеждаемся, что заказ не отправлен в 1С
+      if (task.shipment.exportedTo1C) {
+        continue; // Пропускаем уже отправленные в 1С
+      }
+      
       const region = task.shipment.businessRegion || 'Без региона';
-      const itemsCount = task.lines.length; // Количество позиций в задании
       const currentCount = regionStats.get(region) || 0;
-      regionStats.set(region, currentCount + itemsCount);
+      regionStats.set(region, currentCount + 1); // Считаем количество заданий (сборок)
     }
 
-    // Преобразуем в массив объектов и сортируем по количеству позиций (от большего к меньшему)
+    // Преобразуем в массив объектов и сортируем по количеству сборок (от большего к меньшему)
     const stats = Array.from(regionStats.entries())
       .map(([region, count]) => ({
         region,
         count,
       }))
       .sort((a, b) => {
-        // Сортируем по количеству позиций от большего к меньшему
+        // Сортируем по количеству сборок от большего к меньшему
         if (b.count !== a.count) {
           return b.count - a.count;
         }

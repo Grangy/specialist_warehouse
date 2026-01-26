@@ -55,11 +55,11 @@ export function RegionsStatsTab({ filters, onFiltersChange }: RegionsStatsTabPro
     <div className="space-y-4">
       <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
         <h2 className="text-lg font-semibold text-slate-200 mb-4">
-          Задания по регионам {warehouse && `(${warehouse})`}
+          Сборки не отправленные в 1С по регионам {warehouse && `(${warehouse})`}
         </h2>
         {stats.length === 0 ? (
           <div className="text-center py-8 text-slate-400">
-            Нет заданий по регионам
+            Нет сборок, не отправленных в 1С
           </div>
         ) : (
           <div className="space-y-2">
@@ -70,7 +70,7 @@ export function RegionsStatsTab({ filters, onFiltersChange }: RegionsStatsTabPro
               >
                 <span className="text-slate-200 font-medium">{stat.region}</span>
                 <span className="text-blue-400 font-bold text-lg">
-                  {stat.count} {stat.count === 1 ? 'позиция' : stat.count < 5 ? 'позиции' : 'позиций'}
+                  {stat.count} {stat.count === 1 ? 'сборка' : stat.count < 5 ? 'сборки' : 'сборок'}
                 </span>
               </div>
             ))}
