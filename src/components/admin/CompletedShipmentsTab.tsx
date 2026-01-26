@@ -120,6 +120,8 @@ export default function CompletedShipmentsTab() {
         const collectors = (s.collectors || []).join(' ').toLowerCase();
         const checker = (s.checker_name || '').toLowerCase();
         const checkers = (s.checkers || []).join(' ').toLowerCase();
+        const dictator = (s.dictator_name || '').toLowerCase();
+        const dictators = (s.dictators || []).join(' ').toLowerCase();
         const businessRegion = (s.business_region || '').toLowerCase();
         return (
           number.includes(query) ||
@@ -129,6 +131,8 @@ export default function CompletedShipmentsTab() {
           collectors.includes(query) ||
           checker.includes(query) ||
           checkers.includes(query) ||
+          dictator.includes(query) ||
+          dictators.includes(query) ||
           businessRegion.includes(query)
         );
       });
@@ -386,6 +390,7 @@ export default function CompletedShipmentsTab() {
                 <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Бизнес-регион</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Сборщик</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Проверяльщик</th>
+                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Диктовщик</th>
                 <th 
                   className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50 transition-colors select-none"
                   onClick={() => handleSort('items_count')}
@@ -411,7 +416,7 @@ export default function CompletedShipmentsTab() {
             <tbody className="divide-y divide-slate-700/50">
               {paginatedShipments.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center">
+                  <td colSpan={11} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <Package className="w-12 h-12 text-slate-500 opacity-50" />
                       <div className="text-slate-400 font-medium">

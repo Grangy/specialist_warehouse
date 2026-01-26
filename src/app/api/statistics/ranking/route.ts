@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
     // Получаем статистику для сборщиков
     const collectorRankings: RankingEntry[] = [];
     const checkerRankings: RankingEntry[] = [];
+    const dictatorRankings: RankingEntry[] = [];
 
     if (period === 'today') {
       // Для сегодня используем TaskStatistics напрямую, чтобы разделить сборщиков и проверяльщиков
@@ -359,6 +360,140 @@ export async function GET(request: NextRequest) {
         ];
 
         for (const entry of checkerRankings) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
+        }
+      }
+
+      // Диктовщики: получаем TaskStatistics с roleType='checker', где task.dictatorId === userId
+      // (это статистика для диктовщиков, которые получают 0.75 от баллов проверяльщика)
+      const dictatorTaskStats = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'checker',
+          task: {
+            dictatorId: { not: null },
+            confirmedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+          task: {
+            select: {
+              dictatorId: true,
+            },
+          },
+        },
+      });
+
+      // Фильтруем только те, где userId === task.dictatorId (пользователь был диктовщиком)
+      const dictatorStatsFiltered = dictatorTaskStats.filter(
+        (stat) => stat.task.dictatorId === stat.userId
+      );
+
+      // Группируем по пользователям
+      const dictatorMap = new Map<string, {
+        userId: string;
+        userName: string;
+        role: string;
+        positions: number;
+        units: number;
+        orders: Set<string>;
+        points: number;
+        totalPickTimeSec: number;
+        efficiencies: number[];
+      }>();
+
+      for (const stat of dictatorStatsFiltered) {
+        const user = stat.user;
+        const key = user.id;
+        if (!dictatorMap.has(key)) {
+          dictatorMap.set(key, {
+            userId: user.id,
+            userName: user.name,
+            role: user.role,
+            positions: 0,
+            units: 0,
+            orders: new Set(),
+            points: 0,
+            totalPickTimeSec: 0,
+            efficiencies: [],
+          });
+        }
+        const userStat = dictatorMap.get(key)!;
+        userStat.positions += stat.positions;
+        userStat.units += stat.units;
+        userStat.orders.add(stat.shipmentId);
+        userStat.points += stat.orderPoints || 0;
+        userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+        if (stat.efficiencyClamped) {
+          userStat.efficiencies.push(stat.efficiencyClamped);
+        }
+      }
+
+      // Преобразуем в массив и добавляем метрики
+      for (const userStat of dictatorMap.values()) {
+        const pph = userStat.totalPickTimeSec > 0
+          ? (userStat.positions * 3600) / userStat.totalPickTimeSec
+          : null;
+        const uph = userStat.totalPickTimeSec > 0
+          ? (userStat.units * 3600) / userStat.totalPickTimeSec
+          : null;
+        const efficiency = userStat.efficiencies.length > 0
+          ? userStat.efficiencies.reduce((a, b) => a + b, 0) / userStat.efficiencies.length
+          : null;
+
+        dictatorRankings.push({
+          userId: userStat.userId,
+          userName: userStat.userName,
+          role: userStat.role,
+          positions: userStat.positions,
+          units: userStat.units,
+          orders: userStat.orders.size,
+          points: userStat.points,
+          rank: null,
+          level: null,
+          pph,
+          uph,
+          efficiency,
+        });
+      }
+
+      // Сортируем диктовщиков
+      dictatorRankings.sort((a, b) => b.points - a.points);
+
+      // Рассчитываем ранги для диктовщиков
+      const dictatorPoints = dictatorRankings.map(s => s.points).filter(p => p > 0);
+      if (dictatorPoints.length > 0) {
+        const sorted = [...dictatorPoints].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of dictatorRankings) {
           let rank = 10;
           for (let i = 0; i < percentiles.length; i++) {
             if (entry.points <= percentiles[i]) {
@@ -675,6 +810,135 @@ export async function GET(request: NextRequest) {
           entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
         }
       }
+
+      // Диктовщики для месяца (аналогично today)
+      const dictatorTaskStatsMonth = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'checker',
+          task: {
+            dictatorId: { not: null },
+            confirmedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+          task: {
+            select: {
+              dictatorId: true,
+            },
+          },
+        },
+      });
+
+      const dictatorStatsFilteredMonth = dictatorTaskStatsMonth.filter(
+        (stat) => stat.task.dictatorId === stat.userId
+      );
+
+      const dictatorMapMonth = new Map<string, {
+        userId: string;
+        userName: string;
+        role: string;
+        positions: number;
+        units: number;
+        orders: Set<string>;
+        points: number;
+        totalPickTimeSec: number;
+        efficiencies: number[];
+      }>();
+
+      for (const stat of dictatorStatsFilteredMonth) {
+        const user = stat.user;
+        const key = user.id;
+        if (!dictatorMapMonth.has(key)) {
+          dictatorMapMonth.set(key, {
+            userId: user.id,
+            userName: user.name,
+            role: user.role,
+            positions: 0,
+            units: 0,
+            orders: new Set(),
+            points: 0,
+            totalPickTimeSec: 0,
+            efficiencies: [],
+          });
+        }
+        const userStat = dictatorMapMonth.get(key)!;
+        userStat.positions += stat.positions;
+        userStat.units += stat.units;
+        userStat.orders.add(stat.shipmentId);
+        userStat.points += stat.orderPoints || 0;
+        userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+        if (stat.efficiencyClamped) {
+          userStat.efficiencies.push(stat.efficiencyClamped);
+        }
+      }
+
+      for (const userStat of dictatorMapMonth.values()) {
+        const pph = userStat.totalPickTimeSec > 0
+          ? (userStat.positions * 3600) / userStat.totalPickTimeSec
+          : null;
+        const uph = userStat.totalPickTimeSec > 0
+          ? (userStat.units * 3600) / userStat.totalPickTimeSec
+          : null;
+        const efficiency = userStat.efficiencies.length > 0
+          ? userStat.efficiencies.reduce((a, b) => a + b, 0) / userStat.efficiencies.length
+          : null;
+
+        dictatorRankings.push({
+          userId: userStat.userId,
+          userName: userStat.userName,
+          role: userStat.role,
+          positions: userStat.positions,
+          units: userStat.units,
+          orders: userStat.orders.size,
+          points: userStat.points,
+          rank: null,
+          level: null,
+          pph,
+          uph,
+          efficiency,
+        });
+      }
+
+      dictatorRankings.sort((a, b) => b.points - a.points);
+
+      // Рассчитываем ранги для диктовщиков (месяц)
+      const dictatorPointsMonth = dictatorRankings.map(s => s.points).filter(p => p > 0);
+      if (dictatorPointsMonth.length > 0) {
+        const sorted = [...dictatorPointsMonth].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of dictatorRankings) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
+        }
+      }
     } else if (period === 'week') {
       // Для недели используем TaskStatistics напрямую, чтобы разделить сборщиков и проверяльщиков
       
@@ -979,6 +1243,135 @@ export async function GET(request: NextRequest) {
           entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
         }
       }
+
+      // Диктовщики для недели (аналогично today)
+      const dictatorTaskStatsWeek = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'checker',
+          task: {
+            dictatorId: { not: null },
+            confirmedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+          task: {
+            select: {
+              dictatorId: true,
+            },
+          },
+        },
+      });
+
+      const dictatorStatsFilteredWeek = dictatorTaskStatsWeek.filter(
+        (stat) => stat.task.dictatorId === stat.userId
+      );
+
+      const dictatorMapWeek = new Map<string, {
+        userId: string;
+        userName: string;
+        role: string;
+        positions: number;
+        units: number;
+        orders: Set<string>;
+        points: number;
+        totalPickTimeSec: number;
+        efficiencies: number[];
+      }>();
+
+      for (const stat of dictatorStatsFilteredWeek) {
+        const user = stat.user;
+        const key = user.id;
+        if (!dictatorMapWeek.has(key)) {
+          dictatorMapWeek.set(key, {
+            userId: user.id,
+            userName: user.name,
+            role: user.role,
+            positions: 0,
+            units: 0,
+            orders: new Set(),
+            points: 0,
+            totalPickTimeSec: 0,
+            efficiencies: [],
+          });
+        }
+        const userStat = dictatorMapWeek.get(key)!;
+        userStat.positions += stat.positions;
+        userStat.units += stat.units;
+        userStat.orders.add(stat.shipmentId);
+        userStat.points += stat.orderPoints || 0;
+        userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+        if (stat.efficiencyClamped) {
+          userStat.efficiencies.push(stat.efficiencyClamped);
+        }
+      }
+
+      for (const userStat of dictatorMapWeek.values()) {
+        const pph = userStat.totalPickTimeSec > 0
+          ? (userStat.positions * 3600) / userStat.totalPickTimeSec
+          : null;
+        const uph = userStat.totalPickTimeSec > 0
+          ? (userStat.units * 3600) / userStat.totalPickTimeSec
+          : null;
+        const efficiency = userStat.efficiencies.length > 0
+          ? userStat.efficiencies.reduce((a, b) => a + b, 0) / userStat.efficiencies.length
+          : null;
+
+        dictatorRankings.push({
+          userId: userStat.userId,
+          userName: userStat.userName,
+          role: userStat.role,
+          positions: userStat.positions,
+          units: userStat.units,
+          orders: userStat.orders.size,
+          points: userStat.points,
+          rank: null,
+          level: null,
+          pph,
+          uph,
+          efficiency,
+        });
+      }
+
+      dictatorRankings.sort((a, b) => b.points - a.points);
+
+      // Рассчитываем ранги для диктовщиков (неделя)
+      const dictatorPointsWeek = dictatorRankings.map(s => s.points).filter(p => p > 0);
+      if (dictatorPointsWeek.length > 0) {
+        const sorted = [...dictatorPointsWeek].sort((a, b) => a - b);
+        const percentiles = [
+          sorted[Math.floor(sorted.length * 0.1)],
+          sorted[Math.floor(sorted.length * 0.2)],
+          sorted[Math.floor(sorted.length * 0.3)],
+          sorted[Math.floor(sorted.length * 0.4)],
+          sorted[Math.floor(sorted.length * 0.5)],
+          sorted[Math.floor(sorted.length * 0.6)],
+          sorted[Math.floor(sorted.length * 0.7)],
+          sorted[Math.floor(sorted.length * 0.8)],
+          sorted[Math.floor(sorted.length * 0.9)],
+        ];
+
+        for (const entry of dictatorRankings) {
+          let rank = 10;
+          for (let i = 0; i < percentiles.length; i++) {
+            if (entry.points <= percentiles[i]) {
+              rank = i + 1;
+              break;
+            }
+          }
+          entry.rank = rank;
+          entry.level = rank <= 10 ? getAnimalLevel(rank) : null;
+        }
+      }
     }
 
     // Для периода "today" добавляем общий топ (объединяем сборщиков и проверяльщиков)
@@ -986,6 +1379,7 @@ export async function GET(request: NextRequest) {
       period,
       collectors: collectorRankings,
       checkers: checkerRankings,
+      dictators: dictatorRankings,
     };
     
     if (period === 'today') {

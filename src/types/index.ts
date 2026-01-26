@@ -45,6 +45,9 @@ export interface Shipment {
   checker_name?: string;
   checker_id?: string;
   checkers?: string[];
+  dictator_name?: string;
+  dictator_id?: string;
+  dictators?: string[];
   started_at?: string;
   business_region?: string;
   locked?: boolean;

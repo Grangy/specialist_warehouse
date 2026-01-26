@@ -583,6 +583,13 @@ export async function GET(request: NextRequest) {
                   login: true,
                 },
               },
+              dictator: {
+                select: {
+                  id: true,
+                  name: true,
+                  login: true,
+                },
+              },
             },
           },
         },
@@ -627,6 +634,12 @@ export async function GET(request: NextRequest) {
           .map((task) => task.checkerName)
           .filter((name, index, self) => self.indexOf(name) === index); // Уникальные имена
         
+        // Собираем всех уникальных диктовщиков из всех tasks
+        const dictators = shipment.tasks
+          .filter((task) => task.dictator && task.dictator.name)
+          .map((task) => task.dictator!.name)
+          .filter((name, index, self) => self.indexOf(name) === index); // Уникальные имена
+        
         // Определяем, виден ли заказ сборщику (используем уже созданную переменную collectorVisibleRegions)
         const isVisibleToCollector = shipment.businessRegion 
           ? collectorVisibleRegions.has(shipment.businessRegion)
@@ -650,6 +663,8 @@ export async function GET(request: NextRequest) {
           collectors: collectors,
           checker_name: checkers.length > 0 ? checkers.join(', ') : null,
           checkers: checkers,
+          dictator_name: dictators.length > 0 ? dictators.join(', ') : null,
+          dictators: dictators,
           confirmed_at: shipment.confirmedAt?.toISOString() || null,
           tasks_count: shipment.tasks.length,
           warehouses: Array.from(new Set(shipment.tasks.map((t) => t.warehouse))),
