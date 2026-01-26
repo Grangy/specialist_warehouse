@@ -240,11 +240,16 @@ async function auditDictatorPoints() {
     }
 
     // Проверяем дневную статистику
+    let checkerDailyStats: any = null;
+    let dictatorDailyStats: any = null;
+    let checkerMonthlyStats: any = null;
+    let dictatorMonthlyStats: any = null;
+
     if (task.confirmedAt) {
       const dayStart = new Date(task.confirmedAt);
       dayStart.setHours(0, 0, 0, 0);
 
-      const checkerDailyStats = await prisma.dailyStats.findUnique({
+      checkerDailyStats = await prisma.dailyStats.findUnique({
         where: {
           userId_date: {
             userId: task.checkerId!,
@@ -253,7 +258,7 @@ async function auditDictatorPoints() {
         },
       });
 
-      const dictatorDailyStats = await prisma.dailyStats.findUnique({
+      dictatorDailyStats = await prisma.dailyStats.findUnique({
         where: {
           userId_date: {
             userId: task.dictatorId!,
@@ -295,7 +300,7 @@ async function auditDictatorPoints() {
       const year = task.confirmedAt.getFullYear();
       const month = task.confirmedAt.getMonth() + 1;
 
-      const checkerMonthlyStats = await prisma.monthlyStats.findUnique({
+      checkerMonthlyStats = await prisma.monthlyStats.findUnique({
         where: {
           userId_year_month: {
             userId: task.checkerId!,
@@ -305,7 +310,7 @@ async function auditDictatorPoints() {
         },
       });
 
-      const dictatorMonthlyStats = await prisma.monthlyStats.findUnique({
+      dictatorMonthlyStats = await prisma.monthlyStats.findUnique({
         where: {
           userId_year_month: {
             userId: task.dictatorId!,
