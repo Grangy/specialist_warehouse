@@ -119,34 +119,47 @@ export function ConfirmModal({
   }, []);
 
   // Вычисляем sortedIndices для согласованности
-  // В режиме проверки сортируем по наименованию, а не по ячейкам
-  // Фильтруем только товары в процессе удаления, подтвержденные показываем в конце
+  // Сортировка такая же, как в CollectModal: по статусу → по ячейкам (без ячеек первыми) → по алфавиту ячеек
   const sortedIndices = useMemo(() => {
     if (!currentShipment) return [];
     return currentShipment.lines
       .map((_, index) => index)
-      .filter((index) => !removingItems.has(index))
       .sort((a, b) => {
+        // Товары в процессе удаления остаются на своих местах
+        const aRemoving = removingItems.has(a);
+        const bRemoving = removingItems.has(b);
+        if (aRemoving && !bRemoving) return -1;
+        if (!aRemoving && bRemoving) return 1;
+        
         // ПРИОРИТЕТ 1: Сначала сортируем по статусу подтверждения (неподтвержденные → подтвержденные)
         const aConfirmed = checklistState[a]?.confirmed || false;
         const bConfirmed = checklistState[b]?.confirmed || false;
         if (aConfirmed !== bConfirmed) {
+          // Неподтвержденные всегда выше подтвержденных
           return aConfirmed ? 1 : -1;
         }
         
-        // ПРИОРИТЕТ 2: Если статус одинаковый, сортируем по наименованию (А-Я)
-        const aName = (currentShipment.lines[a].name || '').trim();
-        const bName = (currentShipment.lines[b].name || '').trim();
+        // ПРИОРИТЕТ 2: Если статус одинаковый, сортируем по местам
+        // ВАЖНО: Товары БЕЗ ячеек идут ПЕРВЫМИ (выше всех)
+        const aLocation = (currentShipment.lines[a].location || '').trim();
+        const bLocation = (currentShipment.lines[b].location || '').trim();
         
-        if (aName && bName) {
-          const nameCompare = aName.localeCompare(bName, 'ru', { 
+        // Если у обоих есть места, сортируем по алфавиту (А-Я)
+        // ВАЖНО: sensitivity: 'variant' учитывает различия между Е и Ё
+        // Е идет раньше Ё в русском алфавите
+        if (aLocation && bLocation) {
+          // Используем localeCompare для правильной сортировки русских букв
+          // sensitivity: 'variant' - учитывает все различия, включая Е и Ё
+          const locationCompare = aLocation.localeCompare(bLocation, 'ru', { 
             numeric: true, 
-            sensitivity: 'variant'
+            sensitivity: 'variant' // Изменено с 'base' на 'variant' для учета Е и Ё
           });
-          if (nameCompare !== 0) return nameCompare;
-        } else if (aName && !bName) {
+          if (locationCompare !== 0) return locationCompare;
+        } else if (!aLocation && bLocation) {
+          // Товары БЕЗ ячеек идут ПЕРВЫМИ (выше всех)
           return -1;
-        } else if (!aName && bName) {
+        } else if (aLocation && !bLocation) {
+          // Товары с ячейками идут после товаров без ячеек
           return 1;
         }
         
@@ -639,40 +652,7 @@ export function ConfirmModal({
             </tr>
           </thead>
           <tbody className="divide-y divide-white/20">
-            {currentShipment.lines
-              .map((_, index) => index)
-              .sort((a, b) => {
-                // ПРИОРИТЕТ 1: Сначала сортируем по статусу подтверждения (неподтвержденные → подтвержденные)
-                const aConfirmed = checklistState[a]?.confirmed || false;
-                const bConfirmed = checklistState[b]?.confirmed || false;
-                if (aConfirmed !== bConfirmed) {
-                  return aConfirmed ? 1 : -1;
-                }
-                
-                // ПРИОРИТЕТ 2: Если статус одинаковый, сортируем по ячейкам
-                // ВАЖНО: Товары БЕЗ ячеек идут ПЕРВЫМИ (выше всех)
-                const aLocation = (currentShipment.lines[a].location || '').trim();
-                const bLocation = (currentShipment.lines[b].location || '').trim();
-                
-                // Если у обоих есть ячейки, сортируем по алфавиту (А-Я)
-                if (aLocation && bLocation) {
-                  const locationCompare = aLocation.localeCompare(bLocation, 'ru', { 
-                    numeric: true, 
-                    sensitivity: 'variant'
-                  });
-                  if (locationCompare !== 0) return locationCompare;
-                } else if (!aLocation && bLocation) {
-                  // Товары БЕЗ ячеек идут ПЕРВЫМИ (выше всех)
-                  return -1;
-                } else if (aLocation && !bLocation) {
-                  // Товары с ячейками идут после товаров без ячеек
-                  return 1;
-                }
-                
-                // Если все одинаково, сохраняем исходный порядок
-                return 0;
-              })
-              .map((originalIndex, mapIndex) => {
+            {sortedIndices.map((originalIndex, mapIndex) => {
                 const line = currentShipment.lines[originalIndex];
                 const index = originalIndex;
               const state = checklistState[index] || {
