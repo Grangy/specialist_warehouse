@@ -32,8 +32,11 @@ export async function GET(request: NextRequest) {
     const dayOfWeek = (today.getDay() + 6) % 7; // Преобразуем воскресенье (0) в 6, понедельник (1) в 0
     const currentDay = Math.min(dayOfWeek, 4); // Ограничиваем пн-пт (0-4)
     
-    // Определяем регионы, которые активны сегодня (имеют приоритет для текущего дня)
+    // Создаем карту приоритетов регионов для текущего дня
+    // И определяем регионы, которые активны сегодня (имеют приоритет для текущего дня)
+    const priorityMap = new Map<string, number>(); // Приоритет региона для текущего дня
     const activeRegionsToday = new Set<string>();
+    
     regionPriorities.forEach((p) => {
       let dayPriority: number | null = null;
       switch (currentDay) {
@@ -53,6 +56,9 @@ export async function GET(request: NextRequest) {
           dayPriority = p.priorityFriday ?? null;
           break;
       }
+      
+      // Сохраняем приоритет региона для текущего дня (9999 если нет приоритета)
+      priorityMap.set(p.region, dayPriority ?? 9999);
       
       // Если регион имеет приоритет для текущего дня, он активен сегодня
       if (dayPriority !== null && dayPriority !== undefined) {
@@ -94,19 +100,25 @@ export async function GET(request: NextRequest) {
       regionStats.set(region, currentCount + 1); // Считаем количество заданий (сборок)
     }
 
-    // Преобразуем в массив объектов и сортируем: сначала активные регионы, затем остальные
+    // Преобразуем в массив объектов и сортируем: сначала активные регионы по приоритету, затем остальные по приоритету
     const stats = Array.from(regionStats.entries())
       .map(([region, count]) => ({
         region,
         count,
         isActiveToday: activeRegionsToday.has(region), // Помечаем активные регионы
+        priority: priorityMap.get(region) ?? 9999, // Приоритет региона для текущего дня
       }))
       .sort((a, b) => {
         // Сначала сортируем по активности: активные регионы выше всех
         if (a.isActiveToday && !b.isActiveToday) return -1; // a активен, b нет - a выше
         if (!a.isActiveToday && b.isActiveToday) return 1;  // a не активен, b активен - b выше
         
-        // Если оба активны или оба неактивны, сортируем по количеству сборок (от большего к меньшему)
+        // Если оба активны или оба неактивны, сортируем по приоритету (меньше приоритет = выше в списке)
+        if (a.priority !== b.priority) {
+          return a.priority - b.priority;
+        }
+        
+        // Если приоритеты одинаковые, сортируем по количеству сборок (от большего к меньшему)
         if (b.count !== a.count) {
           return b.count - a.count;
         }
