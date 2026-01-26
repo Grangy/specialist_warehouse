@@ -224,7 +224,10 @@ export function useShipments() {
 
         // Фильтр по складу
         // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-        if (userRole !== 'collector' && filters.warehouse && shipment.warehouse !== filters.warehouse) {
+        // ВАЖНО: Проверяем явно userRole === 'collector', чтобы не применять фильтр если userRole === null
+        if (userRole === 'collector') {
+          // Для сборщиков фильтр по складу не применяется
+        } else if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
           return false;
         }
 
@@ -278,7 +281,10 @@ export function useShipments() {
       // Фильтр по складу
       // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
       // Даже если выбрано "Все склады" (filters.warehouse === ""), для сборщиков фильтр не применяется
-      if (userRole !== 'collector' && filters.warehouse && shipment.warehouse !== filters.warehouse) {
+      // ВАЖНО: Проверяем явно userRole === 'collector', чтобы не применять фильтр если userRole === null
+      if (userRole === 'collector') {
+        // Для сборщиков фильтр по складу не применяется - показываем все задания, которые вернул сервер
+      } else if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
         return false;
       }
 
@@ -293,7 +299,8 @@ export function useShipments() {
     // АУДИТ: Логируем для сборщиков
     if (userRole === 'collector') {
       const warehousesInFiltered = new Set(filtered.map(s => s.warehouse).filter(Boolean));
-      console.log(`[COLLECTOR FRONTEND AUDIT] Получено заданий: ${shipments.length}, После фильтрации: ${filtered.length}, Складов: ${warehousesInFiltered.size} (${Array.from(warehousesInFiltered).join(', ')})`);
+      console.log(`[COLLECTOR FRONTEND AUDIT] userRole: ${userRole}, Получено заданий: ${shipments.length}, После фильтрации: ${filtered.length}, Складов: ${warehousesInFiltered.size} (${Array.from(warehousesInFiltered).join(', ')})`);
+      console.log(`[COLLECTOR FRONTEND AUDIT] filters.warehouse: "${filters.warehouse}", Все задания:`, shipments.map(s => ({ warehouse: s.warehouse, number: s.number })));
     }
 
     // Сортируем: сначала по бизнес-региону (алфавитно), затем по количеству позиций (от большего к меньшему)
@@ -332,7 +339,10 @@ export function useShipments() {
       let filtered = shipments.filter((s) => s.status === 'new');
       // Фильтруем по выбранному складу, если он указан
       // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      if (userRole !== 'collector' && filters.warehouse) {
+      // ВАЖНО: Проверяем явно userRole === 'collector'
+      if (userRole === 'collector') {
+        // Для сборщиков фильтр не применяется
+      } else if (filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
@@ -345,7 +355,10 @@ export function useShipments() {
       let filtered = shipments.filter((s) => s.status === 'pending_confirmation');
       // Фильтруем по выбранному складу, если он указан
       // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      if (userRole !== 'collector' && filters.warehouse) {
+      // ВАЖНО: Проверяем явно userRole === 'collector'
+      if (userRole === 'collector') {
+        // Для сборщиков фильтр не применяется
+      } else if (filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
@@ -363,7 +376,10 @@ export function useShipments() {
       });
       // Фильтруем по выбранному складу, если он указан
       // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      if (userRole !== 'collector' && filters.warehouse) {
+      // ВАЖНО: Проверяем явно userRole === 'collector'
+      if (userRole === 'collector') {
+        // Для сборщиков фильтр не применяется
+      } else if (filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
