@@ -21,11 +21,17 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
   const [selectedDictatorName, setSelectedDictatorName] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Загружаем сохраненного диктовщика на день
   useEffect(() => {
     loadSavedDictator();
   }, [userId]);
+
+  // Загружаем текущего пользователя
+  useEffect(() => {
+    loadCurrentUser();
+  }, []);
 
   // Загружаем список пользователей при открытии выбора
   useEffect(() => {
@@ -33,6 +39,20 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
       loadUsers();
     }
   }, [isSelecting]);
+
+  const loadCurrentUser = async () => {
+    try {
+      const response = await fetch('/api/auth/session');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.user) {
+          setCurrentUser(data.user);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке текущего пользователя:', error);
+    }
+  };
 
   const loadSavedDictator = () => {
     if (typeof window === 'undefined') return;
@@ -108,8 +128,14 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
     handleSelect(null, null);
   };
 
-  // Фильтруем пользователей по поисковому запросу
+  // Фильтруем пользователей: исключаем проверяльщиков, если текущий пользователь - проверяльщик
   const filteredUsers = users.filter((user) => {
+    // Если текущий пользователь - проверяльщик, исключаем всех других проверяльщиков
+    if (currentUser?.role === 'checker' && user.role === 'checker') {
+      return false;
+    }
+    
+    // Фильтруем по поисковому запросу
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     return (
