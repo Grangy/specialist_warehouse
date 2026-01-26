@@ -225,9 +225,9 @@ export function useShipments() {
         }
 
         // Фильтр по складу
-        // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-        // Для остальных ролей (admin, checker) применяем фильтр по складу
-        if (userRole !== 'collector' && filters.warehouse && shipment.warehouse !== filters.warehouse) {
+        // Если выбран конкретный склад, фильтруем по нему
+        // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
+        if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
           return false;
         }
 
@@ -301,12 +301,12 @@ export function useShipments() {
         }
       }
 
-      // Фильтр по складу
-      // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      // Для остальных ролей (admin, checker) применяем фильтр по складу
-      if (userRole !== 'collector' && filters.warehouse && shipment.warehouse !== filters.warehouse) {
-        return false;
-      }
+        // Фильтр по складу
+        // Если выбран конкретный склад, фильтруем по нему
+        // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
+        if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
+          return false;
+        }
 
       // Фильтр по срочности
       if (filters.urgentOnly && !isUrgent(shipment.comment)) {
@@ -368,9 +368,8 @@ export function useShipments() {
     () => {
       let filtered = shipments.filter((s) => s.status === 'new');
       // Фильтруем по выбранному складу, если он указан
-      // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      // Для остальных ролей (admin, checker) применяем фильтр по складу
-      if (userRole !== 'collector' && filters.warehouse) {
+      // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
+      if (filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
@@ -382,9 +381,8 @@ export function useShipments() {
     () => {
       let filtered = shipments.filter((s) => s.status === 'pending_confirmation');
       // Фильтруем по выбранному складу, если он указан
-      // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      // Для остальных ролей (admin, checker) применяем фильтр по складу
-      if (userRole !== 'collector' && filters.warehouse) {
+      // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
+      if (filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
@@ -401,9 +399,8 @@ export function useShipments() {
         return confirmed > 0 && confirmed < total;
       });
       // Фильтруем по выбранному складу, если он указан
-      // Для сборщиков НЕ применяем фильтр по складу, так как сервер уже вернул по 1 заданию с каждого склада
-      // Для остальных ролей (admin, checker) применяем фильтр по складу
-      if (userRole !== 'collector' && filters.warehouse) {
+      // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
+      if (filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
