@@ -6,13 +6,18 @@ import { getAnimalLevel } from '@/lib/ranking/levels';
 
 export const dynamic = 'force-dynamic';
 
-// GET - получить список пользователей (только для админа)
+// GET - получить список пользователей
+// Для админов: полный список со статистикой
+// Для проверяльщиков: упрощенный список без статистики (для выбора диктовщика)
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['admin']);
+    const authResult = await requireAuth(request, ['admin', 'checker']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
+
+    const { user } = authResult;
+    const isAdmin = user.role === 'admin';
 
     const users = await prisma.user.findMany({
       select: {
@@ -28,6 +33,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Если проверяльщик - возвращаем упрощенный список без статистики
+    if (!isAdmin) {
+      return NextResponse.json(users);
+    }
+
+    // Для админов - полный список со статистикой
     // Получаем текущую дату
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());

@@ -33,12 +33,23 @@ export function DictatorSelectModal({ isOpen, onSelect, onCancel }: DictatorSele
   const loadUsers = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/users/list');
+      // Пробуем сначала /api/users/list, если не работает - используем /api/users
+      let response = await fetch('/api/users/list');
+      let data;
+      
       if (response.ok) {
-        const data = await response.json();
+        data = await response.json();
         setUsers(data.users || []);
       } else {
-        console.error('Ошибка при загрузке пользователей:', response.status, response.statusText);
+        // Fallback на /api/users
+        response = await fetch('/api/users');
+        if (response.ok) {
+          data = await response.json();
+          // /api/users возвращает массив напрямую, а /api/users/list - объект с users
+          setUsers(Array.isArray(data) ? data : data.users || []);
+        } else {
+          console.error('Ошибка при загрузке пользователей:', response.status, response.statusText);
+        }
       }
     } catch (error) {
       console.error('Ошибка при загрузке пользователей:', error);
