@@ -380,7 +380,8 @@ export default function StatisticsTab() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Первая строка: Сборщики и Проверяльщики */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Рейтинг сборщиков */}
         <div className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 backdrop-blur-sm">
           <div className="flex items-center justify-between mb-4">
@@ -540,9 +541,12 @@ export default function StatisticsTab() {
             </div>
           )}
         </div>
+      </div>
 
+      {/* Вторая строка: Диктовщики */}
+      <div className="mt-6">
         {/* Рейтинг диктовщиков */}
-        <div className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 backdrop-blur-sm">
+        <div className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 backdrop-blur-sm max-w-2xl mx-auto">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
               <Mic className="w-6 h-6 text-cyan-400" />
