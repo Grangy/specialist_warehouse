@@ -261,10 +261,30 @@ export function useShipments() {
     }
     
     const filtered = shipments.filter((shipment) => {
+      // АУДИТ: Логируем каждое задание для сборщиков
+      if (userRole === 'collector') {
+        console.log(`[COLLECTOR FILTER AUDIT] Проверяем задание:`, {
+          warehouse: shipment.warehouse,
+          status: shipment.status,
+          currentTab,
+          number: shipment.number || shipment.shipment_number,
+        });
+      }
+      
       // Фильтр по вкладке
       // Теперь работаем с заданиями, а не заказами
-      if (currentTab === 'new' && shipment.status !== 'new') return false;
-      if (currentTab === 'processed' && shipment.status !== 'pending_confirmation') return false;
+      if (currentTab === 'new' && shipment.status !== 'new') {
+        if (userRole === 'collector') {
+          console.log(`[COLLECTOR FILTER AUDIT] Отфильтровано по статусу: currentTab=${currentTab}, shipment.status=${shipment.status}`);
+        }
+        return false;
+      }
+      if (currentTab === 'processed' && shipment.status !== 'pending_confirmation') {
+        if (userRole === 'collector') {
+          console.log(`[COLLECTOR FILTER AUDIT] Отфильтровано по статусу: currentTab=${currentTab}, shipment.status=${shipment.status}`);
+        }
+        return false;
+      }
 
       // Фильтр по поиску
       if (filters.search) {
@@ -274,6 +294,9 @@ export function useShipments() {
           !number.toLowerCase().includes(searchLower) &&
           !shipment.customer_name.toLowerCase().includes(searchLower)
         ) {
+          if (userRole === 'collector') {
+            console.log(`[COLLECTOR FILTER AUDIT] Отфильтровано по поиску: "${filters.search}"`);
+          }
           return false;
         }
       }
@@ -290,7 +313,17 @@ export function useShipments() {
 
       // Фильтр по срочности
       if (filters.urgentOnly && !isUrgent(shipment.comment)) {
+        if (userRole === 'collector') {
+          console.log(`[COLLECTOR FILTER AUDIT] Отфильтровано по срочности`);
+        }
         return false;
+      }
+
+      if (userRole === 'collector') {
+        console.log(`[COLLECTOR FILTER AUDIT] Задание прошло все фильтры:`, {
+          warehouse: shipment.warehouse,
+          status: shipment.status,
+        });
       }
 
       return true;
