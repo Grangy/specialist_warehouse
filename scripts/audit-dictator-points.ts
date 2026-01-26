@@ -3,23 +3,111 @@
  * Проверяет, правильно ли начисляются баллы диктовщикам при проверке заданий
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
 import dotenv from 'dotenv';
 
 // Определяем путь к корню проекта
-const projectRoot = path.resolve(__dirname, '..');
-const envPath = path.join(projectRoot, '.env');
+// Скрипт находится в scripts/, поэтому корень проекта на уровень выше
+let projectRoot: string;
 
-// Загружаем переменные окружения
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
+// Получаем директорию, где находится этот скрипт
+// Используем import.meta.url если доступен (ES модули через tsx)
+if (typeof import.meta !== 'undefined' && import.meta.url) {
+  try {
+    const fileUrl = new URL(import.meta.url);
+    // Убираем file:// префикс и получаем путь
+    let scriptPath = fileUrl.pathname;
+    // На Windows может быть file:///C:/path, на Unix file:///path
+    if (process.platform === 'win32' && scriptPath.startsWith('/')) {
+      scriptPath = scriptPath.substring(1);
+    }
+    const scriptDir = path.dirname(scriptPath);
+    projectRoot = path.resolve(scriptDir, '..');
+  } catch (e) {
+    // Fallback
+    projectRoot = process.cwd();
+    if (path.basename(projectRoot) === 'scripts') {
+      projectRoot = path.resolve(projectRoot, '..');
+    }
+  }
 } else {
-  console.warn('⚠️  Файл .env не найден, используем переменные окружения системы');
+  // Fallback: используем process.cwd() и проверяем, не находимся ли мы в scripts/
+  projectRoot = process.cwd();
+  
+  // Если мы в scripts/, поднимаемся на уровень выше
+  if (path.basename(projectRoot) === 'scripts') {
+    projectRoot = path.resolve(projectRoot, '..');
+  } else {
+    // Пробуем найти scripts/ в текущей директории
+    const scriptsPath = path.join(projectRoot, 'scripts');
+    if (fs.existsSync(scriptsPath)) {
+      // Мы в корне проекта
+    } else {
+      // Пробуем подняться на уровень выше
+      const parentScripts = path.join(projectRoot, '..', 'scripts');
+      if (fs.existsSync(parentScripts)) {
+        projectRoot = path.resolve(projectRoot, '..');
+      }
+    }
+  }
 }
 
-const prisma = new PrismaClient();
+// Загружаем переменные окружения из корня проекта
+const envPath = path.join(projectRoot, '.env');
+const envLocalPath = path.join(projectRoot, '.env.local');
+
+console.log(`🔍 Поиск .env файлов:`);
+console.log(`   - ${envPath} ${fs.existsSync(envPath) ? '✓' : '✗'}`);
+console.log(`   - ${envLocalPath} ${fs.existsSync(envLocalPath) ? '✓' : '✗'}`);
+
+// Загружаем .env файлы (если существуют)
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+  console.log(`✅ Загружен .env из ${envPath}`);
+} else if (fs.existsSync(envLocalPath)) {
+  dotenv.config({ path: envLocalPath });
+  console.log(`✅ Загружен .env.local из ${envLocalPath}`);
+} else {
+  console.warn('⚠️  Файлы .env не найдены, используем переменные окружения системы');
+}
+
+// Исправляем путь к базе данных для работы в скрипте
+let databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  console.error('❌ Ошибка: DATABASE_URL не найден в переменных окружения');
+  console.error(`   Проверьте файл .env в: ${projectRoot}`);
+  console.error(`   Или установите переменную: export DATABASE_URL="file:./prisma/dev.db"`);
+  process.exit(1);
+}
+
+let finalDatabaseUrl = databaseUrl;
+
+if (databaseUrl.startsWith('file:./')) {
+  // Преобразуем относительный путь в абсолютный
+  const dbPath = databaseUrl.replace('file:', '');
+  const absolutePath = path.join(projectRoot, dbPath);
+  finalDatabaseUrl = `file:${absolutePath}`;
+} else if (databaseUrl.startsWith('file:') && !databaseUrl.startsWith('file:/')) {
+  // Если путь относительный без ./, добавляем корень проекта
+  const dbPath = databaseUrl.replace('file:', '');
+  const absolutePath = path.join(projectRoot, dbPath);
+  finalDatabaseUrl = `file:${absolutePath}`;
+}
+
+console.log(`📁 Проект: ${projectRoot}`);
+console.log(`📁 База данных: ${finalDatabaseUrl}\n`);
+
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: finalDatabaseUrl,
+    },
+  },
+  log: ['error', 'warn'],
+});
 
 interface DictatorAuditResult {
   taskId: string;
