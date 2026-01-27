@@ -19,16 +19,20 @@ export default function SettingsTab() {
   const loadSettings = async () => {
     try {
       setIsLoading(true);
-      // Используем абсолютный URL для предотвращения редиректов
-      const apiUrl = typeof window !== 'undefined' 
-        ? `${window.location.origin}/api/settings`
-        : '/api/settings';
       
-      const response = await fetch(apiUrl, {
+      // Используем простой относительный URL
+      const response = await fetch('/api/settings', {
         method: 'GET',
         credentials: 'include',
-        redirect: 'manual', // Предотвращаем автоматические редиректы
       });
+      
+      // Проверяем, что response существует и имеет статус
+      if (!response || response.status === 0) {
+        // HTTP 0 обычно означает, что запрос не был выполнен (CORS, сеть и т.д.)
+        console.warn('[SettingsTab] Запрос не был выполнен (HTTP 0), возможно проблема с сетью');
+        // Не показываем ошибку пользователю, просто используем значения по умолчанию
+        return;
+      }
       
       if (!response.ok) {
         // Если 401, пользователь не авторизован - это нормально
@@ -36,7 +40,13 @@ export default function SettingsTab() {
           console.log('[SettingsTab] Пользователь не авторизован');
           return;
         }
-        throw new Error(`HTTP ${response.status}: Ошибка при загрузке настроек`);
+        // Если 403, недостаточно прав - тоже нормально
+        if (response.status === 403) {
+          console.log('[SettingsTab] Недостаточно прав доступа');
+          return;
+        }
+        const errorText = await response.text().catch(() => 'Ошибка при загрузке настроек');
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
       const data = await response.json();
@@ -49,13 +59,22 @@ export default function SettingsTab() {
         );
       }
     } catch (error: any) {
-      // Игнорируем ошибки сети, если это не критично
-      if (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_TOO_MANY_REDIRECTS')) {
-        console.warn('[SettingsTab] Ошибка сети при загрузке настроек, пропускаем');
+      // Игнорируем ошибки сети и HTTP 0, если это не критично
+      if (
+        error.message?.includes('Failed to fetch') || 
+        error.message?.includes('ERR_TOO_MANY_REDIRECTS') ||
+        error.message?.includes('HTTP 0') ||
+        !error.message
+      ) {
+        console.warn('[SettingsTab] Ошибка сети при загрузке настроек, используем значения по умолчанию');
+        // Не показываем ошибку пользователю, просто используем значения по умолчанию
         return;
       }
       console.error('[SettingsTab] Ошибка при загрузке настроек:', error);
-      showError('Не удалось загрузить настройки');
+      // Показываем ошибку только для реальных проблем (не сетевых)
+      if (error.message && !error.message.includes('HTTP 0')) {
+        showError('Не удалось загрузить настройки');
+      }
     } finally {
       setIsLoading(false);
     }
