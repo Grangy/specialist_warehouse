@@ -9,14 +9,12 @@
 
 ## ⚠️ Файлы с чувствительными данными в Git:
 
-### 1. **Пароли в примерах кода** (низкий риск, но лучше исправить):
-- `scripts/API-AUTH-EXAMPLES.md` - содержит `"password": "YOUR_PASSWORD"`
-- `scripts/curl-custom-order-examples.md` - содержит `"password": "YOUR_PASSWORD"`
-- `scripts/curl-example-with-auth.sh` - содержит `PASSWORD="${ADMIN_PASSWORD:-YOUR_PASSWORD}"`
-- `scripts/curl-create-custom-order.sh` - может содержать пароли
-- `prisma/seed.ts` - содержит пароли для seed данных: `YOUR_PASSWORD`, `collector123`, `checker123`
+### 1. **Пароли в примерах кода** (исправлено):
+- Все пароли заменены на плейсхолдеры `YOUR_PASSWORD`
+- Используются переменные окружения для реальных паролей
+- `prisma/seed.ts` - использует переменные окружения или плейсхолдеры
 
-**Рекомендация**: Заменить на плейсхолдеры типа `YOUR_PASSWORD` или использовать переменные окружения.
+**Статус**: ✅ Все пароли заменены на плейсхолдеры или переменные окружения.
 
 ### 2. **IP адреса серверов** (средний риск):
 - Множество файлов в `docs/` и `scripts/` содержат реальный IP: `localhost`

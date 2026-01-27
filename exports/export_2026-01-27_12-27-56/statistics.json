@@ -1,0 +1,1301 @@
+{
+  "overview": {
+    "today": {
+      "tasks": 147,
+      "positions": 2933,
+      "units": 39910,
+      "orders": 371,
+      "points": 3077.953604190225,
+      "activeUsers": 10
+    },
+    "week": {
+      "positions": 4499,
+      "units": 60809,
+      "orders": 497,
+      "points": 4837.375296067223,
+      "activeUsers": 12
+    },
+    "month": {
+      "positions": 5029,
+      "units": 64848,
+      "orders": 578,
+      "points": 5891.115093014321,
+      "activeUsers": 12
+    },
+    "total": {
+      "tasks": 302,
+      "users": 13
+    }
+  },
+  "rankings": {
+    "today": {
+      "period": "today",
+      "collectors": [
+        {
+          "userId": "cmkql7t7e000xbvvo5vzgvibs",
+          "userName": "Виталий",
+          "role": "collector",
+          "positions": 273,
+          "units": 2151,
+          "orders": 27,
+          "points": 372.6294835240122,
+          "rank": 8,
+          "level": {
+            "rank": 8,
+            "name": "Лошадь",
+            "emoji": "🐴",
+            "description": "Мощный и стремительный",
+            "color": "text-pink-400"
+          },
+          "pph": 82.17987726868472,
+          "uph": 647.5051868312851,
+          "efficiency": 1.0451252844293097
+        },
+        {
+          "userId": "cmkqjto91009xbvg66ugp7l3y",
+          "userName": "Олег",
+          "role": "collector",
+          "positions": 170,
+          "units": 1075,
+          "orders": 16,
+          "points": 238.67434820662237,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 80.71178297076334,
+          "uph": 510.3833334915917,
+          "efficiency": 1.0635183227296763
+        },
+        {
+          "userId": "cmkqkug4q000gbvvon30t2uad",
+          "userName": "Роман",
+          "role": "collector",
+          "positions": 140,
+          "units": 1823,
+          "orders": 22,
+          "points": 230.97602772168946,
+          "rank": 3,
+          "level": {
+            "rank": 3,
+            "name": "Слизень",
+            "emoji": "🐛",
+            "description": "Постепенно набираешь скорость",
+            "color": "text-yellow-400"
+          },
+          "pph": 67.84135407035336,
+          "uph": 883.3913462161012,
+          "efficiency": 0.9822653296227761
+        },
+        {
+          "userId": "cmix71ckz0002bvsnbosiruos",
+          "userName": "Владимир",
+          "role": "collector",
+          "positions": 212,
+          "units": 2517,
+          "orders": 25,
+          "points": 217.03314192022685,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 61.728320171985196,
+          "uph": 732.8782163815412,
+          "efficiency": 0.7309681248238477
+        }
+      ],
+      "checkers": [
+        {
+          "userId": "cmkcg86610002bvxegg5mfsd0",
+          "userName": "Эрнес",
+          "role": "checker",
+          "positions": 591,
+          "units": 6015,
+          "orders": 59,
+          "points": 465.9927720902312,
+          "rank": 9,
+          "level": {
+            "rank": 9,
+            "name": "Гепард",
+            "emoji": "🐆",
+            "description": "Невероятно быстрый",
+            "color": "text-red-400"
+          },
+          "pph": 2.381287944095847,
+          "uph": 24.235950903107483,
+          "efficiency": 0.6261728153828691
+        },
+        {
+          "userId": "cmjgzbj780000bvupyvopfmqn",
+          "userName": "Албанец",
+          "role": "checker",
+          "positions": 552,
+          "units": 5630,
+          "orders": 63,
+          "points": 462.3170125454467,
+          "rank": 7,
+          "level": {
+            "rank": 7,
+            "name": "Кролик",
+            "emoji": "🐰",
+            "description": "Очень быстрый и ловкий",
+            "color": "text-purple-400"
+          },
+          "pph": 2.7418752790227527,
+          "uph": 27.965140979887856,
+          "efficiency": 0.6358181372940033
+        },
+        {
+          "userId": "cmkqkd33z00bjbvg69apbba9p",
+          "userName": "Игорь",
+          "role": "checker",
+          "positions": 337,
+          "units": 9218,
+          "orders": 54,
+          "points": 393.0276094938116,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 2.2904188973967607,
+          "uph": 62.65009316380813,
+          "efficiency": 0.763525897259677
+        },
+        {
+          "userId": "cmkcdodb8000kbvl9r1srqff4",
+          "userName": "Осман А",
+          "role": "checker",
+          "positions": 298,
+          "units": 8152,
+          "orders": 53,
+          "points": 348.1362881387336,
+          "rank": 4,
+          "level": {
+            "rank": 4,
+            "name": "Ленивец",
+            "emoji": "🦥",
+            "description": "Начинаешь двигаться быстрее",
+            "color": "text-orange-400"
+          },
+          "pph": 2.031959037372588,
+          "uph": 55.5856713847696,
+          "efficiency": 0.7380175630549394
+        },
+        {
+          "userId": "cmkqju87v009ybvg6qsl7g57b",
+          "userName": "Сергей",
+          "role": "checker",
+          "positions": 241,
+          "units": 1948,
+          "orders": 28,
+          "points": 226.2426969203228,
+          "rank": 2,
+          "level": {
+            "rank": 2,
+            "name": "Черепаха",
+            "emoji": "🐢",
+            "description": "Медленно, но верно",
+            "color": "text-green-400"
+          },
+          "pph": 12.645015968267828,
+          "uph": 102.20950666467107,
+          "efficiency": 0.65570351600869
+        },
+        {
+          "userId": "cmjle2sza0042bvdhxweimu7o",
+          "userName": "Дмитрий Палыч",
+          "role": "checker",
+          "positions": 27,
+          "units": 305,
+          "orders": 11,
+          "points": 82.14537000070455,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 73.63959931572751,
+          "uph": 831.8547330109959,
+          "efficiency": 1.2971064772807335
+        }
+      ],
+      "dictators": [
+        {
+          "userId": "cmjgzbj780000bvupyvopfmqn",
+          "userName": "Албанец",
+          "role": "checker",
+          "positions": 268,
+          "units": 1956,
+          "orders": 26,
+          "points": 203.54965981008456,
+          "rank": 9,
+          "level": {
+            "rank": 9,
+            "name": "Гепард",
+            "emoji": "🐆",
+            "description": "Невероятно быстрый",
+            "color": "text-red-400"
+          },
+          "pph": 1.8266070189608736,
+          "uph": 13.3315049592816,
+          "efficiency": 0.6149624619323987
+        },
+        {
+          "userId": "cmkcg86610002bvxegg5mfsd0",
+          "userName": "Эрнес",
+          "role": "checker",
+          "positions": 284,
+          "units": 3674,
+          "orders": 38,
+          "points": 194.0755145515216,
+          "rank": 7,
+          "level": {
+            "rank": 7,
+            "name": "Кролик",
+            "emoji": "🐰",
+            "description": "Очень быстрый и ловкий",
+            "color": "text-purple-400"
+          },
+          "pph": 5.201279626709291,
+          "uph": 67.28697657933076,
+          "efficiency": 0.6497219208684063
+        },
+        {
+          "userId": "cmkqkd33z00bjbvg69apbba9p",
+          "userName": "Игорь",
+          "role": "checker",
+          "positions": 183,
+          "units": 6566,
+          "orders": 33,
+          "points": 134.49677202600733,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 3.3725949355142504,
+          "uph": 121.00796910703042,
+          "efficiency": 0.5951627975376566
+        },
+        {
+          "userId": "cmkcdodb8000kbvl9r1srqff4",
+          "userName": "Осман А",
+          "role": "checker",
+          "positions": 58,
+          "units": 695,
+          "orders": 17,
+          "points": 62.78167394270615,
+          "rank": 4,
+          "level": {
+            "rank": 4,
+            "name": "Ленивец",
+            "emoji": "🦥",
+            "description": "Начинаешь двигаться быстрее",
+            "color": "text-orange-400"
+          },
+          "pph": 0.6319961718950649,
+          "uph": 7.573057577018449,
+          "efficiency": 0.599245629117818
+        },
+        {
+          "userId": "cmkql7t7e000xbvvo5vzgvibs",
+          "userName": "Виталий",
+          "role": "collector",
+          "positions": 57,
+          "units": 852,
+          "orders": 11,
+          "points": 25.403853628423796,
+          "rank": 2,
+          "level": {
+            "rank": 2,
+            "name": "Черепаха",
+            "emoji": "🐢",
+            "description": "Медленно, но верно",
+            "color": "text-green-400"
+          },
+          "pph": 6.716907520065697,
+          "uph": 100.40009135256095,
+          "efficiency": 0.5792549852634905
+        },
+        {
+          "userId": "cmkqjto91009xbvg66ugp7l3y",
+          "userName": "Олег",
+          "role": "collector",
+          "positions": 35,
+          "units": 224,
+          "orders": 3,
+          "points": 15.375,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 8.884628028124503,
+          "uph": 56.86161937999682,
+          "efficiency": 0.5
+        }
+      ],
+      "all": [
+        {
+          "userId": "cmkcg86610002bvxegg5mfsd0",
+          "userName": "Эрнес",
+          "role": "checker",
+          "positions": 591,
+          "units": 6015,
+          "orders": 59,
+          "points": 465.9927720902312,
+          "rank": 9,
+          "level": {
+            "rank": 9,
+            "name": "Гепард",
+            "emoji": "🐆",
+            "description": "Невероятно быстрый",
+            "color": "text-red-400"
+          },
+          "pph": 2.381287944095847,
+          "uph": 24.235950903107483,
+          "efficiency": 0.6261728153828691
+        },
+        {
+          "userId": "cmjgzbj780000bvupyvopfmqn",
+          "userName": "Албанец",
+          "role": "checker",
+          "positions": 552,
+          "units": 5630,
+          "orders": 63,
+          "points": 462.3170125454467,
+          "rank": 8,
+          "level": {
+            "rank": 8,
+            "name": "Лошадь",
+            "emoji": "🐴",
+            "description": "Мощный и стремительный",
+            "color": "text-pink-400"
+          },
+          "pph": 2.7418752790227527,
+          "uph": 27.965140979887856,
+          "efficiency": 0.6358181372940033
+        },
+        {
+          "userId": "cmkqkd33z00bjbvg69apbba9p",
+          "userName": "Игорь",
+          "role": "checker",
+          "positions": 337,
+          "units": 9218,
+          "orders": 54,
+          "points": 393.0276094938116,
+          "rank": 7,
+          "level": {
+            "rank": 7,
+            "name": "Кролик",
+            "emoji": "🐰",
+            "description": "Очень быстрый и ловкий",
+            "color": "text-purple-400"
+          },
+          "pph": 2.2904188973967607,
+          "uph": 62.65009316380813,
+          "efficiency": 0.763525897259677
+        },
+        {
+          "userId": "cmkql7t7e000xbvvo5vzgvibs",
+          "userName": "Виталий",
+          "role": "collector",
+          "positions": 273,
+          "units": 2151,
+          "orders": 27,
+          "points": 372.6294835240122,
+          "rank": 6,
+          "level": {
+            "rank": 6,
+            "name": "Собака",
+            "emoji": "🐕",
+            "description": "Быстрый и энергичный",
+            "color": "text-cyan-400"
+          },
+          "pph": 82.17987726868472,
+          "uph": 647.5051868312851,
+          "efficiency": 1.0451252844293097
+        },
+        {
+          "userId": "cmkcdodb8000kbvl9r1srqff4",
+          "userName": "Осман А",
+          "role": "checker",
+          "positions": 298,
+          "units": 8152,
+          "orders": 53,
+          "points": 348.1362881387336,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 2.031959037372588,
+          "uph": 55.5856713847696,
+          "efficiency": 0.7380175630549394
+        },
+        {
+          "userId": "cmkqjto91009xbvg66ugp7l3y",
+          "userName": "Олег",
+          "role": "collector",
+          "positions": 170,
+          "units": 1075,
+          "orders": 16,
+          "points": 238.67434820662237,
+          "rank": 4,
+          "level": {
+            "rank": 4,
+            "name": "Ленивец",
+            "emoji": "🦥",
+            "description": "Начинаешь двигаться быстрее",
+            "color": "text-orange-400"
+          },
+          "pph": 80.71178297076334,
+          "uph": 510.3833334915917,
+          "efficiency": 1.0635183227296763
+        },
+        {
+          "userId": "cmkqkug4q000gbvvon30t2uad",
+          "userName": "Роман",
+          "role": "collector",
+          "positions": 140,
+          "units": 1823,
+          "orders": 22,
+          "points": 230.97602772168946,
+          "rank": 3,
+          "level": {
+            "rank": 3,
+            "name": "Слизень",
+            "emoji": "🐛",
+            "description": "Постепенно набираешь скорость",
+            "color": "text-yellow-400"
+          },
+          "pph": 67.84135407035336,
+          "uph": 883.3913462161012,
+          "efficiency": 0.9822653296227761
+        },
+        {
+          "userId": "cmkqju87v009ybvg6qsl7g57b",
+          "userName": "Сергей",
+          "role": "checker",
+          "positions": 241,
+          "units": 1948,
+          "orders": 28,
+          "points": 226.2426969203228,
+          "rank": 2,
+          "level": {
+            "rank": 2,
+            "name": "Черепаха",
+            "emoji": "🐢",
+            "description": "Медленно, но верно",
+            "color": "text-green-400"
+          },
+          "pph": 12.645015968267828,
+          "uph": 102.20950666467107,
+          "efficiency": 0.65570351600869
+        },
+        {
+          "userId": "cmix71ckz0002bvsnbosiruos",
+          "userName": "Владимир",
+          "role": "collector",
+          "positions": 212,
+          "units": 2517,
+          "orders": 25,
+          "points": 217.03314192022685,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 61.728320171985196,
+          "uph": 732.8782163815412,
+          "efficiency": 0.7309681248238477
+        },
+        {
+          "userId": "cmjle2sza0042bvdhxweimu7o",
+          "userName": "Дмитрий Палыч",
+          "role": "checker",
+          "positions": 27,
+          "units": 305,
+          "orders": 11,
+          "points": 82.14537000070455,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 73.63959931572751,
+          "uph": 831.8547330109959,
+          "efficiency": 1.2971064772807335
+        }
+      ]
+    },
+    "week": {
+      "period": "week",
+      "collectors": [
+        {
+          "userId": "cmkql7t7e000xbvvo5vzgvibs",
+          "userName": "Виталий",
+          "role": "collector",
+          "positions": 273,
+          "units": 2151,
+          "orders": 27,
+          "points": 372.6294835240122,
+          "rank": 9,
+          "level": {
+            "rank": 9,
+            "name": "Гепард",
+            "emoji": "🐆",
+            "description": "Невероятно быстрый",
+            "color": "text-red-400"
+          },
+          "pph": 82.17987726868472,
+          "uph": 647.5051868312851,
+          "efficiency": 1.0451252844293097
+        },
+        {
+          "userId": "cmkqjto91009xbvg66ugp7l3y",
+          "userName": "Олег",
+          "role": "collector",
+          "positions": 275,
+          "units": 2071,
+          "orders": 27,
+          "points": 369.4312006218213,
+          "rank": 7,
+          "level": {
+            "rank": 7,
+            "name": "Кролик",
+            "emoji": "🐰",
+            "description": "Очень быстрый и ловкий",
+            "color": "text-purple-400"
+          },
+          "pph": 74.51664664251324,
+          "uph": 561.1780916241634,
+          "efficiency": 0.9635003015675404
+        },
+        {
+          "userId": "cmix71ckz0002bvsnbosiruos",
+          "userName": "Владимир",
+          "role": "collector",
+          "positions": 312,
+          "units": 3074,
+          "orders": 31,
+          "points": 353.27106715439487,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 73.17721975949114,
+          "uph": 720.983248527807,
+          "efficiency": 0.8333576713396224
+        },
+        {
+          "userId": "cmkqkug4q000gbvvon30t2uad",
+          "userName": "Роман",
+          "role": "collector",
+          "positions": 166,
+          "units": 1998,
+          "orders": 24,
+          "points": 251.98533871672447,
+          "rank": 4,
+          "level": {
+            "rank": 4,
+            "name": "Ленивец",
+            "emoji": "🦥",
+            "description": "Начинаешь двигаться быстрее",
+            "color": "text-orange-400"
+          },
+          "pph": 64.65712411473783,
+          "uph": 778.2224938629288,
+          "efficiency": 0.9511053047270799
+        },
+        {
+          "userId": "cmkuwpbkp0004bvb5oopv9clw",
+          "userName": "Станислав",
+          "role": "collector",
+          "positions": 89,
+          "units": 791,
+          "orders": 9,
+          "points": 64.46077284731194,
+          "rank": 2,
+          "level": {
+            "rank": 2,
+            "name": "Черепаха",
+            "emoji": "🐢",
+            "description": "Медленно, но верно",
+            "color": "text-green-400"
+          },
+          "pph": 52.12356342969142,
+          "uph": 463.2554907065833,
+          "efficiency": 0.7201268629160628
+        },
+        {
+          "userId": "cmix71ckx0001bvsn9k0uyv5f",
+          "userName": "Сборщик",
+          "role": "collector",
+          "positions": 2,
+          "units": 10,
+          "orders": 1,
+          "points": 16.5,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 1930.2949061662198,
+          "uph": 9651.4745308311,
+          "efficiency": 1.5
+        }
+      ],
+      "checkers": [
+        {
+          "userId": "cmkcg86610002bvxegg5mfsd0",
+          "userName": "Эрнес",
+          "role": "checker",
+          "positions": 1166,
+          "units": 9447,
+          "orders": 78,
+          "points": 1027.4285875540422,
+          "rank": 9,
+          "level": {
+            "rank": 9,
+            "name": "Гепард",
+            "emoji": "🐆",
+            "description": "Невероятно быстрый",
+            "color": "text-red-400"
+          },
+          "pph": 4.212246634446198,
+          "uph": 34.12786788646075,
+          "efficiency": 0.7026879740833912
+        },
+        {
+          "userId": "cmkqkd33z00bjbvg69apbba9p",
+          "userName": "Игорь",
+          "role": "checker",
+          "positions": 575,
+          "units": 13465,
+          "orders": 83,
+          "points": 787.5886495680176,
+          "rank": 7,
+          "level": {
+            "rank": 7,
+            "name": "Кролик",
+            "emoji": "🐰",
+            "description": "Очень быстрый и ловкий",
+            "color": "text-purple-400"
+          },
+          "pph": 3.359165020237653,
+          "uph": 78.6628817347826,
+          "efficiency": 0.7958939110873934
+        },
+        {
+          "userId": "cmkcdodb8000kbvl9r1srqff4",
+          "userName": "Осман А",
+          "role": "checker",
+          "positions": 515,
+          "units": 17666,
+          "orders": 81,
+          "points": 649.4712629860003,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 3.0284379932319263,
+          "uph": 103.88424386103924,
+          "efficiency": 0.7634687082638499
+        },
+        {
+          "userId": "cmjgzbj780000bvupyvopfmqn",
+          "userName": "Албанец",
+          "role": "checker",
+          "positions": 552,
+          "units": 5630,
+          "orders": 63,
+          "points": 462.3170125454467,
+          "rank": 4,
+          "level": {
+            "rank": 4,
+            "name": "Ленивец",
+            "emoji": "🦥",
+            "description": "Начинаешь двигаться быстрее",
+            "color": "text-orange-400"
+          },
+          "pph": 2.7418752790227527,
+          "uph": 27.965140979887856,
+          "efficiency": 0.6358181372940033
+        },
+        {
+          "userId": "cmkqju87v009ybvg6qsl7g57b",
+          "userName": "Сергей",
+          "role": "checker",
+          "positions": 241,
+          "units": 1948,
+          "orders": 28,
+          "points": 226.2426969203228,
+          "rank": 2,
+          "level": {
+            "rank": 2,
+            "name": "Черепаха",
+            "emoji": "🐢",
+            "description": "Медленно, но верно",
+            "color": "text-green-400"
+          },
+          "pph": 12.645015968267828,
+          "uph": 102.20950666467107,
+          "efficiency": 0.65570351600869
+        },
+        {
+          "userId": "cmjle2sza0042bvdhxweimu7o",
+          "userName": "Дмитрий Палыч",
+          "role": "checker",
+          "positions": 54,
+          "units": 380,
+          "orders": 12,
+          "points": 131.64537000070453,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 131.35357016165813,
+          "uph": 924.3399381746312,
+          "efficiency": 1.3140142708406723
+        }
+      ],
+      "dictators": [
+        {
+          "userId": "cmkcg86610002bvxegg5mfsd0",
+          "userName": "Эрнес",
+          "role": "checker",
+          "positions": 433,
+          "units": 4419,
+          "orders": 47,
+          "points": 282.5755145515216,
+          "rank": 9,
+          "level": {
+            "rank": 9,
+            "name": "Гепард",
+            "emoji": "🐆",
+            "description": "Невероятно быстрый",
+            "color": "text-red-400"
+          },
+          "pph": 6.652102170331978,
+          "uph": 67.88831291154044,
+          "efficiency": 0.6424823940389136
+        },
+        {
+          "userId": "cmjgzbj780000bvupyvopfmqn",
+          "userName": "Албанец",
+          "role": "checker",
+          "positions": 268,
+          "units": 1956,
+          "orders": 26,
+          "points": 203.54965981008456,
+          "rank": 7,
+          "level": {
+            "rank": 7,
+            "name": "Кролик",
+            "emoji": "🐰",
+            "description": "Очень быстрый и ловкий",
+            "color": "text-purple-400"
+          },
+          "pph": 1.8266070189608736,
+          "uph": 13.3315049592816,
+          "efficiency": 0.6149624619323987
+        },
+        {
+          "userId": "cmkqkd33z00bjbvg69apbba9p",
+          "userName": "Игорь",
+          "role": "checker",
+          "positions": 230,
+          "units": 9574,
+          "orders": 44,
+          "points": 172.8447466212265,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 3.6895048038889855,
+          "uph": 153.5796477931876,
+          "efficiency": 0.5932598999569368
+        },
+        {
+          "userId": "cmkcdodb8000kbvl9r1srqff4",
+          "userName": "Осман А",
+          "role": "checker",
+          "positions": 158,
+          "units": 1284,
+          "orders": 36,
+          "points": 140.40667394270616,
+          "rank": 4,
+          "level": {
+            "rank": 4,
+            "name": "Ленивец",
+            "emoji": "🦥",
+            "description": "Начинаешь двигаться быстрее",
+            "color": "text-orange-400"
+          },
+          "pph": 1.4917687997861613,
+          "uph": 12.122981891933108,
+          "efficiency": 0.5726263701352136
+        },
+        {
+          "userId": "cmkqjto91009xbvg66ugp7l3y",
+          "userName": "Олег",
+          "role": "collector",
+          "positions": 222,
+          "units": 1326,
+          "orders": 13,
+          "points": 99,
+          "rank": 2,
+          "level": {
+            "rank": 2,
+            "name": "Черепаха",
+            "emoji": "🐢",
+            "description": "Медленно, но верно",
+            "color": "text-green-400"
+          },
+          "pph": 11.057890630986318,
+          "uph": 66.04848187697233,
+          "efficiency": 0.5
+        },
+        {
+          "userId": "cmkql7t7e000xbvvo5vzgvibs",
+          "userName": "Виталий",
+          "role": "collector",
+          "positions": 57,
+          "units": 852,
+          "orders": 11,
+          "points": 25.403853628423796,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 6.716907520065697,
+          "uph": 100.40009135256095,
+          "efficiency": 0.5792549852634905
+        }
+      ]
+    },
+    "month": {
+      "period": "month",
+      "collectors": [
+        {
+          "userId": "cmkql7t7e000xbvvo5vzgvibs",
+          "userName": "Виталий",
+          "role": "collector",
+          "positions": 292,
+          "units": 2318,
+          "orders": 30,
+          "points": 390.6635957536704,
+          "rank": 9,
+          "level": {
+            "rank": 9,
+            "name": "Гепард",
+            "emoji": "🐆",
+            "description": "Невероятно быстрый",
+            "color": "text-red-400"
+          },
+          "pph": 78.12058750962389,
+          "uph": 620.1490474222883,
+          "efficiency": 1.0140030799930269
+        },
+        {
+          "userId": "cmkqjto91009xbvg66ugp7l3y",
+          "userName": "Олег",
+          "role": "collector",
+          "positions": 275,
+          "units": 2071,
+          "orders": 27,
+          "points": 369.4312006218213,
+          "rank": 7,
+          "level": {
+            "rank": 7,
+            "name": "Кролик",
+            "emoji": "🐰",
+            "description": "Очень быстрый и ловкий",
+            "color": "text-purple-400"
+          },
+          "pph": 74.51664664251324,
+          "uph": 561.1780916241634,
+          "efficiency": 0.9635003015675404
+        },
+        {
+          "userId": "cmix71ckz0002bvsnbosiruos",
+          "userName": "Владимир",
+          "role": "collector",
+          "positions": 312,
+          "units": 3074,
+          "orders": 31,
+          "points": 353.27106715439487,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 73.17721975949114,
+          "uph": 720.983248527807,
+          "efficiency": 0.8333576713396224
+        },
+        {
+          "userId": "cmkqkug4q000gbvvon30t2uad",
+          "userName": "Роман",
+          "role": "collector",
+          "positions": 177,
+          "units": 2027,
+          "orders": 26,
+          "points": 268.32566154621355,
+          "rank": 4,
+          "level": {
+            "rank": 4,
+            "name": "Ленивец",
+            "emoji": "🦥",
+            "description": "Начинаешь двигаться быстрее",
+            "color": "text-orange-400"
+          },
+          "pph": 64.7857844615993,
+          "uph": 741.9253395687108,
+          "efficiency": 0.952043210426451
+        },
+        {
+          "userId": "cmkuwpbkp0004bvb5oopv9clw",
+          "userName": "Станислав",
+          "role": "collector",
+          "positions": 89,
+          "units": 791,
+          "orders": 9,
+          "points": 64.46077284731194,
+          "rank": 2,
+          "level": {
+            "rank": 2,
+            "name": "Черепаха",
+            "emoji": "🐢",
+            "description": "Медленно, но верно",
+            "color": "text-green-400"
+          },
+          "pph": 52.12356342969142,
+          "uph": 463.2554907065833,
+          "efficiency": 0.7201268629160628
+        },
+        {
+          "userId": "cmix71ckx0001bvsn9k0uyv5f",
+          "userName": "Сборщик",
+          "role": "collector",
+          "positions": 4,
+          "units": 24,
+          "orders": 2,
+          "points": 23.232948807145902,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 104.80273069337197,
+          "uph": 628.8163841602318,
+          "efficiency": 1.4232948807145904
+        }
+      ],
+      "checkers": [
+        {
+          "userId": "cmkcg86610002bvxegg5mfsd0",
+          "userName": "Эрнес",
+          "role": "checker",
+          "positions": 1263,
+          "units": 10106,
+          "orders": 89,
+          "points": 1202.230134163369,
+          "rank": 9,
+          "level": {
+            "rank": 9,
+            "name": "Гепард",
+            "emoji": "🐆",
+            "description": "Невероятно быстрый",
+            "color": "text-red-400"
+          },
+          "pph": 4.550288801980543,
+          "uph": 36.409515940471394,
+          "efficiency": 0.7694071439922799
+        },
+        {
+          "userId": "cmkqkd33z00bjbvg69apbba9p",
+          "userName": "Игорь",
+          "role": "checker",
+          "positions": 673,
+          "units": 14245,
+          "orders": 97,
+          "points": 899.6063119822701,
+          "rank": 7,
+          "level": {
+            "rank": 7,
+            "name": "Кролик",
+            "emoji": "🐰",
+            "description": "Очень быстрый и ловкий",
+            "color": "text-purple-400"
+          },
+          "pph": 3.7722157279293156,
+          "uph": 79.84429872860788,
+          "efficiency": 0.7851686452164269
+        },
+        {
+          "userId": "cmkcdodb8000kbvl9r1srqff4",
+          "userName": "Осман А",
+          "role": "checker",
+          "positions": 549,
+          "units": 18032,
+          "orders": 89,
+          "points": 690.9584897724934,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 3.1429092625191872,
+          "uph": 103.22939858241527,
+          "efficiency": 0.7673831785590642
+        },
+        {
+          "userId": "cmjgzbj780000bvupyvopfmqn",
+          "userName": "Албанец",
+          "role": "checker",
+          "positions": 571,
+          "units": 5724,
+          "orders": 65,
+          "points": 488.75171570198614,
+          "rank": 4,
+          "level": {
+            "rank": 4,
+            "name": "Ленивец",
+            "emoji": "🦥",
+            "description": "Начинаешь двигаться быстрее",
+            "color": "text-orange-400"
+          },
+          "pph": 2.83114131936634,
+          "uph": 28.38082821725557,
+          "efficiency": 0.6433183447682614
+        },
+        {
+          "userId": "cmjle2sza0042bvdhxweimu7o",
+          "userName": "Дмитрий Палыч",
+          "role": "checker",
+          "positions": 226,
+          "units": 1302,
+          "orders": 17,
+          "points": 316.1608109305735,
+          "rank": 2,
+          "level": {
+            "rank": 2,
+            "name": "Черепаха",
+            "emoji": "🐢",
+            "description": "Медленно, но верно",
+            "color": "text-green-400"
+          },
+          "pph": 36.75149323268411,
+          "uph": 211.72762915466686,
+          "efficiency": 1.199104754394947
+        },
+        {
+          "userId": "cmkqju87v009ybvg6qsl7g57b",
+          "userName": "Сергей",
+          "role": "checker",
+          "positions": 271,
+          "units": 2425,
+          "orders": 40,
+          "points": 267.1407436368359,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 6.436080386934304,
+          "uph": 57.59223224470733,
+          "efficiency": 0.6410687316228714
+        }
+      ],
+      "dictators": [
+        {
+          "userId": "cmkcg86610002bvxegg5mfsd0",
+          "userName": "Эрнес",
+          "role": "checker",
+          "positions": 433,
+          "units": 4419,
+          "orders": 47,
+          "points": 282.5755145515216,
+          "rank": 9,
+          "level": {
+            "rank": 9,
+            "name": "Гепард",
+            "emoji": "🐆",
+            "description": "Невероятно быстрый",
+            "color": "text-red-400"
+          },
+          "pph": 6.652102170331978,
+          "uph": 67.88831291154044,
+          "efficiency": 0.6424823940389136
+        },
+        {
+          "userId": "cmjgzbj780000bvupyvopfmqn",
+          "userName": "Албанец",
+          "role": "checker",
+          "positions": 268,
+          "units": 1956,
+          "orders": 26,
+          "points": 203.54965981008456,
+          "rank": 7,
+          "level": {
+            "rank": 7,
+            "name": "Кролик",
+            "emoji": "🐰",
+            "description": "Очень быстрый и ловкий",
+            "color": "text-purple-400"
+          },
+          "pph": 1.8266070189608736,
+          "uph": 13.3315049592816,
+          "efficiency": 0.6149624619323987
+        },
+        {
+          "userId": "cmkqkd33z00bjbvg69apbba9p",
+          "userName": "Игорь",
+          "role": "checker",
+          "positions": 230,
+          "units": 9574,
+          "orders": 44,
+          "points": 172.8447466212265,
+          "rank": 5,
+          "level": {
+            "rank": 5,
+            "name": "Кот",
+            "emoji": "🐱",
+            "description": "Ловкий и проворный",
+            "color": "text-blue-400"
+          },
+          "pph": 3.6895048038889855,
+          "uph": 153.5796477931876,
+          "efficiency": 0.5932598999569368
+        },
+        {
+          "userId": "cmkcdodb8000kbvl9r1srqff4",
+          "userName": "Осман А",
+          "role": "checker",
+          "positions": 158,
+          "units": 1284,
+          "orders": 36,
+          "points": 140.40667394270616,
+          "rank": 4,
+          "level": {
+            "rank": 4,
+            "name": "Ленивец",
+            "emoji": "🦥",
+            "description": "Начинаешь двигаться быстрее",
+            "color": "text-orange-400"
+          },
+          "pph": 1.4917687997861613,
+          "uph": 12.122981891933108,
+          "efficiency": 0.5726263701352136
+        },
+        {
+          "userId": "cmkqjto91009xbvg66ugp7l3y",
+          "userName": "Олег",
+          "role": "collector",
+          "positions": 222,
+          "units": 1326,
+          "orders": 13,
+          "points": 99,
+          "rank": 2,
+          "level": {
+            "rank": 2,
+            "name": "Черепаха",
+            "emoji": "🐢",
+            "description": "Медленно, но верно",
+            "color": "text-green-400"
+          },
+          "pph": 11.057890630986318,
+          "uph": 66.04848187697233,
+          "efficiency": 0.5
+        },
+        {
+          "userId": "cmkql7t7e000xbvvo5vzgvibs",
+          "userName": "Виталий",
+          "role": "collector",
+          "positions": 57,
+          "units": 852,
+          "orders": 11,
+          "points": 25.403853628423796,
+          "rank": 1,
+          "level": {
+            "rank": 1,
+            "name": "Улитка",
+            "emoji": "🐌",
+            "description": "Только начал свой путь",
+            "color": "text-slate-400"
+          },
+          "pph": 6.716907520065697,
+          "uph": 100.40009135256095,
+          "efficiency": 0.5792549852634905
+        }
+      ]
+    }
+  }
+}

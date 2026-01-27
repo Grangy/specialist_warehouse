@@ -83,7 +83,7 @@ exports/
 npx tsx scripts/export-data-via-api.ts \
   --url http://localhost:3000 \
   --login admin \
-  --password admin123
+  --password YOUR_PASSWORD
 ```
 
 ### Экспорт с продакшн сервера
@@ -112,7 +112,7 @@ npx tsx scripts/export-data-via-api.ts \
 ```bash
 export API_URL="https://sklad.specialist82.pro"
 export API_LOGIN="admin"
-export API_PASSWORD="your_password"
+export API_PASSWORD="YOUR_PASSWORD"
 
 npx tsx scripts/export-data-via-api.ts \
   --url "$API_URL" \
@@ -125,7 +125,7 @@ npx tsx scripts/export-data-via-api.ts \
 ```env
 API_URL=https://sklad.specialist82.pro
 API_LOGIN=admin
-API_PASSWORD=your_password
+API_PASSWORD=YOUR_PASSWORD
 ```
 
 И используйте `dotenv-cli`:

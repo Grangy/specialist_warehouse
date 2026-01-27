@@ -288,7 +288,7 @@ async function main() {
     console.log('\nИспользование:');
     console.log('  npx tsx scripts/export-data-via-api.ts --url <URL> --login <LOGIN> --password <PASSWORD> [--output <DIR>]');
     console.log('\nПример:');
-    console.log('  npx tsx scripts/export-data-via-api.ts --url https://sklad.specialist82.pro --login admin --password mypassword');
+    console.log('  npx tsx scripts/export-data-via-api.ts --url https://sklad.specialist82.pro --login admin --password YOUR_PASSWORD');
     process.exit(1);
   }
 
