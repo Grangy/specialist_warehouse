@@ -400,6 +400,9 @@ export default function CompletedShipmentsTab() {
                     <SortIcon field="items_count" />
                   </div>
                 </th>
+                <th className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider">
+                  Вычеркнуто
+                </th>
                 <th 
                   className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50 transition-colors select-none"
                   onClick={() => handleSort('created_at')}
@@ -416,7 +419,7 @@ export default function CompletedShipmentsTab() {
             <tbody className="divide-y divide-slate-700/50">
               {paginatedShipments.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center">
+                  <td colSpan={12} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <Package className="w-12 h-12 text-slate-500 opacity-50" />
                       <div className="text-slate-400 font-medium">
@@ -535,6 +538,22 @@ export default function CompletedShipmentsTab() {
                           {shipment.total_qty} ед.
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      {shipment.crossed_out_qty && shipment.crossed_out_qty > 0 ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center justify-center px-2 py-1 bg-red-600/20 text-red-300 rounded font-bold text-sm border border-red-500/50 hover:bg-red-600/30 transition-all cursor-default">
+                            {shipment.crossed_out_qty} ед.
+                          </span>
+                          {shipment.crossed_out_items && shipment.crossed_out_items > 0 && (
+                            <span className="inline-flex items-center justify-center px-2 py-1 bg-orange-600/20 text-orange-300 rounded text-xs border border-orange-500/50">
+                              {shipment.crossed_out_items} поз.
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2 text-slate-400 text-sm group">

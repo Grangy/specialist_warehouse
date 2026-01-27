@@ -62,6 +62,8 @@ export interface Shipment {
   tasks?: ShipmentTask[]; // Массив заданий для режима ожидания
   collector_visible?: boolean; // Виден ли заказ сборщику (для проверяльщиков и админов)
   places?: number | null; // Количество мест для задания
+  crossed_out_qty?: number; // Количество вычеркнутых товаров (не собрали/откорректировали)
+  crossed_out_items?: number; // Количество позиций с вычеркнутыми товарами
 }
 
 export type Tab = 'new' | 'processed' | 'waiting' | 'regions';
