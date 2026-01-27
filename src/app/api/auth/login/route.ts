@@ -2,25 +2,87 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, createSession } from '@/lib/auth';
 import { cookies } from 'next/headers';
+import { checkRateLimit, getClientIdentifier } from '@/lib/security/rateLimiter';
+import { validateLogin, validatePassword } from '@/lib/security/inputValidator';
+import { logSecurityEvent } from '@/lib/security/securityLogger';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
+    const clientId = getClientIdentifier(request);
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+
+    // Проверка rate limiting для логина
+    const rateLimit = checkRateLimit(clientId, 'login');
+    if (!rateLimit.allowed) {
+      logSecurityEvent('rate_limit_exceeded', {
+        ip,
+        userAgent,
+        details: `Login attempts exceeded for ${clientId}`,
+      });
+      return NextResponse.json(
+        { 
+          error: 'Слишком много попыток входа. Попробуйте позже.',
+          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000),
+        },
+        { 
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
+            'X-RateLimit-Limit': '5',
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': String(rateLimit.resetTime),
+          },
+        }
+      );
+    }
+
     const { login, password } = await request.json();
 
-    if (!login || !password) {
+    // Валидация входных данных
+    const loginValidation = validateLogin(login);
+    if (!loginValidation.valid) {
+      logSecurityEvent('suspicious_activity', {
+        ip,
+        userAgent,
+        login,
+        details: `Invalid login format: ${loginValidation.error}`,
+      });
       return NextResponse.json(
-        { error: 'Логин и пароль обязательны' },
+        { error: loginValidation.error },
         { status: 400 }
       );
     }
 
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      logSecurityEvent('suspicious_activity', {
+        ip,
+        userAgent,
+        login: loginValidation.sanitized,
+        details: `Invalid password format: ${passwordValidation.error}`,
+      });
+      return NextResponse.json(
+        { error: passwordValidation.error },
+        { status: 400 }
+      );
+    }
+
+    const sanitizedLogin = loginValidation.sanitized!;
+
     const user = await prisma.user.findUnique({
-      where: { login },
+      where: { login: sanitizedLogin },
     });
 
     if (!user) {
+      logSecurityEvent('login_failure', {
+        ip,
+        userAgent,
+        login: sanitizedLogin,
+        details: 'User not found',
+      });
       return NextResponse.json(
         { error: 'Неверный логин или пароль' },
         { status: 401 }
@@ -30,11 +92,26 @@ export async function POST(request: NextRequest) {
     const isValid = await verifyPassword(password, user.password);
 
     if (!isValid) {
+      logSecurityEvent('login_failure', {
+        ip,
+        userAgent,
+        login: sanitizedLogin,
+        userId: user.id,
+        details: 'Invalid password',
+      });
       return NextResponse.json(
         { error: 'Неверный логин или пароль' },
         { status: 401 }
       );
     }
+
+    // Успешный вход
+    logSecurityEvent('login_success', {
+      ip,
+      userAgent,
+      login: sanitizedLogin,
+      userId: user.id,
+    });
 
     const token = await createSession(user.id);
     const cookieStore = await cookies();

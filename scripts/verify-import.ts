@@ -81,7 +81,11 @@ async function fetchWithAuth(url: string, login: string, password: string, optio
 async function verifyImport() {
   const url = process.argv[2] || 'https://sklad.specialist82.pro';
   const login = process.argv[3] || 'admin';
-  const password = process.argv[4] || 'admin123';
+  const password = process.argv[4] || process.env.API_PASSWORD || '';
+  if (!password) {
+    console.error('❌ Пароль не указан. Используйте: --password YOUR_PASSWORD или установите переменную окружения API_PASSWORD');
+    process.exit(1);
+  }
 
   console.log('\n🔍 ПРОВЕРКА ИМПОРТА ЗАКАЗОВ\n');
   console.log(`Подключение к: ${url}\n`);

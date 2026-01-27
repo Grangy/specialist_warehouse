@@ -12,7 +12,8 @@ export interface SessionUser {
   role: UserRole;
 }
 
-const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 дней
+// Уменьшена длительность сессии для безопасности: с 7 дней до 24 часов
+const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 часа
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);

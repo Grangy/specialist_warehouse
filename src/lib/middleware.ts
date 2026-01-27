@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser, UserRole, verifyPassword } from './auth';
 import { prisma } from './prisma';
+import { checkRateLimit, getClientIdentifier } from './security/rateLimiter';
+import { validateLogin, validatePassword } from './security/inputValidator';
+import { logSecurityEvent } from './security/securityLogger';
 
 export interface AuthRequest extends NextRequest {
   user?: {
@@ -54,23 +57,75 @@ export async function authenticateRequest(
   const headerPassword = request.headers.get('x-password');
   
   if (headerLogin && headerPassword) {
-    login = headerLogin.trim();
+    // Валидация логина и пароля из заголовков
+    const loginValidation = validateLogin(headerLogin);
+    const passwordValidation = validatePassword(headerPassword);
+    
+    if (!loginValidation.valid || !passwordValidation.valid) {
+      const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+      logSecurityEvent('suspicious_activity', {
+        ip,
+        login: headerLogin,
+        details: 'Invalid credentials format in headers',
+      });
+      return NextResponse.json(
+        { error: 'Неверный формат учетных данных' },
+        { status: 400 }
+      );
+    }
+    
+    login = loginValidation.sanitized!;
     password = headerPassword.trim();
     console.log('[API Auth] Используем авторизацию через заголовки X-Login/X-Password');
   }
   // Приоритет 2: Проверяем тело запроса (для обратной совместимости)
   else if (body && typeof body.login === 'string' && typeof body.password === 'string') {
-    const bodyLogin = body.login.trim();
-    const bodyPassword = body.password.trim();
-    if (bodyLogin.length > 0 && bodyPassword.length > 0) {
-      login = bodyLogin;
-      password = bodyPassword;
+    const loginValidation = validateLogin(body.login);
+    const passwordValidation = validatePassword(body.password);
+    
+    if (!loginValidation.valid || !passwordValidation.valid) {
+      const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+      logSecurityEvent('suspicious_activity', {
+        ip,
+        login: body.login,
+        details: 'Invalid credentials format in body',
+      });
+      return NextResponse.json(
+        { error: 'Неверный формат учетных данных' },
+        { status: 400 }
+      );
+    }
+    
+    if (loginValidation.sanitized && loginValidation.sanitized.length > 0 && body.password.length > 0) {
+      login = loginValidation.sanitized;
+      password = body.password.trim();
       console.log('[API Auth] Используем авторизацию через тело запроса (login/password)');
     }
   }
   
   // Если нашли credentials, проверяем их
   if (login && password) {
+    // Rate limiting для аутентификации через заголовки/body
+    const clientId = getClientIdentifier(request);
+    const rateLimit = checkRateLimit(`${clientId}:auth`, 'api');
+    if (!rateLimit.allowed) {
+      const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+      logSecurityEvent('rate_limit_exceeded', {
+        ip,
+        login,
+        details: 'Authentication rate limit exceeded',
+      });
+      return NextResponse.json(
+        { error: 'Слишком много запросов. Попробуйте позже.' },
+        { 
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
+          },
+        }
+      );
+    }
+
     const user = await prisma.user.findUnique({
       where: { login },
     });
