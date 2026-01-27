@@ -16,8 +16,7 @@ import {
 } from 'lucide-react';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
-// @ts-ignore - xlsx не имеет типов для ESM
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 interface MinusShipment extends Shipment {
   shortage_qty?: number; // Количество товаров с недостачей
@@ -94,33 +93,60 @@ export default function MinusTab() {
         'Дата завершения': shipment.confirmed_at ? new Date(shipment.confirmed_at).toLocaleString('ru-RU') : '',
       }));
 
-      // Создаем рабочую книгу
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Заказы с недостачами');
+      // Создаем рабочую книгу ExcelJS
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Заказы с недостачами');
+
+      // Добавляем заголовки
+      const headers = Object.keys(exportData[0] || {});
+      worksheet.addRow(headers);
+
+      // Стилизуем заголовки
+      const headerRow = worksheet.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE0E0E0' },
+      };
+
+      // Добавляем данные
+      exportData.forEach((row) => {
+        worksheet.addRow(Object.values(row));
+      });
 
       // Настраиваем ширину колонок
-      const colWidths = [
-        { wch: 15 }, // Номер заказа
-        { wch: 25 }, // Клиент
-        { wch: 25 }, // Направление
-        { wch: 20 }, // Бизнес-регион
-        { wch: 20 }, // Сборщик
-        { wch: 20 }, // Проверяльщик
-        { wch: 20 }, // Диктовщик
-        { wch: 10 }, // Позиций
-        { wch: 12 }, // Всего товаров
-        { wch: 15 }, // Недостача товаров
-        { wch: 20 }, // Позиций с недостачей
-        { wch: 25 }, // Позиций с нулевым количеством
-        { wch: 20 }, // Дата создания
-        { wch: 20 }, // Дата завершения
+      worksheet.columns = [
+        { width: 15 }, // Номер заказа
+        { width: 25 }, // Клиент
+        { width: 25 }, // Направление
+        { width: 20 }, // Бизнес-регион
+        { width: 20 }, // Сборщик
+        { width: 20 }, // Проверяльщик
+        { width: 20 }, // Диктовщик
+        { width: 10 }, // Позиций
+        { width: 12 }, // Всего товаров
+        { width: 15 }, // Недостача товаров
+        { width: 20 }, // Позиций с недостачей
+        { width: 25 }, // Позиций с нулевым количеством
+        { width: 20 }, // Дата создания
+        { width: 20 }, // Дата завершения
       ];
-      ws['!cols'] = colWidths;
 
       // Экспортируем файл
       const fileName = `minus-shipments-${new Date().toISOString().split('T')[0]}.xlsx`;
-      XLSX.writeFile(wb, fileName);
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
     } catch (error: any) {
       console.error('Ошибка при экспорте:', error);
       setError('Ошибка при экспорте в Excel');
