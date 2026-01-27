@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin, Trophy } from 'lucide-react';
+import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin, Trophy, AlertTriangle } from 'lucide-react';
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
 import ActiveShipmentsTab from '@/components/admin/ActiveShipmentsTab';
@@ -10,9 +10,10 @@ import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import RegionPrioritiesTab from '@/components/admin/RegionPrioritiesTab';
 import SettingsTab from '@/components/admin/SettingsTab';
 import StatisticsTab from '@/components/admin/StatisticsTab';
+import MinusTab from '@/components/admin/MinusTab';
 import { useToast } from '@/hooks/useToast';
 
-type Tab = 'users' | 'active' | 'shipments' | 'analytics' | 'regions' | 'settings' | 'statistics';
+type Tab = 'users' | 'active' | 'shipments' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus';
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('users');
@@ -139,6 +140,17 @@ export default function AdminPage() {
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Приоритеты регионов</span>
           </button>
           <button
+            onClick={() => setActiveTab('minus')}
+            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+              activeTab === 'minus'
+                ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <AlertTriangle className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'minus' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <span className="font-medium text-sm md:text-base whitespace-nowrap">Минусы</span>
+          </button>
+          <button
             onClick={() => setActiveTab('settings')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'settings'
@@ -226,6 +238,7 @@ export default function AdminPage() {
           {activeTab === 'analytics' && <AnalyticsTab />}
           {activeTab === 'statistics' && <StatisticsTab />}
           {activeTab === 'regions' && <RegionPrioritiesTab />}
+          {activeTab === 'minus' && <MinusTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
       </main>
