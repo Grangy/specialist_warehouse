@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { UserPlus, X } from 'lucide-react';
 
 interface User {
@@ -23,38 +23,7 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Загружаем сохраненного диктовщика на день
-  useEffect(() => {
-    loadSavedDictator();
-  }, [userId]);
-
-  // Загружаем текущего пользователя
-  useEffect(() => {
-    loadCurrentUser();
-  }, []);
-
-  // Загружаем список пользователей при открытии выбора
-  useEffect(() => {
-    if (isSelecting) {
-      loadUsers();
-    }
-  }, [isSelecting]);
-
-  const loadCurrentUser = async () => {
-    try {
-      const response = await fetch('/api/auth/session');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.user) {
-          setCurrentUser(data.user);
-        }
-      }
-    } catch (error) {
-      console.error('Ошибка при загрузке текущего пользователя:', error);
-    }
-  };
-
-  const loadSavedDictator = () => {
+  const loadSavedDictator = useCallback(() => {
     if (typeof window === 'undefined') return;
     
     try {
@@ -73,7 +42,41 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
     } catch (error) {
       console.error('Ошибка при загрузке сохраненного диктовщика:', error);
     }
+  }, [userId]);
+
+  // Загружаем сохраненного диктовщика на день
+  useEffect(() => {
+    loadSavedDictator();
+  }, [loadSavedDictator]);
+
+  // Загружаем текущего пользователя
+  useEffect(() => {
+    loadCurrentUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Загружаем список пользователей при открытии выбора
+  useEffect(() => {
+    if (isSelecting) {
+      loadUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSelecting]);
+
+  const loadCurrentUser = async () => {
+    try {
+      const response = await fetch('/api/auth/session');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.user) {
+          setCurrentUser(data.user);
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке текущего пользователя:', error);
+    }
   };
+
 
   const loadUsers = async () => {
     setIsLoading(true);

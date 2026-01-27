@@ -344,7 +344,7 @@ export function useShipments() {
       }
       return filtered.length;
     },
-    [shipments, filters.warehouse, userRole]
+    [shipments, filters.warehouse]
   );
 
   const pendingCount = useMemo(
@@ -357,7 +357,7 @@ export function useShipments() {
       }
       return filtered.length;
     },
-    [shipments, filters.warehouse, userRole]
+    [shipments, filters.warehouse]
   );
 
   const waitingCount = useMemo(
@@ -375,7 +375,7 @@ export function useShipments() {
       }
       return filtered.length;
     },
-    [shipments, filters.warehouse, userRole]
+    [shipments, filters.warehouse]
   );
 
   // Обертка для setFilters с сохранением склада в localStorage

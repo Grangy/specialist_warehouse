@@ -540,7 +540,10 @@ function CollectorsTab({ stats, formatTime }: { stats: CollectorStats[]; formatT
                     borderRadius: '8px',
                     color: '#f1f5f9',
                   }}
-                  formatter={(value: number) => formatTime(value)}
+                  formatter={(value: number | undefined) => {
+                    if (value === undefined || value === null) return '—';
+                    return formatTime(value);
+                  }}
                 />
                 <Legend />
                 <Line
@@ -683,7 +686,10 @@ function CheckersTab({ stats, formatTime }: { stats: CheckerStats[]; formatTime:
                     borderRadius: '8px',
                     color: '#f1f5f9',
                   }}
-                  formatter={(value: number) => formatTime(value)}
+                  formatter={(value: number | undefined) => {
+                    if (value === undefined || value === null) return '—';
+                    return formatTime(value);
+                  }}
                 />
                 <Legend />
                 <Line
