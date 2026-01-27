@@ -23,6 +23,18 @@ npx tsx scripts/export-data-via-api.ts \
   --output ./my-exports
 ```
 
+### Без деталей заказов (быстрее)
+
+Если заказов очень много, можно пропустить экспорт деталей каждого заказа:
+
+```bash
+npx tsx scripts/export-data-via-api.ts \
+  --url https://sklad.specialist82.pro \
+  --login admin \
+  --password YOUR_PASSWORD \
+  --skip-details
+```
+
 ## Что экспортируется
 
 Скрипт экспортирует **ВСЕ** доступные данные через API:

@@ -16,6 +16,7 @@ interface ExportOptions {
   login: string;
   password: string;
   outputDir?: string;
+  skipDetails?: boolean; // Пропустить детали заказов и статистику пользователей (если их слишком много)
 }
 
 // Глобальное хранилище cookies
@@ -409,6 +410,8 @@ async function main() {
     } else if (arg === '--output' && args[i + 1]) {
       options.outputDir = args[i + 1];
       i++;
+    } else if (arg === '--skip-details') {
+      options.skipDetails = true;
     }
   }
 
@@ -416,9 +419,11 @@ async function main() {
   if (!options.url || !options.login || !options.password) {
     console.error('❌ Ошибка: Не указаны обязательные параметры');
     console.log('\nИспользование:');
-    console.log('  npx tsx scripts/export-data-via-api.ts --url <URL> --login <LOGIN> --password <PASSWORD> [--output <DIR>]');
+    console.log('  npx tsx scripts/export-data-via-api.ts --url <URL> --login <LOGIN> --password <PASSWORD> [--output <DIR>] [--skip-details]');
     console.log('\nПример:');
     console.log('  npx tsx scripts/export-data-via-api.ts --url https://sklad.specialist82.pro --login admin --password YOUR_PASSWORD');
+    console.log('\nОпции:');
+    console.log('  --skip-details  Пропустить экспорт деталей заказов и статистики пользователей (быстрее)');
     process.exit(1);
   }
 
@@ -484,45 +489,50 @@ async function main() {
     exportData.analyticsOverview = await exportAnalyticsOverview(options.url, options.login, options.password);
     
     // Детали всех заказов (опционально, может быть долго)
-    console.log('\n📋 Экспорт деталей заказов...');
-    // Собираем уникальные ID заказов (используем shipment_id если есть, иначе id)
-    const shipmentIdsSet = new Set<string>();
-    exportData.shipments.forEach((s: any) => {
-      // Приоритет: shipment_id > id
-      const shipmentId = s.shipment_id || s.id;
-      if (shipmentId) {
-        shipmentIdsSet.add(shipmentId);
+    if (!options.skipDetails) {
+      console.log('\n📋 Экспорт деталей заказов...');
+      // Собираем уникальные ID заказов (используем только shipment_id, так как id может быть task_id)
+      const shipmentIdsSet = new Set<string>();
+      exportData.shipments.forEach((s: any) => {
+        // Используем только shipment_id, так как id может быть task_id
+        if (s.shipment_id) {
+          shipmentIdsSet.add(s.shipment_id);
+        }
+      });
+      const shipmentIds = Array.from(shipmentIdsSet);
+      
+      if (shipmentIds.length > 0) {
+        console.log(`  Найдено ${shipmentIds.length} уникальных заказов для экспорта деталей`);
+        console.log(`  ⚠ Это может занять некоторое время...`);
+        exportData.shipmentDetails = await exportShipmentDetails(
+          options.url,
+          options.login,
+          options.password,
+          shipmentIds
+        );
+      } else {
+        exportData.shipmentDetails = [];
+        console.log('  ⚠ Нет заказов для экспорта деталей');
       }
-    });
-    const shipmentIds = Array.from(shipmentIdsSet);
-    
-    if (shipmentIds.length > 0) {
-      console.log(`  Найдено ${shipmentIds.length} уникальных заказов для экспорта деталей`);
-      console.log(`  ⚠ Это может занять некоторое время...`);
-      exportData.shipmentDetails = await exportShipmentDetails(
-        options.url,
-        options.login,
-        options.password,
-        shipmentIds
-      );
+      
+      // Детальная статистика всех пользователей
+      console.log('\n👤 Экспорт детальной статистики пользователей...');
+      const userIds = exportData.users.map((u: any) => u.id).filter((id: any) => id);
+      if (userIds.length > 0) {
+        exportData.userStatistics = await exportUserStatistics(
+          options.url,
+          options.login,
+          options.password,
+          userIds
+        );
+      } else {
+        exportData.userStatistics = [];
+        console.log('  ⚠ Нет пользователей для экспорта статистики');
+      }
     } else {
+      console.log('\n⏭️  Пропуск деталей заказов и статистики пользователей (--skip-details)');
       exportData.shipmentDetails = [];
-      console.log('  ⚠ Нет заказов для экспорта деталей');
-    }
-    
-    // Детальная статистика всех пользователей
-    console.log('\n👤 Экспорт детальной статистики пользователей...');
-    const userIds = exportData.users.map((u: any) => u.id).filter((id: any) => id);
-    if (userIds.length > 0) {
-      exportData.userStatistics = await exportUserStatistics(
-        options.url,
-        options.login,
-        options.password,
-        userIds
-      );
-    } else {
       exportData.userStatistics = [];
-      console.log('  ⚠ Нет пользователей для экспорта статистики');
     }
 
     // Сохраняем все данные в один файл
