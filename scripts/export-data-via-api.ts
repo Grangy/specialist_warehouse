@@ -18,13 +18,60 @@ interface ExportOptions {
   outputDir?: string;
 }
 
+// Глобальное хранилище cookies
+let sessionCookies = '';
+
+async function loginAndGetCookies(url: string, login: string, password: string): Promise<string> {
+  const response = await fetch(`${url}/api/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      login,
+      password,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Ошибка авторизации: HTTP ${response.status}: ${errorText}`);
+  }
+
+  // Извлекаем cookies из заголовков Set-Cookie
+  const setCookieHeaders = response.headers.get('set-cookie');
+  if (setCookieHeaders) {
+    // Извлекаем session_token из cookies
+    const cookies = setCookieHeaders.split(',').map(c => c.trim());
+    const sessionCookie = cookies.find(c => c.startsWith('session_token='));
+    if (sessionCookie) {
+      return sessionCookie.split(';')[0]; // Берем только ключ=значение, без атрибутов
+    }
+  }
+
+  // Если cookies не найдены в заголовках, пробуем через заголовки X-Login/X-Password
+  return '';
+}
+
 async function fetchWithAuth(url: string, login: string, password: string, options: RequestInit = {}) {
-  const headers = {
-    'X-Login': login,
-    'X-Password': password,
+  // Если cookies еще не получены, получаем их
+  if (!sessionCookies) {
+    sessionCookies = await loginAndGetCookies(url.replace(/\/api\/.*$/, ''), login, password);
+  }
+
+  const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
+
+  // Добавляем cookies, если они есть
+  if (sessionCookies) {
+    headers['Cookie'] = sessionCookies;
+  } else {
+    // Fallback: используем заголовки X-Login/X-Password
+    headers['X-Login'] = login;
+    headers['X-Password'] = password;
+  }
 
   const response = await fetch(url, {
     ...options,
@@ -261,33 +308,19 @@ async function main() {
   console.log(`📁 Результаты будут сохранены в: ${exportDir}\n`);
 
   try {
-    // Проверяем авторизацию
-    console.log('🔐 Проверка авторизации...');
-    const session = await fetchWithAuth(
-      `${options.url}/api/auth/session`,
-      options.login,
-      options.password
-    );
-    
-    if (!session.user) {
-      // Пробуем авторизоваться через login endpoint
-      const loginResponse = await fetch(`${options.url}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          login: options.login,
-          password: options.password,
-        }),
-      });
-
-      if (!loginResponse.ok) {
-        throw new Error('Не удалось авторизоваться. Проверьте логин и пароль.');
+    // Авторизуемся и получаем cookies
+    console.log('🔐 Авторизация...');
+    try {
+      sessionCookies = await loginAndGetCookies(options.url, options.login, options.password);
+      if (sessionCookies) {
+        console.log('  ✓ Авторизация через cookies успешна\n');
+      } else {
+        console.log('  ⚠ Cookies не получены, используем заголовки X-Login/X-Password\n');
       }
+    } catch (error: any) {
+      console.log(`  ⚠ Ошибка при получении cookies: ${error.message}`);
+      console.log('  Пробуем использовать заголовки X-Login/X-Password\n');
     }
-    
-    console.log('  ✓ Авторизация успешна\n');
 
     // Экспортируем данные
     const exportData: any = {
