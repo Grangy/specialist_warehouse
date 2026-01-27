@@ -86,12 +86,29 @@ export default function StatisticsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
+  // Автоматическое обновление рейтинга "сегодня" каждые 30 секунд
+  useEffect(() => {
+    if (period === 'today') {
+      const interval = setInterval(() => {
+        loadData();
+      }, 30000); // Обновляем каждые 30 секунд
+
+      return () => clearInterval(interval);
+    }
+  }, [period, loadData]);
+
   const loadData = async () => {
     setIsLoading(true);
     try {
+      // Добавляем timestamp для предотвращения кэширования
+      const timestamp = new Date().getTime();
       const [rankingRes, overviewRes] = await Promise.all([
-        fetch(`/api/statistics/ranking?period=${period}`),
-        fetch('/api/statistics/overview'),
+        fetch(`/api/statistics/ranking?period=${period}&_t=${timestamp}`, {
+          cache: 'no-store',
+        }),
+        fetch(`/api/statistics/overview?_t=${timestamp}`, {
+          cache: 'no-store',
+        }),
       ]);
 
       if (rankingRes.ok) {
@@ -100,14 +117,18 @@ export default function StatisticsTab() {
         setCheckers(rankingData.checkers || []);
         setDictators(rankingData.dictators || []);
         setAllRankings(rankingData.all || []);
+      } else {
+        console.error('[StatisticsTab] Ошибка загрузки рейтинга:', rankingRes.status, rankingRes.statusText);
       }
 
       if (overviewRes.ok) {
         const overviewData = await overviewRes.json();
         setOverview(overviewData);
+      } else {
+        console.error('[StatisticsTab] Ошибка загрузки обзора:', overviewRes.status, overviewRes.statusText);
       }
     } catch (error) {
-      console.error('Ошибка при загрузке статистики:', error);
+      console.error('[StatisticsTab] Ошибка при загрузке статистики:', error);
     } finally {
       setIsLoading(false);
     }
