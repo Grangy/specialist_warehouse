@@ -25,28 +25,39 @@ npx tsx scripts/export-data-via-api.ts \
 
 ## Что экспортируется
 
-Скрипт экспортирует следующие данные:
+Скрипт экспортирует **ВСЕ** доступные данные через API:
 
 1. **Заказы (Shipments)**
    - Все заказы со статусами: `new`, `pending_confirmation`, `processed`
    - Полная информация о каждом заказе
+   - **Детали каждого заказа** (`/api/shipments/[id]/details`) - полная информация о заданиях, сборщиках, проверяльщиках, позициях
 
 2. **Пользователи (Users)**
    - Все пользователи системы
    - Роли, логины, имена
+   - **Детальная статистика каждого пользователя** (`/api/statistics/user/[userId]`) - TaskStatistics, DailyStats, MonthlyStats
 
 3. **Статистика (Statistics)**
    - Общая статистика (`/api/statistics/overview`)
    - Рейтинги за сегодня, неделю, месяц (`/api/statistics/ranking`)
+   - Рейтинги сборщиков, проверяльщиков и диктовщиков
 
 4. **Аналитика (Analytics)**
    - Аналитика сборщиков (`/api/analytics/collectors`)
    - Аналитика проверяльщиков (`/api/analytics/checkers`)
    - Аналитика всех пользователей (`/api/analytics/all-users`)
+   - **Общая аналитика** (`/api/analytics/overview`) - статистика по регионам, складам, временным метрикам
 
 5. **Регионы (Regions)**
    - Список регионов (`/api/regions/list`)
    - Приоритеты регионов (`/api/regions/priorities`)
+   - **Статистика по регионам** (`/api/shipments/regions-stats`) - активные сборки по регионам
+
+6. **Настройки системы (Settings)**
+   - Все системные настройки (`/api/settings`)
+
+7. **Заказы готовые к экспорту**
+   - Заказы готовые к выгрузке в 1С (`/api/shipments/ready-for-export`)
 
 ## Структура экспорта
 
@@ -55,12 +66,17 @@ npx tsx scripts/export-data-via-api.ts \
 ```
 exports/
   export_2026-01-26_12-30-45/
-    full_export.json      # Все данные в одном файле
-    shipments.json        # Только заказы
-    users.json            # Только пользователи
-    statistics.json       # Только статистика
-    analytics.json        # Только аналитика
-    regions.json          # Только регионы
+    full_export.json          # Все данные в одном файле
+    shipments.json            # Только заказы (базовая информация)
+    shipment-details.json     # Детальная информация по каждому заказу
+    users.json                # Только пользователи
+    user-statistics.json      # Детальная статистика каждого пользователя
+    statistics.json           # Только статистика
+    analytics.json            # Только аналитика (сборщики, проверяльщики, все)
+    analytics-overview.json   # Общая аналитика (регионы, склады, метрики)
+    regions.json              # Только регионы
+    settings.json             # Настройки системы
+    ready-for-export.json     # Заказы готовые к экспорту в 1С
 ```
 
 ## Авторизация

@@ -252,7 +252,137 @@ async function exportRegions(url: string, login: string, password: string) {
     console.error(`  ✗ Ошибка при загрузке приоритетов регионов:`, error.message);
   }
 
+  try {
+    // Статистика по регионам
+    const regionsStats = await fetchWithAuth(
+      `${url}/api/shipments/regions-stats`,
+      login,
+      password
+    );
+    regions.stats = regionsStats;
+    console.log('  ✓ Загружена статистика по регионам');
+  } catch (error: any) {
+    console.error(`  ✗ Ошибка при загрузке статистики по регионам:`, error.message);
+  }
+
   return regions;
+}
+
+async function exportSettings(url: string, login: string, password: string) {
+  console.log('⚙️  Экспорт настроек системы...');
+  
+  try {
+    const settings = await fetchWithAuth(
+      `${url}/api/settings`,
+      login,
+      password
+    );
+    console.log('  ✓ Загружены настройки системы');
+    return settings;
+  } catch (error: any) {
+    console.error(`  ✗ Ошибка при загрузке настроек:`, error.message);
+    return null;
+  }
+}
+
+async function exportShipmentDetails(url: string, login: string, password: string, shipmentIds: string[]) {
+  console.log(`📋 Экспорт деталей заказов (${shipmentIds.length} заказов)...`);
+  
+  const details: any[] = [];
+  const batchSize = 10; // Обрабатываем по 10 заказов за раз
+  
+  for (let i = 0; i < shipmentIds.length; i += batchSize) {
+    const batch = shipmentIds.slice(i, i + batchSize);
+    const promises = batch.map(async (id) => {
+      try {
+        const detail = await fetchWithAuth(
+          `${url}/api/shipments/${id}/details`,
+          login,
+          password
+        );
+        return detail;
+      } catch (error: any) {
+        console.error(`  ✗ Ошибка при загрузке деталей заказа ${id}:`, error.message);
+        return null;
+      }
+    });
+    
+    const batchResults = await Promise.all(promises);
+    details.push(...batchResults.filter(d => d !== null));
+    
+    if ((i + batchSize) % 50 === 0 || i + batchSize >= shipmentIds.length) {
+      console.log(`  Прогресс: ${Math.min(i + batchSize, shipmentIds.length)}/${shipmentIds.length} заказов`);
+    }
+  }
+  
+  console.log(`  ✓ Загружены детали ${details.length} заказов`);
+  return details;
+}
+
+async function exportUserStatistics(url: string, login: string, password: string, userIds: string[]) {
+  console.log(`👤 Экспорт детальной статистики пользователей (${userIds.length} пользователей)...`);
+  
+  const userStats: any[] = [];
+  
+  for (let i = 0; i < userIds.length; i++) {
+    const userId = userIds[i];
+    try {
+      const stats = await fetchWithAuth(
+        `${url}/api/statistics/user/${userId}`,
+        login,
+        password
+      );
+      userStats.push(stats);
+      
+      if ((i + 1) % 5 === 0 || i + 1 === userIds.length) {
+        console.log(`  Прогресс: ${i + 1}/${userIds.length} пользователей`);
+      }
+    } catch (error: any) {
+      console.error(`  ✗ Ошибка при загрузке статистики пользователя ${userId}:`, error.message);
+    }
+  }
+  
+  console.log(`  ✓ Загружена статистика ${userStats.length} пользователей`);
+  return userStats;
+}
+
+async function exportReadyForExport(url: string, login: string, password: string) {
+  console.log('📤 Экспорт заказов готовых к выгрузке в 1С...');
+  
+  try {
+    const data = await fetchWithAuth(
+      `${url}/api/shipments/ready-for-export`,
+      login,
+      password
+    );
+    console.log(`  ✓ Загружено ${data.count || 0} заказов готовых к экспорту`);
+    return data;
+  } catch (error: any) {
+    console.error(`  ✗ Ошибка при загрузке заказов готовых к экспорту:`, error.message);
+    return null;
+  }
+}
+
+async function exportAnalyticsOverview(url: string, login: string, password: string) {
+  console.log('📊 Экспорт общей аналитики...');
+  
+  try {
+    // Пробуем получить аналитику за последние 30 дней
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    
+    const overview = await fetchWithAuth(
+      `${url}/api/analytics/overview?startDate=${startDate.toISOString().split('T')[0]}&endDate=${endDate.toISOString().split('T')[0]}`,
+      login,
+      password
+    );
+    console.log('  ✓ Загружена общая аналитика');
+    return overview;
+  } catch (error: any) {
+    console.error(`  ✗ Ошибка при загрузке общей аналитики:`, error.message);
+    return null;
+  }
 }
 
 async function main() {
@@ -343,6 +473,57 @@ async function main() {
     
     // Регионы
     exportData.regions = await exportRegions(options.url, options.login, options.password);
+    
+    // Настройки системы
+    exportData.settings = await exportSettings(options.url, options.login, options.password);
+    
+    // Заказы готовые к экспорту в 1С
+    exportData.readyForExport = await exportReadyForExport(options.url, options.login, options.password);
+    
+    // Общая аналитика
+    exportData.analyticsOverview = await exportAnalyticsOverview(options.url, options.login, options.password);
+    
+    // Детали всех заказов (опционально, может быть долго)
+    console.log('\n📋 Экспорт деталей заказов...');
+    // Собираем уникальные ID заказов (используем shipment_id если есть, иначе id)
+    const shipmentIdsSet = new Set<string>();
+    exportData.shipments.forEach((s: any) => {
+      // Приоритет: shipment_id > id
+      const shipmentId = s.shipment_id || s.id;
+      if (shipmentId) {
+        shipmentIdsSet.add(shipmentId);
+      }
+    });
+    const shipmentIds = Array.from(shipmentIdsSet);
+    
+    if (shipmentIds.length > 0) {
+      console.log(`  Найдено ${shipmentIds.length} уникальных заказов для экспорта деталей`);
+      console.log(`  ⚠ Это может занять некоторое время...`);
+      exportData.shipmentDetails = await exportShipmentDetails(
+        options.url,
+        options.login,
+        options.password,
+        shipmentIds
+      );
+    } else {
+      exportData.shipmentDetails = [];
+      console.log('  ⚠ Нет заказов для экспорта деталей');
+    }
+    
+    // Детальная статистика всех пользователей
+    console.log('\n👤 Экспорт детальной статистики пользователей...');
+    const userIds = exportData.users.map((u: any) => u.id).filter((id: any) => id);
+    if (userIds.length > 0) {
+      exportData.userStatistics = await exportUserStatistics(
+        options.url,
+        options.login,
+        options.password,
+        userIds
+      );
+    } else {
+      exportData.userStatistics = [];
+      console.log('  ⚠ Нет пользователей для экспорта статистики');
+    }
 
     // Сохраняем все данные в один файл
     const outputFile = path.join(exportDir, 'full_export.json');
@@ -375,13 +556,58 @@ async function main() {
       JSON.stringify(exportData.regions, null, 2),
       'utf-8'
     );
+    
+    if (exportData.settings) {
+      fs.writeFileSync(
+        path.join(exportDir, 'settings.json'),
+        JSON.stringify(exportData.settings, null, 2),
+        'utf-8'
+      );
+    }
+    
+    if (exportData.readyForExport) {
+      fs.writeFileSync(
+        path.join(exportDir, 'ready-for-export.json'),
+        JSON.stringify(exportData.readyForExport, null, 2),
+        'utf-8'
+      );
+    }
+    
+    if (exportData.analyticsOverview) {
+      fs.writeFileSync(
+        path.join(exportDir, 'analytics-overview.json'),
+        JSON.stringify(exportData.analyticsOverview, null, 2),
+        'utf-8'
+      );
+    }
+    
+    if (exportData.shipmentDetails && exportData.shipmentDetails.length > 0) {
+      fs.writeFileSync(
+        path.join(exportDir, 'shipment-details.json'),
+        JSON.stringify(exportData.shipmentDetails, null, 2),
+        'utf-8'
+      );
+    }
+    
+    if (exportData.userStatistics && exportData.userStatistics.length > 0) {
+      fs.writeFileSync(
+        path.join(exportDir, 'user-statistics.json'),
+        JSON.stringify(exportData.userStatistics, null, 2),
+        'utf-8'
+      );
+    }
 
     console.log(`\n📊 Статистика экспорта:`);
     console.log(`   - Заказов: ${exportData.shipments.length}`);
+    console.log(`   - Детали заказов: ${exportData.shipmentDetails?.length || 0}`);
     console.log(`   - Пользователей: ${exportData.users.length}`);
+    console.log(`   - Детальная статистика пользователей: ${exportData.userStatistics?.length || 0}`);
     console.log(`   - Статистика: ${Object.keys(exportData.statistics).length > 0 ? '✓' : '✗'}`);
     console.log(`   - Аналитика: ${Object.keys(exportData.analytics).length > 0 ? '✓' : '✗'}`);
+    console.log(`   - Общая аналитика: ${exportData.analyticsOverview ? '✓' : '✗'}`);
     console.log(`   - Регионы: ${Object.keys(exportData.regions).length > 0 ? '✓' : '✗'}`);
+    console.log(`   - Настройки: ${exportData.settings ? '✓' : '✗'}`);
+    console.log(`   - Готовые к экспорту: ${exportData.readyForExport?.count || 0}`);
     console.log(`\n✅ Экспорт завершен успешно!`);
 
   } catch (error: any) {
