@@ -81,22 +81,6 @@ export default function StatisticsTab() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState('');
 
-  useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period]);
-
-  // Автоматическое обновление рейтинга "сегодня" каждые 30 секунд
-  useEffect(() => {
-    if (period === 'today') {
-      const interval = setInterval(() => {
-        loadData();
-      }, 30000); // Обновляем каждые 30 секунд
-
-      return () => clearInterval(interval);
-    }
-  }, [period, loadData]);
-
   const loadData = async () => {
     setIsLoading(true);
     try {
@@ -133,6 +117,23 @@ export default function StatisticsTab() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period]);
+
+  // Автоматическое обновление рейтинга "сегодня" каждые 30 секунд
+  useEffect(() => {
+    if (period === 'today') {
+      const interval = setInterval(() => {
+        loadData();
+      }, 30000); // Обновляем каждые 30 секунд
+
+      return () => clearInterval(interval);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period]);
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('ru-RU').format(num);
