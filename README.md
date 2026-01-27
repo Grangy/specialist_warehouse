@@ -920,7 +920,7 @@ API endpoints находятся в `src/app/api/`:
 # 1. Авторизация как сборщик
 curl -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"login":"collector","password":"collector123"}' \
+  -d '{"login":"collector","password":"YOUR_PASSWORD"}' \
   -c cookies.txt
 
 # 2. Получение списка новых заказов
@@ -941,7 +941,7 @@ curl -X POST http://localhost:3000/api/shipments/SHIPMENT_ID/pending_confirmatio
 curl -X POST http://localhost:3000/api/auth/logout -b cookies.txt
 curl -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"login":"checker","password":"checker123"}' \
+  -d '{"login":"checker","password":"YOUR_PASSWORD"}' \
   -c cookies.txt
 
 # 6. Подтверждение заказа
