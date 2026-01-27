@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
 import { importStatistics } from './import-statistics';
+import { spawn } from 'child_process';
 
 // Загружаем переменные окружения
 dotenv.config();
@@ -830,6 +831,37 @@ async function main() {
         options.testMode,
         fetchWithAuth
       );
+      
+      // После импорта статистики пересчитываем ранги
+      console.log('\n📊 Пересчет рангов после импорта статистики...');
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn('npx', ['tsx', 'scripts/recalculate-ranks.ts'], {
+            stdio: 'inherit',
+            shell: true,
+          });
+          
+          child.on('close', (code) => {
+            if (code === 0) {
+              console.log('  ✓ Ранги пересчитаны');
+              resolve();
+            } else {
+              console.warn(`  ⚠ Скрипт пересчета рангов завершился с кодом ${code}`);
+              console.log('  Выполните вручную: npx tsx scripts/recalculate-ranks.ts');
+              resolve(); // Не прерываем импорт из-за ошибки пересчета рангов
+            }
+          });
+          
+          child.on('error', (error) => {
+            console.warn('  ⚠ Ошибка при запуске скрипта пересчета рангов:', error.message);
+            console.log('  Выполните вручную: npx tsx scripts/recalculate-ranks.ts');
+            resolve(); // Не прерываем импорт
+          });
+        });
+      } catch (error: any) {
+        console.warn('  ⚠ Ошибка при пересчете рангов (можно выполнить вручную):', error.message);
+        console.log('  Выполните: npx tsx scripts/recalculate-ranks.ts');
+      }
     }
 
     // Улучшение 10: Подробная итоговая статистика

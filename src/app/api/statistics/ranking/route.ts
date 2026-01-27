@@ -372,8 +372,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Диктовщики: получаем TaskStatistics с roleType='checker', где task.dictatorId === userId
+      // Диктовщики: получаем TaskStatistics где userId === task.dictatorId
       // (это статистика для диктовщиков, которые получают 0.75 от баллов проверяльщика)
+      // ВАЖНО: Ищем TaskStatistics где userId является диктовщиком (userId === task.dictatorId)
+      // Для диктовщиков создается TaskStatistics с userId = dictatorId и roleType = 'checker'
       const dictatorTaskStats = await prisma.taskStatistics.findMany({
         where: {
           roleType: 'checker',
@@ -401,9 +403,12 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      // Фильтруем только те, где userId === task.dictatorId (пользователь был диктовщиком)
+      // Фильтруем только те, где userId TaskStatistics === task.dictatorId (пользователь был диктовщиком)
+      // ВАЖНО: stat.user.id - это userId из TaskStatistics, stat.task.dictatorId - это ID диктовщика из задачи
+      // Нам нужны записи, где userId TaskStatistics совпадает с dictatorId задачи
+      // Это означает, что эта TaskStatistics была создана для диктовщика (в updateCheckerStats создается TaskStatistics с userId = dictatorId)
       const dictatorStatsFiltered = dictatorTaskStats.filter(
-        (stat) => stat.task.dictatorId === stat.userId
+        (stat) => stat.user.id === stat.task.dictatorId
       );
 
       // Группируем по пользователям
@@ -840,7 +845,7 @@ export async function GET(request: NextRequest) {
       });
 
       const dictatorStatsFilteredMonth = dictatorTaskStatsMonth.filter(
-        (stat) => stat.task.dictatorId === stat.userId
+        (stat) => stat.user.id === stat.task.dictatorId
       );
 
       const dictatorMapMonth = new Map<string, {
@@ -1273,7 +1278,7 @@ export async function GET(request: NextRequest) {
       });
 
       const dictatorStatsFilteredWeek = dictatorTaskStatsWeek.filter(
-        (stat) => stat.task.dictatorId === stat.userId
+        (stat) => stat.user.id === stat.task.dictatorId
       );
 
       const dictatorMapWeek = new Map<string, {
