@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
+// @ts-ignore - xlsx не имеет типов для ESM
 import * as XLSX from 'xlsx';
 
 interface MinusShipment extends Shipment {
