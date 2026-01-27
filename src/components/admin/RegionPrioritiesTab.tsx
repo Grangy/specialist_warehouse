@@ -695,13 +695,41 @@ export default function RegionPrioritiesTab() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {hasChanges && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-900/30 border border-yellow-500/50 rounded-lg text-yellow-300 text-sm">
                 <AlertCircle className="w-4 h-4" />
                 Есть несохраненные изменения
               </div>
             )}
+            <button
+              onClick={handleExport}
+              disabled={isExporting || isLoading}
+              className="px-3 py-2 bg-green-600/90 hover:bg-green-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2 text-sm shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+              title="Экспортировать приоритеты в JSON"
+            >
+              {isExporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              Экспорт
+            </button>
+            <label className="px-3 py-2 bg-purple-600/90 hover:bg-purple-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2 text-sm shadow-md hover:shadow-lg hover:scale-105 active:scale-95 cursor-pointer">
+              {isImporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4" />
+              )}
+              Импорт
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImport}
+                disabled={isImporting || isLoading}
+                className="hidden"
+              />
+            </label>
             <button
               onClick={loadData}
               className="px-3 py-2 bg-slate-700/90 hover:bg-slate-600 text-slate-200 rounded-lg transition-all flex items-center gap-2 text-sm shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
