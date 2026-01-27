@@ -590,11 +590,6 @@ export async function GET(request: NextRequest) {
                   login: true,
                 },
               },
-              lines: {
-                include: {
-                  shipmentLine: true,
-                },
-              },
             },
           },
         },
@@ -650,26 +645,6 @@ export async function GET(request: NextRequest) {
           ? collectorVisibleRegions.has(shipment.businessRegion)
           : true;
         
-        // Рассчитываем вычеркнутые товары (не собрали/откорректировали)
-        let crossedOutQty = 0; // Общее количество вычеркнутых товаров
-        let crossedOutItems = 0; // Количество позиций с вычеркнутыми товарами
-        
-        for (const task of shipment.tasks) {
-          for (const taskLine of task.lines) {
-            const originalQty = taskLine.qty; // Исходное количество в задании
-            // Используем confirmedQty если есть, иначе collectedQty, иначе 0
-            const finalQty = taskLine.confirmedQty !== null 
-              ? taskLine.confirmedQty 
-              : (taskLine.collectedQty !== null ? taskLine.collectedQty : 0);
-            
-            // Если собрано меньше, чем было в задании - это вычеркнутые товары
-            if (originalQty > finalQty) {
-              crossedOutQty += (originalQty - finalQty);
-              crossedOutItems += 1; // Увеличиваем счетчик позиций с вычеркнутыми товарами
-            }
-          }
-        }
-        
         return {
           id: shipment.id,
           shipment_id: shipment.id,
@@ -694,8 +669,6 @@ export async function GET(request: NextRequest) {
           tasks_count: shipment.tasks.length,
           warehouses: Array.from(new Set(shipment.tasks.map((t) => t.warehouse))),
           collector_visible: isVisibleToCollector, // Виден ли заказ сборщику
-          crossed_out_qty: crossedOutQty, // Количество вычеркнутых товаров
-          crossed_out_items: crossedOutItems, // Количество позиций с вычеркнутыми товарами
         };
       });
 
