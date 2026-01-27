@@ -2,6 +2,7 @@ import { PrismaClient } from '../src/generated/prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
+import { importStatistics } from './import-statistics';
 
 // Загружаем переменные окружения
 dotenv.config();
@@ -34,6 +35,7 @@ interface ImportOptions {
   skipShipments?: boolean; // Пропустить импорт заказов
   skipRegions?: boolean; // Пропустить импорт регионов
   skipSettings?: boolean; // Пропустить импорт настроек
+  skipStatistics?: boolean; // Пропустить импорт статистики
 }
 
 let sessionCookies: string = '';
@@ -593,6 +595,8 @@ async function main() {
       options.skipRegions = true;
     } else if (arg === '--skip-settings') {
       options.skipSettings = true;
+    } else if (arg === '--skip-statistics') {
+      options.skipStatistics = true;
     }
   }
 
@@ -607,6 +611,7 @@ async function main() {
     console.log('  --skip-shipments     Пропустить импорт заказов');
     console.log('  --skip-regions       Пропустить импорт регионов');
     console.log('  --skip-settings      Пропустить импорт настроек');
+    console.log('  --skip-statistics    Пропустить импорт статистики');
     console.log('\nПример:');
     console.log('  npx tsx scripts/import-data-from-api.ts --url https://sklad.specialist82.pro --login admin --password YOUR_PASSWORD --test');
     process.exit(1);
@@ -652,6 +657,17 @@ async function main() {
         options.batchSize
       );
     }
+    
+    // Импорт статистики (TaskStatistics, DailyStats, MonthlyStats)
+    if (!options.skipStatistics) {
+      stats.statistics = await importStatistics(
+        options.url,
+        options.login,
+        options.password,
+        options.testMode,
+        fetchWithAuth
+      );
+    }
 
     // Итоговая статистика
     console.log('\n' + '='.repeat(60));
@@ -669,6 +685,12 @@ async function main() {
     }
     if (stats.shipments) {
       console.log(`📦 Заказы: Импортировано ${stats.shipments.imported}, Обновлено ${stats.shipments.updated}, Ошибок ${stats.shipments.errors}`);
+    }
+    if (stats.statistics) {
+      console.log(`📊 Статистика:`);
+      console.log(`   TaskStatistics: Импортировано ${stats.statistics.taskStatistics.imported}, Обновлено ${stats.statistics.taskStatistics.updated}`);
+      console.log(`   DailyStats: Импортировано ${stats.statistics.dailyStats.imported}, Обновлено ${stats.statistics.dailyStats.updated}`);
+      console.log(`   MonthlyStats: Импортировано ${stats.statistics.monthlyStats.imported}, Обновлено ${stats.statistics.monthlyStats.updated}`);
     }
     
     console.log('\n✅ Импорт завершен успешно!');
