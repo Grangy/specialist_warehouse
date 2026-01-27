@@ -22,8 +22,10 @@ class APIClient {
     const isGetRequest = !options.method || options.method === 'GET';
     
     if (isGetRequest && this.requestQueue.has(requestKey)) {
-      // Для GET запросов просто пропускаем дубликат
-      // Это предотвратит спам, но не заблокирует POST запросы
+      // Для GET запросов с одинаковыми параметрами просто возвращаем ошибку
+      // Это предотвратит дубликаты, но позволит параллельным запросам с разными параметрами
+      // (например, status=new и status=pending_confirmation) работать корректно
+      // так как они имеют разные URL и requestKey
       return Promise.reject({
         message: 'Request already in progress',
       } as APIError);

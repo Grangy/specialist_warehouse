@@ -68,15 +68,19 @@ export default function ActiveShipmentsTab() {
       setIsLoading(true);
       // API возвращает массив заданий (tasks), а не заказов (shipments)
       // для статусов 'new' и 'pending_confirmation'
-      const [newTasks, pendingTasks] = await Promise.all([
-        shipmentsApi.getAll({ status: 'new' }),
-        shipmentsApi.getAll({ status: 'pending_confirmation' }),
-      ]);
+      // Выполняем запросы последовательно, чтобы избежать конфликта "Request already in progress"
+      const newTasks = await shipmentsApi.getAll({ status: 'new' });
+      const pendingTasks = await shipmentsApi.getAll({ status: 'pending_confirmation' });
       
       // API возвращает задания напрямую, не обернутые в shipments
       const allTasks = [...newTasks, ...pendingTasks] as any[];
       setShipments(allTasks as any);
-    } catch (error) {
+    } catch (error: any) {
+      // Игнорируем ошибку "Request already in progress" - это нормально при быстрых переключениях
+      if (error?.message === 'Request already in progress') {
+        console.log('[ActiveShipmentsTab] Запрос уже выполняется, пропускаем');
+        return;
+      }
       setError('Ошибка загрузки заказов');
       console.error(error);
     } finally {

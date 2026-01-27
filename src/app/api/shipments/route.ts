@@ -697,7 +697,7 @@ export async function GET(request: NextRequest) {
                 shipmentLine: true,
               },
             },
-            locks: true,
+            // НЕ загружаем locks здесь - загрузим отдельно батчами для оптимизации
           },
         },
       },
@@ -735,6 +735,39 @@ export async function GET(request: NextRequest) {
     console.log(`[API] Найдено заказов в БД: ${shipments.length}, фильтр статуса заказов:`, where.status);
     console.log(`[API] Фильтр статуса заданий: ${taskStatusFilter || 'new и pending_confirmation'}`);
     console.log(`[API] Пользователь: ${user.name} (${user.role})`);
+
+    // Собираем все ID заданий для батч-загрузки locks
+    const allTaskIds: string[] = [];
+    shipments.forEach(shipment => {
+      if (shipment.tasks) {
+        shipment.tasks.forEach(task => {
+          allTaskIds.push(task.id);
+        });
+      }
+    });
+
+    // Загружаем locks батчами для оптимизации (максимум 100 за раз)
+    const locksMap = new Map<string, any[]>();
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < allTaskIds.length; i += BATCH_SIZE) {
+      const batch = allTaskIds.slice(i, i + BATCH_SIZE);
+      const locks = await prisma.shipmentTaskLock.findMany({
+        where: {
+          taskId: { in: batch },
+        },
+        orderBy: {
+          lockedAt: 'desc',
+        },
+      });
+      
+      // Группируем locks по taskId
+      locks.forEach(lock => {
+        if (!locksMap.has(lock.taskId)) {
+          locksMap.set(lock.taskId, []);
+        }
+        locksMap.get(lock.taskId)!.push(lock);
+      });
+    }
 
     // Преобразуем задания в формат для фронтенда
     const tasks: any[] = [];
@@ -777,8 +810,9 @@ export async function GET(request: NextRequest) {
         }
         // Для режима ожидания показываем все задания (включая processed)
 
-        // Проверяем блокировку
-        const lock = task.locks[0];
+        // Получаем блокировку из загруженных locks
+        const taskLocks = locksMap.get(task.id) || [];
+        const lock = taskLocks[0] || null; // Берем самую свежую блокировку
         
         // Для сборщиков: скрываем задания, которые заблокированы другими сборщиками (модал открыт)
         if (user.role === 'collector' && lock && lock.userId !== user.id) {
