@@ -19,10 +19,26 @@ export default function SettingsTab() {
   const loadSettings = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/settings');
+      // Используем абсолютный URL для предотвращения редиректов
+      const apiUrl = typeof window !== 'undefined' 
+        ? `${window.location.origin}/api/settings`
+        : '/api/settings';
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        credentials: 'include',
+        redirect: 'manual', // Предотвращаем автоматические редиректы
+      });
+      
       if (!response.ok) {
-        throw new Error('Ошибка при загрузке настроек');
+        // Если 401, пользователь не авторизован - это нормально
+        if (response.status === 401) {
+          console.log('[SettingsTab] Пользователь не авторизован');
+          return;
+        }
+        throw new Error(`HTTP ${response.status}: Ошибка при загрузке настроек`);
       }
+      
       const data = await response.json();
       if (data.success && data.settings) {
         setCollectorSeesOnlyFirstOrder(
@@ -32,7 +48,12 @@ export default function SettingsTab() {
           data.settings.skip_completed_shipments === true
         );
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Игнорируем ошибки сети, если это не критично
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_TOO_MANY_REDIRECTS')) {
+        console.warn('[SettingsTab] Ошибка сети при загрузке настроек, пропускаем');
+        return;
+      }
       console.error('[SettingsTab] Ошибка при загрузке настроек:', error);
       showError('Не удалось загрузить настройки');
     } finally {

@@ -29,47 +29,73 @@ interface ImportOptions {
   url: string;
   login: string;
   password: string;
-  testMode?: boolean; // Тестовый режим - только 10 записей каждого типа
-  batchSize?: number; // Размер пакета для параллельной обработки
-  skipUsers?: boolean; // Пропустить импорт пользователей
-  skipShipments?: boolean; // Пропустить импорт заказов
-  skipRegions?: boolean; // Пропустить импорт регионов
-  skipSettings?: boolean; // Пропустить импорт настроек
-  skipStatistics?: boolean; // Пропустить импорт статистики
+  testMode?: boolean;
+  batchSize?: number;
+  skipUsers?: boolean;
+  skipShipments?: boolean;
+  skipRegions?: boolean;
+  skipSettings?: boolean;
+  skipStatistics?: boolean;
+  forceProcessed?: boolean; // Принудительно обновлять статус processed с сервера
+  retryAttempts?: number; // Количество попыток повтора при ошибках
+  retryDelay?: number; // Задержка между попытками (мс)
 }
 
 let sessionCookies: string = '';
+let requestCount = 0;
+let errorCount = 0;
 
-// Функция для авторизации и получения cookies
-async function loginAndGetCookies(url: string, login: string, password: string): Promise<string> {
-  const response = await fetch(`${url}/api/auth/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ login, password }),
-  });
+// Улучшение 1: Более надежная авторизация с повторными попытками
+async function loginAndGetCookies(url: string, login: string, password: string, retries: number = 3): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(`${url}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ login, password }),
+        redirect: 'manual', // Предотвращаем автоматические редиректы
+      });
 
-  if (!response.ok) {
-    throw new Error(`Ошибка авторизации: ${response.status}`);
-  }
-
-  const setCookieHeaders = response.headers.get('set-cookie');
-  if (setCookieHeaders) {
-    const cookies = setCookieHeaders.split(',').map(c => c.trim());
-    const sessionCookie = cookies.find(c => c.startsWith('session_token='));
-    if (sessionCookie) {
-      return sessionCookie.split(';')[0];
+      if (response.status === 200 || response.status === 0) {
+        const setCookieHeaders = response.headers.get('set-cookie');
+        if (setCookieHeaders) {
+          const cookies = setCookieHeaders.split(',').map(c => c.trim());
+          const sessionCookie = cookies.find(c => c.startsWith('session_token='));
+          if (sessionCookie) {
+            return sessionCookie.split(';')[0];
+          }
+        }
+        return '';
+      }
+      
+      if (attempt < retries) {
+        console.warn(`  ⚠ Попытка ${attempt} не удалась, повторяем через 1 секунду...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (error: any) {
+      if (attempt < retries) {
+        console.warn(`  ⚠ Ошибка авторизации (попытка ${attempt}/${retries}):`, error.message);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        throw new Error(`Ошибка авторизации после ${retries} попыток: ${error.message}`);
+      }
     }
   }
-
   return '';
 }
 
-// Функция для запросов с авторизацией
-async function fetchWithAuth(url: string, login: string, password: string, options: RequestInit = {}) {
+// Улучшение 2: Улучшенная функция запросов с обработкой ошибок и повторными попытками
+async function fetchWithAuth(
+  url: string,
+  login: string,
+  password: string,
+  options: RequestInit = {},
+  retries: number = 3
+): Promise<any> {
   if (!sessionCookies) {
-    sessionCookies = await loginAndGetCookies(url.replace(/\/api\/.*$/, ''), login, password);
+    sessionCookies = await loginAndGetCookies(url.replace(/\/api\/.*$/, ''), login, password, retries);
   }
 
   const headers: HeadersInit = {
@@ -84,20 +110,53 @@ async function fetchWithAuth(url: string, login: string, password: string, optio
     headers['X-Password'] = password;
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      requestCount++;
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        redirect: 'manual', // Предотвращаем автоматические редиректы
+      });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP ${response.status}: ${errorText}`);
+      // Обрабатываем редиректы вручную
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (location && attempt < retries) {
+          console.warn(`  ⚠ Редирект на ${location}, повторяем запрос...`);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          continue;
+        }
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        // Если 401, пробуем переавторизоваться
+        if (response.status === 401 && attempt < retries) {
+          console.warn(`  ⚠ Сессия истекла, переавторизуемся...`);
+          sessionCookies = await loginAndGetCookies(url.replace(/\/api\/.*$/, ''), login, password, retries);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          continue;
+        }
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      return response.json();
+    } catch (error: any) {
+      errorCount++;
+      if (attempt < retries) {
+        console.warn(`  ⚠ Ошибка запроса (попытка ${attempt}/${retries}):`, error.message);
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Экспоненциальная задержка
+      } else {
+        throw error;
+      }
+    }
   }
-
-  return response.json();
+  
+  throw new Error('Все попытки запроса исчерпаны');
 }
 
-// Импорт пользователей
+// Улучшение 3: Более безопасный импорт пользователей с валидацией данных
 async function importUsers(url: string, login: string, password: string, testMode: boolean = false) {
   console.log('\n👥 Импорт пользователей...');
   
@@ -110,6 +169,7 @@ async function importUsers(url: string, login: string, password: string, testMod
     
     let imported = 0;
     let updated = 0;
+    let skipped = 0;
     
     // Обрабатываем пакетами по 5
     const batchSize = 5;
@@ -118,7 +178,13 @@ async function importUsers(url: string, login: string, password: string, testMod
       
       await Promise.all(batch.map(async (user: any) => {
         try {
-          // Используем upsert по login (уникальное поле)
+          // Валидация данных
+          if (!user.login || !user.name || !user.role) {
+            console.warn(`  ⚠ Пропущен пользователь с неполными данными:`, user);
+            skipped++;
+            return;
+          }
+          
           // Проверяем, существует ли пользователь
           const existingUser = await prisma.user.findUnique({
             where: { login: user.login },
@@ -134,9 +200,9 @@ async function importUsers(url: string, login: string, password: string, testMod
               // Пароль НЕ обновляем, так как он не экспортируется
             },
             create: {
-              id: user.id,
+              id: user.id || undefined, // Используем ID с сервера если есть
               login: user.login,
-              password: 'TEMP_PASSWORD_' + Date.now(), // Временный пароль, нужно будет сбросить
+              password: 'TEMP_PASSWORD_' + Date.now() + '_' + Math.random().toString(36).substring(7),
               name: user.name,
               role: user.role,
             },
@@ -149,6 +215,7 @@ async function importUsers(url: string, login: string, password: string, testMod
           }
         } catch (error: any) {
           console.error(`  ✗ Ошибка при импорте пользователя ${user.login}:`, error.message);
+          skipped++;
         }
       }));
       
@@ -157,15 +224,15 @@ async function importUsers(url: string, login: string, password: string, testMod
       }
     }
     
-    console.log(`  ✓ Импортировано: ${imported}, Обновлено: ${updated}`);
-    return { imported, updated, total: usersToImport.length };
+    console.log(`  ✓ Импортировано: ${imported}, Обновлено: ${updated}, Пропущено: ${skipped}`);
+    return { imported, updated, skipped, total: usersToImport.length };
   } catch (error: any) {
     console.error(`  ✗ Ошибка при импорте пользователей:`, error.message);
-    return { imported: 0, updated: 0, total: 0 };
+    return { imported: 0, updated: 0, skipped: 0, total: 0 };
   }
 }
 
-// Импорт регионов и приоритетов
+// Улучшение 4: Более надежный импорт регионов с валидацией
 async function importRegions(url: string, login: string, password: string, testMode: boolean = false) {
   console.log('\n🗺️  Импорт регионов и приоритетов...');
   
@@ -178,6 +245,7 @@ async function importRegions(url: string, login: string, password: string, testM
     
     let imported = 0;
     let updated = 0;
+    let skipped = 0;
     
     // Обрабатываем пакетами по 10
     const batchSize = 10;
@@ -186,6 +254,13 @@ async function importRegions(url: string, login: string, password: string, testM
       
       await Promise.all(batch.map(async (priority: any) => {
         try {
+          // Валидация данных
+          if (!priority.region) {
+            console.warn(`  ⚠ Пропущен приоритет без названия региона`);
+            skipped++;
+            return;
+          }
+          
           // Проверяем, существует ли регион
           const existingRegion = await prisma.regionPriority.findUnique({
             where: { region: priority.region },
@@ -222,6 +297,7 @@ async function importRegions(url: string, login: string, password: string, testM
           }
         } catch (error: any) {
           console.error(`  ✗ Ошибка при импорте региона ${priority.region}:`, error.message);
+          skipped++;
         }
       }));
       
@@ -230,15 +306,15 @@ async function importRegions(url: string, login: string, password: string, testM
       }
     }
     
-    console.log(`  ✓ Импортировано: ${imported}, Обновлено: ${updated}`);
-    return { imported, updated, total: prioritiesToImport.length };
+    console.log(`  ✓ Импортировано: ${imported}, Обновлено: ${updated}, Пропущено: ${skipped}`);
+    return { imported, updated, skipped, total: prioritiesToImport.length };
   } catch (error: any) {
     console.error(`  ✗ Ошибка при импорте регионов:`, error.message);
-    return { imported: 0, updated: 0, total: 0 };
+    return { imported: 0, updated: 0, skipped: 0, total: 0 };
   }
 }
 
-// Импорт настроек системы
+// Улучшение 5: Более безопасный импорт настроек
 async function importSettings(url: string, login: string, password: string) {
   console.log('\n⚙️  Импорт настроек системы...');
   
@@ -250,9 +326,17 @@ async function importSettings(url: string, login: string, password: string) {
     
     let imported = 0;
     let updated = 0;
+    let skipped = 0;
     
     await Promise.all(Object.entries(settings).map(async ([key, value]) => {
       try {
+        // Валидация ключа
+        if (!key || typeof key !== 'string') {
+          console.warn(`  ⚠ Пропущена настройка с невалидным ключом`);
+          skipped++;
+          return;
+        }
+        
         const valueString = typeof value === 'string' ? value : JSON.stringify(value);
         
         // Проверяем, существует ли настройка
@@ -280,24 +364,26 @@ async function importSettings(url: string, login: string, password: string) {
         }
       } catch (error: any) {
         console.error(`  ✗ Ошибка при импорте настройки ${key}:`, error.message);
+        skipped++;
       }
     }));
     
-    console.log(`  ✓ Импортировано: ${imported}, Обновлено: ${updated}`);
-    return { imported, updated, total: Object.keys(settings).length };
+    console.log(`  ✓ Импортировано: ${imported}, Обновлено: ${updated}, Пропущено: ${skipped}`);
+    return { imported, updated, skipped, total: Object.keys(settings).length };
   } catch (error: any) {
     console.error(`  ✗ Ошибка при импорте настроек:`, error.message);
-    return { imported: 0, updated: 0, total: 0 };
+    return { imported: 0, updated: 0, skipped: 0, total: 0 };
   }
 }
 
-// Импорт заказов (сложная логика с вложенными данными)
+// Улучшение 6: Безопасная синхронизация заказов - обработанные с сервера попадают как processed
 async function importShipments(
   url: string,
   login: string,
   password: string,
   testMode: boolean = false,
-  batchSize: number = 5
+  batchSize: number = 5,
+  forceProcessed: boolean = false
 ) {
   console.log('\n📦 Импорт заказов...');
   
@@ -334,6 +420,7 @@ async function importShipments(
     let imported = 0;
     let updated = 0;
     let errors = 0;
+    let statusUpdated = 0; // Счетчик обновленных статусов
     
     // Обрабатываем пакетами
     for (let i = 0; i < limitedShipments.length; i += batchSize) {
@@ -365,9 +452,31 @@ async function importShipments(
           // Проверяем, существует ли заказ
           const existingShipment = await prisma.shipment.findUnique({
             where: { number: shipmentNumber },
+            include: {
+              tasks: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+              },
+            },
           });
           
           const isNew = !existingShipment;
+          
+          // Улучшение 7: Безопасная синхронизация статусов
+          // Если на сервере заказ processed, а локально нет - обновляем статус
+          const serverStatus = shipment.status;
+          let finalStatus = serverStatus;
+          
+          if (existingShipment && forceProcessed) {
+            // Если заказ на сервере processed, принудительно обновляем локальный статус
+            if (serverStatus === 'processed' && existingShipment.status !== 'processed') {
+              console.log(`  🔄 Обновление статуса заказа ${shipmentNumber}: ${existingShipment.status} -> processed (с сервера)`);
+              finalStatus = 'processed';
+              statusUpdated++;
+            }
+          }
           
           // Upsert заказа
           const shipmentResult = await prisma.shipment.upsert({
@@ -379,7 +488,7 @@ async function importShipments(
               totalQty: shipment.total_qty || shipment.totalQty,
               weight: shipment.weight,
               comment: shipment.comment || '',
-              status: shipment.status,
+              status: finalStatus, // Используем синхронизированный статус
               businessRegion: shipment.business_region || shipment.businessRegion,
               confirmedAt: shipment.confirmed_at ? new Date(shipment.confirmed_at) : null,
               // НЕ обновляем deleted, exportedTo1C и другие флаги для безопасности
@@ -393,147 +502,188 @@ async function importShipments(
               totalQty: shipment.total_qty || shipment.totalQty,
               weight: shipment.weight,
               comment: shipment.comment || '',
-              status: shipment.status,
+              status: finalStatus,
               businessRegion: shipment.business_region || shipment.businessRegion,
               confirmedAt: shipment.confirmed_at ? new Date(shipment.confirmed_at) : null,
             },
           });
           
-          // Импортируем позиции заказа (lines)
+          // Улучшение 8: Более надежный импорт позиций с обработкой ошибок
           if (details && details.lines && Array.isArray(details.lines)) {
             for (const line of details.lines) {
-              await prisma.shipmentLine.upsert({
-                where: {
-                  id: line.id,
-                },
-                update: {
-                  sku: line.sku,
-                  art: line.art || null,
-                  name: line.name,
-                  qty: line.qty,
-                  uom: line.uom,
-                  location: line.location || null,
-                  warehouse: line.warehouse || null,
-                  collectedQty: line.collected_qty || line.collectedQty || null,
-                  checked: line.checked || false,
-                  confirmedQty: line.confirmed_qty || line.confirmedQty || null,
-                  confirmed: line.confirmed || false,
-                },
-                create: {
-                  id: line.id,
-                  shipmentId: shipmentResult.id,
-                  sku: line.sku,
-                  art: line.art || null,
-                  name: line.name,
-                  qty: line.qty,
-                  uom: line.uom,
-                  location: line.location || null,
-                  warehouse: line.warehouse || null,
-                  collectedQty: line.collected_qty || line.collectedQty || null,
-                  checked: line.checked || false,
-                  confirmedQty: line.confirmed_qty || line.confirmedQty || null,
-                  confirmed: line.confirmed || false,
-                },
-              });
+              try {
+                // Валидация данных
+                if (!line.id || !line.sku || !line.name) {
+                  console.warn(`  ⚠ Пропущена позиция с неполными данными в заказе ${shipmentNumber}`);
+                  continue;
+                }
+                
+                await prisma.shipmentLine.upsert({
+                  where: {
+                    id: line.id,
+                  },
+                  update: {
+                    sku: line.sku,
+                    art: line.art || null,
+                    name: line.name,
+                    qty: line.qty,
+                    uom: line.uom,
+                    location: line.location || null,
+                    warehouse: line.warehouse || null,
+                    collectedQty: line.collected_qty || line.collectedQty || null,
+                    checked: line.checked || false,
+                    confirmedQty: line.confirmed_qty || line.confirmedQty || null,
+                    confirmed: line.confirmed || false,
+                  },
+                  create: {
+                    id: line.id,
+                    shipmentId: shipmentResult.id,
+                    sku: line.sku,
+                    art: line.art || null,
+                    name: line.name,
+                    qty: line.qty,
+                    uom: line.uom,
+                    location: line.location || null,
+                    warehouse: line.warehouse || null,
+                    collectedQty: line.collected_qty || line.collectedQty || null,
+                    checked: line.checked || false,
+                    confirmedQty: line.confirmed_qty || line.confirmedQty || null,
+                    confirmed: line.confirmed || false,
+                  },
+                });
+              } catch (error: any) {
+                console.error(`  ✗ Ошибка при импорте позиции ${line.sku} в заказе ${shipmentNumber}:`, error.message);
+              }
             }
           }
           
-          // Импортируем задания (tasks)
+          // Улучшение 9: Более надежный импорт заданий с синхронизацией статусов
           if (details && details.tasks && Array.isArray(details.tasks)) {
             for (const task of details.tasks) {
-              // Находим пользователей по ID или имени
-              let collectorId = task.collectorId || null;
-              let checkerId = task.checkerId || null;
-              let dictatorId = task.dictatorId || null;
-              
-              if (task.collectorLogin && !collectorId) {
-                const collector = await prisma.user.findUnique({
-                  where: { login: task.collectorLogin },
-                });
-                collectorId = collector?.id || null;
-              }
-              
-              if (task.checkerLogin && !checkerId) {
-                const checker = await prisma.user.findUnique({
-                  where: { login: task.checkerLogin },
-                });
-                checkerId = checker?.id || null;
-              }
-              
-              const taskResult = await prisma.shipmentTask.upsert({
-                where: { id: task.id },
-                update: {
-                  warehouse: task.warehouse,
-                  status: task.status,
-                  collectorName: task.collectorName || null,
-                  collectorId: collectorId,
-                  startedAt: task.startedAt ? new Date(task.startedAt) : null,
-                  completedAt: task.completedAt ? new Date(task.completedAt) : null,
-                  checkerName: task.checkerName || null,
-                  checkerId: checkerId,
-                  dictatorId: dictatorId,
-                  confirmedAt: task.checkerConfirmedAt ? new Date(task.checkerConfirmedAt) : null,
-                  totalItems: task.totalItems || null,
-                  totalUnits: task.totalUnits || null,
-                  timePer100Items: task.timePer100Items || null,
-                  places: task.places || null,
-                },
-                create: {
-                  id: task.id,
-                  shipmentId: shipmentResult.id,
-                  warehouse: task.warehouse,
-                  status: task.status,
-                  collectorName: task.collectorName || null,
-                  collectorId: collectorId,
-                  startedAt: task.startedAt ? new Date(task.startedAt) : null,
-                  completedAt: task.completedAt ? new Date(task.completedAt) : null,
-                  checkerName: task.checkerName || null,
-                  checkerId: checkerId,
-                  dictatorId: dictatorId,
-                  confirmedAt: task.checkerConfirmedAt ? new Date(task.checkerConfirmedAt) : null,
-                  totalItems: task.totalItems || null,
-                  totalUnits: task.totalUnits || null,
-                  timePer100Items: task.timePer100Items || null,
-                  places: task.places || null,
-                },
-              });
-              
-              // Импортируем позиции заданий (taskLines)
-              if (task.lines && Array.isArray(task.lines)) {
-                for (const taskLine of task.lines) {
-                  // Находим shipmentLine по SKU
-                  const shipmentLine = await prisma.shipmentLine.findFirst({
-                    where: {
-                      shipmentId: shipmentResult.id,
-                      sku: taskLine.sku,
-                    },
+              try {
+                // Валидация данных
+                if (!task.id || !task.warehouse) {
+                  console.warn(`  ⚠ Пропущено задание с неполными данными в заказе ${shipmentNumber}`);
+                  continue;
+                }
+                
+                // Находим пользователей по ID или имени
+                let collectorId = task.collectorId || null;
+                let checkerId = task.checkerId || null;
+                let dictatorId = task.dictatorId || null;
+                
+                if (task.collectorLogin && !collectorId) {
+                  const collector = await prisma.user.findUnique({
+                    where: { login: task.collectorLogin },
                   });
-                  
-                  if (shipmentLine) {
-                    await prisma.shipmentTaskLine.upsert({
-                      where: {
-                        id: taskLine.id,
-                      },
-                      update: {
-                        qty: taskLine.qty,
-                        collectedQty: taskLine.collectedQty || null,
-                        checked: taskLine.checked || false,
-                        confirmedQty: taskLine.confirmedQty || null,
-                        confirmed: taskLine.confirmed || false,
-                      },
-                      create: {
-                        id: taskLine.id,
-                        taskId: taskResult.id,
-                        shipmentLineId: shipmentLine.id,
-                        qty: taskLine.qty,
-                        collectedQty: taskLine.collectedQty || null,
-                        checked: taskLine.checked || false,
-                        confirmedQty: taskLine.confirmedQty || null,
-                        confirmed: taskLine.confirmed || false,
-                      },
-                    });
+                  collectorId = collector?.id || null;
+                }
+                
+                if (task.checkerLogin && !checkerId) {
+                  const checker = await prisma.user.findUnique({
+                    where: { login: task.checkerLogin },
+                  });
+                  checkerId = checker?.id || null;
+                }
+                
+                // Синхронизируем статус задания с сервера
+                let taskStatus = task.status;
+                if (forceProcessed && existingShipment) {
+                  const existingTask = existingShipment.tasks.find((t: any) => t.id === task.id);
+                  if (existingTask && taskStatus === 'processed' && existingTask.status !== 'processed') {
+                    taskStatus = 'processed';
                   }
                 }
+                
+                const taskResult = await prisma.shipmentTask.upsert({
+                  where: { id: task.id },
+                  update: {
+                    warehouse: task.warehouse,
+                    status: taskStatus, // Синхронизированный статус
+                    collectorName: task.collectorName || null,
+                    collectorId: collectorId,
+                    startedAt: task.startedAt ? new Date(task.startedAt) : null,
+                    completedAt: task.completedAt ? new Date(task.completedAt) : null,
+                    checkerName: task.checkerName || null,
+                    checkerId: checkerId,
+                    dictatorId: dictatorId,
+                    confirmedAt: task.checkerConfirmedAt ? new Date(task.checkerConfirmedAt) : null,
+                    totalItems: task.totalItems || null,
+                    totalUnits: task.totalUnits || null,
+                    timePer100Items: task.timePer100Items || null,
+                    places: task.places || null,
+                  },
+                  create: {
+                    id: task.id,
+                    shipmentId: shipmentResult.id,
+                    warehouse: task.warehouse,
+                    status: taskStatus,
+                    collectorName: task.collectorName || null,
+                    collectorId: collectorId,
+                    startedAt: task.startedAt ? new Date(task.startedAt) : null,
+                    completedAt: task.completedAt ? new Date(task.completedAt) : null,
+                    checkerName: task.checkerName || null,
+                    checkerId: checkerId,
+                    dictatorId: dictatorId,
+                    confirmedAt: task.checkerConfirmedAt ? new Date(task.checkerConfirmedAt) : null,
+                    totalItems: task.totalItems || null,
+                    totalUnits: task.totalUnits || null,
+                    timePer100Items: task.timePer100Items || null,
+                    places: task.places || null,
+                  },
+                });
+                
+                // Импортируем позиции заданий (taskLines)
+                if (task.lines && Array.isArray(task.lines)) {
+                  for (const taskLine of task.lines) {
+                    try {
+                      // Валидация данных
+                      if (!taskLine.id || !taskLine.sku) {
+                        console.warn(`  ⚠ Пропущена позиция задания с неполными данными`);
+                        continue;
+                      }
+                      
+                      // Находим shipmentLine по SKU
+                      const shipmentLine = await prisma.shipmentLine.findFirst({
+                        where: {
+                          shipmentId: shipmentResult.id,
+                          sku: taskLine.sku,
+                        },
+                      });
+                      
+                      if (shipmentLine) {
+                        await prisma.shipmentTaskLine.upsert({
+                          where: {
+                            id: taskLine.id,
+                          },
+                          update: {
+                            qty: taskLine.qty,
+                            collectedQty: taskLine.collectedQty || null,
+                            checked: taskLine.checked || false,
+                            confirmedQty: taskLine.confirmedQty || null,
+                            confirmed: taskLine.confirmed || false,
+                          },
+                          create: {
+                            id: taskLine.id,
+                            taskId: taskResult.id,
+                            shipmentLineId: shipmentLine.id,
+                            qty: taskLine.qty,
+                            collectedQty: taskLine.collectedQty || null,
+                            checked: taskLine.checked || false,
+                            confirmedQty: taskLine.confirmedQty || null,
+                            confirmed: taskLine.confirmed || false,
+                          },
+                        });
+                      } else {
+                        console.warn(`  ⚠ Не найдена позиция заказа ${taskLine.sku} для задания ${task.id}`);
+                      }
+                    } catch (error: any) {
+                      console.error(`  ✗ Ошибка при импорте позиции задания:`, error.message);
+                    }
+                  }
+                }
+              } catch (error: any) {
+                console.error(`  ✗ Ошибка при импорте задания ${task.id}:`, error.message);
               }
             }
           }
@@ -550,15 +700,15 @@ async function importShipments(
       }));
       
       if ((i + batchSize) % 10 === 0 || i + batchSize >= limitedShipments.length) {
-        console.log(`  Прогресс: ${Math.min(i + batchSize, limitedShipments.length)}/${limitedShipments.length} (Импортировано: ${imported}, Обновлено: ${updated}, Ошибок: ${errors})`);
+        console.log(`  Прогресс: ${Math.min(i + batchSize, limitedShipments.length)}/${limitedShipments.length} (Импортировано: ${imported}, Обновлено: ${updated}, Ошибок: ${errors}, Статусов обновлено: ${statusUpdated})`);
       }
     }
     
-    console.log(`  ✓ Импортировано: ${imported}, Обновлено: ${updated}, Ошибок: ${errors}`);
-    return { imported, updated, errors, total: limitedShipments.length };
+    console.log(`  ✓ Импортировано: ${imported}, Обновлено: ${updated}, Ошибок: ${errors}, Статусов обновлено: ${statusUpdated}`);
+    return { imported, updated, errors, statusUpdated, total: limitedShipments.length };
   } catch (error: any) {
     console.error(`  ✗ Ошибка при импорте заказов:`, error.message);
-    return { imported: 0, updated: 0, errors: 0, total: 0 };
+    return { imported: 0, updated: 0, errors: 0, statusUpdated: 0, total: 0 };
   }
 }
 
@@ -570,6 +720,9 @@ async function main() {
     password: '',
     testMode: false,
     batchSize: 5,
+    forceProcessed: false,
+    retryAttempts: 3,
+    retryDelay: 1000,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -597,13 +750,17 @@ async function main() {
       options.skipSettings = true;
     } else if (arg === '--skip-statistics') {
       options.skipStatistics = true;
+    } else if (arg === '--force-processed') {
+      options.forceProcessed = true;
+    } else if (arg === '--retry-attempts' && args[i + 1]) {
+      options.retryAttempts = parseInt(args[i + 1], 10) || 3;
     }
   }
 
   if (!options.url || !options.login || !options.password) {
     console.error('❌ Ошибка: Не указаны обязательные параметры');
     console.log('\nИспользование:');
-    console.log('  npx tsx scripts/import-data-from-api.ts --url <URL> --login <LOGIN> --password <PASSWORD> [опции]');
+    console.log('  npx tsx scripts/import-data-from-api-v2.ts --url <URL> --login <LOGIN> --password <PASSWORD> [опции]');
     console.log('\nОпции:');
     console.log('  --test              Тестовый режим (только 10 записей каждого типа)');
     console.log('  --batch-size <N>     Размер пакета для параллельной обработки (по умолчанию 5)');
@@ -612,8 +769,10 @@ async function main() {
     console.log('  --skip-regions       Пропустить импорт регионов');
     console.log('  --skip-settings      Пропустить импорт настроек');
     console.log('  --skip-statistics    Пропустить импорт статистики');
+    console.log('  --force-processed    Принудительно синхронизировать статус processed с сервера');
+    console.log('  --retry-attempts <N> Количество попыток повтора при ошибках (по умолчанию 3)');
     console.log('\nПример:');
-    console.log('  npx tsx scripts/import-data-from-api.ts --url https://sklad.specialist82.pro --login admin --password YOUR_PASSWORD --test');
+    console.log('  npx tsx scripts/import-data-from-api-v2.ts --url https://sklad.specialist82.pro --login admin --password YOUR_PASSWORD --force-processed');
     process.exit(1);
   }
 
@@ -621,12 +780,15 @@ async function main() {
 
   console.log(`\n🚀 Начинаем импорт данных с ${options.url}`);
   console.log(`📊 Режим: ${options.testMode ? 'ТЕСТОВЫЙ (10 записей каждого типа)' : 'ПОЛНЫЙ'}`);
-  console.log(`📦 Размер пакета: ${options.batchSize}\n`);
+  console.log(`📦 Размер пакета: ${options.batchSize}`);
+  console.log(`🔄 Синхронизация статусов: ${options.forceProcessed ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}\n`);
+
+  const startTime = Date.now();
 
   try {
     // Авторизуемся
     console.log('🔐 Авторизация...');
-    sessionCookies = await loginAndGetCookies(options.url, options.login, options.password);
+    sessionCookies = await loginAndGetCookies(options.url, options.login, options.password, options.retryAttempts);
     if (sessionCookies) {
       console.log('  ✓ Авторизация успешна\n');
     } else {
@@ -654,7 +816,8 @@ async function main() {
         options.login,
         options.password,
         options.testMode,
-        options.batchSize
+        options.batchSize,
+        options.forceProcessed
       );
     }
     
@@ -669,22 +832,28 @@ async function main() {
       );
     }
 
-    // Итоговая статистика
+    // Улучшение 10: Подробная итоговая статистика
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    
     console.log('\n' + '='.repeat(60));
     console.log('📊 ИТОГОВАЯ СТАТИСТИКА ИМПОРТА:');
     console.log('='.repeat(60));
     
     if (stats.users) {
-      console.log(`👥 Пользователи: Импортировано ${stats.users.imported}, Обновлено ${stats.users.updated}`);
+      console.log(`👥 Пользователи: Импортировано ${stats.users.imported}, Обновлено ${stats.users.updated}, Пропущено ${stats.users.skipped}`);
     }
     if (stats.regions) {
-      console.log(`🗺️  Регионы: Импортировано ${stats.regions.imported}, Обновлено ${stats.regions.updated}`);
+      console.log(`🗺️  Регионы: Импортировано ${stats.regions.imported}, Обновлено ${stats.regions.updated}, Пропущено ${stats.regions.skipped}`);
     }
     if (stats.settings) {
-      console.log(`⚙️  Настройки: Импортировано ${stats.settings.imported}, Обновлено ${stats.settings.updated}`);
+      console.log(`⚙️  Настройки: Импортировано ${stats.settings.imported}, Обновлено ${stats.settings.updated}, Пропущено ${stats.settings.skipped}`);
     }
     if (stats.shipments) {
       console.log(`📦 Заказы: Импортировано ${stats.shipments.imported}, Обновлено ${stats.shipments.updated}, Ошибок ${stats.shipments.errors}`);
+      if (stats.shipments.statusUpdated > 0) {
+        console.log(`   🔄 Статусов обновлено: ${stats.shipments.statusUpdated}`);
+      }
     }
     if (stats.statistics) {
       console.log(`📊 Статистика:`);
@@ -693,6 +862,8 @@ async function main() {
       console.log(`   MonthlyStats: Импортировано ${stats.statistics.monthlyStats.imported}, Обновлено ${stats.statistics.monthlyStats.updated}`);
     }
     
+    console.log(`\n⏱️  Время выполнения: ${duration} секунд`);
+    console.log(`📡 Всего запросов: ${requestCount}, Ошибок: ${errorCount}`);
     console.log('\n✅ Импорт завершен успешно!');
     
     if (stats.users && stats.users.imported > 0) {

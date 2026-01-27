@@ -16,6 +16,8 @@ import {
   Copy,
   ChevronUp,
   ChevronDown,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { XIcon } from '@/components/icons/XIcon';
 
@@ -63,6 +65,8 @@ export default function RegionPrioritiesTab() {
   const [showInfo, setShowInfo] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedRegionToAdd, setSelectedRegionToAdd] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -362,7 +366,112 @@ export default function RegionPrioritiesTab() {
       setSuccess('Приоритеты успешно сохранены');
       setHasChanges(false);
       setTimeout(() => setSuccess(''), 3000);
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Ошибка при сохранении:', error);
+      setError(error.message || 'Ошибка при сохранении приоритетов');
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Экспорт приоритетов регионов
+  const handleExport = async () => {
+    try {
+      setIsExporting(true);
+      const response = await fetch('/api/regions/priorities');
+      if (!response.ok) {
+        throw new Error('Ошибка при загрузке приоритетов');
+      }
+      const data = await response.json();
+      
+      // Создаем JSON файл для скачивания
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `region-priorities-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setSuccess('Приоритеты успешно экспортированы');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error: any) {
+      console.error('Ошибка при экспорте:', error);
+      setError(error.message || 'Ошибка при экспорте приоритетов');
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Импорт приоритетов регионов
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsImporting(true);
+      const text = await file.text();
+      const importedData = JSON.parse(text);
+      
+      if (!Array.isArray(importedData)) {
+        throw new Error('Неверный формат файла');
+      }
+
+      // Валидация данных
+      for (const item of importedData) {
+        if (!item.region || typeof item.region !== 'string') {
+          throw new Error('Неверный формат данных: отсутствует поле region');
+        }
+      }
+
+      // Импортируем приоритеты
+      const weeklyPriorities = importedData.map((p: any) => {
+        const result: any = {
+          region: p.region,
+          priority: p.priority || 0,
+          priorityMonday: p.priorityMonday ?? null,
+          priorityTuesday: p.priorityTuesday ?? null,
+          priorityWednesday: p.priorityWednesday ?? null,
+          priorityThursday: p.priorityThursday ?? null,
+          priorityFriday: p.priorityFriday ?? null,
+        };
+        return result;
+      });
+
+      const response = await fetch('/api/regions/priorities', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          weeklyPriorities,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка при импорте приоритетов');
+      }
+
+      const updatedPriorities = await response.json();
+      setPriorities(updatedPriorities);
+      setSuccess(`Успешно импортировано ${importedData.length} приоритетов`);
+      setHasChanges(false);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error: any) {
+      console.error('Ошибка при импорте:', error);
+      setError(error.message || 'Ошибка при импорте приоритетов');
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setIsImporting(false);
+      // Сбрасываем input для возможности повторного выбора того же файла
+      event.target.value = '';
+    }
+  }; catch (error) {
       console.error('Ошибка при сохранении:', error);
       setError('Ошибка при сохранении приоритетов');
     } finally {
