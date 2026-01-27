@@ -16,6 +16,7 @@ import {
   Info,
   Sparkles,
   Mic,
+  RefreshCw,
 } from 'lucide-react';
 
 interface RankingEntry {
@@ -144,7 +145,7 @@ export default function StatisticsTab() {
   return (
     <div className="space-y-6">
       {/* Заголовок */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-100 flex items-center gap-3">
             <Trophy className="w-8 h-8 text-yellow-500" />
@@ -152,13 +153,24 @@ export default function StatisticsTab() {
           </h2>
           <p className="text-slate-400 mt-1">Рейтинги сборщиков и проверяльщиков, общая статистика склада</p>
         </div>
-        <button
-          onClick={() => setShowPointsInfo(!showPointsInfo)}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center gap-2"
-        >
-          <Info className="w-4 h-4" />
-          <span>Как считаются баллы</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadData}
+            disabled={isLoading}
+            className="px-4 py-2 bg-blue-600/90 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 disabled:hover:scale-100"
+            title="Обновить статистику"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Обновить</span>
+          </button>
+          <button
+            onClick={() => setShowPointsInfo(!showPointsInfo)}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center gap-2"
+          >
+            <Info className="w-4 h-4" />
+            <span className="hidden sm:inline">Как считаются баллы</span>
+          </button>
+        </div>
       </div>
 
       {/* Информация о системе баллов */}
