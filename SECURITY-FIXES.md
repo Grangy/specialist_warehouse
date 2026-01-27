@@ -14,11 +14,20 @@
   - Установлен `exceljs`
   - Обновлен `src/components/admin/MinusTab.tsx` для использования exceljs
 
-### 3. ⚠️ Оставшиеся уязвимости
-- **glob**: Уязвимость в CLI (только для dev зависимостей, не критично)
-  - Используется только в eslint-config-next
-  - Не влияет на production сборку
-  - Можно игнорировать или обновить eslint-config-next
+### 3. ✅ Исправление уязвимостей glob
+- **Проблема**: `glob@10.2.0 - 10.4.5` имеет уязвимость Command injection в CLI
+- **Решение**: 
+  - Обновлен `eslint-config-next` до версии `14.2.35`
+  - Добавлен `overrides` в `package.json` для принудительного использования `glob@^10.4.6`
+- **Важно**: Уязвимость касается только CLI инструмента, не влияет на production код
+
+## Текущий статус
+
+После всех исправлений:
+- ✅ **next** - исправлен
+- ✅ **lodash** - исправлен  
+- ✅ **xlsx** - заменен на exceljs
+- ✅ **glob** - исправлен через overrides
 
 ## Инструкции для локального исправления
 
@@ -31,7 +40,13 @@ npm audit fix
 npm uninstall xlsx
 npm install exceljs
 
-# 3. Проверка
+# 3. Обновление eslint-config-next
+npm install eslint-config-next@14.2.35
+
+# 4. Установка зависимостей с overrides
+npm install
+
+# 5. Проверка
 npm audit
 npm run build
 ```
@@ -41,7 +56,11 @@ npm run build
 ### Вариант 1: Использовать скрипт (рекомендуется)
 ```bash
 cd /opt/specialist_warehouse
+git pull origin main
 ./scripts/fix-vulnerabilities.sh
+npm install  # Для применения overrides
+npm run build
+# Перезапустите приложение (pm2 restart all или systemctl restart)
 ```
 
 ### Вариант 2: Ручное выполнение
@@ -51,7 +70,7 @@ cd /opt/specialist_warehouse
 # 1. Получить последние изменения
 git pull origin main
 
-# 2. Установить зависимости
+# 2. Установить зависимости (с overrides)
 npm install
 
 # 3. Автоматическое исправление
@@ -60,12 +79,12 @@ npm audit fix
 # 4. Проверка
 npm audit
 
-# 5. Пересборка проекта
+# 5. Пересборка
 npm run build
 
 # 6. Перезапуск (если используется PM2)
 pm2 restart all
-# или
+# или через systemctl
 systemctl restart your-service-name
 ```
 
@@ -79,9 +98,20 @@ npm audit
 Ожидаемый результат:
 - ✅ next, lodash - исправлены
 - ✅ xlsx - заменен на exceljs
-- ⚠️ glob - остается (не критично, только для dev)
+- ✅ glob - исправлен через overrides
+
+Если все еще показываются уязвимости glob, это может быть связано с кэшированием npm. Попробуйте:
+```bash
+rm -rf node_modules package-lock.json
+npm install
+npm audit
+```
 
 ## Изменения в коде
+
+### package.json
+- Добавлен `overrides` для принудительного использования безопасной версии glob
+- Обновлен `eslint-config-next` до `14.2.35`
 
 ### MinusTab.tsx
 - Заменен импорт `xlsx` на `exceljs`
@@ -93,13 +123,20 @@ npm audit
 1. **Регулярная проверка**: Выполняйте `npm audit` еженедельно
 2. **Автоматические обновления**: Рассмотрите использование Dependabot или Renovate
 3. **Мониторинг**: Настройте уведомления о новых уязвимостях
+4. **Overrides**: Используйте `overrides` в package.json для принудительного использования безопасных версий зависимостей
 
 ## Откат изменений (если нужно)
 
-Если возникнут проблемы с exceljs:
+Если возникнут проблемы:
 ```bash
-npm uninstall exceljs
-npm install xlsx@0.18.5
-# Откатить изменения в MinusTab.tsx через git
-git checkout HEAD -- src/components/admin/MinusTab.tsx
+# Откатить изменения в package.json
+git checkout HEAD -- package.json
+
+# Переустановить зависимости
+rm -rf node_modules package-lock.json
+npm install
 ```
+
+## Примечание о glob
+
+Уязвимость в `glob` касается только CLI инструмента (`glob -c` команда), которая не используется в нашем проекте. Это dev зависимость, которая не влияет на production код. Однако мы исправили её для полной безопасности.
