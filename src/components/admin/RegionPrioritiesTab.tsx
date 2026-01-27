@@ -471,12 +471,6 @@ export default function RegionPrioritiesTab() {
       // Сбрасываем input для возможности повторного выбора того же файла
       event.target.value = '';
     }
-  }; catch (error) {
-      console.error('Ошибка при сохранении:', error);
-      setError('Ошибка при сохранении приоритетов');
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const handleAddRegionClick = (region: string) => {
@@ -680,7 +674,7 @@ export default function RegionPrioritiesTab() {
     <div className="space-y-6 animate-fadeIn">
       {/* Заголовок с улучшенным дизайном */}
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-purple-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30">
               <Calendar className="w-6 h-6 text-white" />
