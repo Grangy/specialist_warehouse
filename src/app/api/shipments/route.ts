@@ -959,57 +959,65 @@ export async function GET(request: NextRequest) {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
-    // Для сборщиков: показываем по 1 заказу с каждого склада (ближайший)
-    // Это позволяет сборщику видеть работу со всех складов, а не только с выбранного
+    // Для сборщиков: показываем свои задания (где collectorId === userId) + 1 свободное с каждого склада
+    // Это позволяет сборщику не терять свои заказы, даже если он вышел из модала
     if (user.role === 'collector' && tasks.length > 0) {
-      // АУДИТ: Логируем количество заданий до группировки
-      const warehousesBeforeGrouping = new Set(tasks.map(t => t.warehouse || 'Неизвестный склад'));
-      console.log(`[COLLECTOR AUDIT] Заданий до группировки: ${tasks.length}, Складов: ${Array.from(warehousesBeforeGrouping).join(', ')}, Запрошенный статус: ${status || 'не указан'}`);
-      
-      // Группируем задания по складам
-      const tasksByWarehouse = new Map<string, typeof tasks>();
+      // Разделяем задания на свои и свободные
+      const myTasks: typeof tasks = []; // Задания, где collectorId === userId
+      const freeTasks: typeof tasks = []; // Свободные задания (collectorId === null или истекла блокировка)
       
       tasks.forEach((task) => {
-        const warehouse = task.warehouse || 'Неизвестный склад';
-        if (!tasksByWarehouse.has(warehouse)) {
-          tasksByWarehouse.set(warehouse, []);
+        // Проверяем, является ли задание "своим" (collectorId === userId)
+        if (task.collector_id === user.id) {
+          myTasks.push(task);
+        } else {
+          // Проверяем, свободно ли задание
+          const taskLocks = locksMap.get(task.id) || [];
+          const lock = taskLocks[0] || null;
+          
+          // Задание свободно, если:
+          // 1. collectorId === null (никто не начал)
+          // 2. Или блокировка истекла (heartbeat старше 30 секунд)
+          const isFree = !task.collector_id || (lock && lock.userId !== user.id && (Date.now() - lock.lastHeartbeat.getTime()) > 30 * 1000);
+          
+          if (isFree) {
+            freeTasks.push(task);
+          }
         }
-        tasksByWarehouse.get(warehouse)!.push(task);
       });
       
-      // АУДИТ: Логируем количество складов после группировки
-      console.log(`[COLLECTOR AUDIT] Складов после группировки: ${tasksByWarehouse.size} (${Array.from(tasksByWarehouse.keys()).join(', ')})`);
+      // Группируем свободные задания по складам
+      const freeTasksByWarehouse = new Map<string, typeof tasks>();
+      freeTasks.forEach((task) => {
+        const warehouse = task.warehouse || 'Неизвестный склад';
+        if (!freeTasksByWarehouse.has(warehouse)) {
+          freeTasksByWarehouse.set(warehouse, []);
+        }
+        freeTasksByWarehouse.get(warehouse)!.push(task);
+      });
       
-      // Для каждого склада берем только первое задание (ближайшее по приоритету и дате)
-      // ВАЖНО: Если запрошен статус (например, 'new'), берем первое задание с этим статусом
-      const filteredTasks: typeof tasks = [];
-      tasksByWarehouse.forEach((warehouseTasks, warehouse) => {
+      // Для каждого склада берем только первое свободное задание (ближайшее по приоритету и дате)
+      const oneFreePerWarehouse: typeof tasks = [];
+      freeTasksByWarehouse.forEach((warehouseTasks, warehouse) => {
         if (warehouseTasks.length > 0) {
           let taskToAdd = null;
           
           // Если запрошен конкретный статус, ищем первое задание с этим статусом
-          // ВАЖНО: Задания уже отсортированы по приоритету региона и дате, поэтому берем первое
           if (status) {
-            // Ищем первое задание с нужным статусом (они уже отсортированы по приоритету)
             taskToAdd = warehouseTasks.find(t => t.status === status) || null;
-            if (!taskToAdd) {
-              console.log(`[COLLECTOR AUDIT] На складе "${warehouse}" нет заданий со статусом "${status}", пропускаем склад`);
-              return; // Пропускаем склад, если нет заданий с нужным статусом
-            }
           } else {
             // Если статус не указан, берем первое задание (уже отсортировано по приоритету и дате)
             taskToAdd = warehouseTasks[0];
           }
           
           if (taskToAdd) {
-            filteredTasks.push(taskToAdd);
-            console.log(`[COLLECTOR AUDIT] Добавлено задание со склада "${warehouse}" (статус: ${taskToAdd.status}, всего заданий на этом складе: ${warehouseTasks.length})`);
+            oneFreePerWarehouse.push(taskToAdd);
           }
         }
       });
       
-      // АУДИТ: Логируем финальное количество
-      console.log(`[COLLECTOR AUDIT] Итого возвращается заданий: ${filteredTasks.length}`);
+      // Объединяем свои задания + по 1 свободному с каждого склада
+      const filteredTasks = [...myTasks, ...oneFreePerWarehouse];
       
       // Сортируем результат: сначала по приоритету региона, затем внутри региона по количеству позиций (от большего к меньшему), затем по дате
       filteredTasks.sort((a, b) => {

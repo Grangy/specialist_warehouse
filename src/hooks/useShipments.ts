@@ -134,14 +134,14 @@ export function useShipments() {
 
     loadShipments();
     
-    // Резервное автообновление каждые 5 минут (на случай проблем с SSE)
+    // Резервное автообновление каждые 1 минуту (на случай проблем с SSE)
     const interval = setInterval(() => {
       if (isAuthorized) {
         // Сбрасываем флаг ошибки перед повторной попыткой
         errorShownRef.current = false;
         loadShipments();
       }
-    }, 300000); // 5 минут вместо 60 секунд
+    }, 60000); // 1 минута (60000 мс)
     return () => clearInterval(interval);
   }, [isAuthorized, loadShipments]);
 
