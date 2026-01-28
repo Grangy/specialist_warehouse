@@ -91,6 +91,32 @@ async function main() {
     });
   }
 
+  // 4. Аудит случайных товаров: полные поля (проверка, не «переехал» ли артикул в name/sku)
+  const RANDOM_SAMPLE_SIZE = 20;
+  type LineRow = { id: string; sku: string; name: string; art: string | null; location: string | null; warehouse: string | null };
+  const randomRows = await prisma.$queryRawUnsafe<LineRow[]>(
+    `SELECT id, sku, name, art, location, warehouse FROM shipment_lines ORDER BY RANDOM() LIMIT ${RANDOM_SAMPLE_SIZE}`
+  );
+
+  console.log(`\n🎲 Случайная выборка ${randomRows.length} товаров (поля: sku, name, art, location, warehouse):`);
+  console.log('-'.repeat(80));
+  randomRows.forEach((row, i) => {
+    const artStr = row.art != null && row.art !== '' ? `"${row.art}"` : 'NULL';
+    const nameShort = (row.name || '').length > 45 ? (row.name || '').slice(0, 42) + '...' : (row.name || '');
+    const loc = (row.location || '').slice(0, 12) || '—';
+    const wh = (row.warehouse || '').slice(0, 8) || '—';
+    console.log(`   ${String(i + 1).padStart(2)} | sku=${(row.sku || '').padEnd(14)} | art=${artStr.padEnd(8)} | loc=${loc.padEnd(12)} | wh=${wh}`);
+    console.log(`       name: ${nameShort}`);
+  });
+  console.log('-'.repeat(80));
+
+  // 5. Подсказка: миграция только добавляет колонку, данные не переносит
+  if (withArt === 0 && total > 0) {
+    console.log('\n💡 Миграция add_art_field только добавляет колонку "art", ничего не удаляет и не переносит.');
+    console.log('   Если везде art=NULL — артикулы на эту БД никогда не записывались (заказы созданы без art');
+    console.log('   или выгрузка из 1С/импорт не передаёт поле art). Заполнение art — при создании заказов.');
+  }
+
   console.log('\n' + '='.repeat(60) + '\n');
 }
 
