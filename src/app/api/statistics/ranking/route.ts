@@ -222,63 +222,59 @@ export async function GET(request: NextRequest) {
         efficiencies: number[];
       }>();
 
-      // Добавляем данные от проверок
+      // Добавляем данные от проверок (включая диктовщиков — для них тоже создаются TaskStatistics с roleType='checker')
       for (const stat of checkerTaskStats) {
         const user = stat.user;
-        if (user.role === 'checker') {
-          const key = user.id;
-          if (!checkerMap.has(key)) {
-            checkerMap.set(key, {
-              userId: user.id,
-              userName: user.name,
-              role: user.role,
-              positions: 0,
-              units: 0,
-              orders: new Set(),
-              points: 0,
-              totalPickTimeSec: 0,
-              efficiencies: [],
-            });
-          }
-          const userStat = checkerMap.get(key)!;
-          userStat.positions += stat.positions;
-          userStat.units += stat.units;
-          userStat.orders.add(stat.shipmentId);
-          userStat.points += stat.orderPoints || 0;
-          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
-          if (stat.efficiencyClamped) {
-            userStat.efficiencies.push(stat.efficiencyClamped);
-          }
+        const key = user.id;
+        if (!checkerMap.has(key)) {
+          checkerMap.set(key, {
+            userId: user.id,
+            userName: user.name,
+            role: user.role,
+            positions: 0,
+            units: 0,
+            orders: new Set(),
+            points: 0,
+            totalPickTimeSec: 0,
+            efficiencies: [],
+          });
+        }
+        const userStat = checkerMap.get(key)!;
+        userStat.positions += stat.positions;
+        userStat.units += stat.units;
+        userStat.orders.add(stat.shipmentId);
+        userStat.points += stat.orderPoints || 0;
+        userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+        if (stat.efficiencyClamped) {
+          userStat.efficiencies.push(stat.efficiencyClamped);
         }
       }
 
-      // Добавляем данные от сборок проверяльщиков
+      // Добавляем данные от сборок проверяльщиков (их сборки тоже должны попадать в общий топ)
       for (const stat of checkerCollectorTaskStats) {
         const user = stat.user;
-        if (user.role === 'checker') {
-          const key = user.id;
-          if (!checkerMap.has(key)) {
-            checkerMap.set(key, {
-              userId: user.id,
-              userName: user.name,
-              role: user.role,
-              positions: 0,
-              units: 0,
-              orders: new Set(),
-              points: 0,
-              totalPickTimeSec: 0,
-              efficiencies: [],
-            });
-          }
-          const userStat = checkerMap.get(key)!;
-          userStat.positions += stat.positions;
-          userStat.units += stat.units;
-          userStat.orders.add(stat.shipmentId);
-          userStat.points += stat.orderPoints || 0;
-          userStat.totalPickTimeSec += stat.pickTimeSec || 0;
-          if (stat.efficiencyClamped) {
-            userStat.efficiencies.push(stat.efficiencyClamped);
-          }
+        const key = user.id;
+        if (!checkerMap.has(key)) {
+          checkerMap.set(key, {
+            userId: user.id,
+            userName: user.name,
+            role: user.role,
+            positions: 0,
+            units: 0,
+            orders: new Set(),
+            points: 0,
+            totalPickTimeSec: 0,
+            efficiencies: [],
+          });
+        }
+        const userStat = checkerMap.get(key)!;
+        userStat.positions += stat.positions;
+        userStat.units += stat.units;
+        userStat.orders.add(stat.shipmentId);
+        userStat.points += stat.orderPoints || 0;
+        userStat.totalPickTimeSec += stat.pickTimeSec || 0;
+        if (stat.efficiencyClamped) {
+          userStat.efficiencies.push(stat.efficiencyClamped);
         }
       }
 
