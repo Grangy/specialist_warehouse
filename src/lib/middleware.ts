@@ -105,26 +105,26 @@ export async function authenticateRequest(
   
   // Если нашли credentials, проверяем их
   if (login && password) {
-    // Rate limiting для аутентификации через заголовки/body
-    const clientId = getClientIdentifier(request);
-    const rateLimit = checkRateLimit(`${clientId}:auth`, 'api');
-    if (!rateLimit.allowed) {
-      const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
-      logSecurityEvent('rate_limit_exceeded', {
-        ip,
-        login,
-        details: 'Authentication rate limit exceeded',
-      });
-      return NextResponse.json(
-        { error: 'Слишком много запросов. Попробуйте позже.' },
-        { 
-          status: 429,
-          headers: {
-            'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
-          },
-        }
-      );
-    }
+    // Rate limiting для аутентификации через заголовки/body ОТКЛЮЧЕН
+    // const clientId = getClientIdentifier(request);
+    // const rateLimit = checkRateLimit(`${clientId}:auth`, 'api');
+    // if (!rateLimit.allowed) {
+    //   const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+    //   logSecurityEvent('rate_limit_exceeded', {
+    //     ip,
+    //     login,
+    //     details: 'Authentication rate limit exceeded',
+    //   });
+    //   return NextResponse.json(
+    //     { error: 'Слишком много запросов. Попробуйте позже.' },
+    //     { 
+    //       status: 429,
+    //       headers: {
+    //         'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
+    //       },
+    //     }
+    //   );
+    // }
 
     const user = await prisma.user.findUnique({
       where: { login },

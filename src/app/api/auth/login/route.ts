@@ -10,34 +10,34 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    const clientId = getClientIdentifier(request);
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
     const userAgent = request.headers.get('user-agent') || 'unknown';
 
-    // Проверка rate limiting для логина
-    const rateLimit = checkRateLimit(clientId, 'login');
-    if (!rateLimit.allowed) {
-      logSecurityEvent('rate_limit_exceeded', {
-        ip,
-        userAgent,
-        details: `Login attempts exceeded for ${clientId}`,
-      });
-      return NextResponse.json(
-        { 
-          error: 'Слишком много попыток входа. Попробуйте позже.',
-          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000),
-        },
-        { 
-          status: 429,
-          headers: {
-            'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
-            'X-RateLimit-Limit': '5',
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': String(rateLimit.resetTime),
-          },
-        }
-      );
-    }
+    // Проверка rate limiting для логина ОТКЛЮЧЕНА
+    // const clientId = getClientIdentifier(request);
+    // const rateLimit = checkRateLimit(clientId, 'login');
+    // if (!rateLimit.allowed) {
+    //   logSecurityEvent('rate_limit_exceeded', {
+    //     ip,
+    //     userAgent,
+    //     details: `Login attempts exceeded for ${clientId}`,
+    //   });
+    //   return NextResponse.json(
+    //     { 
+    //       error: 'Слишком много попыток входа. Попробуйте позже.',
+    //       retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000),
+    //     },
+    //     { 
+    //       status: 429,
+    //       headers: {
+    //         'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
+    //         'X-RateLimit-Limit': '5',
+    //         'X-RateLimit-Remaining': '0',
+    //         'X-RateLimit-Reset': String(rateLimit.resetTime),
+    //       },
+    //     }
+    //   );
+    // }
 
     const { login, password } = await request.json();
 
