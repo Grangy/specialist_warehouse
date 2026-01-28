@@ -29,8 +29,9 @@ export async function POST(
     const body = await request.json();
     const { lines, comment, places, dictatorId } = body;
 
-    // Проверка: проверяльщик не может выбрать другого проверяльщика в качестве диктовщика
-    if (user.role === 'checker' && dictatorId) {
+    // Проверка: проверяльщик не может выбрать другого проверяльщика в качестве диктовщика.
+    // Исключение: проверяльщик может выбрать себя как диктовщика (один человек ведёт проверку и диктует).
+    if (user.role === 'checker' && dictatorId && dictatorId !== user.id) {
       const dictatorUser = await prisma.user.findUnique({
         where: { id: dictatorId },
         select: { role: true },
