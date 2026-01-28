@@ -30,9 +30,9 @@ const prisma = new PrismaClient({
   },
 });
 
-// 14 ноября, 00:00 МСК (UTC+3) → 13 ноября 21:00 UTC
-const AFTER_DATE_MSK = { year: 2025, month: 11, day: 14 };
-const afterUtc = new Date(Date.UTC(AFTER_DATE_MSK.year, AFTER_DATE_MSK.month - 1, AFTER_DATE_MSK.day - 1, 21, 0, 0, 0));
+// 14 ноября, 14:10 МСК (UTC+3) → 14 ноября 11:10 UTC
+const AFTER_DATE_MSK = { year: 2025, month: 11, day: 14, hour: 14, minute: 10 };
+const afterUtc = new Date(Date.UTC(AFTER_DATE_MSK.year, AFTER_DATE_MSK.month - 1, AFTER_DATE_MSK.day, AFTER_DATE_MSK.hour - 3, AFTER_DATE_MSK.minute, 0, 0));
 
 const APPLY = process.argv.includes('--apply');
 
@@ -40,7 +40,7 @@ async function main() {
   console.log('\n' + '='.repeat(60));
   console.log('Пометка заказов к выгрузке в 1С (после даты по МСК)');
   console.log('='.repeat(60));
-  console.log(`Дата: после ${AFTER_DATE_MSK.day}.${AFTER_DATE_MSK.month}.${AFTER_DATE_MSK.year} 00:00 МСК`);
+  console.log(`Дата: после ${AFTER_DATE_MSK.day}.${AFTER_DATE_MSK.month}.${AFTER_DATE_MSK.year} ${String(AFTER_DATE_MSK.hour).padStart(2, '0')}:${String(AFTER_DATE_MSK.minute).padStart(2, '0')} МСК`);
   console.log('Режим:', APPLY ? 'APPLY — будут записаны изменения' : 'DRY-RUN — только показ');
   console.log('База:', finalDatabaseUrl?.replace(/file:(.*)/, '$1') || process.env.DATABASE_URL);
 
