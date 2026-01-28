@@ -66,7 +66,7 @@ export function OrderCompletedModal({ isOpen, onClose, orderData }: OrderComplet
               <p>• Количество мест: <span className="font-semibold">{orderData.finalData.places}</span></p>
             )}
             {orderData.finalData?.comment && (
-              <p>• Комментарий: <span className="italic">{orderData.finalData.comment}</span></p>
+              <p>• Комментарий: <span className="italic text-white bg-emerald-600/90 rounded px-2 py-0.5 border border-emerald-500/40">{orderData.finalData.comment}</span></p>
             )}
           </div>
         </div>

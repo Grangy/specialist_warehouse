@@ -79,7 +79,7 @@ export function CollectionCompletedModal({
           </div>
           <div>
             <span className="text-sm font-medium text-slate-400">Комментарий:</span>
-            <p className="text-slate-200 mt-1">{comment}</p>
+            <p className="mt-1 text-sm text-white bg-emerald-600/90 rounded px-2 py-1 border border-emerald-500/40">{comment}</p>
           </div>
           {taskNumber && totalTasks && (
             <div>

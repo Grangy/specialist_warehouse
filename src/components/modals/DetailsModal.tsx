@@ -47,7 +47,7 @@ export function DetailsModal({ isOpen, onClose, shipment }: DetailsModalProps) {
         {shipment.comment && (
           <div>
             <div className="text-sm text-slate-400 mb-1">Комментарий</div>
-            <div className="text-base text-slate-100 italic">{shipment.comment}</div>
+            <div className="text-base text-white italic bg-emerald-600/90 rounded px-2 py-1 border border-emerald-500/40">{shipment.comment}</div>
           </div>
         )}
         <div>

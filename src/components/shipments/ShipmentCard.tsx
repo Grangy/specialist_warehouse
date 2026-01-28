@@ -252,7 +252,9 @@ export function ShipmentCard({
       )}
 
       {shipment.comment && shipment.comment.trim() !== '' && shipment.comment.trim() !== 'Запрос из УТ' && (
-        <div className="mb-4 text-sm text-slate-400 italic">{shipment.comment}</div>
+        <div className="mb-4 rounded-lg bg-emerald-600/95 px-3 py-2.5 shadow-md border border-emerald-500/40">
+          <div className="text-sm font-medium text-white break-words">{shipment.comment}</div>
+        </div>
       )}
 
       <div className="mt-auto flex flex-col gap-2">
