@@ -35,11 +35,25 @@ export function useShipments() {
   const errorShownRef = useRef(false);
   const retryCountRef = useRef(0);
   const showErrorRef = useRef(showError);
+  // ID текущего пользователя для SSE (lockedByCurrentUser и т.д.)
+  const userIdRef = useRef<string | null>(null);
+  // Таймер debounce для shipment:created
+  const createdRefetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Обновляем ref при изменении showError
   useEffect(() => {
     showErrorRef.current = showError;
   }, [showError]);
+
+  // Очистка debounce-таймера при размонтировании
+  useEffect(() => {
+    return () => {
+      if (createdRefetchTimeoutRef.current) {
+        clearTimeout(createdRefetchTimeoutRef.current);
+        createdRefetchTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const [isAuthorized, setIsAuthorized] = useState(false);
 
@@ -50,12 +64,15 @@ export function useShipments() {
       .then((data) => {
         if (data.user) {
           setUserRole(data.user.role);
+          userIdRef.current = data.user.id ?? null;
           setIsAuthorized(true);
         } else {
+          userIdRef.current = null;
           setIsAuthorized(false);
         }
       })
       .catch(() => {
+        userIdRef.current = null;
         setIsAuthorized(false);
         // Игнорируем ошибки
       });
@@ -119,24 +136,80 @@ export function useShipments() {
     }
   }, [isAuthorized, userRole, currentTab]); // Зависим от isAuthorized, userRole и currentTab
 
-  // Подключаемся к SSE для получения обновлений в реальном времени
+  // Подключаемся к SSE для получения обновлений в реальном времени (прогрессивно, без полной перезагрузки)
   useSSE({
     onEvent: (eventType, data) => {
       if (!isAuthorized) return;
 
-      // Обновляем список заказов при получении событий
-      if (
-        eventType === 'shipment:created' ||
-        eventType === 'shipment:updated' ||
-        eventType === 'shipment:status_changed' ||
-        eventType === 'shipment:locked' ||
-        eventType === 'shipment:unlocked'
-      ) {
-        // Небольшая задержка для гарантии, что данные в БД обновлены
-        // Позиция скролла сохраняется и восстанавливается внутри loadShipments
-        setTimeout(() => {
+      const currentUserId = userIdRef.current;
+
+      if (eventType === 'shipment:locked' && data?.taskId != null) {
+        setShipments((prev) =>
+          prev.map((item) =>
+            item.id === data.taskId
+              ? {
+                  ...item,
+                  locked: true,
+                  lockedBy: data.userId ?? null,
+                  lockedByCurrentUser: (data.userId ?? null) === currentUserId,
+                  collector_id: data.userId ?? undefined,
+                  collector_name: data.userName ?? undefined,
+                }
+              : item
+          )
+        );
+        return;
+      }
+
+      if (eventType === 'shipment:unlocked' && data?.taskId != null) {
+        setShipments((prev) =>
+          prev.map((item) =>
+            item.id === data.taskId
+              ? {
+                  ...item,
+                  locked: false,
+                  lockedBy: null,
+                  lockedByCurrentUser: false,
+                  collector_id: undefined,
+                  collector_name: undefined,
+                }
+              : item
+          )
+        );
+        return;
+      }
+
+      if (eventType === 'shipment:status_changed' && data?.id != null) {
+        const shipmentId = data.id;
+        const status = data.status;
+        setShipments((prev) =>
+          prev.map((item) =>
+            item.shipment_id === shipmentId ? { ...item, status } : item
+          )
+        );
+        return;
+      }
+
+      if (eventType === 'shipment:updated' && data?.taskId != null) {
+        const status = data.status ?? 'pending_confirmation';
+        setShipments((prev) =>
+          prev.map((item) =>
+            item.id === data.taskId ? { ...item, status } : item
+          )
+        );
+        return;
+      }
+
+      if (eventType === 'shipment:created') {
+        // Новый заказ — один раз подтягиваем список через debounce, без перерисовки всех блоков
+        if (createdRefetchTimeoutRef.current) {
+          clearTimeout(createdRefetchTimeoutRef.current);
+        }
+        createdRefetchTimeoutRef.current = setTimeout(() => {
+          createdRefetchTimeoutRef.current = null;
           loadShipments();
-        }, 300);
+        }, 3000);
+        return;
       }
     },
     onError: (error) => {
