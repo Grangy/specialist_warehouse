@@ -71,6 +71,9 @@ export function useShipments() {
     // Предотвращаем параллельные запросы
     if (loadingRef.current) return;
     
+    // Сохраняем позицию скролла перед обновлением
+    const savedScrollPosition = typeof window !== 'undefined' ? window.scrollY : 0;
+    
     try {
       loadingRef.current = true;
       setIsLoading(true);
@@ -81,6 +84,14 @@ export function useShipments() {
       const statusParam = (userRole === 'collector' && currentTab === 'new') ? 'new' : undefined;
       const data = await shipmentsApi.getAll(statusParam ? { status: statusParam } : undefined);
       setShipments(data);
+      
+      // Восстанавливаем позицию скролла после обновления данных
+      // Используем requestAnimationFrame для гарантии, что DOM обновлен
+      if (typeof window !== 'undefined') {
+        requestAnimationFrame(() => {
+          window.scrollTo(0, savedScrollPosition);
+        });
+      }
     } catch (error: any) {
       // Игнорируем ошибки 401 (не авторизован) - это нормально для незалогиненных пользователей
       if (error?.status === 401) {
@@ -94,6 +105,13 @@ export function useShipments() {
         errorShownRef.current = true;
         console.error('Ошибка при загрузке заказов:', error);
         showErrorRef.current('Ошибка загрузки данных, попробуйте обновить страницу');
+      }
+      
+      // Восстанавливаем позицию скролла даже при ошибке
+      if (typeof window !== 'undefined') {
+        requestAnimationFrame(() => {
+          window.scrollTo(0, savedScrollPosition);
+        });
       }
     } finally {
       setIsLoading(false);
@@ -115,6 +133,7 @@ export function useShipments() {
         eventType === 'shipment:unlocked'
       ) {
         // Небольшая задержка для гарантии, что данные в БД обновлены
+        // Позиция скролла сохраняется и восстанавливается внутри loadShipments
         setTimeout(() => {
           loadShipments();
         }, 300);
