@@ -78,13 +78,8 @@ export function DictatorSelectModal({ isOpen, onSelect, onCancel }: DictatorSele
     onSelect(selectedDictatorId || null);
   };
 
-  // Фильтруем пользователей: исключаем проверяльщиков, если текущий пользователь - проверяльщик
+  // Фильтруем пользователей: теперь проверяльщики могут выбирать других проверяльщиков
   const filteredUsers = users.filter((user) => {
-    // Если текущий пользователь - проверяльщик, исключаем всех других проверяльщиков
-    if (currentUser?.role === 'checker' && user.role === 'checker') {
-      return false;
-    }
-    
     // Фильтруем по поисковому запросу
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
