@@ -111,12 +111,17 @@ export const shipmentsApi = {
   },
 
   /**
-   * Сохранить прогресс проверки в БД (отдельно от прогресса сборки)
+   * Сохранить прогресс проверки в БД (отдельно от прогресса сборки).
+   * taskId может быть id задания или id заказа (shipmentId).
    */
   async saveConfirmationProgress(
     taskId: string,
     data: {
-      lines: Array<{ sku: string; confirmed_qty: number | null }>;
+      lines: Array<{
+        sku: string;
+        confirmed_qty: number | null;
+        confirmed?: boolean;
+      }>;
     }
   ): Promise<{ success: boolean; progress: { confirmed: number; total: number } }> {
     return apiClient.post<{ success: boolean; progress: { confirmed: number; total: number } }>(

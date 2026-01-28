@@ -24,12 +24,12 @@ export async function POST(
       );
     }
 
-    const { id } = params; // taskId
+    const { id } = params; // taskId или shipmentId
     const body = await request.json();
-    const { lines } = body; // Массив { sku, confirmed_qty }
+    const { lines } = body; // Массив { sku, confirmed_qty?, confirmed? }
 
-    // Проверяем, что задание существует
-    const task = await prisma.shipmentTask.findUnique({
+    // Проверяем, что задание существует: id может быть taskId или shipmentId
+    let task = await prisma.shipmentTask.findUnique({
       where: { id },
       include: {
         lines: {
@@ -39,6 +39,23 @@ export async function POST(
         },
       },
     });
+
+    if (!task) {
+      // Возможно передан shipmentId (например, с вкладки «Ожидание») — ищем задание в ожидании подтверждения
+      task = await prisma.shipmentTask.findFirst({
+        where: {
+          shipmentId: id,
+          status: 'pending_confirmation',
+        },
+        include: {
+          lines: {
+            include: {
+              shipmentLine: true,
+            },
+          },
+        },
+      });
+    }
 
     if (!task) {
       return NextResponse.json({ error: 'Задание не найдено' }, { status: 404 });
@@ -95,10 +112,12 @@ export async function POST(
       },
     });
 
-    // Подсчитываем прогресс проверки
+    // Подсчитываем прогресс проверки: позиция считается подтверждённой, если confirmed = true или confirmedQty > 0
     const totalItems = updatedTask!.lines.length;
     const confirmedItems = updatedTask!.lines.filter(
-      (line) => line.confirmedQty !== null && line.confirmedQty > 0
+      (line) =>
+        line.confirmed === true ||
+        (line.confirmedQty !== null && line.confirmedQty > 0)
     ).length;
 
     return NextResponse.json({

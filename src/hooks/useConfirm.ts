@@ -142,39 +142,25 @@ export function useConfirm(options?: UseConfirmOptions) {
         newState[lineIndex].confirmed = true;
       }
       
-      // Сохраняем прогресс ПРОВЕРКИ в БД (отдельно от прогресса сборки)
-      // ВАЖНО: Используем confirmed_qty и confirmed, а не collected_qty и checked!
-      const taskId = currentShipment.task_id || currentShipment.id; // taskId для режима подтверждения
+      // Сохраняем прогресс ПРОВЕРКИ в БД — отправляем полное состояние из newState по всем позициям
+      const taskId = currentShipment.task_id || currentShipment.id;
       const linesData = currentShipment.lines.map((l, idx) => {
         const state = newState[idx];
-        // Сохраняем confirmed_qty только для текущей позиции (lineIndex)
-        // Для остальных позиций оставляем текущее значение из БД
-        if (idx === lineIndex && state) {
-          // Текущая позиция - сохраняем новое значение
-          const qty = state.collectedQty !== null && state.collectedQty !== undefined 
-            ? state.collectedQty 
+        const qty =
+          state?.collectedQty !== null && state?.collectedQty !== undefined
+            ? state.collectedQty
             : (l.confirmed_qty !== undefined ? l.confirmed_qty : null);
-          return {
-            sku: l.sku,
-            confirmed_qty: qty && qty > 0 ? qty : null,
-            confirmed: state.confirmed ? true : (l.confirmed === true), // Сохраняем confirmed только если позиция подтверждена
-          };
-        } else {
-          // Остальные позиции - оставляем текущее значение из БД (не меняем)
-          return {
-            sku: l.sku,
-            confirmed_qty: l.confirmed_qty !== undefined ? l.confirmed_qty : null,
-            confirmed: l.confirmed === true, // Сохраняем текущее значение confirmed
-          };
-        }
+        return {
+          sku: l.sku,
+          confirmed_qty: qty && qty > 0 ? qty : null,
+          confirmed: state?.confirmed === true,
+        };
       });
-      
-      // Сохраняем асинхронно через новый API для прогресса проверки
-      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
-        .catch((error) => {
-          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ:', error);
-        });
-      
+
+      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData }).catch((error) => {
+        console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ:', error);
+      });
+
       return newState;
     });
   }, [currentShipment]);
@@ -204,37 +190,25 @@ export function useConfirm(options?: UseConfirmOptions) {
         newState[lineIndex].confirmed = wasConfirmed || false;
       }
       
-      // Сохраняем прогресс ПРОВЕРКИ после редактирования
+      // Сохраняем прогресс ПРОВЕРКИ после редактирования — полное состояние из newState
       const taskId = currentShipment.task_id || currentShipment.id;
       const linesData = currentShipment.lines.map((l, idx) => {
         const state = newState[idx];
-        // Сохраняем confirmed_qty только для текущей позиции (lineIndex)
-        // Для остальных позиций оставляем текущее значение из БД
-        if (idx === lineIndex && state) {
-          // Текущая позиция - сохраняем новое значение (промежуточный прогресс)
-          const qty = state.collectedQty !== null && state.collectedQty !== undefined 
-            ? state.collectedQty 
+        const qty =
+          state?.collectedQty !== null && state?.collectedQty !== undefined
+            ? state.collectedQty
             : (l.confirmed_qty !== undefined ? l.confirmed_qty : null);
-          return {
-            sku: l.sku,
-            confirmed_qty: qty && qty > 0 ? qty : null,
-            confirmed: state.confirmed ? true : (l.confirmed === true), // Сохраняем confirmed только если позиция подтверждена
-          };
-        } else {
-          // Остальные позиции - оставляем текущее значение из БД (не меняем)
-          return {
-            sku: l.sku,
-            confirmed_qty: l.confirmed_qty !== undefined ? l.confirmed_qty : null,
-            confirmed: l.confirmed === true, // Сохраняем текущее значение confirmed
-          };
-        }
+        return {
+          sku: l.sku,
+          confirmed_qty: qty && qty > 0 ? qty : null,
+          confirmed: state?.confirmed === true,
+        };
       });
-      
-      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
-        .catch((error) => {
-          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после редактирования:', error);
-        });
-      
+
+      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData }).catch((error) => {
+        console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после редактирования:', error);
+      });
+
       return newState;
     });
     
@@ -355,37 +329,26 @@ export function useConfirm(options?: UseConfirmOptions) {
           newState[lineIndex].confirmed = true;
         }
         
-        // Сохраняем прогресс ПРОВЕРКИ после подтверждения товара
+        // Сохраняем прогресс ПРОВЕРКИ после подтверждения товара — отправляем полное состояние из newState,
+        // чтобы не затирать уже подтверждённые позиции начальными данными из БД
         if (currentShipment) {
           const taskId = currentShipment.task_id || currentShipment.id;
           const linesData = currentShipment.lines.map((l, idx) => {
             const state = newState[idx];
-            // ВАЖНО: Сохраняем confirmed_qty и confirmed ТОЛЬКО для подтвержденной позиции (lineIndex)
-            // Для остальных позиций сохраняем текущее значение из БД (не меняем)
-            if (idx === lineIndex && state && state.confirmed) {
-              // Текущая позиция подтверждена - сохраняем confirmed_qty и confirmed = true
-              const qty = state.collectedQty !== null && state.collectedQty !== undefined 
-                ? state.collectedQty 
+            const qty =
+              state?.collectedQty !== null && state?.collectedQty !== undefined
+                ? state.collectedQty
                 : (l.confirmed_qty !== undefined ? l.confirmed_qty : null);
-              return {
-                sku: l.sku,
-                confirmed_qty: qty && qty > 0 ? qty : null,
-                confirmed: true, // Явно указываем, что позиция подтверждена
-              };
-            } else {
-              // Остальные позиции - оставляем текущее значение из БД (не меняем)
-              return {
-                sku: l.sku,
-                confirmed_qty: l.confirmed_qty !== undefined ? l.confirmed_qty : null,
-                confirmed: l.confirmed === true, // Сохраняем текущее значение confirmed
-              };
-            }
+            return {
+              sku: l.sku,
+              confirmed_qty: qty && qty > 0 ? qty : null,
+              confirmed: state?.confirmed === true,
+            };
           });
-          
-          shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
-            .catch((error) => {
-              console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после подтверждения:', error);
-            });
+
+          shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData }).catch((error) => {
+            console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после подтверждения:', error);
+          });
         }
         
         return newState;
