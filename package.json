@@ -25,7 +25,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:status": "prisma migrate status",
     "db:migrate:safe": "./scripts/apply-migration-safely.sh",
-    "audit:dictator": "tsx scripts/audit-dictator-points.ts"
+    "audit:dictator": "tsx scripts/audit-dictator-points.ts",
+    "audit:art": "tsx scripts/audit-art-in-db.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
