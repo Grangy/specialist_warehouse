@@ -21,6 +21,7 @@
     "db:studio": "prisma studio",
     "db:fill-analytics": "tsx scripts/fill-analytics-test-data.ts",
     "db:backup": "tsx scripts/backup-database.ts",
+    "db:backup:scheduled": "tsx scripts/backup-database-scheduled.ts",
     "db:restore": "tsx scripts/restore-database.ts",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:status": "prisma migrate status",

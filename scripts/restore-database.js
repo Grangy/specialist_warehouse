@@ -207,13 +207,25 @@ async function restoreBackup(backupFile) {
 }
 
 // Получаем путь к файлу бэкапа из аргументов
-const backupFile = process.argv[2];
+const backupFileArg = process.argv[2];
 
-if (!backupFile) {
+if (!backupFileArg) {
   console.error('❌ Укажите путь к файлу бэкапа');
   console.log('Использование: node scripts/restore-database.js <путь_к_бэкапу.json>');
   process.exit(1);
 }
+
+// Ограничиваем путь директорией проекта (защита от path traversal)
+const projectRoot = process.cwd();
+const backupFileResolved = path.isAbsolute(backupFileArg)
+  ? path.normalize(backupFileArg)
+  : path.normalize(path.join(projectRoot, backupFileArg));
+const backupFileRelative = path.relative(projectRoot, backupFileResolved);
+if (backupFileRelative.startsWith('..') || path.isAbsolute(backupFileRelative)) {
+  console.error('❌ Путь к бэкапу должен находиться внутри проекта:', projectRoot);
+  process.exit(1);
+}
+const backupFile = backupFileResolved;
 
 // Запускаем восстановление
 restoreBackup(backupFile)
