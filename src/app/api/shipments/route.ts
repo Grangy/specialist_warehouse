@@ -972,17 +972,36 @@ export async function GET(request: NextRequest) {
           myTasks.push(task);
         } else {
           // Проверяем, свободно ли задание
+          // Задание свободно ТОЛЬКО если:
+          // 1. collectorId === null (никто не начал работу)
+          // 2. И нет активной блокировки от другого сборщика
+          
+          if (task.collector_id !== null) {
+            // Если collectorId установлен (даже если это другой сборщик), задание занято
+            // Пропускаем его
+            return;
+          }
+          
+          // Если collectorId === null, проверяем блокировку
           const taskLocks = locksMap.get(task.id) || [];
           const lock = taskLocks[0] || null;
           
-          // Задание свободно, если:
-          // 1. collectorId === null (никто не начал)
-          // 2. Или блокировка истекла (heartbeat старше 30 секунд)
-          const isFree = !task.collector_id || (lock && lock.userId !== user.id && (Date.now() - lock.lastHeartbeat.getTime()) > 30 * 1000);
-          
-          if (isFree) {
-            freeTasks.push(task);
+          if (lock) {
+            // Проверяем, активна ли блокировка (heartbeat не старше 30 секунд)
+            const now = Date.now();
+            const lastHeartbeatTime = lock.lastHeartbeat.getTime();
+            const timeSinceHeartbeat = now - lastHeartbeatTime;
+            const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 секунд
+            const isActive = timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
+            
+            // Если блокировка активна и принадлежит другому пользователю, задание занято
+            if (isActive && lock.userId !== user.id) {
+              return; // Пропускаем занятое задание
+            }
           }
+          
+          // Задание свободно: collectorId === null и нет активной блокировки от другого сборщика
+          freeTasks.push(task);
         }
       });
       
