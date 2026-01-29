@@ -147,11 +147,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Проверяем, есть ли уже заказ с таким номером (в т.ч. удалённый) — тогда обновляем данными из 1С, склад распределяем по location
+    // Проверяем, есть ли уже заказ с таким номером
     const existing = await prisma.shipment.findUnique({
       where: { number },
-      select: { id: true, number: true, deleted: true },
+      select: { id: true, number: true, deleted: true, status: true },
     });
+
+    // Активный заказ (в сборке или на подтверждении) не перезаписываем — не принимаем из 1С
+    if (existing && !existing.deleted && (existing.status === 'new' || existing.status === 'pending_confirmation')) {
+      console.log(
+        `[API CREATE] Заказ ${number} активный (status: ${existing.status}), не принимаем из 1С, возвращаем 409`
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Заказ ${number} в сборке или на подтверждении, повторная выгрузка из 1С не принимается`,
+          duplicate: true,
+        },
+        { status: 409 }
+      );
+    }
 
     // ЯВНО убеждаемся, что все позиции создаются с непроверенным статусом
     // Игнорируем любые значения из входящих данных
@@ -188,8 +203,8 @@ export async function POST(request: NextRequest) {
     let shipment: Awaited<ReturnType<typeof prisma.shipment.create>> & { lines: any[]; tasks: any[] };
 
     if (existing) {
-      // Заказ с таким номером уже есть — обновляем данными из 1С, склад по location
-      console.log(`[API CREATE] Заказ ${number} уже существует (deleted: ${existing.deleted}), обновляем данными из 1С`);
+      // Заказ с таким номером есть и не активный (удалён или уже processed) — обновляем данными из 1С, склад по location
+      console.log(`[API CREATE] Заказ ${number} уже существует (deleted: ${existing.deleted}, status: ${existing.status}), обновляем данными из 1С`);
       await prisma.shipmentTaskLine.deleteMany({
         where: { task: { shipmentId: existing.id } },
       });
