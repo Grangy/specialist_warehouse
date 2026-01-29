@@ -126,6 +126,33 @@ interface BackupData {
   systemSettings: any[];
 }
 
+/** Оставить в директории только последние keep файлов по mtime (остальные удалить). */
+function trimBackups(dir: string, keep: number, prefix: string, ext: string): number {
+  if (!fs.existsSync(dir)) return 0;
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => f.startsWith(prefix) && f.endsWith(ext))
+    .map((f) => ({
+      name: f,
+      path: path.join(dir, f),
+      mtime: fs.statSync(path.join(dir, f)).mtime.getTime(),
+    }))
+    .sort((a, b) => b.mtime - a.mtime);
+
+  let removed = 0;
+  for (let i = keep; i < files.length; i++) {
+    try {
+      fs.unlinkSync(files[i].path);
+      removed++;
+    } catch (e) {
+      console.error('  ⚠ Не удалось удалить старый бэкап:', files[i].name, e);
+    }
+  }
+  return removed;
+}
+
+const KEEP_MAIN_BACKUPS = 10;
+
 async function createBackup() {
   console.log('🔄 Начинаем создание резервной копии базы данных...\n');
 
@@ -135,6 +162,13 @@ async function createBackup() {
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir, { recursive: true });
       console.log(`✓ Создана директория для бэкапов: ${backupDir}`);
+    } else {
+      // Перед стартом: скан директории, удаляем лишние (храним последние KEEP_MAIN_BACKUPS)
+      const removedJson = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_', '.json');
+      const removedTxt = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_info_', '.txt');
+      if (removedJson > 0 || removedTxt > 0) {
+        console.log(`✓ Удалено лишних бэкапов: ${removedJson} .json, ${removedTxt} .txt\n`);
+      }
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
@@ -252,6 +286,13 @@ async function createBackup() {
 
     fs.writeFileSync(infoFile, info, 'utf-8');
     console.log(`✓ Информация о бэкапе сохранена: ${infoFile}\n`);
+
+    // После записи снова обрезаем до лимита (хранить последние KEEP_MAIN_BACKUPS)
+    const removedAfterJson = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_', '.json');
+    const removedAfterTxt = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_info_', '.txt');
+    if (removedAfterJson > 0 || removedAfterTxt > 0) {
+      console.log(`✓ Удалено старых после записи: ${removedAfterJson} .json, ${removedAfterTxt} .txt\n`);
+    }
 
     // Показываем последние бэкапы
     const backups = fs.readdirSync(backupDir)
