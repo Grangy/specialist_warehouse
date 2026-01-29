@@ -16,6 +16,7 @@ import { shipmentsApi } from '@/lib/api/shipments';
 import { useToast } from '@/hooks/useToast';
 import { useSSE } from '@/hooks/useSSE';
 import type { Shipment } from '@/types';
+import ShipmentDetailsModal from './ShipmentDetailsModal';
 
 interface TaskWithCollector {
   taskId: string;
@@ -40,6 +41,7 @@ export default function ActiveShipmentsTab() {
   const [currentPage, setCurrentPage] = useState(1);
   const [resettingTaskId, setResettingTaskId] = useState<string | null>(null);
   const [pinningShipmentId, setPinningShipmentId] = useState<string | null>(null);
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const { showToast, showError, showSuccess } = useToast();
 
   // Подключаемся к SSE для получения обновлений в реальном времени
@@ -277,19 +279,35 @@ export default function ActiveShipmentsTab() {
                   {paginatedTasks.map((task) => (
                     <tr key={task.taskId} className="hover:bg-slate-700/30 transition-colors">
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-slate-100">{task.shipmentNumber}</span>
-                          {task.pinnedAt && (
-                            <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-600/30 text-amber-300 border border-amber-500/50" title="Заказ поднят в приоритете">
-                              Поднят
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-slate-400 mt-0.5">
-                          {new Date(task.createdAt).toLocaleString('ru-RU')}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedShipmentId(task.shipmentId)}
+                          className="w-full text-left cursor-pointer rounded px-1 -mx-1 hover:bg-slate-600/30 transition-colors"
+                          title="Подробности заказа"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-slate-100 underline decoration-slate-500/50 hover:decoration-slate-400">{task.shipmentNumber}</span>
+                            {task.pinnedAt && (
+                              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-600/30 text-amber-300 border border-amber-500/50" title="Заказ поднят в приоритете">
+                                Поднят
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            {new Date(task.createdAt).toLocaleString('ru-RU')}
+                          </div>
+                        </button>
                       </td>
-                      <td className="px-4 py-3 text-slate-300">{task.customerName}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedShipmentId(task.shipmentId)}
+                          className="text-slate-300 hover:text-slate-100 transition-colors cursor-pointer w-full text-left rounded px-1 -mx-1 hover:bg-slate-600/30 underline decoration-transparent hover:decoration-slate-400"
+                          title="Подробности заказа"
+                        >
+                          {task.customerName}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 text-slate-300">{task.warehouse}</td>
                       <td className="px-4 py-3">
                         {task.collectorName ? (
@@ -381,6 +399,11 @@ export default function ActiveShipmentsTab() {
           )}
         </>
       )}
+
+      <ShipmentDetailsModal
+        shipmentId={selectedShipmentId}
+        onClose={() => setSelectedShipmentId(null)}
+      />
     </div>
   );
 }

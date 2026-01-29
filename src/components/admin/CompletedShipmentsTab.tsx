@@ -433,17 +433,27 @@ export default function CompletedShipmentsTab() {
                     style={{ animationDelay: `${index * 10}ms` }}
                   >
                     <td className="px-4 py-4">
-                      <div className="flex items-center gap-2 group">
-                        <Package className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
-                        <span className="text-slate-200 font-bold group-hover:text-blue-300 transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedShipmentId(shipment.id)}
+                        className="flex items-center gap-2 group w-full text-left cursor-pointer rounded px-1 -mx-1 hover:bg-slate-600/30 transition-colors"
+                        title="Подробности заказа"
+                      >
+                        <Package className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform flex-shrink-0" />
+                        <span className="text-slate-200 font-bold group-hover:text-blue-300 transition-colors underline decoration-blue-500/50 hover:decoration-blue-400">
                           {shipment.shipment_number || shipment.number || 'N/A'}
                         </span>
-                      </div>
+                      </button>
                     </td>
                     <td className="px-4 py-4">
-                      <span className="text-slate-200 hover:text-slate-100 transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedShipmentId(shipment.id)}
+                        className="text-slate-200 hover:text-slate-100 transition-colors cursor-pointer w-full text-left rounded px-1 -mx-1 hover:bg-slate-600/30 underline decoration-transparent hover:decoration-slate-400"
+                        title="Подробности заказа"
+                      >
                         {shipment.customer_name}
-                      </span>
+                      </button>
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2 text-slate-200 group">
