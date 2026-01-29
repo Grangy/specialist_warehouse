@@ -19,6 +19,7 @@ const INTERVAL_30_MIN_MS = 30 * 60 * 1000;
 const INTERVAL_5H_MS = 5 * 60 * 60 * 1000;
 const KEEP_30M = 10;
 const KEEP_5H = 5;
+const KEEP_MAIN = 10; // корневая backups/ — backup_*.json и backup_info_*.txt
 
 let projectRoot: string;
 
@@ -184,8 +185,15 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
   const now = Date.now();
   const data = await createBackupData();
   const ts = timestampFilename();
+  const backupDirRoot = path.join(projectRoot, 'backups');
   const backupDir30m = path.join(projectRoot, 'backups', '30m');
   const backupDir5h = path.join(projectRoot, 'backups', '5h');
+
+  const removedMainJson = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_', '.json');
+  const removedMainTxt = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_info_', '.txt');
+  if (removedMainJson > 0 || removedMainTxt > 0) {
+    console.log(`[${new Date().toISOString()}] Удалено лишних в backups/: .json=${removedMainJson}, .txt=${removedMainTxt}`);
+  }
 
   ensureDir(backupDir30m);
   const path30m = path.join(backupDir30m, ts);
@@ -218,14 +226,20 @@ async function main() {
   console.log('Бэкапы БД по расписанию');
   console.log('  - каждые 30 мин → backups/30m/ (хранить 10)');
   console.log('  - каждые 5 ч   → backups/5h/   (хранить 5)');
+  console.log('  - backups/    → backup_*.json и backup_info_*.txt (хранить по 10)');
   console.log('  Остановка: Ctrl+C\n');
 
+  const backupDirRoot = path.join(projectRoot, 'backups');
   const backupDir30m = path.join(projectRoot, 'backups', '30m');
   const backupDir5h = path.join(projectRoot, 'backups', '5h');
+
+  const removedMainJson = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_', '.json');
+  const removedMainTxt = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_info_', '.txt');
   const removed30start = trimBackups(backupDir30m, KEEP_30M);
   const removed5start = trimBackups(backupDir5h, KEEP_5H);
-  if (removed30start > 0 || removed5start > 0) {
-    console.log(`При старте удалено лишних: 30m=${removed30start}, 5h=${removed5start}\n`);
+
+  if (removedMainJson > 0 || removedMainTxt > 0 || removed30start > 0 || removed5start > 0) {
+    console.log(`При старте удалено лишних: backups/ .json=${removedMainJson}, .txt=${removedMainTxt}; 30m=${removed30start}, 5h=${removed5start}\n`);
   }
 
   let last5hBackupAt = 0;
