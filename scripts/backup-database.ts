@@ -155,6 +155,13 @@ function trimBackups(dir: string, keep: number, prefix: string, ext: string): nu
 
 const KEEP_MAIN_BACKUPS = 10;
 
+/** Имя для бэкапа по локальному времени (не UTC): 2026-01-29T16-10-28 */
+function localTimestamp(): string {
+  const d = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+}
+
 async function createBackup() {
   console.log('🔄 Начинаем создание резервной копии базы данных...\n');
 
@@ -173,7 +180,7 @@ async function createBackup() {
       }
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const timestamp = localTimestamp();
     const backupFile = path.join(backupDir, `backup_${timestamp}.json`);
     const backupDbFile = path.join(backupDir, `backup_${timestamp}.db`);
     const infoFile = path.join(backupDir, `backup_info_${timestamp}.txt`);
@@ -265,6 +272,8 @@ async function createBackup() {
       fs.copyFileSync(dbFilePath, backupDbFile);
       const dbSize = (fs.statSync(backupDbFile).size / 1024 / 1024).toFixed(2);
       console.log(`✓ Копия .db сохранена: ${backupDbFile} (${dbSize} MB)\n`);
+    } else {
+      console.warn(`⚠ Файл БД не найден: ${dbFilePath} — копия .db и загрузка в Яндекс пропущены.\n`);
     }
 
     // Создаем информационный файл

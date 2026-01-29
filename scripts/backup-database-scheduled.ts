@@ -182,8 +182,12 @@ function trimBackups(dir: string, keep: number, prefix = 'backup_', ext = '.json
   return removed;
 }
 
+/** Имя для бэкапа по локальному времени (не UTC): 2026-01-29T16-10-28.json */
 function timestampFilename(): string {
-  return new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5) + '.json';
+  const d = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const ts = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+  return ts + '.json';
 }
 
 async function runBackup(last5hBackupAt: number): Promise<number> {
@@ -216,6 +220,8 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
     if (uploaded30db) {
       console.log(`  → Яндекс.Диск backups_warehouse/30m/${tsBase}.db`);
     }
+  } else {
+    console.warn(`  ⚠ Файл БД не найден: ${dbFilePath} — .db не копируется и не загружается в Яндекс`);
   }
 
   const uploaded30 = await uploadBackupToYandex(projectRoot, path30m, `30m/${ts}`);
