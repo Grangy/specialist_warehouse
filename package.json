@@ -11,7 +11,7 @@
     "stats:recalculate-today": "tsx scripts/recalculate-today-stats.ts",
     "stats:recalculate-all": "tsx scripts/recalculate-all-stats-without-units.ts",
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "server": "node server.js",
