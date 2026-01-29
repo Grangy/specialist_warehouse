@@ -1,7 +1,7 @@
 /**
  * Планировщик бэкапов БД:
  * - каждые 30 минут — бэкап в backups/30m/, хранить последние 10 копий;
- * - каждые 5 часов — та же копия дополнительно в backups/5h/, хранить 2 копии.
+ * - каждые 5 часов — та же копия дополнительно в backups/5h/, хранить 5 копий.
  *
  * Запуск (долгоиграющий процесс):
  *   npx tsx scripts/backup-database-scheduled.ts
@@ -18,7 +18,7 @@ import dotenv from 'dotenv';
 const INTERVAL_30_MIN_MS = 30 * 60 * 1000;
 const INTERVAL_5H_MS = 5 * 60 * 60 * 1000;
 const KEEP_30M = 10;
-const KEEP_5H = 2;
+const KEEP_5H = 5;
 
 let projectRoot: string;
 
@@ -217,8 +217,16 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
 async function main() {
   console.log('Бэкапы БД по расписанию');
   console.log('  - каждые 30 мин → backups/30m/ (хранить 10)');
-  console.log('  - каждые 5 ч   → backups/5h/   (хранить 2)');
+  console.log('  - каждые 5 ч   → backups/5h/   (хранить 5)');
   console.log('  Остановка: Ctrl+C\n');
+
+  const backupDir30m = path.join(projectRoot, 'backups', '30m');
+  const backupDir5h = path.join(projectRoot, 'backups', '5h');
+  const removed30start = trimBackups(backupDir30m, KEEP_30M);
+  const removed5start = trimBackups(backupDir5h, KEEP_5H);
+  if (removed30start > 0 || removed5start > 0) {
+    console.log(`При старте удалено лишних: 30m=${removed30start}, 5h=${removed5start}\n`);
+  }
 
   let last5hBackupAt = 0;
 
