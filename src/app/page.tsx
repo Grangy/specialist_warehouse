@@ -108,8 +108,9 @@ export default function Home() {
     setShowWarehouseModal(false);
   };
 
-  const collectHook = useCollect({ onClose: refreshShipments });
-  const confirmHook = useConfirm({ onClose: refreshShipments });
+  // Обновления списка — по SSE (lock/unlock, статус, исчезновение блока), без полной перезагрузки при закрытии модалок
+  const collectHook = useCollect({ onClose: () => {} });
+  const confirmHook = useConfirm({ onClose: () => {} });
   const detailsModal = useModal();
   const nameModal = useModal();
   const orderCompletedModal = useModal();
@@ -200,10 +201,7 @@ export default function Home() {
           totalTasks: totalTasks,
         });
       }
-      
-      // Обновляем список заказов после подтверждения
-      await refreshShipments();
-      console.log('Список заказов обновлен');
+      // Список обновится по SSE (shipment:status_changed / shipment:updated), без перезагрузки всей страницы
     } catch (error) {
       console.error('Ошибка при подтверждении обработки:', error);
       // Не пробрасываем ошибку дальше, чтобы модальное окно не закрывалось при ошибке
@@ -475,8 +473,7 @@ export default function Home() {
                 orderCompletedModal.open();
               }, 200);
             } else {
-              // Если не все задания подтверждены, просто обновляем список
-              await refreshShipments();
+              // Список обновится по SSE (shipment:status_changed), без перезагрузки
             }
           } catch (error: any) {
             console.error('[Page] Ошибка при отправке заказа в офис:', error);

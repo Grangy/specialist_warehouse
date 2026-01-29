@@ -182,11 +182,16 @@ export function useShipments() {
       if (eventType === 'shipment:status_changed' && data?.id != null) {
         const shipmentId = data.id;
         const status = data.status;
-        setShipments((prev) =>
-          prev.map((item) =>
-            item.shipment_id === shipmentId ? { ...item, status } : item
-          )
-        );
+        if (status === 'processed') {
+          // Заказ полностью подтверждён — убираем все его задания из списка (блок исчезает без перезагрузки)
+          setShipments((prev) => prev.filter((item) => item.shipment_id !== shipmentId));
+        } else {
+          setShipments((prev) =>
+            prev.map((item) =>
+              item.shipment_id === shipmentId ? { ...item, status } : item
+            )
+          );
+        }
         return;
       }
 
@@ -197,6 +202,7 @@ export function useShipments() {
             item.id === data.taskId ? { ...item, status } : item
           )
         );
+        // Обновляем только один блок (статус/ответственный уже выше), без перезагрузки списка
         return;
       }
 
