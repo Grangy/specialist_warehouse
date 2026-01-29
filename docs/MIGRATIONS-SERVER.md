@@ -193,6 +193,40 @@ npx prisma migrate resolve --applied 20260126120000_add_pinned_at_to_shipments
 
 ---
 
+## История миграций расходится с БД (migrations not found locally / not yet applied)
+
+Сообщение вроде:
+
+```
+Your local migration history and the migrations table from your database are different:
+The migration have not yet been applied: 20260126120000_add_pinned_at_to_shipments
+The migration from the database are not found locally: 20260128104449_add_active_time_sec
+```
+
+Значит: в БД есть запись о миграции, которой **нет в репозитории** (её делали вручную или из другой ветки), и в репозитории есть миграция, которая **ещё не применена** к этой БД.
+
+**Как выровнять на сервере:**
+
+```bash
+cd /var/www/specialist_warehouse   # корень проекта
+
+# 1. Удалить из БД запись о «лишней» миграции (которой нет в репо)
+sqlite3 prisma/dev.db "DELETE FROM _prisma_migrations WHERE migration_name = '20260128104449_add_active_time_sec';"
+
+# 2. Если колонки pinned_at ещё нет — применить миграцию
+sqlite3 prisma/dev.db "PRAGMA table_info(shipments);" | grep -q pinned_at || sqlite3 prisma/dev.db "ALTER TABLE shipments ADD COLUMN pinned_at DATETIME;"
+
+# 3. Отметить миграцию pinned_at как применённую (чтобы Prisma не ругался)
+npx prisma migrate resolve --applied 20260126120000_add_pinned_at_to_shipments
+
+# 4. Проверить
+npx prisma migrate status
+```
+
+Должно быть: `Database schema is up to date!` без расхождений. После этого перезапустить приложение.
+
+---
+
 ## Итог
 
 | Где        | Действие |
