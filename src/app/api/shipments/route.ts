@@ -147,40 +147,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Проверяем дубликат по номеру + клиент: если заказ с таким номером и клиентом уже есть (активный или завершённый), не создаём и не изменяем
+    // Проверяем, есть ли уже заказ с таким номером (в т.ч. удалённый) — тогда обновляем данными из 1С, склад распределяем по location
     const existing = await prisma.shipment.findUnique({
       where: { number },
-      select: { id: true, number: true, customerName: true, status: true, deleted: true },
+      select: { id: true, number: true, deleted: true },
     });
-
-    if (existing && !existing.deleted) {
-      const isSameCustomer =
-        (existing.customerName || '').trim().toLowerCase() === (customerName || '').trim().toLowerCase();
-      if (isSameCustomer) {
-        console.log(
-          `[API CREATE] Дубликат: заказ ${number} (клиент: ${customerName}) уже существует (status: ${existing.status}), возвращаем 409`
-        );
-        return NextResponse.json(
-          {
-            success: false,
-            message: `Заказ ${number} по клиенту "${customerName}" уже существует`,
-            duplicate: true,
-          },
-          { status: 409 }
-        );
-      }
-      console.log(
-        `[API CREATE] Конфликт: заказ с номером ${number} уже существует для другого клиента (в БД: "${existing.customerName}", в запросе: "${customerName}"), возвращаем 409`
-      );
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Заказ с номером ${number} уже существует для другого клиента`,
-          duplicate: true,
-        },
-        { status: 409 }
-      );
-    }
 
     // ЯВНО убеждаемся, что все позиции создаются с непроверенным статусом
     // Игнорируем любые значения из входящих данных
@@ -214,30 +185,64 @@ export async function POST(request: NextRequest) {
       return cleanLine;
     });
 
-    console.log(`[API CREATE] Создаем заказ ${number} с ${shipmentLines.length} позициями, все непроверенные`);
+    let shipment: Awaited<ReturnType<typeof prisma.shipment.create>> & { lines: any[]; tasks: any[] };
 
-    // Создаем заказ с позициями
-    const shipment = await prisma.shipment.create({
-      data: {
-        number,
-        customerName,
-        destination,
-        itemsCount: itemsCount || lines.length,
-        totalQty: totalQty || lines.reduce((sum: number, line: any) => sum + (line.qty || 0), 0),
-        weight: weight || null,
-        comment: comment || '',
-        businessRegion: businessRegion || null,
-        status: 'new',
-        createdAt: new Date(),
-        lines: {
-          create: shipmentLines,
+    if (existing) {
+      // Заказ с таким номером уже есть — обновляем данными из 1С, склад по location
+      console.log(`[API CREATE] Заказ ${number} уже существует (deleted: ${existing.deleted}), обновляем данными из 1С`);
+      await prisma.shipmentTaskLine.deleteMany({
+        where: { task: { shipmentId: existing.id } },
+      });
+      await prisma.shipmentTaskLock.deleteMany({
+        where: { task: { shipmentId: existing.id } },
+      });
+      await prisma.shipmentTask.deleteMany({
+        where: { shipmentId: existing.id },
+      });
+      await prisma.shipmentLine.deleteMany({
+        where: { shipmentId: existing.id },
+      });
+      await prisma.shipmentLock.deleteMany({
+        where: { shipmentId: existing.id },
+      });
+      shipment = await prisma.shipment.update({
+        where: { id: existing.id },
+        data: {
+          customerName,
+          destination,
+          itemsCount: itemsCount || lines.length,
+          totalQty: totalQty || lines.reduce((sum: number, line: any) => sum + (line.qty || 0), 0),
+          weight: weight || null,
+          comment: comment || '',
+          businessRegion: businessRegion || null,
+          status: 'new',
+          deleted: false,
+          deletedAt: null,
+          lines: { create: shipmentLines },
         },
-      },
-      include: {
-        lines: true,
-        tasks: true,
-      },
-    });
+        include: { lines: true, tasks: true },
+      });
+      console.log(`[API CREATE] Заказ ${number} обновлён, ${shipment.lines.length} позиций, склад по location`);
+    } else {
+      // Создаем новый заказ с позициями
+      console.log(`[API CREATE] Создаем заказ ${number} с ${shipmentLines.length} позициями, все непроверенные`);
+      shipment = await prisma.shipment.create({
+        data: {
+          number,
+          customerName,
+          destination,
+          itemsCount: itemsCount || lines.length,
+          totalQty: totalQty || lines.reduce((sum: number, line: any) => sum + (line.qty || 0), 0),
+          weight: weight || null,
+          comment: comment || '',
+          businessRegion: businessRegion || null,
+          status: 'new',
+          createdAt: new Date(),
+          lines: { create: shipmentLines },
+        },
+        include: { lines: true, tasks: true },
+      });
+    }
 
     // Отправляем событие о создании нового заказа через SSE
     try {
