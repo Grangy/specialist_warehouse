@@ -379,14 +379,16 @@ export async function updateCheckerStats(taskId: string) {
     await updateMonthlyStats(task.checkerId, task.confirmedAt, stats);
 
     // Если указан диктовщик, создаем статистику для диктовщика с баллами 0.75
+    // roleType по роли пользователя: сборщик получает очки в рейтинг сборщиков, проверяльщик — в рейтинг проверяльщиков
     if (task.dictatorId && dictatorPoints > 0) {
-      // Создаем TaskStatistics для диктовщика с баллами 0.75
+      const dictatorRoleType = task.dictator?.role === 'collector' ? 'collector' : 'checker';
+
       await prisma.taskStatistics.upsert({
         where: {
           taskId_userId_roleType: {
             taskId: task.id,
             userId: task.dictatorId,
-            roleType: 'checker', // Диктовщик получает баллы как проверяльщик
+            roleType: dictatorRoleType,
           },
         },
         update: {
@@ -410,7 +412,7 @@ export async function updateCheckerStats(taskId: string) {
           efficiency: stats.efficiency,
           efficiencyClamped: stats.efficiencyClamped,
           basePoints: stats.basePoints,
-          orderPoints: dictatorPoints, // Диктовщик получает 0.75 от баллов
+          orderPoints: dictatorPoints,
           normA: norm.normA,
           normB: norm.normB,
           normC: norm.normC,
@@ -419,7 +421,7 @@ export async function updateCheckerStats(taskId: string) {
         create: {
           taskId: task.id,
           userId: task.dictatorId,
-          roleType: 'checker', // Диктовщик получает баллы как проверяльщик
+          roleType: dictatorRoleType,
           shipmentId: task.shipmentId,
           warehouse: task.warehouse,
           taskTimeSec: stats.taskTimeSec,
@@ -440,7 +442,7 @@ export async function updateCheckerStats(taskId: string) {
           efficiency: stats.efficiency,
           efficiencyClamped: stats.efficiencyClamped,
           basePoints: stats.basePoints,
-          orderPoints: dictatorPoints, // Диктовщик получает 0.75 от баллов
+          orderPoints: dictatorPoints,
           normA: norm.normA,
           normB: norm.normB,
           normC: norm.normC,
@@ -448,14 +450,12 @@ export async function updateCheckerStats(taskId: string) {
         },
       });
 
-      // ВАЖНО: Явно проверяем, что TaskStatistics создана перед обновлением дневной статистики
-      // Это гарантирует, что запись доступна для запроса в updateDailyStats
       const createdDictatorStats = await prisma.taskStatistics.findUnique({
         where: {
           taskId_userId_roleType: {
             taskId: task.id,
             userId: task.dictatorId,
-            roleType: 'checker',
+            roleType: dictatorRoleType,
           },
         },
       });
@@ -496,9 +496,9 @@ async function updateDailyStats(userId: string, date: Date, stats: any) {
   dayEnd.setHours(23, 59, 59, 999);
 
   // Получаем TaskStatistics с задачами, которые завершены в этот день
-  // Для сборщиков: completedAt в этот день
+  // Для сборщиков: completedAt в этот день (сборка) или confirmedAt (диктовщик-сборщик)
   // Для проверяльщиков: confirmedAt в этот день
-  const collectorStats = await prisma.taskStatistics.findMany({
+  const collectorStatsByCompleted = await prisma.taskStatistics.findMany({
     where: {
       userId,
       roleType: 'collector',
@@ -510,6 +510,23 @@ async function updateDailyStats(userId: string, date: Date, stats: any) {
       },
     },
   });
+  const collectorStatsByConfirmed = await prisma.taskStatistics.findMany({
+    where: {
+      userId,
+      roleType: 'collector',
+      task: {
+        confirmedAt: {
+          gte: dayStart,
+          lte: dayEnd,
+        },
+      },
+    },
+  });
+  const collectorStats = [
+    ...new Map(
+      [...collectorStatsByCompleted, ...collectorStatsByConfirmed].map((s) => [s.id, s])
+    ).values(),
+  ];
 
   const checkerStats = await prisma.taskStatistics.findMany({
     where: {

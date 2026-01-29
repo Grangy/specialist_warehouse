@@ -70,8 +70,8 @@ export async function GET(request: NextRequest) {
     if (period === 'today') {
       // Для сегодня используем TaskStatistics напрямую, чтобы разделить сборщиков и проверяльщиков
       
-      // Сборщики: TaskStatistics с roleType='collector' за сегодня
-      const collectorTaskStats = await prisma.taskStatistics.findMany({
+      // Сборщики: TaskStatistics с roleType='collector' (сборка по completedAt или диктовщик по confirmedAt)
+      const collectorTaskStatsByCompleted = await prisma.taskStatistics.findMany({
         where: {
           roleType: 'collector',
           task: {
@@ -91,6 +91,31 @@ export async function GET(request: NextRequest) {
           },
         },
       });
+      const collectorTaskStatsByConfirmed = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          task: {
+            confirmedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+      const collectorTaskStats = [
+        ...new Map(
+          [...collectorTaskStatsByCompleted, ...collectorTaskStatsByConfirmed].map((s) => [s.id, s])
+        ).values(),
+      ];
 
       // Группируем по пользователям
       const collectorMap = new Map<string, {
@@ -372,9 +397,10 @@ export async function GET(request: NextRequest) {
       // (это статистика для диктовщиков, которые получают 0.75 от баллов проверяльщика)
       // ВАЖНО: Ищем TaskStatistics где userId является диктовщиком (userId === task.dictatorId)
       // Для диктовщиков создается TaskStatistics с userId = dictatorId и roleType = 'checker'
+      // Диктовщик может быть сборщиком или проверяльщиком — учитываем оба roleType
       const dictatorTaskStats = await prisma.taskStatistics.findMany({
         where: {
-          roleType: 'checker',
+          roleType: { in: ['checker', 'collector'] },
           task: {
             dictatorId: { not: null },
             confirmedAt: {
@@ -510,8 +536,7 @@ export async function GET(request: NextRequest) {
     } else if (period === 'month') {
       // Для месяца используем TaskStatistics напрямую, чтобы разделить сборщиков и проверяльщиков
       
-      // Сборщики: TaskStatistics с roleType='collector' за месяц
-      const collectorTaskStats = await prisma.taskStatistics.findMany({
+      const collectorTaskStatsByCompletedMonth = await prisma.taskStatistics.findMany({
         where: {
           roleType: 'collector',
           task: {
@@ -531,6 +556,31 @@ export async function GET(request: NextRequest) {
           },
         },
       });
+      const collectorTaskStatsByConfirmedMonth = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          task: {
+            confirmedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+      const collectorTaskStats = [
+        ...new Map(
+          [...collectorTaskStatsByCompletedMonth, ...collectorTaskStatsByConfirmedMonth].map((s) => [s.id, s])
+        ).values(),
+      ];
 
       // Группируем по пользователям
       const collectorMap = new Map<string, {
@@ -815,7 +865,7 @@ export async function GET(request: NextRequest) {
       // Диктовщики для месяца (аналогично today)
       const dictatorTaskStatsMonth = await prisma.taskStatistics.findMany({
         where: {
-          roleType: 'checker',
+          roleType: { in: ['checker', 'collector'] },
           task: {
             dictatorId: { not: null },
             confirmedAt: {
@@ -943,8 +993,7 @@ export async function GET(request: NextRequest) {
     } else if (period === 'week') {
       // Для недели используем TaskStatistics напрямую, чтобы разделить сборщиков и проверяльщиков
       
-      // Сборщики: TaskStatistics с roleType='collector' за неделю
-      const collectorTaskStats = await prisma.taskStatistics.findMany({
+      const collectorTaskStatsByCompletedWeek = await prisma.taskStatistics.findMany({
         where: {
           roleType: 'collector',
           task: {
@@ -964,6 +1013,31 @@ export async function GET(request: NextRequest) {
           },
         },
       });
+      const collectorTaskStatsByConfirmedWeek = await prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          task: {
+            confirmedAt: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+        },
+      });
+      const collectorTaskStats = [
+        ...new Map(
+          [...collectorTaskStatsByCompletedWeek, ...collectorTaskStatsByConfirmedWeek].map((s) => [s.id, s])
+        ).values(),
+      ];
 
       // Группируем по пользователям
       const collectorMap = new Map<string, {
@@ -1248,7 +1322,7 @@ export async function GET(request: NextRequest) {
       // Диктовщики для недели (аналогично today)
       const dictatorTaskStatsWeek = await prisma.taskStatistics.findMany({
         where: {
-          roleType: 'checker',
+          roleType: { in: ['checker', 'collector'] },
           task: {
             dictatorId: { not: null },
             confirmedAt: {
