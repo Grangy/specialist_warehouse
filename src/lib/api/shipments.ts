@@ -46,6 +46,14 @@ export const shipmentsApi = {
   },
 
   /**
+   * Поднять / опустить заказ в приоритете (только для админа).
+   * Поднятый заказ отображается выше приоритета регионов для всех в режиме сборки.
+   */
+  async pinOrder(shipmentId: string, pin: boolean): Promise<{ success: boolean; pinned: boolean; message: string }> {
+    return apiClient.post<{ success: boolean; pinned: boolean; message: string }>(`/shipments/${shipmentId}/pin`, { pin });
+  },
+
+  /**
    * Отметить заказ как обработанный (сборка завершена)
    */
   async markPendingConfirmation(

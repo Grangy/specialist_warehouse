@@ -8,7 +8,9 @@ import {
   User,
   RefreshCw,
   AlertCircle,
-  XCircle
+  XCircle,
+  ArrowUpCircle,
+  ArrowDownCircle
 } from 'lucide-react';
 import { shipmentsApi } from '@/lib/api/shipments';
 import { useToast } from '@/hooks/useToast';
@@ -25,6 +27,7 @@ interface TaskWithCollector {
   shipmentNumber: string;
   customerName: string;
   createdAt: string;
+  pinnedAt: string | null;
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -36,6 +39,7 @@ export default function ActiveShipmentsTab() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [resettingTaskId, setResettingTaskId] = useState<string | null>(null);
+  const [pinningShipmentId, setPinningShipmentId] = useState<string | null>(null);
   const { showToast, showError, showSuccess } = useToast();
 
   // Подключаемся к SSE для получения обновлений в реальном времени
@@ -101,10 +105,11 @@ export default function ActiveShipmentsTab() {
           collectorName: item.collector_name || null,
           collectorId: item.collector_id || item.collectorId || null,
           status: item.status,
-          shipmentId: item.shipment_id || item.id,
+          shipmentId: item.shipment_id || item.shipmentId,
           shipmentNumber: item.shipment_number || item.number || 'N/A',
           customerName: item.customer_name || 'Не указан',
           createdAt: item.created_at,
+          pinnedAt: item.pinned_at || null,
         });
       }
     });
@@ -133,8 +138,13 @@ export default function ActiveShipmentsTab() {
       });
     }
 
-    // Сортировка: сначала задания со сборщиками, потом без
+    // Сортировка: сначала поднятые заказы, потом со сборщиками, потом по дате
     filtered.sort((a, b) => {
+      if (a.pinnedAt && !b.pinnedAt) return -1;
+      if (!a.pinnedAt && b.pinnedAt) return 1;
+      if (a.pinnedAt && b.pinnedAt) {
+        return new Date(b.pinnedAt).getTime() - new Date(a.pinnedAt).getTime();
+      }
       if (a.collectorId && !b.collectorId) return -1;
       if (!a.collectorId && b.collectorId) return 1;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -165,6 +175,20 @@ export default function ActiveShipmentsTab() {
       console.error('Ошибка при сбросе сборщика:', error);
     } finally {
       setResettingTaskId(null);
+    }
+  };
+
+  const handlePinOrder = async (shipmentId: string, currentlyPinned: boolean) => {
+    setPinningShipmentId(shipmentId);
+    try {
+      const result = await shipmentsApi.pinOrder(shipmentId, !currentlyPinned);
+      showSuccess(result.message || (result.pinned ? 'Заказ поднят' : 'Заказ опущен'));
+      await loadShipments();
+    } catch (error: any) {
+      showError(error.message || 'Ошибка при изменении приоритета заказа');
+      console.error('Ошибка при поднятии заказа:', error);
+    } finally {
+      setPinningShipmentId(null);
     }
   };
 
@@ -253,7 +277,14 @@ export default function ActiveShipmentsTab() {
                   {paginatedTasks.map((task) => (
                     <tr key={task.taskId} className="hover:bg-slate-700/30 transition-colors">
                       <td className="px-4 py-3">
-                        <div className="font-medium text-slate-100">{task.shipmentNumber}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-100">{task.shipmentNumber}</span>
+                          {task.pinnedAt && (
+                            <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-600/30 text-amber-300 border border-amber-500/50" title="Заказ поднят в приоритете">
+                              Поднят
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-slate-400 mt-0.5">
                           {new Date(task.createdAt).toLocaleString('ru-RU')}
                         </div>
@@ -280,21 +311,42 @@ export default function ActiveShipmentsTab() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {task.collectorId && (
+                        <div className="flex flex-wrap items-center justify-center gap-2">
                           <button
-                            onClick={() => handleResetCollector(task.taskId, task.collectorName)}
-                            disabled={resettingTaskId === task.taskId}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-sm font-medium border border-red-500/50 transition-all hover:scale-105 active:scale-95 hover:shadow-lg hover:shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Сбросить сборщика (прогресс сохранится)"
+                            onClick={() => handlePinOrder(task.shipmentId, !!task.pinnedAt)}
+                            disabled={pinningShipmentId === task.shipmentId}
+                            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                              task.pinnedAt
+                                ? 'bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border-amber-500/50'
+                                : 'bg-slate-600/20 hover:bg-slate-500/30 text-slate-200 border-slate-500/50'
+                            }`}
+                            title={task.pinnedAt ? 'Опустить заказ (убрать из приоритета)' : 'Поднять заказ выше приоритета регионов для всех в режиме сборки'}
                           >
-                            {resettingTaskId === task.taskId ? (
+                            {pinningShipmentId === task.shipmentId ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : task.pinnedAt ? (
+                              <ArrowDownCircle className="w-4 h-4" />
                             ) : (
-                              <XCircle className="w-4 h-4" />
+                              <ArrowUpCircle className="w-4 h-4" />
                             )}
-                            <span className="hidden sm:inline">Сбросить сборщика</span>
+                            <span className="hidden sm:inline">{task.pinnedAt ? 'Опустить заказ' : 'Поднять заказ'}</span>
                           </button>
-                        )}
+                          {task.collectorId && (
+                            <button
+                              onClick={() => handleResetCollector(task.taskId, task.collectorName)}
+                              disabled={resettingTaskId === task.taskId}
+                              className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-sm font-medium border border-red-500/50 transition-all hover:scale-105 active:scale-95 hover:shadow-lg hover:shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Сбросить сборщика (прогресс сохранится)"
+                            >
+                              {resettingTaskId === task.taskId ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <XCircle className="w-4 h-4" />
+                              )}
+                              <span className="hidden sm:inline">Сбросить сборщика</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

@@ -706,8 +706,16 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Сортируем заказы по приоритету региона, затем по дате создания
+    // Сортируем заказы: сначала поднятые админом, затем по приоритету региона, затем по дате создания
     shipments.sort((a, b) => {
+      // Поднятые заказы (pinnedAt) — выше всего, для всех в режиме сборки
+      if (a.pinnedAt && !b.pinnedAt) return -1;
+      if (!a.pinnedAt && b.pinnedAt) return 1;
+      if (a.pinnedAt && b.pinnedAt) {
+        // Среди поднятых — по дате поднятия (свежие выше)
+        return b.pinnedAt.getTime() - a.pinnedAt.getTime();
+      }
+
       const aPriority = a.businessRegion
         ? priorityMap.get(a.businessRegion) ?? 9999
         : 9999;
@@ -715,7 +723,7 @@ export async function GET(request: NextRequest) {
         ? priorityMap.get(b.businessRegion) ?? 9999
         : 9999;
 
-      // Сначала по приоритету региона
+      // По приоритету региона
       if (aPriority !== bPriority) {
         return aPriority - bPriority; // Меньше приоритет = выше в списке
       }
@@ -909,6 +917,7 @@ export async function GET(request: NextRequest) {
           comment: shipment.comment,
           status: task.status,
           business_region: shipment.businessRegion,
+          pinned_at: shipment.pinnedAt ? shipment.pinnedAt.toISOString() : null, // Заказ поднят админом
           collector_name: task.collectorName || null,
           collector_id: task.collectorId || null,
           started_at: task.startedAt ? task.startedAt.toISOString() : null,
@@ -934,8 +943,15 @@ export async function GET(request: NextRequest) {
       console.log(`[COLLECTOR SERVER AUDIT] Всего заданий перед группировкой: ${tasks.length}, Складов: ${warehousesInTasks.size} (${Array.from(warehousesInTasks).join(', ')})`);
     }
     
-    // Сортируем задания: сначала по приоритету региона, затем внутри региона по количеству позиций (от большего к меньшему), затем по дате
+    // Сортируем задания: сначала поднятые заказы, затем по приоритету региона, затем по количеству позиций, затем по дате
     tasks.sort((a, b) => {
+      // Поднятые заказы (pinned_at) — выше всего
+      if (a.pinned_at && !b.pinned_at) return -1;
+      if (!a.pinned_at && b.pinned_at) return 1;
+      if (a.pinned_at && b.pinned_at) {
+        return new Date(b.pinned_at).getTime() - new Date(a.pinned_at).getTime();
+      }
+
       const aPriority = a.business_region
         ? priorityMap.get(a.business_region) ?? 9999
         : 9999;
@@ -943,19 +959,16 @@ export async function GET(request: NextRequest) {
         ? priorityMap.get(b.business_region) ?? 9999
         : 9999;
 
-      // Сначала по приоритету региона
       if (aPriority !== bPriority) {
-        return aPriority - bPriority; // Меньше приоритет = выше в списке
+        return aPriority - bPriority;
       }
 
-      // Если приоритеты равны (один регион), сортируем по количеству позиций (от большего к меньшему)
       const aItemsCount = a.items_count || a.lines?.length || 0;
       const bItemsCount = b.items_count || b.lines?.length || 0;
       if (aItemsCount !== bItemsCount) {
-        return bItemsCount - aItemsCount; // Больше позиций = выше в списке
+        return bItemsCount - aItemsCount;
       }
 
-      // Если количество позиций одинаково, сортируем по дате создания (новые сверху)
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
@@ -1038,8 +1051,14 @@ export async function GET(request: NextRequest) {
       // Объединяем свои задания + по 1 свободному с каждого склада
       const filteredTasks = [...myTasks, ...oneFreePerWarehouse];
       
-      // Сортируем результат: сначала по приоритету региона, затем внутри региона по количеству позиций (от большего к меньшему), затем по дате
+      // Сортируем результат: сначала поднятые заказы, затем по приоритету региона, затем по количеству позиций, затем по дате
       filteredTasks.sort((a, b) => {
+        if (a.pinned_at && !b.pinned_at) return -1;
+        if (!a.pinned_at && b.pinned_at) return 1;
+        if (a.pinned_at && b.pinned_at) {
+          return new Date(b.pinned_at).getTime() - new Date(a.pinned_at).getTime();
+        }
+
         const aPriority = a.business_region
           ? priorityMap.get(a.business_region) ?? 9999
           : 9999;
@@ -1047,19 +1066,16 @@ export async function GET(request: NextRequest) {
           ? priorityMap.get(b.business_region) ?? 9999
           : 9999;
 
-        // Сначала по приоритету региона
         if (aPriority !== bPriority) {
           return aPriority - bPriority;
         }
 
-        // Если приоритеты равны (один регион), сортируем по количеству позиций (от большего к меньшему)
         const aItemsCount = a.items_count || a.lines?.length || 0;
         const bItemsCount = b.items_count || b.lines?.length || 0;
         if (aItemsCount !== bItemsCount) {
-          return bItemsCount - aItemsCount; // Больше позиций = выше в списке
+          return bItemsCount - aItemsCount;
         }
 
-        // Если количество позиций одинаково, сортируем по дате создания (новые сверху)
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
       
