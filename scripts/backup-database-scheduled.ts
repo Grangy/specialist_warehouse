@@ -62,9 +62,13 @@ if (!databaseUrl) {
 }
 
 let finalDatabaseUrl = databaseUrl;
+let dbFilePath: string;
 if (databaseUrl.startsWith('file:./') || (databaseUrl.startsWith('file:') && !databaseUrl.startsWith('file:/'))) {
   const dbPath = databaseUrl.replace('file:', '');
-  finalDatabaseUrl = `file:${path.join(projectRoot, dbPath)}`;
+  dbFilePath = path.join(projectRoot, dbPath);
+  finalDatabaseUrl = `file:${dbFilePath}`;
+} else {
+  dbFilePath = databaseUrl.replace(/^file:/, '');
 }
 
 const prisma = new PrismaClient({
@@ -202,15 +206,27 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
   const sizeMb = (fs.statSync(path30m).size / 1024 / 1024).toFixed(2);
   console.log(`[${new Date().toISOString()}] 30m бэкап: ${ts} (${sizeMb} MB)`);
 
+  const tsBase = ts.replace(/\.json$/, '');
+  if (fs.existsSync(dbFilePath)) {
+    const path30mDb = path.join(backupDir30m, `${tsBase}.db`);
+    fs.copyFileSync(dbFilePath, path30mDb);
+    const dbMb = (fs.statSync(path30mDb).size / 1024 / 1024).toFixed(2);
+    console.log(`  + .db: ${tsBase}.db (${dbMb} MB)`);
+    const uploaded30db = await uploadBackupToYandex(projectRoot, path30mDb, `30m/${tsBase}.db`);
+    if (uploaded30db) {
+      console.log(`  → Яндекс.Диск backups_warehouse/30m/${tsBase}.db`);
+    }
+  }
+
   const uploaded30 = await uploadBackupToYandex(projectRoot, path30m, `30m/${ts}`);
   if (uploaded30) {
     console.log(`  → Яндекс.Диск backups_warehouse/30m/${ts}`);
   }
 
-  // В 30m/ и 5h/ файлы без префикса backup_: 2026-01-29T12-46-05.json
   const removed30 = trimBackups(backupDir30m, KEEP_30M, '', '.json');
-  if (removed30 > 0) {
-    console.log(`  Удалено старых 30m: ${removed30}`);
+  const removed30db = trimBackups(backupDir30m, KEEP_30M, '', '.db');
+  if (removed30 > 0 || removed30db > 0) {
+    console.log(`  Удалено старых 30m: json=${removed30}, db=${removed30db}`);
   }
 
   let newLast5h = last5hBackupAt;
@@ -219,13 +235,22 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
     const path5h = path.join(backupDir5h, ts);
     fs.writeFileSync(path5h, JSON.stringify(data, null, 2), 'utf-8');
     console.log(`  + 5h бэкап: ${ts}`);
+    if (fs.existsSync(dbFilePath)) {
+      const path5hDb = path.join(backupDir5h, `${tsBase}.db`);
+      fs.copyFileSync(dbFilePath, path5hDb);
+      const uploaded5hDb = await uploadBackupToYandex(projectRoot, path5hDb, `5h/${tsBase}.db`);
+      if (uploaded5hDb) {
+        console.log(`  → Яндекс.Диск backups_warehouse/5h/${tsBase}.db`);
+      }
+    }
     const uploaded5h = await uploadBackupToYandex(projectRoot, path5h, `5h/${ts}`);
     if (uploaded5h) {
       console.log(`  → Яндекс.Диск backups_warehouse/5h/${ts}`);
     }
     const removed5h = trimBackups(backupDir5h, KEEP_5H, '', '.json');
-    if (removed5h > 0) {
-      console.log(`  Удалено старых 5h: ${removed5h}`);
+    const removed5hDb = trimBackups(backupDir5h, KEEP_5H, '', '.db');
+    if (removed5h > 0 || removed5hDb > 0) {
+      console.log(`  Удалено старых 5h: json=${removed5h}, db=${removed5hDb}`);
     }
     newLast5h = now;
   }
@@ -246,12 +271,14 @@ async function main() {
 
   const removedMainJson = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_', '.json');
   const removedMainTxt = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_info_', '.txt');
-  // В 30m/ и 5h/ имена файлов: 2026-01-29T12-46-05.json (без backup_)
+  const removedMainDb = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_', '.db');
   const removed30start = trimBackups(backupDir30m, KEEP_30M, '', '.json');
+  const removed30dbStart = trimBackups(backupDir30m, KEEP_30M, '', '.db');
   const removed5start = trimBackups(backupDir5h, KEEP_5H, '', '.json');
+  const removed5dbStart = trimBackups(backupDir5h, KEEP_5H, '', '.db');
 
-  if (removedMainJson > 0 || removedMainTxt > 0 || removed30start > 0 || removed5start > 0) {
-    console.log(`При старте удалено лишних: backups/ .json=${removedMainJson}, .txt=${removedMainTxt}; 30m=${removed30start}, 5h=${removed5start}\n`);
+  if (removedMainJson > 0 || removedMainTxt > 0 || removedMainDb > 0 || removed30start > 0 || removed30dbStart > 0 || removed5start > 0 || removed5dbStart > 0) {
+    console.log(`При старте удалено лишних: backups/ .json=${removedMainJson}, .txt=${removedMainTxt}, .db=${removedMainDb}; 30m json=${removed30start} db=${removed30dbStart}; 5h json=${removed5start} db=${removed5dbStart}\n`);
   }
 
   let last5hBackupAt = 0;

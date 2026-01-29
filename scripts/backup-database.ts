@@ -82,17 +82,18 @@ if (!databaseUrl) {
 }
 
 let finalDatabaseUrl = databaseUrl;
+let dbFilePath: string;
 
 if (databaseUrl.startsWith('file:./')) {
-  // Преобразуем относительный путь в абсолютный
   const dbPath = databaseUrl.replace('file:', '');
-  const absolutePath = path.join(projectRoot, dbPath);
-  finalDatabaseUrl = `file:${absolutePath}`;
+  dbFilePath = path.join(projectRoot, dbPath);
+  finalDatabaseUrl = `file:${dbFilePath}`;
 } else if (databaseUrl.startsWith('file:') && !databaseUrl.startsWith('file:/')) {
-  // Если путь относительный без ./, добавляем корень проекта
   const dbPath = databaseUrl.replace('file:', '');
-  const absolutePath = path.join(projectRoot, dbPath);
-  finalDatabaseUrl = `file:${absolutePath}`;
+  dbFilePath = path.join(projectRoot, dbPath);
+  finalDatabaseUrl = `file:${dbFilePath}`;
+} else {
+  dbFilePath = databaseUrl.replace(/^file:/, '');
 }
 
 console.log(`📁 Проект: ${projectRoot}`);
@@ -164,16 +165,17 @@ async function createBackup() {
       fs.mkdirSync(backupDir, { recursive: true });
       console.log(`✓ Создана директория для бэкапов: ${backupDir}`);
     } else {
-      // Перед стартом: скан директории, удаляем лишние (храним последние KEEP_MAIN_BACKUPS)
       const removedJson = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_', '.json');
       const removedTxt = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_info_', '.txt');
-      if (removedJson > 0 || removedTxt > 0) {
-        console.log(`✓ Удалено лишних бэкапов: ${removedJson} .json, ${removedTxt} .txt\n`);
+      const removedDb = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_', '.db');
+      if (removedJson > 0 || removedTxt > 0 || removedDb > 0) {
+        console.log(`✓ Удалено лишних бэкапов: ${removedJson} .json, ${removedTxt} .txt, ${removedDb} .db\n`);
       }
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
     const backupFile = path.join(backupDir, `backup_${timestamp}.json`);
+    const backupDbFile = path.join(backupDir, `backup_${timestamp}.db`);
     const infoFile = path.join(backupDir, `backup_info_${timestamp}.txt`);
 
     console.log('📊 Чтение данных из базы...\n');
@@ -259,6 +261,12 @@ async function createBackup() {
     console.log(`✓ Резервная копия сохранена: ${backupFile}`);
     console.log(`  Размер: ${fileSize} MB\n`);
 
+    if (fs.existsSync(dbFilePath)) {
+      fs.copyFileSync(dbFilePath, backupDbFile);
+      const dbSize = (fs.statSync(backupDbFile).size / 1024 / 1024).toFixed(2);
+      console.log(`✓ Копия .db сохранена: ${backupDbFile} (${dbSize} MB)\n`);
+    }
+
     // Создаем информационный файл
     const info = `
 Резервная копия базы данных
@@ -293,12 +301,20 @@ async function createBackup() {
     if (uploaded) {
       console.log(`✓ Загружено на Яндекс.Диск: backups_warehouse/${backupFileName}\n`);
     }
+    if (fs.existsSync(backupDbFile)) {
+      const backupDbFileName = path.basename(backupDbFile);
+      const uploadedDb = await uploadBackupToYandex(projectRoot, backupDbFile, backupDbFileName);
+      if (uploadedDb) {
+        console.log(`✓ Загружено на Яндекс.Диск: backups_warehouse/${backupDbFileName}\n`);
+      }
+    }
 
     // После записи снова обрезаем до лимита (хранить последние KEEP_MAIN_BACKUPS)
     const removedAfterJson = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_', '.json');
     const removedAfterTxt = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_info_', '.txt');
-    if (removedAfterJson > 0 || removedAfterTxt > 0) {
-      console.log(`✓ Удалено старых после записи: ${removedAfterJson} .json, ${removedAfterTxt} .txt\n`);
+    const removedAfterDb = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_', '.db');
+    if (removedAfterJson > 0 || removedAfterTxt > 0 || removedAfterDb > 0) {
+      console.log(`✓ Удалено старых после записи: ${removedAfterJson} .json, ${removedAfterTxt} .txt, ${removedAfterDb} .db\n`);
     }
 
     // Показываем последние бэкапы
