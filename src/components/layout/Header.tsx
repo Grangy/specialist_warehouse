@@ -106,8 +106,8 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
   useEffect(() => {
     if (user) {
       loadRankingStats();
-      // Обновляем статистику каждые 30 секунд
-      const interval = setInterval(loadRankingStats, 30000);
+      // Обновляем баллы в шапке раз в минуту (чаще не нужно — не дёргает список)
+      const interval = setInterval(loadRankingStats, 60000);
       return () => clearInterval(interval);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

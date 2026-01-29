@@ -42,6 +42,21 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Баллы сборщика как диктовщика (TaskStatistics по confirmedAt, task.dictatorId = user.id)
+    const collectorDictatorStatsToday = await prisma.taskStatistics.findMany({
+      where: {
+        userId: user.id,
+        roleType: 'collector',
+        task: {
+          dictatorId: user.id,
+          confirmedAt: {
+            gte: today,
+            lte: todayEnd,
+          },
+        },
+      },
+    });
+
     const checkerStatsToday = await prisma.taskStatistics.findMany({
       where: {
         userId: user.id,
@@ -62,6 +77,21 @@ export async function GET(request: NextRequest) {
         roleType: 'collector',
         task: {
           completedAt: {
+            gte: monthStart,
+            lte: monthEnd,
+          },
+        },
+      },
+    });
+
+    // Баллы сборщика как диктовщика за месяц
+    const collectorDictatorStatsMonth = await prisma.taskStatistics.findMany({
+      where: {
+        userId: user.id,
+        roleType: 'collector',
+        task: {
+          dictatorId: user.id,
+          confirmedAt: {
             gte: monthStart,
             lte: monthEnd,
           },
@@ -91,13 +121,15 @@ export async function GET(request: NextRequest) {
 
     if (user.role === 'collector' || user.role === 'admin') {
       const filtered = collectorStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null);
-      if (filtered.length > 0) {
-        const totalPositions = filtered.reduce((sum, s) => sum + s.positions, 0);
-        const totalUnits = filtered.reduce((sum, s) => sum + s.units, 0);
-        const totalOrders = new Set(filtered.map(s => s.shipmentId)).size;
-        const totalPickTimeSec = filtered.reduce((sum, s) => sum + (s.pickTimeSec || 0), 0);
-        const totalPoints = filtered.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
-        const avgEfficiency = filtered.reduce((sum, s) => sum + (s.efficiencyClamped || 0), 0) / filtered.length;
+      const dictatorFiltered = collectorDictatorStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null);
+      const allCollectorToday = [...filtered, ...dictatorFiltered];
+      if (allCollectorToday.length > 0) {
+        const totalPositions = allCollectorToday.reduce((sum, s) => sum + s.positions, 0);
+        const totalUnits = allCollectorToday.reduce((sum, s) => sum + s.units, 0);
+        const totalOrders = new Set(allCollectorToday.map(s => s.shipmentId)).size;
+        const totalPickTimeSec = allCollectorToday.reduce((sum, s) => sum + (s.pickTimeSec || 0), 0);
+        const totalPoints = allCollectorToday.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
+        const avgEfficiency = allCollectorToday.reduce((sum, s) => sum + (s.efficiencyClamped || 0), 0) / allCollectorToday.length;
         const pph = totalPickTimeSec > 0 ? (totalPositions * 3600) / totalPickTimeSec : null;
         const uph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
 
@@ -152,13 +184,15 @@ export async function GET(request: NextRequest) {
 
     if (user.role === 'collector' || user.role === 'admin') {
       const filtered = collectorStatsMonth.filter((s) => s.positions > 0 && s.orderPoints !== null);
-      if (filtered.length > 0) {
-        const totalPositions = filtered.reduce((sum, s) => sum + s.positions, 0);
-        const totalUnits = filtered.reduce((sum, s) => sum + s.units, 0);
-        const totalOrders = new Set(filtered.map(s => s.shipmentId)).size;
-        const totalPickTimeSec = filtered.reduce((sum, s) => sum + (s.pickTimeSec || 0), 0);
-        const totalPoints = filtered.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
-        const avgEfficiency = filtered.reduce((sum, s) => sum + (s.efficiencyClamped || 0), 0) / filtered.length;
+      const dictatorFilteredMonth = collectorDictatorStatsMonth.filter((s) => s.positions > 0 && s.orderPoints !== null);
+      const allCollectorMonth = [...filtered, ...dictatorFilteredMonth];
+      if (allCollectorMonth.length > 0) {
+        const totalPositions = allCollectorMonth.reduce((sum, s) => sum + s.positions, 0);
+        const totalUnits = allCollectorMonth.reduce((sum, s) => sum + s.units, 0);
+        const totalOrders = new Set(allCollectorMonth.map(s => s.shipmentId)).size;
+        const totalPickTimeSec = allCollectorMonth.reduce((sum, s) => sum + (s.pickTimeSec || 0), 0);
+        const totalPoints = allCollectorMonth.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
+        const avgEfficiency = allCollectorMonth.reduce((sum, s) => sum + (s.efficiencyClamped || 0), 0) / allCollectorMonth.length;
         const pph = totalPickTimeSec > 0 ? (totalPositions * 3600) / totalPickTimeSec : null;
         const uph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
 
@@ -227,6 +261,21 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Баллы диктовщиков (сборщиков) за сегодня — для ранга как в общем топе
+    const allCollectorDictatorStatsToday = await prisma.taskStatistics.findMany({
+      where: {
+        roleType: 'collector',
+        task: {
+          dictatorId: { not: null },
+          confirmedAt: { gte: today, lte: todayEnd },
+        },
+      },
+      include: { user: { select: { id: true, role: true } }, task: { select: { dictatorId: true } } },
+    });
+    const collectorDictatorStatsTodayFiltered = allCollectorDictatorStatsToday.filter(
+      (s) => s.userId === s.task.dictatorId
+    );
+
     const allCheckerStatsToday = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'checker',
@@ -247,9 +296,15 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Группируем по пользователям и рассчитываем ранги для сборщиков за сегодня
+    // Группируем по пользователям и рассчитываем ранги для сборщиков за сегодня (сборка + баллы диктовщика)
     const collectorMapToday = new Map<string, number>();
     for (const stat of allCollectorStatsToday) {
+      if (stat.orderPoints && stat.orderPoints > 0) {
+        const current = collectorMapToday.get(stat.userId) || 0;
+        collectorMapToday.set(stat.userId, current + stat.orderPoints);
+      }
+    }
+    for (const stat of collectorDictatorStatsTodayFiltered) {
       if (stat.orderPoints && stat.orderPoints > 0) {
         const current = collectorMapToday.get(stat.userId) || 0;
         collectorMapToday.set(stat.userId, current + stat.orderPoints);
@@ -369,6 +424,20 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const allCollectorDictatorStatsMonth = await prisma.taskStatistics.findMany({
+      where: {
+        roleType: 'collector',
+        task: {
+          dictatorId: { not: null },
+          confirmedAt: { gte: monthStart, lte: monthEnd },
+        },
+      },
+      include: { user: { select: { id: true, role: true } }, task: { select: { dictatorId: true } } },
+    });
+    const collectorDictatorStatsMonthFiltered = allCollectorDictatorStatsMonth.filter(
+      (s) => s.userId === s.task.dictatorId
+    );
+
     const allCheckerStatsMonth = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'checker',
@@ -389,9 +458,15 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Группируем по пользователям и рассчитываем ранги для сборщиков за месяц
+    // Группируем по пользователям и рассчитываем ранги для сборщиков за месяц (сборка + баллы диктовщика)
     const collectorMapMonth = new Map<string, number>();
     for (const stat of allCollectorStatsMonth) {
+      if (stat.orderPoints && stat.orderPoints > 0) {
+        const current = collectorMapMonth.get(stat.userId) || 0;
+        collectorMapMonth.set(stat.userId, current + stat.orderPoints);
+      }
+    }
+    for (const stat of collectorDictatorStatsMonthFiltered) {
       if (stat.orderPoints && stat.orderPoints > 0) {
         const current = collectorMapMonth.get(stat.userId) || 0;
         collectorMapMonth.set(stat.userId, current + stat.orderPoints);

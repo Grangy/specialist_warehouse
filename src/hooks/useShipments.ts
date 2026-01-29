@@ -218,23 +218,13 @@ export function useShipments() {
   });
 
   useEffect(() => {
-    // Загружаем заказы только если пользователь авторизован
+    // Загружаем заказы только если пользователь авторизован. Дальше обновления — по SSE и по кнопке «Обновить».
     if (!isAuthorized) {
       setIsLoading(false);
       return;
     }
 
     loadShipments();
-    
-    // Резервное автообновление каждые 1 минуту (на случай проблем с SSE)
-    const interval = setInterval(() => {
-      if (isAuthorized) {
-        // Сбрасываем флаг ошибки перед повторной попыткой
-        errorShownRef.current = false;
-        loadShipments();
-      }
-    }, 60000); // 1 минута (60000 мс)
-    return () => clearInterval(interval);
   }, [isAuthorized, loadShipments]);
 
   // Контроль доступа к вкладкам
