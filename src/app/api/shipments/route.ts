@@ -147,85 +147,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Проверяем, не существует ли уже заказ с таким номером
+    // Проверяем дубликат по номеру + клиент: если заказ с таким номером и клиентом уже есть (активный или завершённый), не создаём и не изменяем
     const existing = await prisma.shipment.findUnique({
       where: { number },
-      include: {
-        tasks: {
-          include: {
-            lines: true,
-          },
-        },
-        lines: true,
-      },
+      select: { id: true, number: true, customerName: true, status: true, deleted: true },
     });
 
-    if (existing) {
-      // Проверяем настройку: пропускать завершенные заказы
-      let skipCompleted = false;
-      try {
-        const setting = await prisma.systemSettings.findUnique({
-          where: { key: 'skip_completed_shipments' },
-        });
-        if (setting) {
-          skipCompleted = setting.value === 'true' || JSON.parse(setting.value) === true;
-        }
-      } catch (error) {
-        // Игнорируем ошибки при получении настройки
-      }
-
-      // Если заказ уже завершен (processed) и настройка включена, не создаем его снова
-      if (skipCompleted && existing.status === 'processed') {
-        console.log(`[API CREATE] Заказ ${number} уже завершен (status: processed), пропускаем создание (настройка skip_completed_shipments включена)`);
+    if (existing && !existing.deleted) {
+      const isSameCustomer =
+        (existing.customerName || '').trim().toLowerCase() === (customerName || '').trim().toLowerCase();
+      if (isSameCustomer) {
+        console.log(
+          `[API CREATE] Дубликат: заказ ${number} (клиент: ${customerName}) уже существует (status: ${existing.status}), возвращаем 409`
+        );
         return NextResponse.json(
           {
             success: false,
-            message: `Заказ ${number} уже завершен и не будет создан повторно`,
-            skipped: true,
+            message: `Заказ ${number} по клиенту "${customerName}" уже существует`,
+            duplicate: true,
           },
-          { status: 200 }
+          { status: 409 }
         );
       }
-
-      // Если заказ уже существует, удаляем его и все связанные данные
-      // чтобы создать новый с непроверенными позициями
-      console.log(`Заказ ${number} уже существует, удаляем старый и создаем новый`);
-      
-      // Удаляем все связанные данные (каскадное удаление должно сработать, но делаем явно)
-      await prisma.shipmentTaskLine.deleteMany({
-        where: {
-          task: {
-            shipmentId: existing.id,
-          },
+      console.log(
+        `[API CREATE] Конфликт: заказ с номером ${number} уже существует для другого клиента (в БД: "${existing.customerName}", в запросе: "${customerName}"), возвращаем 409`
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Заказ с номером ${number} уже существует для другого клиента`,
+          duplicate: true,
         },
-      });
-      await prisma.shipmentTaskLock.deleteMany({
-        where: {
-          task: {
-            shipmentId: existing.id,
-          },
-        },
-      });
-      await prisma.shipmentTask.deleteMany({
-        where: {
-          shipmentId: existing.id,
-        },
-      });
-      await prisma.shipmentLine.deleteMany({
-        where: {
-          shipmentId: existing.id,
-        },
-      });
-      await prisma.shipmentLock.deleteMany({
-        where: {
-          shipmentId: existing.id,
-        },
-      });
-      await prisma.shipment.delete({
-        where: { id: existing.id },
-      });
-      
-      console.log(`Старый заказ ${number} удален, создаем новый`);
+        { status: 409 }
+      );
     }
 
     // ЯВНО убеждаемся, что все позиции создаются с непроверенным статусом
