@@ -30,17 +30,7 @@ export async function POST(
       return NextResponse.json({ error: 'Задание не найдено' }, { status: 404 });
     }
 
-    // Проверяем, не начал ли уже другой пользователь сборку
-    // Это проверяется через collectorId и startedAt
-    // Теперь можно перехватывать даже если начал другой пользователь (включая админа)
-    if (task.collectorId && task.collectorId !== user.id) {
-      const collector = await prisma.user.findUnique({
-        where: { id: task.collectorId },
-        select: { name: true, role: true },
-      });
-      
-      console.log(`[LOCK] Задание ${id} уже начато пользователем ${collector?.name || task.collectorId}${collector?.role === 'admin' ? ' (админ)' : ''}, текущий пользователь: ${user.id} (${user.name}). Разрешаем перехват.`);
-    }
+    const isAdmin = user.role === 'admin';
 
     // Проверяем существующую блокировку
     const existingLock = task.locks[0];
@@ -55,40 +45,43 @@ export async function POST(
         });
       } else if (existingLock.userId !== user.id) {
         // Задание заблокировано другим пользователем
-        // Проверяем активность блокировки через heartbeat
         const now = Date.now();
         const lastHeartbeatTime = existingLock.lastHeartbeat.getTime();
         const timeSinceHeartbeat = now - lastHeartbeatTime;
         const isActive = timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
-        
+
+        const lockUser = await prisma.user.findUnique({
+          where: { id: existingLock.userId },
+          select: { name: true, role: true },
+        });
+        const lockedByName = lockUser?.name ?? 'другой сборщик';
+
         if (isActive) {
-          // Блокировка активна (попап открыт) - можно перехватить (включая админа)
-          const lockUser = await prisma.user.findUnique({
-            where: { id: existingLock.userId },
-            select: { name: true, role: true },
-          });
-          
-          console.log(`[LOCK] Блокировка задания ${id} активна (heartbeat: ${timeSinceHeartbeat}ms назад). Пользователь ${user.name} (${user.id}) перехватывает сборку у ${lockUser?.name || existingLock.userId}${lockUser?.role === 'admin' ? ' (админ)' : ''}`);
-          
-          // Отправляем SSE событие о разблокировке перед удалением (модал закрыт другим пользователем)
+          // Блокировка активна (попап открыт у другого) — перехват только для админа
+          if (!isAdmin) {
+            console.log(`[LOCK] Задание ${id} активно собирает ${lockedByName}, пользователь ${user.name} получил отказ (только 1 сборщик)`);
+            return NextResponse.json(
+              {
+                error: `Задание собирает ${lockedByName}. Дождитесь завершения или обновите список.`,
+                code: 'LOCKED_BY_OTHER',
+                lockedByName,
+              },
+              { status: 409 }
+            );
+          }
+          // Админ может перехватить
+          console.log(`[LOCK] Блокировка задания ${id} активна. Админ ${user.name} перехватывает сборку у ${lockedByName}`);
           emitShipmentEvent('shipment:unlocked', {
             taskId: id,
             shipmentId: task.shipmentId,
             userId: existingLock.userId,
           });
-          
-          // Удаляем активную блокировку - теперь можно перехватывать даже активные блокировки
           await prisma.shipmentTaskLock.delete({
             where: { id: existingLock.id },
           });
         } else {
-          // Блокировка неактивна (попап закрыт или пользователь вышел) - можно перехватить
-          const lockUser = await prisma.user.findUnique({
-            where: { id: existingLock.userId },
-            select: { name: true },
-          });
-          
-          console.log(`[LOCK] Блокировка задания ${id} неактивна (heartbeat: ${timeSinceHeartbeat}ms назад, таймаут: ${HEARTBEAT_TIMEOUT}ms). Пользователь ${user.name} (${user.id}) перехватывает сборку у ${lockUser?.name || existingLock.userId}`);
+          // Блокировка неактивна (попап закрыт или пользователь вышел) — можно перехватить
+          console.log(`[LOCK] Блокировка задания ${id} неактивна (heartbeat: ${timeSinceHeartbeat}ms назад, таймаут: ${HEARTBEAT_TIMEOUT}ms). Пользователь ${user.name} (${user.id}) перехватывает сборку у ${lockedByName}`);
           
           // Отправляем SSE событие о разблокировке перед удалением (модал закрыт)
           emitShipmentEvent('shipment:unlocked', {

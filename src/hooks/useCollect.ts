@@ -17,6 +17,8 @@ export function useCollect(options?: UseCollectOptions) {
   const [checklistState, setChecklistState] = useState<Record<number, CollectChecklistState>>({});
   const [editState, setEditState] = useState<Record<number, boolean>>({});
   const [lockedShipmentId, setLockedShipmentId] = useState<string | null>(null);
+  const [isLocking, setIsLocking] = useState(false); // Ожидание ответа блокировки от сервера
+  const [lockingShipmentId, setLockingShipmentId] = useState<string | null>(null); // id заказа, по которому идёт запрос блокировки
   const [removingItems, setRemovingItems] = useState<Set<number>>(new Set());
   const [changedLocations, setChangedLocations] = useState<Record<number, string>>({}); // Отслеживаем измененные места
   const { showToast, showError, showSuccess } = useToast();
@@ -52,10 +54,13 @@ export function useCollect(options?: UseCollectOptions) {
   }, []);
 
   const openModal = useCallback(async (shipment: Shipment) => {
-    // Предотвращаем множественные открытия
-    if (currentShipment !== null) {
+    // Предотвращаем множественные открытия и повторные клики во время ожидания блокировки
+    if (currentShipment !== null || isLocking) {
       return;
     }
+
+    setIsLocking(true);
+    setLockingShipmentId(shipment.id);
 
     try {
       // Блокируем заказ
@@ -77,12 +82,16 @@ export function useCollect(options?: UseCollectOptions) {
         }
         
         showError(message);
+        setIsLocking(false);
+        setLockingShipmentId(null);
         return;
       }
       
       if (!lockResponse || !lockResponse.success) {
         const message = lockResponse?.message || 'Задание уже заблокировано другим пользователем. Только администратор может вмешаться в сборку.';
         showError(message);
+        setIsLocking(false);
+        setLockingShipmentId(null);
         return;
       }
       
@@ -143,8 +152,11 @@ export function useCollect(options?: UseCollectOptions) {
       console.error('[useCollect] Ошибка блокировки заказа:', error);
       const errorMessage = error?.message || 'Не удалось заблокировать заказ';
       showError(errorMessage);
+    } finally {
+      setIsLocking(false);
+      setLockingShipmentId(null);
     }
-  }, [currentShipment, showError, startHeartbeat]);
+  }, [currentShipment, isLocking, showError, startHeartbeat]);
 
   const closeModal = useCallback(async () => {
     // Останавливаем heartbeat
@@ -682,6 +694,8 @@ export function useCollect(options?: UseCollectOptions) {
     editState,
     removingItems,
     isOpen: currentShipment !== null,
+    isLocking,
+    lockingShipmentId,
     openModal,
     closeModal,
     updateCollected,

@@ -26,6 +26,10 @@ interface ShipmentCardProps {
   onConfirmAll?: (shipment: Shipment) => void;
   onDeleteCollection?: (shipment: Shipment) => void;
   userRole?: 'admin' | 'collector' | 'checker' | null;
+  /** Идёт запрос блокировки (любая карточка) — кнопку «Собрать» не нажимать */
+  isCollectLocking?: boolean;
+  /** Блокировка запрашивается именно для этой карточки — показать индикатор загрузки */
+  isThisCardCollectLocking?: boolean;
 }
 
 export function ShipmentCard({ 
@@ -36,7 +40,9 @@ export function ShipmentCard({
   onCollectAll, 
   onConfirmAll,
   onDeleteCollection,
-  userRole 
+  userRole,
+  isCollectLocking,
+  isThisCardCollectLocking,
 }: ShipmentCardProps) {
   const isProcessed = shipment.status === 'processed';
   const isPendingConfirmation = shipment.status === 'pending_confirmation';
@@ -291,11 +297,22 @@ export function ShipmentCard({
           ) : !isProcessed ? (
             <>
               <button
+                type="button"
                 onClick={() => onCollect(shipment)}
-                className="flex-1 min-w-[120px] sm:min-w-0 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
+                disabled={isCollectLocking}
+                className="flex-1 min-w-[120px] sm:min-w-0 bg-blue-600 hover:bg-blue-700 disabled:opacity-70 disabled:cursor-not-allowed text-white font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] disabled:hover:scale-100"
               >
-                <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                <span className="truncate">Собрать</span>
+                {isThisCardCollectLocking ? (
+                  <>
+                    <span className="animate-spin rounded-full h-3.5 w-3.5 sm:h-4 sm:w-4 border-2 border-white border-t-transparent flex-shrink-0" />
+                    <span className="truncate">Ожидание...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                    <span className="truncate">Собрать</span>
+                  </>
+                )}
               </button>
               {userRole === 'admin' && onCollectAll && (
                 <button
