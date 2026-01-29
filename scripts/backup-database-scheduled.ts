@@ -201,7 +201,8 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
   const sizeMb = (fs.statSync(path30m).size / 1024 / 1024).toFixed(2);
   console.log(`[${new Date().toISOString()}] 30m бэкап: ${ts} (${sizeMb} MB)`);
 
-  const removed30 = trimBackups(backupDir30m, KEEP_30M);
+  // В 30m/ и 5h/ файлы без префикса backup_: 2026-01-29T12-46-05.json
+  const removed30 = trimBackups(backupDir30m, KEEP_30M, '', '.json');
   if (removed30 > 0) {
     console.log(`  Удалено старых 30m: ${removed30}`);
   }
@@ -212,7 +213,7 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
     const path5h = path.join(backupDir5h, ts);
     fs.writeFileSync(path5h, JSON.stringify(data, null, 2), 'utf-8');
     console.log(`  + 5h бэкап: ${ts}`);
-    const removed5h = trimBackups(backupDir5h, KEEP_5H);
+    const removed5h = trimBackups(backupDir5h, KEEP_5H, '', '.json');
     if (removed5h > 0) {
       console.log(`  Удалено старых 5h: ${removed5h}`);
     }
@@ -235,8 +236,9 @@ async function main() {
 
   const removedMainJson = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_', '.json');
   const removedMainTxt = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_info_', '.txt');
-  const removed30start = trimBackups(backupDir30m, KEEP_30M);
-  const removed5start = trimBackups(backupDir5h, KEEP_5H);
+  // В 30m/ и 5h/ имена файлов: 2026-01-29T12-46-05.json (без backup_)
+  const removed30start = trimBackups(backupDir30m, KEEP_30M, '', '.json');
+  const removed5start = trimBackups(backupDir5h, KEEP_5H, '', '.json');
 
   if (removedMainJson > 0 || removedMainTxt > 0 || removed30start > 0 || removed5start > 0) {
     console.log(`При старте удалено лишних: backups/ .json=${removedMainJson}, .txt=${removedMainTxt}; 30m=${removed30start}, 5h=${removed5start}\n`);
