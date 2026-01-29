@@ -66,12 +66,13 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Получаем все активные задания (статусы 'new' и 'pending_confirmation')
-    // Если указан склад, фильтруем по нему
+    // Получаем только задания активных заказов (заказ и задание в new/pending_confirmation)
+    // Исключаем задания, у которых заказ уже processed — иначе виджет показывает регионы «без» активных сборок
     const whereClause: any = {
-      status: { in: ['new', 'pending_confirmation'] }, // Активные сборки
+      status: { in: ['new', 'pending_confirmation'] },
       shipment: {
         deleted: false,
+        status: { in: ['new', 'pending_confirmation'] }, // только заказы в сборке, не завершённые
       },
     };
 
