@@ -2,6 +2,7 @@ import { PrismaClient } from '../src/generated/prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
+import { uploadBackupToYandex } from './yandex-upload';
 
 // Определяем путь к корню проекта
 // Скрипт находится в scripts/, поэтому корень проекта на уровень выше
@@ -286,6 +287,12 @@ async function createBackup() {
 
     fs.writeFileSync(infoFile, info, 'utf-8');
     console.log(`✓ Информация о бэкапе сохранена: ${infoFile}\n`);
+
+    const backupFileName = path.basename(backupFile);
+    const uploaded = await uploadBackupToYandex(projectRoot, backupFile, backupFileName);
+    if (uploaded) {
+      console.log(`✓ Загружено на Яндекс.Диск: backups_warehouse/${backupFileName}\n`);
+    }
 
     // После записи снова обрезаем до лимита (хранить последние KEEP_MAIN_BACKUPS)
     const removedAfterJson = trimBackups(backupDir, KEEP_MAIN_BACKUPS, 'backup_', '.json');

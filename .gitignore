@@ -79,6 +79,9 @@ pnpm-debug.log*
 cookies.txt
 /tmp/*.txt
 
+# Yandex OAuth (секреты)
+token.json
+
 # Build artifacts
 dist/
 build/

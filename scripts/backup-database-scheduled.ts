@@ -14,6 +14,7 @@ import { PrismaClient } from '../src/generated/prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
+import { uploadBackupToYandex } from './yandex-upload';
 
 const INTERVAL_30_MIN_MS = 30 * 60 * 1000;
 const INTERVAL_5H_MS = 5 * 60 * 60 * 1000;
@@ -201,6 +202,11 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
   const sizeMb = (fs.statSync(path30m).size / 1024 / 1024).toFixed(2);
   console.log(`[${new Date().toISOString()}] 30m бэкап: ${ts} (${sizeMb} MB)`);
 
+  const uploaded30 = await uploadBackupToYandex(projectRoot, path30m, `30m/${ts}`);
+  if (uploaded30) {
+    console.log(`  → Яндекс.Диск backups_warehouse/30m/${ts}`);
+  }
+
   // В 30m/ и 5h/ файлы без префикса backup_: 2026-01-29T12-46-05.json
   const removed30 = trimBackups(backupDir30m, KEEP_30M, '', '.json');
   if (removed30 > 0) {
@@ -213,6 +219,10 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
     const path5h = path.join(backupDir5h, ts);
     fs.writeFileSync(path5h, JSON.stringify(data, null, 2), 'utf-8');
     console.log(`  + 5h бэкап: ${ts}`);
+    const uploaded5h = await uploadBackupToYandex(projectRoot, path5h, `5h/${ts}`);
+    if (uploaded5h) {
+      console.log(`  → Яндекс.Диск backups_warehouse/5h/${ts}`);
+    }
     const removed5h = trimBackups(backupDir5h, KEEP_5H, '', '.json');
     if (removed5h > 0) {
       console.log(`  Удалено старых 5h: ${removed5h}`);
