@@ -153,18 +153,18 @@ export async function POST(request: NextRequest) {
       select: { id: true, number: true, deleted: true, status: true },
     });
 
-    // Активный заказ (в сборке или на подтверждении) не перезаписываем — не принимаем из 1С
+    // Активный заказ (в сборке или на подтверждении) не перезаписываем — не принимаем из 1С, ответ как для завершённого
     if (existing && !existing.deleted && (existing.status === 'new' || existing.status === 'pending_confirmation')) {
       console.log(
-        `[API CREATE] Заказ ${number} активный (status: ${existing.status}), не принимаем из 1С, возвращаем 409`
+        `[API CREATE] Заказ ${number} активный (status: ${existing.status}), не принимаем из 1С, возвращаем success: false как для завершённого`
       );
       return NextResponse.json(
         {
           success: false,
           message: `Заказ ${number} в сборке или на подтверждении, повторная выгрузка из 1С не принимается`,
-          duplicate: true,
+          skipped: true,
         },
-        { status: 409 }
+        { status: 200 }
       );
     }
 
