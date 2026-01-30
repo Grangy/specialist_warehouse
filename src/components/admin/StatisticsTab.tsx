@@ -221,7 +221,7 @@ export default function StatisticsTab() {
               <h4 className="font-semibold text-slate-100 mb-2">3. Эффективность (efficiency)</h4>
               <p className="text-sm">efficiency = expected_time / pick_time</p>
               <p className="text-xs text-slate-400 mt-1">
-                Ограничивается диапазоном от 0.5 до 1.5 (clamp)
+                Ограничивается диапазоном от 0.9 до 1.1 (clamp) — скорость ±10%
               </p>
             </div>
             <div>

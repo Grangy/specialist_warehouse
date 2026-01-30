@@ -217,7 +217,7 @@ model TaskStatistics {
   // Очки и эффективность
   expectedTimeSec   Float? @map("expected_time_sec") // A*positions + B*units + C*switches
   efficiency        Float? // expected_time_sec / pick_time_sec
-  efficiencyClamped Float? @map("efficiency_clamped") // clamp(eff, 0.5, 1.5)
+  efficiencyClamped Float? @map("efficiency_clamped") // clamp(eff, 0.9, 1.1) — скорость ±10%
   basePoints        Float? @map("base_points") // positions + K*units + M*switches
   orderPoints       Float? @map("order_points") // base_points * eff_clamped
 

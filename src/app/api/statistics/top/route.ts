@@ -1,6 +1,7 @@
 /**
  * Публичный API: общий топ дня без авторизации
- * GET /api/statistics/top — возвращает объединённый рейтинг (сборщики + проверяльщики + диктовщики) за сегодня
+ * GET /api/statistics/top — возвращает объединённый рейтинг (сборщики + проверяльщики + диктовщики) за СЕГОДНЯ.
+ * Ранг и уровень (животные) считаются только по баллам за текущий день, не за месяц/неделю.
  */
 
 import { NextResponse } from 'next/server';
@@ -17,6 +18,7 @@ interface RankingEntry {
   units: number;
   orders: number;
   points: number;
+  dictatorPoints: number;
   rank: number | null;
   level: {
     name: string;
@@ -76,6 +78,22 @@ export async function GET() {
       },
     });
 
+    // Баллы сборщиков как диктовщиков за сегодня (по confirmedAt, dictatorId = user.id)
+    const dictatorTaskStats = await prisma.taskStatistics.findMany({
+      where: {
+        roleType: 'collector',
+        task: {
+          dictatorId: { not: null },
+          confirmedAt: { gte: startDate, lte: endDate },
+        },
+      },
+      include: {
+        user: { select: { id: true, name: true, role: true } },
+        task: { select: { dictatorId: true } },
+      },
+    });
+    const dictatorStatsFiltered = dictatorTaskStats.filter((s) => s.userId === s.task.dictatorId);
+
     type UserAgg = {
       userId: string;
       userName: string;
@@ -84,6 +102,7 @@ export async function GET() {
       units: number;
       orders: Set<string>;
       points: number;
+      dictatorPoints: number;
       totalPickTimeSec: number;
       efficiencies: number[];
     };
@@ -103,6 +122,7 @@ export async function GET() {
           units: 0,
           orders: new Set(),
           points: 0,
+          dictatorPoints: 0,
           totalPickTimeSec: 0,
           efficiencies: [],
         });
@@ -128,6 +148,7 @@ export async function GET() {
           units: 0,
           orders: new Set(),
           points: 0,
+          dictatorPoints: 0,
           totalPickTimeSec: 0,
           efficiencies: [],
         });
@@ -153,6 +174,7 @@ export async function GET() {
           units: 0,
           orders: new Set(),
           points: 0,
+          dictatorPoints: 0,
           totalPickTimeSec: 0,
           efficiencies: [],
         });
@@ -162,6 +184,33 @@ export async function GET() {
       agg.units += stat.units;
       agg.orders.add(stat.shipmentId);
       agg.points += stat.orderPoints || 0;
+      agg.totalPickTimeSec += stat.pickTimeSec || 0;
+      if (stat.efficiencyClamped != null) agg.efficiencies.push(stat.efficiencyClamped);
+    }
+
+    for (const stat of dictatorStatsFiltered) {
+      const user = stat.user;
+      const key = user.id;
+      if (!allMap.has(key)) {
+        allMap.set(key, {
+          userId: user.id,
+          userName: user.name,
+          role: user.role,
+          positions: 0,
+          units: 0,
+          orders: new Set(),
+          points: 0,
+          dictatorPoints: 0,
+          totalPickTimeSec: 0,
+          efficiencies: [],
+        });
+      }
+      const agg = allMap.get(key)!;
+      agg.positions += stat.positions;
+      agg.units += stat.units;
+      agg.orders.add(stat.shipmentId);
+      agg.points += stat.orderPoints || 0;
+      agg.dictatorPoints += stat.orderPoints || 0;
       agg.totalPickTimeSec += stat.pickTimeSec || 0;
       if (stat.efficiencyClamped != null) agg.efficiencies.push(stat.efficiencyClamped);
     }
@@ -190,6 +239,7 @@ export async function GET() {
         units: agg.units,
         orders: agg.orders.size,
         points: agg.points,
+        dictatorPoints: agg.dictatorPoints,
         rank: null,
         level: null,
         pph,
@@ -200,6 +250,7 @@ export async function GET() {
 
     allRankings.sort((a, b) => b.points - a.points);
 
+    // Ранг и уровень (животные) — только по баллам за СЕГОДНЯ (allPoints за текущий день)
     const allPoints = allRankings.map((s) => s.points).filter((p) => p > 0);
     if (allPoints.length > 0) {
       const sorted = [...allPoints].sort((a, b) => a - b);

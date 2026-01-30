@@ -123,6 +123,7 @@ export async function GET(request: NextRequest) {
       const filtered = collectorStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null);
       const dictatorFiltered = collectorDictatorStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null);
       const allCollectorToday = [...filtered, ...dictatorFiltered];
+      const dictatorPointsToday = dictatorFiltered.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
       if (allCollectorToday.length > 0) {
         const totalPositions = allCollectorToday.reduce((sum, s) => sum + s.positions, 0);
         const totalUnits = allCollectorToday.reduce((sum, s) => sum + s.units, 0);
@@ -135,6 +136,7 @@ export async function GET(request: NextRequest) {
 
         dailyCollector = {
           points: totalPoints,
+          dictatorPoints: dictatorPointsToday,
           positions: totalPositions,
           units: totalUnits,
           orders: totalOrders,
@@ -186,6 +188,7 @@ export async function GET(request: NextRequest) {
       const filtered = collectorStatsMonth.filter((s) => s.positions > 0 && s.orderPoints !== null);
       const dictatorFilteredMonth = collectorDictatorStatsMonth.filter((s) => s.positions > 0 && s.orderPoints !== null);
       const allCollectorMonth = [...filtered, ...dictatorFilteredMonth];
+      const dictatorPointsMonth = dictatorFilteredMonth.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
       if (allCollectorMonth.length > 0) {
         const totalPositions = allCollectorMonth.reduce((sum, s) => sum + s.positions, 0);
         const totalUnits = allCollectorMonth.reduce((sum, s) => sum + s.units, 0);
@@ -198,6 +201,7 @@ export async function GET(request: NextRequest) {
 
         monthlyCollector = {
           points: totalPoints,
+          dictatorPoints: dictatorPointsMonth,
           positions: totalPositions,
           units: totalUnits,
           orders: totalOrders,
@@ -550,6 +554,7 @@ export async function GET(request: NextRequest) {
       daily: dailyData
         ? {
             points: dailyData.points,
+            dictatorPoints: (dailyData as { dictatorPoints?: number }).dictatorPoints ?? 0,
             rank: dailyRank,
             levelName: dailyLevel?.name || null,
             levelEmoji: dailyLevel?.emoji || null,
@@ -570,6 +575,7 @@ export async function GET(request: NextRequest) {
       monthly: monthlyData
         ? {
             points: monthlyData.points,
+            dictatorPoints: (monthlyData as { dictatorPoints?: number }).dictatorPoints ?? 0,
             rank: monthlyRank,
             levelName: monthlyLevel?.name || null,
             levelEmoji: monthlyLevel?.emoji || null,

@@ -395,6 +395,16 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                                 </div>
                                 <span className="text-slate-100 font-bold text-sm">{Math.round(rankingStats.daily.points)}</span>
                               </div>
+                              {(rankingStats.daily as { dictatorPoints?: number }).dictatorPoints != null && (rankingStats.daily as { dictatorPoints?: number }).dictatorPoints > 0 && (
+                                <div className="flex items-center justify-between py-1 text-amber-400/90">
+                                  <div className="flex items-center gap-2 text-slate-400">
+                                    <span className="text-[10px]">Диктовщик:</span>
+                                  </div>
+                                  <span className="text-amber-400 font-semibold text-sm">
+                                    {Math.round((rankingStats.daily as { dictatorPoints: number }).dictatorPoints)} баллов
+                                  </span>
+                                </div>
+                              )}
                               {rankingStats.daily.levelEmoji && rankingStats.daily.levelName && (
                                 <div className="flex items-center justify-between py-1 bg-yellow-400/10 rounded px-2 py-1.5">
                                   <div className="flex items-center gap-2 text-slate-300">
@@ -482,6 +492,16 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                                 </div>
                                 <span className="text-slate-100 font-bold text-sm">{Math.round(rankingStats.monthly.points)}</span>
                               </div>
+                              {(rankingStats.monthly as { dictatorPoints?: number }).dictatorPoints != null && (rankingStats.monthly as { dictatorPoints?: number }).dictatorPoints > 0 && (
+                                <div className="flex items-center justify-between py-1 text-amber-400/90">
+                                  <div className="flex items-center gap-2 text-slate-400">
+                                    <span className="text-[10px]">Диктовщик:</span>
+                                  </div>
+                                  <span className="text-amber-400 font-semibold text-sm">
+                                    {Math.round((rankingStats.monthly as { dictatorPoints: number }).dictatorPoints)} баллов
+                                  </span>
+                                </div>
+                              )}
                               {rankingStats.monthly.levelEmoji && rankingStats.monthly.levelName && (
                                 <div className="flex items-center justify-between py-1 bg-yellow-400/10 rounded px-2 py-1.5">
                                   <div className="flex items-center gap-2 text-slate-300">

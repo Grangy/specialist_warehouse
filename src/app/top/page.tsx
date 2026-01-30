@@ -12,6 +12,7 @@ interface RankingEntry {
   units: number;
   orders: number;
   points: number;
+  dictatorPoints?: number;
   rank: number | null;
   level: {
     name: string;
@@ -28,6 +29,7 @@ export default function TopPage() {
   const [date, setDate] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   const load = async () => {
     setIsLoading(true);
@@ -41,6 +43,7 @@ export default function TopPage() {
       const data = await res.json();
       setList(data.all || []);
       setDate(data.date || new Date().toISOString().split('T')[0]);
+      setMounted(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить рейтинг');
       setList([]);
@@ -62,26 +65,46 @@ export default function TopPage() {
     return `${day}.${m}.${y}`;
   };
 
+  const getCardAnimation = (index: number) => {
+    if (index === 0) return 'animate-top-podium-1';
+    if (index === 1) return 'animate-top-podium-2';
+    if (index === 2) return 'animate-top-podium-3';
+    return 'animate-top-card-stagger opacity-0';
+  };
+
+  const getBadgeAnimation = (index: number) => {
+    if (index <= 2) return 'animate-top-badge-pop opacity-0';
+    return 'animate-top-card-stagger opacity-0';
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 opacity-0 animate-top-title-in" style={{ animationFillMode: 'forwards' }}>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Trophy className="w-8 h-8 text-yellow-400" />
+            <Trophy className="w-8 h-8 text-yellow-400 drop-shadow-[0_0_8px_rgba(234,179,8,0.4)]" />
             Общий топ дня
           </h1>
           <Link
             href="/"
-            className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
+            className="text-sm text-slate-400 hover:text-slate-200 transition-all duration-300 hover:underline underline-offset-2"
           >
             На главную
           </Link>
         </div>
 
         {date && (
-          <div className="flex items-center gap-2 text-slate-400 text-sm mb-6">
-            <Calendar className="w-4 h-4" />
-            <span>{formatDate(date)}</span>
+          <div
+            className="flex flex-col gap-1 mb-6 opacity-0 animate-top-card-stagger"
+            style={{ animationDelay: '0.2s', animationFillMode: 'forwards' }}
+          >
+            <div className="flex items-center gap-2 text-slate-400 text-sm">
+              <Calendar className="w-4 h-4" />
+              <span>{formatDate(date)}</span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Места по баллам (учитывается скорость и объём)
+            </p>
           </div>
         )}
 
@@ -93,12 +116,12 @@ export default function TopPage() {
         )}
 
         {error && (
-          <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-4 text-red-200 mb-6">
+          <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-4 text-red-200 mb-6 opacity-0 animate-top-card-stagger" style={{ animationFillMode: 'forwards' }}>
             <p className="font-medium">Ошибка</p>
             <p className="text-sm mt-1">{error}</p>
             <button
               onClick={load}
-              className="mt-3 px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-sm font-medium flex items-center gap-2"
+              className="mt-3 px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
               <RefreshCw className="w-4 h-4" />
               Повторить
@@ -107,7 +130,7 @@ export default function TopPage() {
         )}
 
         {!isLoading && !error && list.length === 0 && (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center text-slate-400">
+          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center text-slate-400 opacity-0 animate-top-card-stagger" style={{ animationFillMode: 'forwards' }}>
             <Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>Пока нет данных за сегодня.</p>
           </div>
@@ -131,7 +154,7 @@ export default function TopPage() {
               {list.slice(0, 20).map((user, index) => (
                 <div
                   key={user.userId}
-                  className={`rounded-xl border p-4 transition-all ${
+                  className={`rounded-xl border p-4 transition-all opacity-0 ${getCardAnimation(index)} ${
                     index === 0
                       ? 'border-yellow-500/50 bg-gradient-to-r from-yellow-900/30 to-slate-900/50'
                       : index === 1
@@ -140,11 +163,14 @@ export default function TopPage() {
                           ? 'border-orange-500/50 bg-gradient-to-r from-orange-900/20 to-slate-900/50'
                           : 'border-slate-700/50 bg-slate-800/50'
                   }`}
+                  style={index >= 3 ? { animationDelay: `${0.45 + (index - 3) * 0.06}s`, animationFillMode: 'forwards' } : undefined}
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div
                         className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                          index <= 2 ? getBadgeAnimation(index) : ''
+                        } ${
                           index === 0
                             ? 'bg-yellow-500 text-yellow-900'
                             : index === 1
@@ -153,6 +179,7 @@ export default function TopPage() {
                                 ? 'bg-orange-500 text-orange-900'
                                 : 'bg-slate-700 text-slate-300'
                         }`}
+                        style={index <= 2 ? { animationDelay: index === 0 ? '0.25s' : index === 1 ? '0.4s' : '0.55s', animationFillMode: 'forwards' } : undefined}
                       >
                         {index + 1}
                       </div>
@@ -191,6 +218,11 @@ export default function TopPage() {
                         {formatPoints(user.points)}
                       </div>
                       <div className="text-xs text-slate-400">баллов</div>
+                      {(user.dictatorPoints ?? 0) > 0 && (
+                        <div className="text-xs text-amber-400/90 mt-0.5" title="Баллы за диктовку">
+                          из них {formatPoints(user.dictatorPoints ?? 0)} — диктовщик
+                        </div>
+                      )}
                       {user.pph != null && (
                         <div className="text-xs text-slate-500 mt-0.5">
                           {formatPPH(user.pph)} PPH

@@ -27,6 +27,7 @@
     "db:migrate:status": "prisma migrate status",
     "db:migrate:safe": "./scripts/apply-migration-safely.sh",
     "audit:dictator": "tsx scripts/audit-dictator-points.ts",
+    "audit:top-ranking": "tsx scripts/audit-top-ranking.ts",
     "audit:art": "tsx scripts/audit-art-in-db.ts",
     "audit:db": "tsx scripts/audit-db-what-happened.ts",
     "audit:export-1c": "tsx scripts/audit-export-1c.ts",

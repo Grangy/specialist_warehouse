@@ -126,6 +126,10 @@ export function calculateExpectedTime(
   return norm.normA * positions + norm.normB * units + norm.normC * switches;
 }
 
+/** Влияние скорости на баллы: множитель в диапазоне ±10% (0.9..1.1) */
+const EFFICIENCY_CLAMP_MIN = 0.9;
+const EFFICIENCY_CLAMP_MAX = 1.1;
+
 /**
  * Расчет эффективности
  */
@@ -141,8 +145,8 @@ export function calculateEfficiency(
   }
 
   const efficiency = expectedTimeSec / pickTimeSec;
-  // Ограничение: clamp(eff, 0.5, 1.5)
-  const efficiencyClamped = Math.max(0.5, Math.min(1.5, efficiency));
+  // Ограничение: скорость влияет на баллы максимум ±10%
+  const efficiencyClamped = Math.max(EFFICIENCY_CLAMP_MIN, Math.min(EFFICIENCY_CLAMP_MAX, efficiency));
 
   return { efficiency, efficiencyClamped };
 }
