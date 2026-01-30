@@ -208,7 +208,7 @@ export function canAccessStatus(role: UserRole, status: string): boolean {
     return status === 'new';
   }
   if (role === 'checker') {
-    return status === 'new' || status === 'pending_confirmation';
+    return status === 'new' || status === 'pending_confirmation' || status === 'processed';
   }
   return false;
 }
