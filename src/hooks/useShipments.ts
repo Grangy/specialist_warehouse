@@ -206,6 +206,13 @@ export function useShipments() {
         return;
       }
 
+      if (eventType === 'shipment:refresh' && data?.shipmentId != null && Array.isArray(data?.tasks)) {
+        setShipments((prev) =>
+          prev.filter((item) => item.shipment_id !== data.shipmentId).concat(data.tasks)
+        );
+        return;
+      }
+
       if (eventType === 'shipment:created') {
         // Новый заказ — один раз подтягиваем список через debounce, без перерисовки всех блоков
         if (createdRefetchTimeoutRef.current) {
@@ -483,6 +490,16 @@ export function useShipments() {
     }
   }, []);
 
+  /** Запросить обновление заказа по SSE (после закрытия попапа) — у всех пользователей подтянутся актуальные данные. */
+  const refreshShipment = useCallback(async (shipmentId: string | undefined) => {
+    if (!shipmentId) return;
+    try {
+      await fetch(`/api/shipments/${shipmentId}/refresh`, { method: 'POST' });
+    } catch (e) {
+      console.error('[useShipments] Ошибка refresh заказа:', e);
+    }
+  }, []);
+
   return {
     shipments,
     filteredShipments,
@@ -500,6 +517,7 @@ export function useShipments() {
     pendingCount,
     waitingCount,
     refreshShipments: loadShipments,
+    refreshShipment,
     userRole,
     canAccessTab,
   };

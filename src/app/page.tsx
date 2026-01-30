@@ -56,6 +56,7 @@ export default function Home() {
     pendingCount,
     waitingCount,
     refreshShipments,
+    refreshShipment,
     userRole,
   } = useShipments();
 
@@ -364,7 +365,11 @@ export default function Home() {
         editState={collectHook.editState}
         removingItems={collectHook.removingItems}
         isOpen={collectHook.isOpen}
-        onClose={collectHook.closeModal}
+        onClose={async () => {
+          const sid = collectHook.currentShipment?.shipment_id ?? collectHook.currentShipment?.id;
+          collectHook.closeModal();
+          await refreshShipment(sid);
+        }}
         onUpdateCollected={collectHook.updateCollected}
         onUpdateCollectedQty={collectHook.updateCollectedQty}
         onUpdateLocation={collectHook.updateLocation}
@@ -381,7 +386,11 @@ export default function Home() {
         editState={confirmHook.editState}
         removingItems={confirmHook.removingItems}
         isOpen={confirmHook.isOpen}
-        onClose={confirmHook.closeModal}
+        onClose={async () => {
+          const sid = confirmHook.currentShipment?.shipment_id ?? confirmHook.currentShipment?.id;
+          confirmHook.closeModal();
+          await refreshShipment(sid);
+        }}
         onUpdateCollectedQty={confirmHook.updateCollectedQty}
         onUpdateLocation={confirmHook.updateLocation}
         onStartEditQty={confirmHook.startEditQty}
@@ -412,7 +421,11 @@ export default function Home() {
       />
       <DetailsModal
         isOpen={detailsModal.isOpen}
-        onClose={detailsModal.close}
+        onClose={() => {
+          const sid = selectedShipment?.shipment_id ?? selectedShipment?.id;
+          detailsModal.close();
+          refreshShipment(sid);
+        }}
         shipment={selectedShipment}
       />
       <NameModal

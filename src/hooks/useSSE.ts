@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 
-type EventType = 'shipment:created' | 'shipment:updated' | 'shipment:status_changed' | 'shipment:locked' | 'shipment:unlocked' | 'heartbeat' | 'connected';
+type EventType = 'shipment:created' | 'shipment:updated' | 'shipment:status_changed' | 'shipment:locked' | 'shipment:unlocked' | 'shipment:refresh' | 'heartbeat' | 'connected';
 
 interface SSEOptions {
   onEvent?: (eventType: EventType, data: any) => void;
@@ -107,6 +107,11 @@ export function useSSE(options: SSEOptions = {}) {
       eventSource.addEventListener('shipment:unlocked', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
         onEvent?.('shipment:unlocked', data);
+      });
+
+      eventSource.addEventListener('shipment:refresh', (e: MessageEvent) => {
+        const data = JSON.parse(e.data);
+        onEvent?.('shipment:refresh', data);
       });
 
       eventSource.addEventListener('heartbeat', (e: MessageEvent) => {
