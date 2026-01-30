@@ -57,6 +57,8 @@ export default function Home() {
     waitingCount,
     refreshShipments,
     refreshShipment,
+    updateListAfterShipmentProcessed,
+    updateTaskStatusInList,
     userRole,
   } = useShipments();
 
@@ -111,7 +113,13 @@ export default function Home() {
 
   // Обновления списка — по SSE (lock/unlock, статус, исчезновение блока), без полной перезагрузки при закрытии модалок
   const collectHook = useCollect({ onClose: () => {} });
-  const confirmHook = useConfirm({ onClose: () => {} });
+  const confirmHook = useConfirm({
+    onClose: () => {},
+    onTaskConfirmed: (taskId) => {
+      updateTaskStatusInList(taskId, 'processed');
+      setTimeout(() => refreshShipments(), 500);
+    },
+  });
   const detailsModal = useModal();
   const nameModal = useModal();
   const orderCompletedModal = useModal();
@@ -184,14 +192,16 @@ export default function Home() {
 
   const handleConfirmProcessing = async () => {
     try {
-      console.log('handleConfirmProcessing вызван');
+      const taskId = collectHook.currentShipment?.id;
       const response = await collectHook.confirmProcessing();
-      console.log('Подтверждение обработки завершено, обновляем список заказов');
       
-      // Получаем данные о заказе для модального окна
+      if (taskId) {
+        updateTaskStatusInList(taskId, 'pending_confirmation');
+        setTimeout(() => refreshShipments(), 500);
+      }
+      
       const shipment = collectHook.currentShipment;
       if (shipment && response) {
-        // Получаем информацию о количестве заданий из ответа API
         const tasksProgress = (response as any)?.tasks_progress;
         const totalTasks = tasksProgress?.total || (shipment.tasks?.length || 1);
         const completedTasks = tasksProgress?.confirmed || 0;
@@ -202,10 +212,8 @@ export default function Home() {
           totalTasks: totalTasks,
         });
       }
-      // Список обновится по SSE (shipment:status_changed / shipment:updated), без перезагрузки всей страницы
     } catch (error) {
       console.error('Ошибка при подтверждении обработки:', error);
-      // Не пробрасываем ошибку дальше, чтобы модальное окно не закрывалось при ошибке
     }
   };
 
@@ -474,6 +482,11 @@ export default function Home() {
             
             if (result && result.completed === true && 'orderData' in result && result.orderData && typeof result.orderData === 'object' && 'number' in result.orderData) {
               const orderData = result.orderData as { number: string; tasksCount: number; finalData: any };
+              const shipmentId = (confirmHook.currentShipment || pendingShipmentForOffice)?.shipment_id ?? (confirmHook.currentShipment || pendingShipmentForOffice)?.id;
+              if (shipmentId) {
+                updateListAfterShipmentProcessed(shipmentId);
+                setTimeout(() => refreshShipments(), 500);
+              }
               console.log('✅ Заказ отправлен в офис:', orderData.number, `(${orderData.tasksCount} заданий)`);
               
               setCompletedOrderData(orderData);
@@ -486,7 +499,7 @@ export default function Home() {
                 orderCompletedModal.open();
               }, 200);
             } else {
-              // Список обновится по SSE (shipment:status_changed), без перезагрузки
+              // Частичное подтверждение — список обновится по SSE или при закрытии модалки
             }
           } catch (error: any) {
             console.error('[Page] Ошибка при отправке заказа в офис:', error);

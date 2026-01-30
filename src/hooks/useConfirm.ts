@@ -8,14 +8,12 @@ import { useToast } from './useToast';
 interface UseConfirmOptions {
   onClose?: () => void | Promise<void>;
   onDictatorSelect?: (dictatorId: string | null) => void;
-}
-
-interface UseConfirmOptions {
-  onClose?: () => void | Promise<void>;
+  /** Вызывается, когда задание полностью подтверждено (все позиции) — чтобы карточка сразу пропала из списка подтверждений */
+  onTaskConfirmed?: (taskId: string) => void;
 }
 
 export function useConfirm(options?: UseConfirmOptions) {
-  const { onClose, onDictatorSelect } = options || {};
+  const { onClose, onDictatorSelect, onTaskConfirmed } = options || {};
   const [currentShipment, setCurrentShipment] = useState<Shipment | null>(null);
   const [checklistState, setChecklistState] = useState<Record<number, ConfirmChecklistState>>({});
   const [editState, setEditState] = useState<Record<number, boolean>>({});
@@ -434,6 +432,8 @@ export function useConfirm(options?: UseConfirmOptions) {
         const confirmed = (response as any)?.tasks_progress?.confirmed || 0;
         const total = (response as any)?.tasks_progress?.total || 0;
         showSuccess(`Задание подтверждено (${confirmed}/${total} заданий)`);
+        const taskId = currentShipment.id;
+        onTaskConfirmed?.(taskId);
         await closeModal();
         return { completed: false };
       }
@@ -442,7 +442,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       showError('Не удалось подтвердить заказ: ' + (error?.message || 'Неизвестная ошибка'));
       throw error;
     }
-  }, [currentShipment, checklistState, closeModal, showSuccess, showError, dictatorId]);
+  }, [currentShipment, checklistState, closeModal, showSuccess, showError, dictatorId, onTaskConfirmed]);
 
   const getProgress = useCallback(() => {
     if (!currentShipment || !currentShipment.lines) {
@@ -537,6 +537,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         const confirmed = (response as any)?.tasks_progress?.confirmed || 0;
         const total = (response as any)?.tasks_progress?.total || 0;
         showSuccess(`Все позиции подтверждены (${confirmed}/${total} заданий)`);
+        onTaskConfirmed?.(shipment.id);
         return { completed: false, response };
       }
     } catch (error: any) {
@@ -544,7 +545,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       showError(error.message || 'Не удалось подтвердить все позиции');
       throw error;
     }
-  }, [showError, showSuccess]);
+  }, [showError, showSuccess, onTaskConfirmed]);
 
   return {
     currentShipment,

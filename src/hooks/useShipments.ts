@@ -500,6 +500,18 @@ export function useShipments() {
     }
   }, []);
 
+  /** Обновить список: заказ ушёл в processed — убираем все его задания из списка, чтобы блок корректно пропал. */
+  const updateListAfterShipmentProcessed = useCallback((shipmentId: string) => {
+    setShipments((prev) => prev.filter((item) => item.shipment_id !== shipmentId));
+  }, []);
+
+  /** Обновить список: задание сменило статус (например на pending_confirmation) — чтобы оно пропало из текущей вкладки. */
+  const updateTaskStatusInList = useCallback((taskId: string, status: Shipment['status']) => {
+    setShipments((prev) =>
+      prev.map((item) => (item.id === taskId ? { ...item, status } : item))
+    );
+  }, []);
+
   return {
     shipments,
     filteredShipments,
@@ -518,6 +530,8 @@ export function useShipments() {
     waitingCount,
     refreshShipments: loadShipments,
     refreshShipment,
+    updateListAfterShipmentProcessed,
+    updateTaskStatusInList,
     userRole,
     canAccessTab,
   };
