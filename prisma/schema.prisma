@@ -59,6 +59,7 @@ model Shipment {
   confirmedAt    DateTime?      @map("confirmed_at") // Время подтверждения заказа (когда все задания подтверждены)
   exportedTo1C   Boolean        @default(false) @map("exported_to_1c") // Флаг выгрузки заказа в 1С
   exportedTo1CAt DateTime?      @map("exported_to_1c_at") // Время выгрузки заказа в 1С
+  lastSentTo1CAt DateTime?      @map("last_sent_to_1c_at") // Время последней отдачи заказа в ответе 1С (ready-for-export)
   places         Int? // Количество мест (сохраняется при отправке в офис)
   pinnedAt       DateTime?      @map("pinned_at") // Заказ поднят админом — выше приоритета регионов для всех в режиме сборки
   deleted        Boolean        @default(false) // Флаг удаления заказа (мягкое удаление)

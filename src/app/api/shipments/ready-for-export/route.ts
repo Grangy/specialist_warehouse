@@ -98,6 +98,7 @@ export async function GET(request: NextRequest) {
 
     // Проверяем, что все задания действительно подтверждены
     const readyOrders = [];
+    const sentShipmentIds: string[] = [];
     for (const shipment of readyShipments) {
       const allTasks = shipment.tasks;
       const allTasksConfirmed = areAllTasksConfirmed(
@@ -105,6 +106,7 @@ export async function GET(request: NextRequest) {
       );
 
       if (allTasksConfirmed) {
+        sentShipmentIds.push(shipment.id);
         // ВАЖНО: Формируем финальные количества на основе confirmedQty из заданий
         // Группируем все taskLines по shipmentLineId и суммируем confirmedQty
         const confirmedQtyByLine: Record<string, number> = {};
@@ -174,6 +176,16 @@ export async function GET(request: NextRequest) {
 
         readyOrders.push(finalOrderData);
       }
+    }
+
+    // Помечаем отданные 1С заказы: они были отправлены в ответе (для счётчика «предупреждений»)
+    if (sentShipmentIds.length > 0) {
+      const now = new Date();
+      await prisma.shipment.updateMany({
+        where: { id: { in: sentShipmentIds } },
+        data: { lastSentTo1CAt: now },
+      });
+      console.log(`[Ready-For-Export] [${requestId}] Обновлено lastSentTo1CAt для ${sentShipmentIds.length} заказов`);
     }
 
     console.log(`[Ready-For-Export] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length} (удаленные заказы исключены)`);

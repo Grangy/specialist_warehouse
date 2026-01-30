@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin, Trophy, AlertTriangle } from 'lucide-react';
+import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin, Trophy, AlertTriangle, AlertCircle } from 'lucide-react';
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
 import ActiveShipmentsTab from '@/components/admin/ActiveShipmentsTab';
@@ -11,12 +11,14 @@ import RegionPrioritiesTab from '@/components/admin/RegionPrioritiesTab';
 import SettingsTab from '@/components/admin/SettingsTab';
 import StatisticsTab from '@/components/admin/StatisticsTab';
 import MinusTab from '@/components/admin/MinusTab';
+import WarningsTab from '@/components/admin/WarningsTab';
 import { useToast } from '@/hooks/useToast';
 
-type Tab = 'users' | 'active' | 'shipments' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus';
+type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus';
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('users');
+  const [warningsCount, setWarningsCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingTestOrder, setIsCreatingTestOrder] = useState(false);
   const router = useRouter();
@@ -26,6 +28,22 @@ export default function AdminPage() {
     checkAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!isLoading) fetchWarningsCount();
+  }, [isLoading]);
+
+  const fetchWarningsCount = async () => {
+    try {
+      const res = await fetch('/api/admin/1c-warnings');
+      if (res.ok) {
+        const data = await res.json();
+        setWarningsCount(data.count ?? 0);
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const checkAuth = async () => {
     try {
@@ -105,6 +123,22 @@ export default function AdminPage() {
           >
             <Package className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'shipments' ? 'scale-110' : 'group-hover:scale-110'}`} />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Завершенные заказы</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('warnings')}
+            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+              activeTab === 'warnings'
+                ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-lg shadow-amber-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <AlertCircle className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 flex-shrink-0 ${activeTab === 'warnings' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <span className="font-medium text-sm md:text-base whitespace-nowrap">Предупреждения 1С</span>
+            {warningsCount > 0 && (
+              <span className="ml-auto min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center rounded-full bg-amber-500/90 text-white text-xs font-bold">
+                {warningsCount > 99 ? '99+' : warningsCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
@@ -235,6 +269,7 @@ export default function AdminPage() {
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'active' && <ActiveShipmentsTab />}
           {activeTab === 'shipments' && <CompletedShipmentsTab />}
+          {activeTab === 'warnings' && <WarningsTab onWarningsChange={setWarningsCount} />}
           {activeTab === 'analytics' && <AnalyticsTab />}
           {activeTab === 'statistics' && <StatisticsTab />}
           {activeTab === 'regions' && <RegionPrioritiesTab />}
