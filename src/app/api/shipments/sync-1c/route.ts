@@ -38,43 +38,16 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
-  const timestamp = new Date().toISOString();
   const clientIp = request.headers.get('x-forwarded-for') || 
                    request.headers.get('x-real-ip') || 
                    'unknown';
 
   try {
-    // Логируем входящий запрос
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`[Sync-1C] [${requestId}] [${timestamp}] Входящий POST запрос от 1С`);
-    console.log(`[Sync-1C] [${requestId}] IP адрес: ${clientIp}`);
-    console.log(`[Sync-1C] [${requestId}] URL: ${request.url}`);
-    console.log(`[Sync-1C] [${requestId}] Метод: POST`);
-    
-    // Логируем заголовки (без паролей)
-    const headers: Record<string, string> = {};
-    request.headers.forEach((value, key) => {
-      if (key.toLowerCase() === 'x-password' || key.toLowerCase() === 'authorization') {
-        headers[key] = '***HIDDEN***';
-      } else {
-        headers[key] = value;
-      }
-    });
-    console.log(`[Sync-1C] [${requestId}] Заголовки:`, JSON.stringify(headers, null, 2));
-
     const body = await request.json();
-    
-    // Логируем тело запроса (без паролей)
-    const sanitizedBody = { ...body };
-    if (sanitizedBody.password) {
-      sanitizedBody.password = '***HIDDEN***';
-    }
-    if (sanitizedBody.login) {
-      console.log(`[Sync-1C] [${requestId}] Логин: ${sanitizedBody.login}`);
-    }
-    console.log(`[Sync-1C] [${requestId}] Тело запроса:`, JSON.stringify(sanitizedBody, null, 2));
-    console.log(`[Sync-1C] [${requestId}] Количество orders в запросе: ${Array.isArray(body.orders) ? body.orders.length : 'не массив'}`);
-    
+    const ordersCount = Array.isArray(body.orders) ? body.orders.length : 0;
+    // Минимальный лог: один запрос — одна строка
+    console.log(`[Sync-1C] [${requestId}] POST ${ordersCount} orders from ${clientIp}`);
+
     // Авторизация через заголовки, тело запроса или cookies
     const authResult = await authenticateRequest(request, body, ['admin']);
     if (authResult instanceof NextResponse) {
@@ -102,10 +75,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Если success = false, просто пропускаем (заказ не был обработан в 1С)
-      if (order.success === false) {
-        console.log(`[Sync-1C] [${requestId}] Заказ ${order.id || order.number || 'неизвестный'} не был успешно обработан в 1С, пропускаем`);
-        return;
-      }
+      if (order.success === false) return;
 
       // Если success = true, обновляем статус
       // ВАЖНО: Если id пустой, но есть number, используем number для поиска
@@ -125,14 +95,9 @@ export async function POST(request: NextRequest) {
           where: { id: order.id },
           select: { id: true, deleted: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
         });
-        if (shipment) {
-          console.log(`[Sync-1C] [${requestId}] Заказ найден по ID: ${order.id} (номер: ${shipment.number})`);
-        }
       }
 
-      // Если не найден по ID, пытаемся найти по номеру заказа (если передан)
       if (!shipment && hasNumber) {
-        console.log(`[Sync-1C] [${requestId}] Заказ с ID ${order.id || 'пустой'} не найден, пытаемся найти по номеру: ${order.number}`);
         shipment = await prisma.shipment.findFirst({
           where: { 
             number: order.number,
@@ -140,9 +105,6 @@ export async function POST(request: NextRequest) {
           },
           select: { id: true, deleted: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
         });
-        if (shipment) {
-          console.log(`[Sync-1C] [${requestId}] Заказ найден по номеру ${order.number}, ID в БД: ${shipment.id}, ID от 1С: ${order.id || 'не указан'}`);
-        }
       }
 
       if (!shipment) {
@@ -155,11 +117,7 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      // Проверяем, не помечен ли уже заказ как выгруженный
-      if (shipment.exportedTo1C) {
-        console.log(`[Sync-1C] [${requestId}] Заказ ${shipment.number} (${shipment.id}) уже помечен как выгруженный в 1С (${shipment.exportedTo1CAt?.toISOString() || 'дата не указана'}), пропускаем повторное обновление`);
-        return;
-      }
+      if (shipment.exportedTo1C) return;
 
       // Заказ успешно обработан в 1С - помечаем как выгруженный
       await prisma.shipment.update({
@@ -169,7 +127,6 @@ export async function POST(request: NextRequest) {
           exportedTo1CAt: new Date(),
         },
       });
-      console.log(`[Sync-1C] [${requestId}] ✅ Заказ ${shipment.number} (${shipment.id}) помечен как выгруженный в 1С`);
     });
 
     await Promise.all(updatePromises);
@@ -186,9 +143,6 @@ export async function POST(request: NextRequest) {
     );
 
     if (successOrdersWithEmptyId.length > 0) {
-      console.log(`[Sync-1C] [${requestId}] ⚠️ Найдено ${successOrdersWithEmptyId.length} заказов с success: true, но пустым id и number`);
-      console.log(`[Sync-1C] [${requestId}] Попытка сопоставить с недавно отправленными заказами...`);
-      
       // Получаем недавно отправленные заказы (которые были в предыдущем ответе)
       // Берем заказы со статусом processed, не выгруженные, отсортированные по дате подтверждения (старые первыми)
       // Ограничиваем временным окном: только заказы, подтвержденные в последние 24 часа
@@ -210,10 +164,7 @@ export async function POST(request: NextRequest) {
         take: successOrdersWithEmptyId.length, // Берем столько, сколько заказов с пустым id
       });
 
-      console.log(`[Sync-1C] [${requestId}] Найдено ${recentlyReadyShipments.length} недавно готовых заказов для сопоставления (из ${successOrdersWithEmptyId.length} необходимых)`);
-
       if (recentlyReadyShipments.length > 0) {
-        // Помечаем найденные заказы как выгруженные
         for (const shipment of recentlyReadyShipments) {
           if (!shipment.exportedTo1C && !shipment.exportedTo1CAt) {
             await prisma.shipment.update({
@@ -223,32 +174,12 @@ export async function POST(request: NextRequest) {
                 exportedTo1CAt: new Date(),
               },
             });
-            console.log(`[Sync-1C] [${requestId}] ✅ Заказ ${shipment.number} (${shipment.id}) помечен как выгруженный в 1С (сопоставлен с success: true, но пустым id)`);
           }
         }
-      } else {
-        console.warn(`[Sync-1C] [${requestId}] ⚠️ Не удалось найти заказы для сопоставления с ${successOrdersWithEmptyId.length} заказами с пустым id`);
+      } else if (successOrdersWithEmptyId.length > 0) {
+        console.warn(`[Sync-1C] [${requestId}] Не найдены заказы для сопоставления с ${successOrdersWithEmptyId.length} заказами с пустым id`);
       }
     }
-
-    // ДИАГНОСТИКА: Логируем все заказы со статусом processed перед фильтрацией
-    const allProcessedBeforeFilter = await prisma.shipment.findMany({
-      where: {
-        status: 'processed',
-        deleted: false,
-      },
-      select: { id: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
-    console.log(`[Sync-1C] [${requestId}] ДИАГНОСТИКА: Все заказы со статусом processed (первые 20):`, 
-      allProcessedBeforeFilter.map(s => ({ 
-        id: s.id, 
-        number: s.number, 
-        exportedTo1C: s.exportedTo1C,
-        exportedTo1CAt: s.exportedTo1CAt?.toISOString() || null
-      }))
-    );
 
     // Получаем готовые к выгрузке заказы
     // Это заказы, где все задания подтверждены, но еще не выгружены в 1С
@@ -365,74 +296,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[Sync-1C] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length} (удаленные заказы исключены)`);
-    
-    // ДИАГНОСТИКА: Логируем все заказы со статусом processed для отладки
-    const allProcessedShipments = await prisma.shipment.findMany({
-      where: {
-        status: 'processed',
-        deleted: false,
-      },
-      select: { id: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
-    console.log(`[Sync-1C] [${requestId}] ДИАГНОСТИКА: Все заказы со статусом processed (первые 20):`, 
-      allProcessedShipments.map(s => ({ 
-        id: s.id, 
-        number: s.number, 
-        exportedTo1C: s.exportedTo1C,
-        exportedTo1CAt: s.exportedTo1CAt?.toISOString() || null
-      }))
-    );
-    
-    // Логируем детальную информацию по каждому заказу
-    for (const order of readyOrders) {
-      console.log(`[Sync-1C] [${requestId}] Заказ ${order.number} (${order.id}):`);
-      console.log(`[Sync-1C] [${requestId}]   Клиент: ${order.customer_name}`);
-      console.log(`[Sync-1C] [${requestId}]   Позиций: ${order.items_count}, Всего количество: ${order.total_qty}`);
-      console.log(`[Sync-1C] [${requestId}]   Количество мест: ${order.places || 'не указано'}`);
-      console.log(`[Sync-1C] [${requestId}]   Позиции заказа:`);
-      
-      order.lines.forEach((line, index) => {
-        // ВАЖНО: qty теперь равен collected_qty (фактическому количеству для 1С)
-        // Начальное заказанное количество больше не используется в ответе для 1С
-        const isZero = line.qty === 0;
-        console.log(`[Sync-1C] [${requestId}]     ${index + 1}. SKU: ${line.sku}`);
-        console.log(`[Sync-1C] [${requestId}]         Наименование: ${line.name}`);
-        console.log(`[Sync-1C] [${requestId}]         qty (для 1С, фактическое): ${line.qty}${isZero ? ' ⚠️ НУЛЕВОЕ КОЛИЧЕСТВО' : ''}`);
-        console.log(`[Sync-1C] [${requestId}]         collected_qty (дублирует qty): ${line.collected_qty}`);
-        console.log(`[Sync-1C] [${requestId}]         Единица: ${line.uom}, Место: ${line.location || 'не указано'}`);
-      });
+    if (readyOrders.length > 0) {
+      console.log(`[Sync-1C] [${requestId}] ready for export: ${readyOrders.length}`);
     }
-    
-    // Логируем краткую сводку ответа
-    const responseData = {
-      orders: readyOrders,
-    };
-    console.log(`[Sync-1C] [${requestId}] Отправляем ответ (краткая сводка):`, JSON.stringify({
-      orders_count: readyOrders.length,
-      orders: readyOrders.map(o => ({
-        id: o.id,
-        number: o.number,
-        customer_name: o.customer_name,
-        items_count: o.items_count,
-        total_qty: o.total_qty,
-        lines_summary: o.lines.map(l => ({
-          sku: l.sku,
-          qty: l.qty, // Теперь qty = collected_qty (фактическое количество для 1С)
-          collected_qty: l.collected_qty
-        }))
-      }))
-    }, null, 2));
-    console.log(`${'='.repeat(80)}\n`);
 
-    return NextResponse.json(responseData);
+    return NextResponse.json({ orders: readyOrders });
   } catch (error: any) {
-    console.error(`[Sync-1C] [${requestId}] Ошибка синхронизации с 1С:`, error);
-    console.error(`[Sync-1C] [${requestId}] Сообщение ошибки:`, error.message);
-    console.error(`[Sync-1C] [${requestId}] Стек ошибки:`, error.stack);
-    console.log(`${'='.repeat(80)}\n`);
+    console.error(`[Sync-1C] [${requestId}] Ошибка:`, error.message);
     return NextResponse.json(
       { error: 'Ошибка синхронизации с 1С', details: error.message },
       { status: 500 }

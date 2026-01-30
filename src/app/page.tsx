@@ -117,7 +117,7 @@ export default function Home() {
     onClose: () => {},
     onTaskConfirmed: (taskId) => {
       updateTaskStatusInList(taskId, 'processed');
-      setTimeout(() => refreshShipments(), 500);
+      refreshShipments();
     },
   });
   const detailsModal = useModal();
@@ -197,7 +197,7 @@ export default function Home() {
       
       if (taskId) {
         updateTaskStatusInList(taskId, 'pending_confirmation');
-        setTimeout(() => refreshShipments(), 500);
+        refreshShipments();
       }
       
       const shipment = collectHook.currentShipment;
@@ -485,7 +485,7 @@ export default function Home() {
               const shipmentId = (confirmHook.currentShipment || pendingShipmentForOffice)?.shipment_id ?? (confirmHook.currentShipment || pendingShipmentForOffice)?.id;
               if (shipmentId) {
                 updateListAfterShipmentProcessed(shipmentId);
-                setTimeout(() => refreshShipments(), 500);
+                refreshShipments();
               }
               console.log('✅ Заказ отправлен в офис:', orderData.number, `(${orderData.tasksCount} заданий)`);
               

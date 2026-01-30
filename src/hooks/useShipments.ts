@@ -341,30 +341,9 @@ export function useShipments() {
     }
     
     const filtered = shipments.filter((shipment) => {
-      // АУДИТ: Логируем каждое задание для сборщиков
-      if (userRole === 'collector') {
-        console.log(`[COLLECTOR FILTER AUDIT] Проверяем задание:`, {
-          warehouse: shipment.warehouse,
-          status: shipment.status,
-          currentTab,
-          number: shipment.number || shipment.shipment_number,
-        });
-      }
-      
       // Фильтр по вкладке
-      // Теперь работаем с заданиями, а не заказами
-      if (currentTab === 'new' && shipment.status !== 'new') {
-        if (userRole === 'collector') {
-          console.log(`[COLLECTOR FILTER AUDIT] Отфильтровано по статусу: currentTab=${currentTab}, shipment.status=${shipment.status}`);
-        }
-        return false;
-      }
-      if (currentTab === 'processed' && shipment.status !== 'pending_confirmation') {
-        if (userRole === 'collector') {
-          console.log(`[COLLECTOR FILTER AUDIT] Отфильтровано по статусу: currentTab=${currentTab}, shipment.status=${shipment.status}`);
-        }
-        return false;
-      }
+      if (currentTab === 'new' && shipment.status !== 'new') return false;
+      if (currentTab === 'processed' && shipment.status !== 'pending_confirmation') return false;
 
       // Фильтр по поиску
       if (filters.search) {
@@ -373,45 +352,14 @@ export function useShipments() {
         if (
           !number.toLowerCase().includes(searchLower) &&
           !shipment.customer_name.toLowerCase().includes(searchLower)
-        ) {
-          if (userRole === 'collector') {
-            console.log(`[COLLECTOR FILTER AUDIT] Отфильтровано по поиску: "${filters.search}"`);
-          }
-          return false;
-        }
+        ) return false;
       }
 
-        // Фильтр по складу
-        // Если выбран конкретный склад, фильтруем по нему
-        // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
-        if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
-          return false;
-        }
-
-      // Фильтр по срочности
-      if (filters.urgentOnly && !isUrgent(shipment.comment)) {
-        if (userRole === 'collector') {
-          console.log(`[COLLECTOR FILTER AUDIT] Отфильтровано по срочности`);
-        }
-        return false;
-      }
-
-      if (userRole === 'collector') {
-        console.log(`[COLLECTOR FILTER AUDIT] Задание прошло все фильтры:`, {
-          warehouse: shipment.warehouse,
-          status: shipment.status,
-        });
-      }
+      if (filters.warehouse && shipment.warehouse !== filters.warehouse) return false;
+      if (filters.urgentOnly && !isUrgent(shipment.comment)) return false;
 
       return true;
     });
-    
-    // АУДИТ: Логируем для сборщиков
-    if (userRole === 'collector') {
-      const warehousesInFiltered = new Set(filtered.map(s => s.warehouse).filter(Boolean));
-      console.log(`[COLLECTOR FRONTEND AUDIT] userRole: ${userRole}, Получено заданий: ${shipments.length}, После фильтрации: ${filtered.length}, Складов: ${warehousesInFiltered.size} (${Array.from(warehousesInFiltered).join(', ')})`);
-      console.log(`[COLLECTOR FRONTEND AUDIT] filters.warehouse: "${filters.warehouse}", Все задания:`, shipments.map(s => ({ warehouse: s.warehouse, number: s.number })));
-    }
 
     // НЕ сортируем на фронтенде, так как сервер уже отсортировал задания
     // по приоритету регионов (согласно дням недели) и дате создания
