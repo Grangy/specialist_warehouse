@@ -19,7 +19,6 @@ async function authenticateRequest(request: NextRequest, body: any): Promise<{ u
   if (headerLogin && headerPassword) {
     login = headerLogin.trim();
     password = headerPassword.trim();
-    console.log('[API Auth] Используем авторизацию через заголовки X-Login/X-Password');
   }
   // Приоритет 2: Проверяем тело запроса (для обратной совместимости)
   else if (body && typeof body.login === 'string' && typeof body.password === 'string') {
@@ -28,7 +27,6 @@ async function authenticateRequest(request: NextRequest, body: any): Promise<{ u
     if (bodyLogin.length > 0 && bodyPassword.length > 0) {
       login = bodyLogin;
       password = bodyPassword;
-      console.log('[API Auth] Используем авторизацию через тело запроса (login/password)');
     }
   }
   
@@ -74,11 +72,9 @@ async function authenticateRequest(request: NextRequest, body: any): Promise<{ u
   }
 
   // Иначе используем стандартную авторизацию через cookies
-  console.log('[API Auth] Используем авторизацию через cookies');
   const user = await getSessionUser();
 
   if (!user) {
-    console.log('[API Auth] Пользователь не найден в cookies');
     return NextResponse.json(
       { error: 'Требуется авторизация. Укажите заголовки X-Login и X-Password, или login/password в теле запроса, или авторизуйтесь через cookies' },
       { status: 401 }
@@ -114,9 +110,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
-    console.log('[API POST] Получен запрос. body keys:', Object.keys(body));
-    console.log('[API POST] body.login:', !!body.login, 'body.password:', !!body.password);
     
     // Проверяем авторизацию (через credentials или cookies)
     const authResult = await authenticateRequest(request, body);
@@ -155,9 +148,6 @@ export async function POST(request: NextRequest) {
 
     // Активный заказ (в сборке или на подтверждении) не перезаписываем — не принимаем из 1С, ответ как для завершённого
     if (existing && !existing.deleted && (existing.status === 'new' || existing.status === 'pending_confirmation')) {
-      console.log(
-        `[API CREATE] Заказ ${number} активный (status: ${existing.status}), не принимаем из 1С, возвращаем success: false как для завершённого`
-      );
       return NextResponse.json(
         {
           success: false,
@@ -190,13 +180,6 @@ export async function POST(request: NextRequest) {
         collectedQty: null, // ВСЕГДА null для новых заказов
         checked: false, // ВСЕГДА false для новых заказов
       };
-      
-      console.log(
-        `[API CREATE] Создаем позицию: SKU=${cleanLine.sku}, ` +
-        `location=${cleanLine.location || 'N/A'}, ` +
-        `warehouse=${cleanLine.warehouse} (определен автоматически), ` +
-        `checked=${cleanLine.checked}, collectedQty=${cleanLine.collectedQty}`
-      );
       return cleanLine;
     });
 
@@ -204,7 +187,6 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       // Заказ с таким номером есть и не активный (удалён или уже processed) — обновляем данными из 1С, склад по location
-      console.log(`[API CREATE] Заказ ${number} уже существует (deleted: ${existing.deleted}, status: ${existing.status}), обновляем данными из 1С`);
       await prisma.shipmentTaskLine.deleteMany({
         where: { task: { shipmentId: existing.id } },
       });
@@ -237,10 +219,7 @@ export async function POST(request: NextRequest) {
         },
         include: { lines: true, tasks: true },
       });
-      console.log(`[API CREATE] Заказ ${number} обновлён, ${shipment.lines.length} позиций, склад по location`);
     } else {
-      // Создаем новый заказ с позициями
-      console.log(`[API CREATE] Создаем заказ ${number} с ${shipmentLines.length} позициями, все непроверенные`);
       shipment = await prisma.shipment.create({
         data: {
           number,
@@ -281,8 +260,6 @@ export async function POST(request: NextRequest) {
     if (checkedCount > 0 || collectedCount > 0) {
       console.error(`[API CREATE] ⚠️ ВНИМАНИЕ! Заказ ${number} создан с проверенными позициями!`);
       console.error(`[API CREATE] Проверенных позиций: ${checkedCount}, с собранным количеством: ${collectedCount}`);
-    } else {
-      console.log(`[API CREATE] ✅ Заказ ${number} создан корректно: все ${shipment.lines.length} позиций непроверенные`);
     }
 
     // Разбиваем заказ на задания (используем реальные ID позиций)
@@ -298,21 +275,13 @@ export async function POST(request: NextRequest) {
       }))
     );
 
-    // Создаем задания с явной проверкой статуса
-    console.log(`[API CREATE] Создаем ${tasks.length} заданий для заказа ${number}`);
-    
     for (const task of tasks) {
-      const taskLines = task.lines.map((taskLine) => {
-        // Явно устанавливаем непроверенный статус
-        const cleanTaskLine = {
-          shipmentLineId: taskLine.shipmentLineId,
-          qty: taskLine.qty,
-          collectedQty: null, // ВСЕГДА null для новых заданий
-          checked: false, // ВСЕГДА false для новых заданий
-        };
-        console.log(`[API CREATE] Создаем позицию задания: shipmentLineId=${cleanTaskLine.shipmentLineId}, checked=${cleanTaskLine.checked}, collectedQty=${cleanTaskLine.collectedQty}`);
-        return cleanTaskLine;
-      });
+      const taskLines = task.lines.map((taskLine) => ({
+        shipmentLineId: taskLine.shipmentLineId,
+        qty: taskLine.qty,
+        collectedQty: null,
+        checked: false,
+      }));
 
       const createdTask = await prisma.shipmentTask.create({
         data: {
@@ -333,10 +302,7 @@ export async function POST(request: NextRequest) {
       const taskCollectedCount = createdTask.lines.filter(line => line.collectedQty !== null).length;
       
       if (taskCheckedCount > 0 || taskCollectedCount > 0) {
-        console.error(`[API CREATE] ⚠️ ВНИМАНИЕ! Задание ${createdTask.id} создано с проверенными позициями!`);
-        console.error(`[API CREATE] Проверенных позиций: ${taskCheckedCount}, с собранным количеством: ${taskCollectedCount}`);
-      } else {
-        console.log(`[API CREATE] ✅ Задание ${createdTask.id} (${task.warehouse}) создано корректно: все ${createdTask.lines.length} позиций непроверенные`);
+        console.error(`[API CREATE] Задание ${createdTask.id} создано с проверенными позициями: ${taskCheckedCount}/${taskCollectedCount}`);
       }
     }
 
@@ -352,33 +318,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Финальная проверка всех созданных заданий
-    console.log(`[API CREATE] ========== ФИНАЛЬНАЯ ПРОВЕРКА ЗАКАЗА ${number} ==========`);
     let totalChecked = 0;
     let totalCollected = 0;
     let totalLines = 0;
-    
     for (const task of createdTasks) {
-      const taskChecked = task.lines.filter(line => line.checked === true).length;
-      const taskCollected = task.lines.filter(line => line.collectedQty !== null).length;
-      totalChecked += taskChecked;
-      totalCollected += taskCollected;
+      totalChecked += task.lines.filter(line => line.checked === true).length;
+      totalCollected += task.lines.filter(line => line.collectedQty !== null).length;
       totalLines += task.lines.length;
-      
-      if (taskChecked > 0 || taskCollected > 0) {
-        console.error(`[API CREATE] ⚠️ Задание ${task.id} (${task.warehouse}): ${taskChecked} проверенных, ${taskCollected} с собранным количеством`);
-      } else {
-        console.log(`[API CREATE] ✅ Задание ${task.id} (${task.warehouse}): все ${task.lines.length} позиций непроверенные`);
-      }
     }
-    
-    if (totalChecked === 0 && totalCollected === 0) {
-      console.log(`[API CREATE] ✅✅✅ УСПЕХ! Все ${totalLines} позиций в ${createdTasks.length} заданиях заказа ${number} непроверенные`);
-    } else {
-      console.error(`[API CREATE] ❌❌❌ ОШИБКА! В заказе ${number} найдены проверенные позиции:`);
-      console.error(`[API CREATE]    - Проверенных позиций: ${totalChecked}`);
-      console.error(`[API CREATE]    - Позиций с собранным количеством: ${totalCollected}`);
-      console.error(`[API CREATE]    - Всего позиций: ${totalLines}`);
+
+    if (totalChecked > 0 || totalCollected > 0) {
+      console.error(`[API CREATE] Заказ ${number}: проверенных позиций ${totalChecked}, с собранным количеством ${totalCollected}`);
       
       // Строгая валидация: если найдены проверенные позиции, возвращаем ошибку
       // Это критическая ошибка, так как новые заказы должны быть непроверенными
@@ -394,7 +344,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-    console.log(`[API CREATE] ========================================================`);
 
     return NextResponse.json(
       {
@@ -716,10 +665,6 @@ export async function GET(request: NextRequest) {
     // Определяем фильтр по статусу заданий для отображения
     const taskStatusFilter = status ? status : undefined;
 
-    console.log(`[API] Найдено заказов в БД: ${shipments.length}, фильтр статуса заказов:`, where.status);
-    console.log(`[API] Фильтр статуса заданий: ${taskStatusFilter || 'new и pending_confirmation'}`);
-    console.log(`[API] Пользователь: ${user.name} (${user.role})`);
-
     // Собираем все ID заданий для батч-загрузки locks
     const allTaskIds: string[] = [];
     shipments.forEach(shipment => {
@@ -913,12 +858,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // АУДИТ: Логируем для сборщиков перед группировкой
-    if (user.role === 'collector') {
-      const warehousesInTasks = new Set(tasks.map(t => t.warehouse || 'Неизвестный склад'));
-      console.log(`[COLLECTOR SERVER AUDIT] Всего заданий перед группировкой: ${tasks.length}, Складов: ${warehousesInTasks.size} (${Array.from(warehousesInTasks).join(', ')})`);
-    }
-    
     // Сортируем задания: сначала поднятые заказы, затем по приоритету региона, затем по количеству позиций, затем по дате
     tasks.sort((a, b) => {
       // Поднятые заказы (pinned_at) — выше всего

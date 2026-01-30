@@ -76,7 +76,6 @@ export async function authenticateRequest(
     
     login = loginValidation.sanitized!;
     password = headerPassword.trim();
-    console.log('[API Auth] Используем авторизацию через заголовки X-Login/X-Password');
   }
   // Приоритет 2: Проверяем тело запроса (для обратной совместимости)
   else if (body && typeof body.login === 'string' && typeof body.password === 'string') {
@@ -99,7 +98,6 @@ export async function authenticateRequest(
     if (loginValidation.sanitized && loginValidation.sanitized.length > 0 && body.password.length > 0) {
       login = loginValidation.sanitized;
       password = body.password.trim();
-      console.log('[API Auth] Используем авторизацию через тело запроса (login/password)');
     }
   }
   
@@ -165,11 +163,9 @@ export async function authenticateRequest(
   }
 
   // Иначе используем стандартную авторизацию через cookies
-  console.log('[API Auth] Используем авторизацию через cookies');
   const user = await getSessionUser();
 
   if (!user) {
-    console.log('[API Auth] Пользователь не найден в cookies');
     return NextResponse.json(
       { error: 'Требуется авторизация. Укажите заголовки X-Login и X-Password, или login/password в теле запроса, или авторизуйтесь через cookies' },
       { status: 401 }

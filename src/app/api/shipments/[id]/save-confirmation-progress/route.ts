@@ -88,7 +88,6 @@ export async function POST(
             ? lineData.confirmed 
             : taskLine.confirmed; // Если не передано, оставляем текущее значение из БД
           
-          console.log(`[save-confirmation-progress] Обновляем позицию ${taskLine.shipmentLine.sku}: confirmedQty=${confirmedQty}, confirmed=${confirmed}`);
           
           await prisma.shipmentTaskLine.update({
             where: { id: taskLine.id },

@@ -27,40 +27,11 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
-  const timestamp = new Date().toISOString();
   const clientIp = request.headers.get('x-forwarded-for') || 
                    request.headers.get('x-real-ip') || 
                    'unknown';
 
   try {
-    // Логируем входящий запрос
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`[Ready-For-Export] [${requestId}] [${timestamp}] Входящий GET запрос от 1С`);
-    console.log(`[Ready-For-Export] [${requestId}] IP адрес: ${clientIp}`);
-    console.log(`[Ready-For-Export] [${requestId}] URL: ${request.url}`);
-    console.log(`[Ready-For-Export] [${requestId}] Метод: GET`);
-    
-    // Логируем заголовки (без паролей)
-    const headers: Record<string, string> = {};
-    request.headers.forEach((value, key) => {
-      if (key.toLowerCase() === 'x-password' || key.toLowerCase() === 'authorization') {
-        headers[key] = '***HIDDEN***';
-      } else {
-        headers[key] = value;
-      }
-    });
-    console.log(`[Ready-For-Export] [${requestId}] Заголовки:`, JSON.stringify(headers, null, 2));
-    
-    // Логируем query параметры
-    const url = new URL(request.url);
-    const queryParams: Record<string, string> = {};
-    url.searchParams.forEach((value, key) => {
-      queryParams[key] = value;
-    });
-    if (Object.keys(queryParams).length > 0) {
-      console.log(`[Ready-For-Export] [${requestId}] Query параметры:`, JSON.stringify(queryParams, null, 2));
-    }
-
     // Авторизация через заголовки или cookies
     const authResult = await authenticateRequest(request, {}, ['admin']);
     if (authResult instanceof NextResponse) {
@@ -185,58 +156,18 @@ export async function GET(request: NextRequest) {
         where: { id: { in: sentShipmentIds } },
         data: { lastSentTo1CAt: now },
       });
-      console.log(`[Ready-For-Export] [${requestId}] Обновлено lastSentTo1CAt для ${sentShipmentIds.length} заказов`);
     }
 
-    console.log(`[Ready-For-Export] [${requestId}] Найдено готовых к выгрузке заказов: ${readyOrders.length} (удаленные заказы исключены)`);
-    
-    // Логируем детальную информацию по каждому заказу
-    for (const order of readyOrders) {
-      console.log(`[Ready-For-Export] [${requestId}] Заказ ${order.number} (${order.id}):`);
-      console.log(`[Ready-For-Export] [${requestId}]   Клиент: ${order.customer_name}`);
-      console.log(`[Ready-For-Export] [${requestId}]   Позиций: ${order.items_count}, Всего количество: ${order.total_qty}`);
-      console.log(`[Ready-For-Export] [${requestId}]   Позиции заказа:`);
-      
-      order.lines.forEach((line, index) => {
-        // ВАЖНО: qty теперь равен collected_qty (фактическому количеству для 1С)
-        // Начальное заказанное количество больше не используется в ответе для 1С
-        const isZero = line.qty === 0;
-        console.log(`[Ready-For-Export] [${requestId}]     ${index + 1}. SKU: ${line.sku}`);
-        console.log(`[Ready-For-Export] [${requestId}]         Наименование: ${line.name}`);
-        console.log(`[Ready-For-Export] [${requestId}]         qty (для 1С, фактическое): ${line.qty}${isZero ? ' ⚠️ НУЛЕВОЕ КОЛИЧЕСТВО' : ''}`);
-        console.log(`[Ready-For-Export] [${requestId}]         collected_qty (дублирует qty): ${line.collected_qty}`);
-        console.log(`[Ready-For-Export] [${requestId}]         Единица: ${line.uom}, Место: ${line.location || 'не указано'}`);
-      });
+    if (readyOrders.length > 0) {
+      console.log(`[Ready-For-Export] [${requestId}] ${readyOrders.length} orders from ${clientIp}`);
     }
-    
-    // Логируем краткую сводку ответа
-    const responseData = {
+
+    return NextResponse.json({
       orders: readyOrders,
       count: readyOrders.length,
-    };
-    console.log(`[Ready-For-Export] [${requestId}] Отправляем ответ (краткая сводка):`, JSON.stringify({
-      count: readyOrders.length,
-      orders: readyOrders.map(o => ({
-        id: o.id,
-        number: o.number,
-        customer_name: o.customer_name,
-        items_count: o.items_count,
-        total_qty: o.total_qty,
-        lines_summary: o.lines.map(l => ({
-          sku: l.sku,
-          qty: l.qty, // Теперь qty = collected_qty (фактическое количество для 1С)
-          collected_qty: l.collected_qty
-        }))
-      }))
-    }, null, 2));
-    console.log(`${'='.repeat(80)}\n`);
-
-    return NextResponse.json(responseData);
+    });
   } catch (error: any) {
-    console.error(`[Ready-For-Export] [${requestId}] Ошибка получения готовых заказов:`, error);
-    console.error(`[Ready-For-Export] [${requestId}] Сообщение ошибки:`, error.message);
-    console.error(`[Ready-For-Export] [${requestId}] Стек ошибки:`, error.stack);
-    console.log(`${'='.repeat(80)}\n`);
+    console.error(`[Ready-For-Export] [${requestId}] Ошибка:`, error.message);
     return NextResponse.json(
       { error: 'Ошибка получения готовых заказов', details: error.message },
       { status: 500 }

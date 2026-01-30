@@ -130,43 +130,13 @@ export async function POST(
       // Если места указаны и БОЛЬШЕ суммы из заданий - используем значение из модального окна (дополнительные места)
       let finalPlaces: number;
       if (places !== undefined && places > 0 && places > totalPlacesFromTasks) {
-        // Пользователь указал дополнительное количество мест (больше суммы из заданий)
         finalPlaces = places;
-        console.log(`[API Confirm] 🔢 Места для заказа ${task.shipment.number}:`);
-        console.log(`[API Confirm]   - Места из заданий: ${totalPlacesFromTasks} (из ${allTasksWithPlaces.length} заданий)`);
-        console.log(`[API Confirm]   - Места из модального окна (дополнительно): ${places}`);
-        console.log(`[API Confirm]   - ИТОГО мест: ${finalPlaces} (используется значение из модального окна с дополнительными местами)`);
       } else if (places !== undefined && places > 0 && places < totalPlacesFromTasks) {
-        // ОШИБКА: Пользователь указал меньше мест, чем сумма из заданий - используем сумму из заданий
         finalPlaces = totalPlacesFromTasks;
-        console.warn(`[API Confirm] ⚠️ Места для заказа ${task.shipment.number}:`);
-        console.warn(`[API Confirm]   - Места из заданий: ${totalPlacesFromTasks} (из ${allTasksWithPlaces.length} заданий)`);
-        console.warn(`[API Confirm]   - Места из модального окна: ${places} (МЕНЬШЕ суммы из заданий - ИГНОРИРУЕТСЯ)`);
-        console.warn(`[API Confirm]   - ИТОГО мест: ${finalPlaces} (используется сумма из заданий, модальное окно проигнорировано)`);
       } else {
-        // Используем сумму мест из заданий (по умолчанию или если равно сумме)
         finalPlaces = totalPlacesFromTasks;
-        console.log(`[API Confirm] 🔢 Места для заказа ${task.shipment.number}:`);
-        console.log(`[API Confirm]   - Места из заданий: ${totalPlacesFromTasks} (из ${allTasksWithPlaces.length} заданий) - ИСПОЛЬЗУЮТСЯ`);
-        if (places !== undefined && places > 0) {
-          console.log(`[API Confirm]   - Места из модального окна: ${places} (равно сумме из заданий, используется сумма из заданий)`);
-        } else {
-          console.log(`[API Confirm]   - Места из модального окна: не указаны (используется сумма из заданий)`);
-        }
-        console.log(`[API Confirm]   - ИТОГО мест: ${finalPlaces}`);
       }
-      
-      // Логируем детали по каждому заданию
-      const allTasksDetails = await prisma.shipmentTask.findMany({
-        where: { shipmentId: task.shipmentId },
-        select: { id: true, warehouse: true, places: true },
-      });
-      console.log(`[API Confirm]   - Детали по заданиям:`, allTasksDetails.map(t => ({
-        id: t.id.substring(0, 8) + '...',
-        warehouse: t.warehouse,
-        places: t.places || 0
-      })));
-      
+
       await prisma.shipment.update({
         where: { id: task.shipmentId },
         data: { 
@@ -310,6 +280,18 @@ export async function POST(
 
       // Сохраняем финальные данные в ответе
       (global as any).finalOrderData = finalOrderData;
+    } else {
+      // Одно задание подтверждено — уведомляем всех клиентов по SSE, чтобы карточка пропала из списка «На подтверждение»
+      try {
+        const { emitShipmentEvent } = await import('@/lib/sseEvents');
+        emitShipmentEvent('shipment:updated', {
+          taskId: id,
+          status: 'processed',
+          id: task.shipmentId,
+        });
+      } catch (error) {
+        console.error('[API Confirm] Ошибка при отправке SSE (задание подтверждено):', error);
+      }
     }
 
     const updatedTask = await prisma.shipmentTask.findUnique({
@@ -338,13 +320,9 @@ export async function POST(
     });
     const confirmedCount = allTasksForProgress.filter((t) => t.status === 'processed').length;
     const totalCount = allTasksForProgress.length;
-    
-    console.log(`🔵 [API Confirm] Заказ ${task.shipment.number}: подтверждено заданий=${confirmedCount}/${totalCount}, все подтверждены=${allTasksConfirmed}`);
 
-    // Получаем финальные данные заказа, если все задания подтверждены
     let finalOrderData = null;
     if (allTasksConfirmed) {
-      console.log(`🟢 [API Confirm] ========== ВСЕ ЗАДАНИЯ ПОДТВЕРЖДЕНЫ - ФОРМИРУЕМ ФИНАЛЬНЫЕ ДАННЫЕ ==========`);
       const finalShipment = await prisma.shipment.findUnique({
         where: { id: task.shipmentId },
         include: {
@@ -428,28 +406,7 @@ export async function POST(
             }, 0),
           })),
         };
-        console.log(`🟢 [API Confirm] Финальные данные сформированы:`, {
-          number: finalOrderData.number,
-          tasks_count: finalOrderData.tasks_count,
-          items_count: finalOrderData.items_count,
-          has_lines: finalOrderData.lines.length > 0,
-          has_tasks: finalOrderData.tasks.length > 0,
-        });
-      } else {
-        console.log(`🔴 [API Confirm] ОШИБКА: finalShipment не найден!`);
       }
-    } else {
-      console.log(`🟡 [API Confirm] Не все задания подтверждены, финальные данные не формируем`);
-    }
-
-    console.log(`🔵 [API Confirm] ========== ФОРМИРОВАНИЕ ОТВЕТА ==========`);
-    console.log(`🔵 [API Confirm] allTasksConfirmed: ${allTasksConfirmed}`);
-    console.log(`🔵 [API Confirm] has_finalOrderData: ${!!finalOrderData}`);
-    console.log(`🔵 [API Confirm] confirmedCount: ${confirmedCount}, totalCount: ${totalCount}`);
-    if (finalOrderData) {
-      console.log(`🔵 [API Confirm] finalOrderData keys:`, Object.keys(finalOrderData));
-      console.log(`🔵 [API Confirm] finalOrderData.number:`, finalOrderData.number);
-      console.log(`🔵 [API Confirm] finalOrderData.tasks_count:`, finalOrderData.tasks_count);
     }
 
     const responseData = {
@@ -484,11 +441,6 @@ export async function POST(
         })),
       },
     };
-
-    console.log(`🔵 [API Confirm] ========== ОТПРАВКА ОТВЕТА ==========`);
-    console.log(`🔵 [API Confirm] responseData.all_tasks_confirmed:`, responseData.all_tasks_confirmed);
-    console.log(`🔵 [API Confirm] responseData.has_final_order_data:`, !!responseData.final_order_data);
-    console.log(`🔵 [API Confirm] responseData.tasks_progress:`, responseData.tasks_progress);
 
     return NextResponse.json(responseData);
   } catch (error) {

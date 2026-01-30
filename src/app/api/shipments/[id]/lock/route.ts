@@ -39,7 +39,6 @@ export async function POST(
       const lockAge = Date.now() - existingLock.lockedAt.getTime();
       if (lockAge > LOCK_TIMEOUT) {
         // Удаляем истекшую блокировку
-        console.log(`[LOCK] Блокировка задания ${id} истекла (возраст: ${lockAge}ms), удаляем`);
         await prisma.shipmentTaskLock.delete({
           where: { id: existingLock.id },
         });
@@ -59,7 +58,6 @@ export async function POST(
         if (isActive) {
           // Блокировка активна (попап открыт у другого) — перехват только для админа
           if (!isAdmin) {
-            console.log(`[LOCK] Задание ${id} активно собирает ${lockedByName}, пользователь ${user.name} получил отказ (только 1 сборщик)`);
             return NextResponse.json(
               {
                 error: `Задание собирает ${lockedByName}. Дождитесь завершения или обновите список.`,
@@ -70,7 +68,6 @@ export async function POST(
             );
           }
           // Админ может перехватить
-          console.log(`[LOCK] Блокировка задания ${id} активна. Админ ${user.name} перехватывает сборку у ${lockedByName}`);
           emitShipmentEvent('shipment:unlocked', {
             taskId: id,
             shipmentId: task.shipmentId,
@@ -81,7 +78,6 @@ export async function POST(
           });
         } else {
           // Блокировка неактивна (попап закрыт или пользователь вышел) — можно перехватить
-          console.log(`[LOCK] Блокировка задания ${id} неактивна (heartbeat: ${timeSinceHeartbeat}ms назад, таймаут: ${HEARTBEAT_TIMEOUT}ms). Пользователь ${user.name} (${user.id}) перехватывает сборку у ${lockedByName}`);
           
           // Отправляем SSE событие о разблокировке перед удалением (модал закрыт)
           emitShipmentEvent('shipment:unlocked', {
