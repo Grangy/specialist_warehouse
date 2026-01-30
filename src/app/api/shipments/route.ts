@@ -642,7 +642,9 @@ export async function GET(request: NextRequest) {
           confirmed_at: shipment.confirmedAt?.toISOString() || null,
           tasks_count: shipment.tasks.length,
           warehouses: Array.from(new Set(shipment.tasks.map((t) => t.warehouse))),
-          collector_visible: isVisibleToCollector, // Виден ли заказ сборщику
+          collector_visible: isVisibleToCollector,
+          exported_to_1c: shipment.exportedTo1C,
+          exported_to_1c_at: shipment.exportedTo1CAt?.toISOString() || null,
         };
       });
 
