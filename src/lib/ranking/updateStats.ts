@@ -256,8 +256,9 @@ export async function updateCheckerStats(taskId: string) {
       return; // Нет данных для расчета
     }
 
-    // Для проверяльщика время = confirmedAt - completedAt
-    const checkTimeSec = (task.confirmedAt.getTime() - task.completedAt.getTime()) / 1000;
+    // Начало проверки = когда подтверждена первая позиция (checkerStartedAt), иначе — завершение сборки
+    const checkerStart = task.checkerStartedAt ?? task.completedAt;
+    const checkTimeSec = (task.confirmedAt.getTime() - checkerStart.getTime()) / 1000;
 
     if (checkTimeSec <= 0) {
       return; // Некорректное время
@@ -272,14 +273,14 @@ export async function updateCheckerStats(taskId: string) {
 
     const norm = await getOrCreateNorm(task.warehouse);
 
-    // Для проверяльщика используем время проверки
+    // Для проверяльщика используем время проверки (начало = первая подтверждённая позиция)
     const taskData = {
       taskId: task.id,
       userId: task.checkerId,
       shipmentId: task.shipmentId,
       warehouse: task.warehouse,
-      startedAt: task.completedAt, // Начало проверки = завершение сборки
-      completedAt: task.confirmedAt, // Конец проверки = подтверждение
+      startedAt: checkerStart,
+      completedAt: task.confirmedAt,
       positions,
       units,
     };

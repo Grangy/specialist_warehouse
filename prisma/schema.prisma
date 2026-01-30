@@ -114,6 +114,7 @@ model ShipmentTask {
   completedAt     DateTime?          @map("completed_at") // Время завершения сборки (когда переведено в pending_confirmation)
   checkerName     String?            @map("checker_name") // Имя проверяльщика
   checkerId       String?            @map("checker_id") // ID проверяльщика
+  checkerStartedAt DateTime?        @map("checker_started_at") // Время начала проверки = когда подтверждена первая позиция
   dictatorId      String?            @map("dictator_id") // ID диктовщика (пользователь, с которым делятся баллы)
   confirmedAt     DateTime?          @map("confirmed_at") // Время подтверждения задания проверяльщиком
   totalItems      Int?               @map("total_items") // Общее количество позиций в задании

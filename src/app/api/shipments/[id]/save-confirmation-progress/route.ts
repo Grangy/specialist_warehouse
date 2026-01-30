@@ -120,6 +120,17 @@ export async function POST(
         (line.confirmedQty !== null && line.confirmedQty > 0)
     ).length;
 
+    // Начало проверки = когда подтверждена первая позиция (не когда взял задание)
+    if (confirmedItems > 0 && !task.checkerStartedAt) {
+      await prisma.shipmentTask.update({
+        where: { id },
+        data: {
+          checkerStartedAt: new Date(),
+          ...(!task.checkerId && { checkerId: user.id, checkerName: user.name }),
+        },
+      });
+    }
+
     return NextResponse.json({
       success: true,
       progress: {

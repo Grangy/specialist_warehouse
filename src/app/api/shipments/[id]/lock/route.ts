@@ -132,13 +132,12 @@ export async function POST(
       },
     });
 
-    // Назначаем задание текущему пользователю: статистика и сборка зачисляются тому, кто взял/перехватил задание
+    // Назначаем задание текущему пользователю. startedAt ставится при первой собранной позиции (save-progress)
     await prisma.shipmentTask.update({
       where: { id },
       data: {
         collectorName: user.name,
         collectorId: user.id,
-        startedAt: new Date(),
       },
     });
 

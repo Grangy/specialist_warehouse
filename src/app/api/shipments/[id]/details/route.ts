@@ -110,7 +110,7 @@ export async function GET(
         checkerId: task.checkerId,
         checkerName: task.checkerName,
         checkerLogin: task.checker?.login || null,
-        checkerStartedAt: task.completedAt?.toISOString() || null, // Время начала проверки = когда задание перешло в pending_confirmation
+        checkerStartedAt: task.checkerStartedAt?.toISOString() ?? task.completedAt?.toISOString() ?? null, // Время начала проверки = когда подтверждена первая позиция
         checkerConfirmedAt: task.confirmedAt?.toISOString() || null, // Время окончания проверки = когда проверяльщик подтвердил задание
         totalItems: task.totalItems || task.lines.length,
         totalUnits: task.totalUnits || task.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),

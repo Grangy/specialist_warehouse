@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Package, Calendar, Clock, User, MapPin, Warehouse, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Package, Calendar, Clock, User, MapPin, Warehouse, CheckCircle2, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ShipmentDetails {
   id: string;
@@ -82,6 +82,16 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
   const [details, setDetails] = useState<ShipmentDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+
+  const toggleTaskExpanded = (taskId: string) => {
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
 
   const loadDetails = async () => {
     if (!shipmentId) return;
@@ -296,29 +306,68 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                           </div>
                         </div>
                         <div className="space-y-2">
-                          {collector.tasks.map((task) => (
-                            <div
-                              key={task.id}
-                              className="bg-slate-800/50 rounded p-3 border border-slate-700/20 text-sm"
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-slate-300 font-medium">{task.warehouse}</span>
-                                <span className="text-slate-400">
-                                  {task.totalItems} позиций, {task.totalUnits} ед.
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
-                                <div className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  Начало: {formatDateTime(task.startedAt)}
+                          {collector.tasks.map((task) => {
+                            const isExpanded = expandedTaskIds.has(task.id);
+                            const fullTask = details.tasks.find((t) => t.id === task.id);
+                            const taskLines = fullTask?.lines ?? [];
+                            return (
+                              <div
+                                key={task.id}
+                                className="bg-slate-800/50 rounded p-3 border border-slate-700/20 text-sm"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => toggleTaskExpanded(task.id)}
+                                  className="w-full text-left flex items-center gap-2 mb-2"
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                  )}
+                                  <span className="text-slate-300 font-medium">{task.warehouse}</span>
+                                  <span className="text-slate-400">
+                                    {task.totalItems} позиций, {task.totalUnits} ед.
+                                  </span>
+                                </button>
+                                <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 mb-2">
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    Начало: {formatDateTime(task.startedAt)}
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Завершение: {formatDateTime(task.completedAt)}
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  Завершение: {formatDateTime(task.completedAt)}
-                                </div>
+                                {isExpanded && taskLines.length > 0 && (
+                                  <div className="mt-3 pt-3 border-t border-slate-700/30 overflow-x-auto">
+                                    <div className="text-xs font-semibold text-slate-400 mb-2">Товары в задании:</div>
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="border-b border-slate-700/50 text-slate-500">
+                                          <th className="text-left py-1.5 px-2">SKU</th>
+                                          <th className="text-left py-1.5 px-2">Наименование</th>
+                                          <th className="text-center py-1.5 px-2">Кол-во</th>
+                                          <th className="text-left py-1.5 px-2">Собрано</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {taskLines.map((line) => (
+                                          <tr key={line.id} className="border-b border-slate-700/20">
+                                            <td className="py-1.5 px-2 font-mono text-slate-300">{line.sku}</td>
+                                            <td className="py-1.5 px-2 text-slate-300">{line.name}</td>
+                                            <td className="py-1.5 px-2 text-center text-slate-300">{line.qty}</td>
+                                            <td className="py-1.5 px-2 text-slate-300">{line.collectedQty ?? '—'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
