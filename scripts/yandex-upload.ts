@@ -140,4 +140,88 @@ export async function uploadBackupToYandex(
   return ok;
 }
 
+/** Ответ API: список ресурсов в папке */
+interface YandexResourceList {
+  _embedded?: { items: Array<{ name: string; path: string; type?: string }> };
+}
+
+/**
+ * Список файлов в папке на Яндекс.Диске.
+ * path — полный путь, например backups_warehouse/30m
+ */
+export async function listYandexFolder(token: string, folderPath: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `${YANDEX_API}/resources?path=${encodeURIComponent(folderPath)}&limit=1000`,
+      { headers: { Authorization: `OAuth ${token}` } }
+    );
+    if (!res.ok) {
+      if (res.status === 404) return [];
+      const text = await res.text();
+      console.error('  [Yandex] Ошибка листинга папки:', res.status, text);
+      return [];
+    }
+    const data = (await res.json()) as YandexResourceList;
+    const items = data._embedded?.items ?? [];
+    return items.map((i) => i.name);
+  } catch (e) {
+    console.error('  [Yandex] Ошибка листинга папки:', e);
+    return [];
+  }
+}
+
+/**
+ * Удаляет файл или папку на Яндекс.Диске (в корзину по умолчанию, можно permanently=true).
+ */
+export async function deleteYandexFile(
+  token: string,
+  filePath: string,
+  permanently = false
+): Promise<boolean> {
+  try {
+    const url = `${YANDEX_API}/resources?path=${encodeURIComponent(filePath)}${permanently ? '&permanently=true' : ''}`;
+    const res = await fetch(url, { method: 'DELETE', headers: { Authorization: `OAuth ${token}` } });
+    if (res.status === 204 || res.status === 202) return true;
+    if (res.status === 404) return true;
+    const text = await res.text();
+    console.error('  [Yandex] Ошибка удаления:', res.status, text);
+    return false;
+  } catch (e) {
+    console.error('  [Yandex] Ошибка удаления:', e);
+    return false;
+  }
+}
+
+/**
+ * На Яндексе в папке backups_warehouse/{subFolder} оставляет только последние keepCount бэкапов (по имени = timestamp).
+ * У каждого бэкапа может быть .json и .db с одним базовым именем. Удаляет лишние.
+ */
+export async function trimYandexBackups(
+  projectRoot: string,
+  subFolder: string,
+  keepCount: number
+): Promise<{ deleted: number }> {
+  const tokenData = loadToken(projectRoot);
+  if (!tokenData || !isTokenValid(tokenData)) return { deleted: 0 };
+
+  const token = tokenData.access_token;
+  const folderPath = `${YANDEX_DISK_FOLDER}/${subFolder}`;
+  const names = await listYandexFolder(token, folderPath);
+  if (names.length === 0) return { deleted: 0 };
+
+  const baseNames = [...new Set(names.map((n) => n.replace(/\.(json|db)$/i, '')))].sort().reverse();
+  const toDelete = baseNames.slice(keepCount);
+  let deletedCount = 0;
+  for (const base of toDelete) {
+    for (const ext of ['.json', '.db']) {
+      const name = base + ext;
+      if (names.includes(name)) {
+        const fullPath = `${folderPath}/${name}`;
+        if (await deleteYandexFile(token, fullPath, true)) deletedCount++;
+      }
+    }
+  }
+  return { deleted: deletedCount };
+}
+
 export { YANDEX_DISK_FOLDER };

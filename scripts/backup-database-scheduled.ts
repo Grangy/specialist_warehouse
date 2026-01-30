@@ -1,7 +1,8 @@
 /**
  * Планировщик бэкапов БД:
- * - каждые 30 минут — бэкап в backups/30m/, хранить последние 10 копий;
- * - каждые 5 часов — та же копия дополнительно в backups/5h/, хранить 5 копий.
+ * - каждые 30 минут — бэкап в backups/30m/ и на Яндекс.Диск backups_warehouse/30m/, хранить 20 копий (локально и на Яндексе);
+ * - каждые 5 часов — та же копия в backups/5h/ и на Яндекс.Диск backups_warehouse/5h/, хранить 10 копий.
+ * Лишние бэкапы на Яндексе удаляются после каждой загрузки (остаются только последние 20 в 30m и 10 в 5h).
  *
  * Запуск (долгоиграющий процесс):
  *   npx tsx scripts/backup-database-scheduled.ts
@@ -14,12 +15,13 @@ import { PrismaClient } from '../src/generated/prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
-import { uploadBackupToYandex } from './yandex-upload';
+import { uploadBackupToYandex, trimYandexBackups } from './yandex-upload';
 
 const INTERVAL_30_MIN_MS = 30 * 60 * 1000;
 const INTERVAL_5H_MS = 5 * 60 * 60 * 1000;
-const KEEP_30M = 10;
-const KEEP_5H = 5;
+/** Локально и на Яндексе: 20 тридцатиминутных, 10 пятичасовых */
+const KEEP_30M = 20;
+const KEEP_5H = 10;
 const KEEP_MAIN = 10; // корневая backups/ — backup_*.json и backup_info_*.txt
 
 let projectRoot: string;
@@ -232,7 +234,11 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
   const removed30 = trimBackups(backupDir30m, KEEP_30M, '', '.json');
   const removed30db = trimBackups(backupDir30m, KEEP_30M, '', '.db');
   if (removed30 > 0 || removed30db > 0) {
-    console.log(`  Удалено старых 30m: json=${removed30}, db=${removed30db}`);
+    console.log(`  Удалено старых 30m (локально): json=${removed30}, db=${removed30db}`);
+  }
+  const yandex30 = await trimYandexBackups(projectRoot, '30m', KEEP_30M);
+  if (yandex30.deleted > 0) {
+    console.log(`  Удалено старых 30m на Яндексе: ${yandex30.deleted} файлов`);
   }
 
   let newLast5h = last5hBackupAt;
@@ -256,7 +262,11 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
     const removed5h = trimBackups(backupDir5h, KEEP_5H, '', '.json');
     const removed5hDb = trimBackups(backupDir5h, KEEP_5H, '', '.db');
     if (removed5h > 0 || removed5hDb > 0) {
-      console.log(`  Удалено старых 5h: json=${removed5h}, db=${removed5hDb}`);
+      console.log(`  Удалено старых 5h (локально): json=${removed5h}, db=${removed5hDb}`);
+    }
+    const yandex5h = await trimYandexBackups(projectRoot, '5h', KEEP_5H);
+    if (yandex5h.deleted > 0) {
+      console.log(`  Удалено старых 5h на Яндексе: ${yandex5h.deleted} файлов`);
     }
     newLast5h = now;
   }
@@ -266,8 +276,8 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
 
 async function main() {
   console.log('Бэкапы БД по расписанию');
-  console.log('  - каждые 30 мин → backups/30m/ (хранить 10)');
-  console.log('  - каждые 5 ч   → backups/5h/   (хранить 5)');
+  console.log('  - каждые 30 мин → backups/30m/ и Яндекс backups_warehouse/30m/ (хранить 20)');
+  console.log('  - каждые 5 ч   → backups/5h/   и Яндекс backups_warehouse/5h/   (хранить 10)');
   console.log('  - backups/    → backup_*.json и backup_info_*.txt (хранить по 10)');
   console.log('  Остановка: Ctrl+C\n');
 
@@ -284,7 +294,13 @@ async function main() {
   const removed5dbStart = trimBackups(backupDir5h, KEEP_5H, '', '.db');
 
   if (removedMainJson > 0 || removedMainTxt > 0 || removedMainDb > 0 || removed30start > 0 || removed30dbStart > 0 || removed5start > 0 || removed5dbStart > 0) {
-    console.log(`При старте удалено лишних: backups/ .json=${removedMainJson}, .txt=${removedMainTxt}, .db=${removedMainDb}; 30m json=${removed30start} db=${removed30dbStart}; 5h json=${removed5start} db=${removed5dbStart}\n`);
+    console.log(`При старте удалено лишних (локально): backups/ .json=${removedMainJson}, .txt=${removedMainTxt}, .db=${removedMainDb}; 30m json=${removed30start} db=${removed30dbStart}; 5h json=${removed5start} db=${removed5dbStart}\n`);
+  }
+
+  const yandex30Start = await trimYandexBackups(projectRoot, '30m', KEEP_30M);
+  const yandex5Start = await trimYandexBackups(projectRoot, '5h', KEEP_5H);
+  if (yandex30Start.deleted > 0 || yandex5Start.deleted > 0) {
+    console.log(`При старте удалено лишних на Яндексе: 30m=${yandex30Start.deleted}, 5h=${yandex5Start.deleted}\n`);
   }
 
   let last5hBackupAt = 0;
