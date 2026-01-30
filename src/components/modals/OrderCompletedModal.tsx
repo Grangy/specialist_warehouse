@@ -71,15 +71,6 @@ export function OrderCompletedModal({ isOpen, onClose, orderData }: OrderComplet
           </div>
         </div>
 
-        <div>
-          <h3 className="text-lg font-semibold text-slate-100 mb-3">📦 Финальные данные заказа (JSON):</h3>
-          <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto max-h-96 overflow-y-auto">
-            <pre className="text-xs text-slate-300 whitespace-pre-wrap font-mono">
-              {JSON.stringify(orderData.finalData, null, 2)}
-            </pre>
-          </div>
-        </div>
-
         <div className="flex justify-end">
           <button
             onClick={onClose}

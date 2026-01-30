@@ -37,7 +37,12 @@ type SortDirection = 'asc' | 'desc';
 
 const ITEMS_PER_PAGE = 20;
 
-export default function CompletedShipmentsTab() {
+interface CompletedShipmentsTabProps {
+  /** Показывать кнопку «Удалить заказ». Для проверяльщиков — false. */
+  canDelete?: boolean;
+}
+
+export default function CompletedShipmentsTab({ canDelete = true }: CompletedShipmentsTabProps) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -591,22 +596,24 @@ export default function CompletedShipmentsTab() {
                           <Eye className="w-4 h-4" />
                           <span className="hidden sm:inline">Детали</span>
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeletePermanent(shipment.id, shipment.shipment_number || shipment.number || 'N/A');
-                          }}
-                          disabled={deletingShipmentId === shipment.id}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-sm font-medium border border-red-500/50 transition-all hover:scale-105 active:scale-95 hover:shadow-lg hover:shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Полностью удалить заказ из БД"
-                        >
-                          {deletingShipmentId === shipment.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                          <span className="hidden sm:inline">Удалить</span>
-                        </button>
+                        {canDelete && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeletePermanent(shipment.id, shipment.shipment_number || shipment.number || 'N/A');
+                            }}
+                            disabled={deletingShipmentId === shipment.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-sm font-medium border border-red-500/50 transition-all hover:scale-105 active:scale-95 hover:shadow-lg hover:shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Полностью удалить заказ из БД"
+                          >
+                            {deletingShipmentId === shipment.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                            <span className="hidden sm:inline">Удалить</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin, Trophy, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin, Trophy, AlertTriangle, AlertCircle, Menu, X } from 'lucide-react';
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
 import ActiveShipmentsTab from '@/components/admin/ActiveShipmentsTab';
@@ -16,13 +16,24 @@ import { useToast } from '@/hooks/useToast';
 
 type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus';
 
+type AdminUserRole = 'admin' | 'checker';
+
 export default function AdminPage() {
+  const [userRole, setUserRole] = useState<AdminUserRole | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('users');
   const [warningsCount, setWarningsCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingTestOrder, setIsCreatingTestOrder] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
   const { showToast } = useToast();
+
+  const isCheckerOnly = userRole === 'checker';
+  const closeMenu = () => setMenuOpen(false);
+  const selectTab = (tab: Tab) => {
+    setActiveTab(tab);
+    closeMenu();
+  };
 
   useEffect(() => {
     checkAuth();
@@ -30,8 +41,8 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (!isLoading) fetchWarningsCount();
-  }, [isLoading]);
+    if (!isLoading && userRole === 'admin') fetchWarningsCount();
+  }, [isLoading, userRole]);
 
   const fetchWarningsCount = async () => {
     try {
@@ -53,10 +64,13 @@ export default function AdminPage() {
         router.push('/login');
         return;
       }
-      if (data.user.role !== 'admin') {
+      const role = data.user.role;
+      if (role !== 'admin' && role !== 'checker') {
         router.push('/');
         return;
       }
+      setUserRole(role);
+      if (role === 'checker') setActiveTab('shipments');
       setIsLoading(false);
     } catch (error) {
       console.error('[Admin] Ошибка при проверке авторизации:', error);
@@ -76,63 +90,106 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex">
+    <div className="min-h-screen bg-slate-950 flex flex-col md:flex-row">
+      {/* Мобильный хедер */}
+      <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-slate-900/98 backdrop-blur-sm border-b border-slate-700/50 z-40 flex items-center gap-3 px-4">
+        <button
+          type="button"
+          onClick={() => setMenuOpen((o) => !o)}
+          className="p-2 -ml-2 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+          aria-label={menuOpen ? 'Закрыть меню' : 'Открыть меню'}
+        >
+          {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </button>
+        <h1 className="text-lg font-bold text-slate-100 truncate flex-1">Админ-панель</h1>
+      </header>
+
+      {/* Оверлей при открытом меню (мобилка), под хедером */}
+      {menuOpen && (
+        <button
+          type="button"
+          onClick={closeMenu}
+          className="fixed top-14 left-0 right-0 bottom-0 bg-black/50 z-40 md:hidden"
+          aria-label="Закрыть меню"
+        />
+      )}
+
       {/* Боковое меню */}
-      <aside className="w-64 bg-slate-900/95 backdrop-blur-sm border-r border-slate-700/50 flex-shrink-0 flex flex-col shadow-xl">
-        <div className="p-4 md:p-6 border-b border-slate-700/50">
+      <aside
+        className={`
+          w-64 bg-slate-900/98 backdrop-blur-sm border-r border-slate-700/50 flex-shrink-0 flex flex-col shadow-xl
+          fixed md:static inset-y-0 left-0 z-50 md:z-auto
+          transform transition-transform duration-200 ease-out
+          ${menuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+      >
+        <div className="p-4 md:p-6 border-b border-slate-700/50 flex items-center justify-between md:block">
           <div className="flex items-center gap-2 md:gap-3">
             <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-br from-blue-600 to-blue-500 rounded-lg flex items-center justify-center shadow-lg">
               <Settings className="w-4 h-4 md:w-6 md:h-6 text-white" />
             </div>
             <div>
               <h1 className="text-lg md:text-xl font-bold text-slate-100">Админ-панель</h1>
-              <p className="text-[10px] md:text-xs text-slate-400">Управление системой</p>
+              <p className="text-[10px] md:text-xs text-slate-400 hidden md:block">Управление системой</p>
             </div>
           </div>
-        </div>
-        <nav className="p-2 md:p-4 space-y-1 md:space-y-2 flex-1 flex md:flex-col flex-row overflow-x-auto">
           <button
-            onClick={() => setActiveTab('users')}
-            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
-              activeTab === 'users'
-                ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 scale-105'
-                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
-            }`}
+            type="button"
+            onClick={closeMenu}
+            className="md:hidden p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white"
+            aria-label="Закрыть меню"
           >
-            <Users className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'users' ? 'scale-110' : 'group-hover:scale-110'}`} />
-            <span className="font-medium text-sm md:text-base whitespace-nowrap">Пользователи</span>
+            <X className="w-5 h-5" />
           </button>
+        </div>
+        <nav className="p-2 md:p-4 space-y-1 md:space-y-2 flex-1 overflow-y-auto flex flex-col">
+          {!isCheckerOnly && (
+            <button
+              onClick={() => selectTab('users')}
+              className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+                activeTab === 'users'
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 scale-105'
+                  : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+              }`}
+            >
+              <Users className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
+              <span className="font-medium text-sm md:text-base whitespace-nowrap">Пользователи</span>
+            </button>
+          )}
+          {!isCheckerOnly && (
           <button
-            onClick={() => setActiveTab('active')}
+            onClick={() => selectTab('active')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'active'
                 ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white shadow-lg shadow-orange-500/30 scale-105'
                 : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
             }`}
           >
-            <Package className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'active' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <Package className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Активные заказы</span>
           </button>
+          )}
           <button
-            onClick={() => setActiveTab('shipments')}
+            onClick={() => selectTab('shipments')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'shipments'
                 ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 scale-105'
                 : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
             }`}
           >
-            <Package className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'shipments' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <Package className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Завершенные заказы</span>
           </button>
+          {!isCheckerOnly && (
           <button
-            onClick={() => setActiveTab('warnings')}
+            onClick={() => selectTab('warnings')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'warnings'
                 ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-lg shadow-amber-500/30 scale-105'
                 : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
             }`}
           >
-            <AlertCircle className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 flex-shrink-0 ${activeTab === 'warnings' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <AlertCircle className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Предупреждения 1С</span>
             {warningsCount > 0 && (
               <span className="ml-auto min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center rounded-full bg-amber-500/90 text-white text-xs font-bold">
@@ -140,63 +197,69 @@ export default function AdminPage() {
               </span>
             )}
           </button>
+          )}
+          {!isCheckerOnly && (
+          <>
           <button
-            onClick={() => setActiveTab('analytics')}
+            onClick={() => selectTab('analytics')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'analytics'
                 ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 scale-105'
                 : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
             }`}
           >
-            <TrendingUp className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'analytics' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <TrendingUp className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Аналитика</span>
           </button>
           <button
-            onClick={() => setActiveTab('statistics')}
+            onClick={() => selectTab('statistics')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'statistics'
                 ? 'bg-gradient-to-r from-yellow-600 to-yellow-500 text-white shadow-lg shadow-yellow-500/30 scale-105'
                 : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
             }`}
           >
-            <Trophy className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'statistics' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <Trophy className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Статистика</span>
           </button>
           <button
-            onClick={() => setActiveTab('regions')}
+            onClick={() => selectTab('regions')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'regions'
                 ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg shadow-purple-500/30 scale-105'
                 : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
             }`}
           >
-            <MapPin className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'regions' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <MapPin className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Приоритеты регионов</span>
           </button>
           <button
-            onClick={() => setActiveTab('minus')}
+            onClick={() => selectTab('minus')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'minus'
                 ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30 scale-105'
                 : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
             }`}
           >
-            <AlertTriangle className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'minus' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Минусы</span>
           </button>
           <button
-            onClick={() => setActiveTab('settings')}
+            onClick={() => selectTab('settings')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'settings'
                 ? 'bg-gradient-to-r from-gray-600 to-gray-500 text-white shadow-lg shadow-gray-500/30 scale-105'
                 : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
             }`}
           >
-            <Settings className={`w-4 h-4 md:w-5 md:h-5 transition-transform duration-200 ${activeTab === 'settings' ? 'scale-110' : 'group-hover:scale-110'}`} />
+            <Settings className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Настройки</span>
           </button>
+          </>
+          )}
         </nav>
         <div className="p-2 md:p-4 border-t border-slate-700/50 space-y-1 md:space-y-2">
+          {!isCheckerOnly && (
           <button
             onClick={async () => {
               setIsCreatingTestOrder(true);
@@ -232,21 +295,22 @@ export default function AdminPage() {
           >
             {isCreatingTestOrder ? (
               <>
-                <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" />
+                <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin" />
                 <span className="font-medium">Создание...</span>
               </>
             ) : (
               <>
-                <Plus className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform duration-200" />
+                <Plus className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" />
                 <span className="font-medium">Создать тестовый заказ</span>
               </>
             )}
           </button>
+          )}
           <button
             onClick={() => router.push('/')}
             className="w-full px-3 md:px-4 py-2 md:py-3 bg-slate-800/90 hover:bg-slate-700 text-slate-200 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group shadow-md hover:shadow-lg hover:scale-105 active:scale-95 text-sm md:text-base"
           >
-            <Home className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform duration-200" />
+            <Home className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" />
             <span className="font-medium">Назад на главную</span>
           </button>
           <button
@@ -257,18 +321,18 @@ export default function AdminPage() {
             }}
             className="w-full px-3 md:px-4 py-2 md:py-3 bg-red-600/90 hover:bg-red-500 text-white rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group shadow-md hover:shadow-lg hover:scale-105 active:scale-95 text-sm md:text-base"
           >
-            <LogOut className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform duration-200" />
+            <LogOut className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" />
             <span className="font-medium">Выход</span>
           </button>
         </div>
       </aside>
 
       {/* Основной контент */}
-      <main className="flex-1 overflow-auto bg-slate-950">
-        <div className="max-w-7xl mx-auto px-2 md:px-4 lg:px-6 py-3 md:py-4 lg:py-6">
+      <main className="flex-1 overflow-auto bg-slate-950 pt-14 md:pt-0 min-h-0">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 md:py-4 lg:py-6">
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'active' && <ActiveShipmentsTab />}
-          {activeTab === 'shipments' && <CompletedShipmentsTab />}
+          {activeTab === 'shipments' && <CompletedShipmentsTab canDelete={userRole === 'admin'} />}
           {activeTab === 'warnings' && <WarningsTab onWarningsChange={setWarningsCount} />}
           {activeTab === 'analytics' && <AnalyticsTab />}
           {activeTab === 'statistics' && <StatisticsTab />}
