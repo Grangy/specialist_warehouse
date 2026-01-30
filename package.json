@@ -9,6 +9,7 @@
     "stats:audit": "tsx scripts/audit-ranking-stats.ts",
     "stats:audit-user": "tsx scripts/audit-user-detailed.ts",
     "stats:recalculate-today": "tsx scripts/recalculate-today-stats.ts",
+    "recalc:today-top": "tsx scripts/recalculate-today-top-efficiency.ts",
     "stats:recalculate-all": "tsx scripts/recalculate-all-stats-without-units.ts",
     "dev": "next dev",
     "build": "prisma generate && next build",
