@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic';
 // Сброс прогресса сборки/проверки или удаление заказа (только для админа)
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // shipmentId или taskId (для обратной совместимости)
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
@@ -23,8 +24,6 @@ export async function POST(
         { status: 403 }
       );
     }
-
-    const { id } = params; // shipmentId или taskId (для обратной совместимости)
     const body = await request.json();
     const { mode } = body; // 'collect', 'confirm' или 'delete'
 

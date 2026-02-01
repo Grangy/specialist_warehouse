@@ -10,16 +10,15 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // Может быть taskId или shipmentId
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
     const { user } = authResult;
-
-    const { id } = params; // Может быть taskId или shipmentId
     const body = await request.json();
     const { sku, location } = body;
 

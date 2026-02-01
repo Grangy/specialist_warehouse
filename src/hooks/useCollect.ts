@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { shipmentsApi } from '@/lib/api/shipments';
 import type { Shipment, ShipmentLine, CollectChecklistState } from '@/types';
 import { useToast } from './useToast';
+import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 
 interface UseCollectOptions {
   onClose?: () => void | Promise<void>;
@@ -22,6 +23,7 @@ export function useCollect(options?: UseCollectOptions) {
   const [removingItems, setRemovingItems] = useState<Set<number>>(new Set());
   const [changedLocations, setChangedLocations] = useState<Record<number, string>>({}); // Отслеживаем измененные места
   const { showToast, showError, showSuccess } = useToast();
+  const polling = useShipmentsPolling();
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Функция для запуска heartbeat
@@ -201,9 +203,19 @@ export function useCollect(options?: UseCollectOptions) {
     if (lockedShipmentId) {
       try {
         await shipmentsApi.unlock(lockedShipmentId);
+      } catch (error: unknown) {
+        const msg =
+          error != null && typeof error === 'object' && 'message' in error
+            ? String((error as { message?: unknown }).message)
+            : error instanceof Error
+              ? error.message
+              : '';
+        if (msg && msg !== 'Network error') {
+          console.error('Ошибка разблокировки:', msg);
+        }
+      } finally {
         setLockedShipmentId(null);
-      } catch (error) {
-        console.error('Ошибка разблокировки:', error);
+        polling?.triggerRefetch();
       }
     }
     setCurrentShipment(null);
@@ -220,7 +232,7 @@ export function useCollect(options?: UseCollectOptions) {
         console.error('Ошибка при обновлении данных после закрытия:', error);
       }
     }
-  }, [lockedShipmentId, onClose, stopHeartbeat, currentShipment, changedLocations]);
+  }, [lockedShipmentId, onClose, stopHeartbeat, currentShipment, changedLocations, polling]);
 
   const updateCollected = useCallback(async (lineIndex: number, collected: boolean) => {
     if (collected) {
@@ -278,6 +290,7 @@ export function useCollect(options?: UseCollectOptions) {
             
             // Сохраняем асинхронно, не блокируя обновление UI
             shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
+              .then(() => polling?.triggerRefetch())
               .catch((error) => {
                 console.error('[useCollect] Ошибка при сохранении прогресса:', error);
               });
@@ -334,6 +347,7 @@ export function useCollect(options?: UseCollectOptions) {
           });
           
           shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
+            .then(() => polling?.triggerRefetch())
             .catch((error) => {
               console.error('[useCollect] Ошибка при сохранении прогресса:', error);
             });
@@ -342,7 +356,7 @@ export function useCollect(options?: UseCollectOptions) {
         return newState;
       });
     }
-  }, [currentShipment]);
+  }, [currentShipment, polling]);
 
   const updateCollectedQty = useCallback((lineIndex: number, qty: number) => {
     if (!currentShipment) return;
@@ -420,13 +434,14 @@ export function useCollect(options?: UseCollectOptions) {
       
       // Сохраняем асинхронно, не блокируя обновление UI
       shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
+        .then(() => polling?.triggerRefetch())
         .catch((error) => {
           console.error('[useCollect] Ошибка при сохранении прогресса после редактирования:', error);
         });
       
       return newState;
     });
-  }, [currentShipment]);
+  }, [currentShipment, polling]);
 
   const cancelEditQty = useCallback((lineIndex: number) => {
     if (!currentShipment) return;
@@ -547,6 +562,7 @@ export function useCollect(options?: UseCollectOptions) {
       
       // Сохраняем прогресс в БД
       await shipmentsApi.saveProgress(shipmentId, { lines: progressLinesData });
+      polling?.triggerRefetch();
 
       // Подготавливаем данные для отправки на подтверждение
       const linesData = currentShipment.lines.map((line, index) => ({
@@ -575,7 +591,7 @@ export function useCollect(options?: UseCollectOptions) {
       showError('Не удалось подтвердить обработку заказа');
       throw error;
     }
-  }, [currentShipment, checklistState, closeModal, showSuccess, showError]);
+  }, [currentShipment, checklistState, closeModal, showSuccess, showError, polling]);
 
   const getProgress = useCallback(() => {
     if (!currentShipment || !currentShipment.lines) {

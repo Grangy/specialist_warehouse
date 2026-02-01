@@ -11,9 +11,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
@@ -27,8 +28,6 @@ export async function DELETE(
         { status: 403 }
       );
     }
-
-    const { id } = params;
 
     // Находим заказ со всеми связанными данными
     const shipment = await prisma.shipment.findUnique({

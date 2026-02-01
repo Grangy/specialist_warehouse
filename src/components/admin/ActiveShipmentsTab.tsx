@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { shipmentsApi } from '@/lib/api/shipments';
 import { useToast } from '@/hooks/useToast';
-import { useSSE } from '@/hooks/useSSE';
+import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
 
@@ -43,31 +43,7 @@ export default function ActiveShipmentsTab() {
   const [pinningShipmentId, setPinningShipmentId] = useState<string | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const { showToast, showError, showSuccess } = useToast();
-
-  // Подключаемся к SSE для получения обновлений в реальном времени
-  useSSE({
-    onEvent: (eventType, data) => {
-      // Обновляем список при получении событий о заказах
-      if (
-        eventType === 'shipment:created' ||
-        eventType === 'shipment:updated' ||
-        eventType === 'shipment:status_changed'
-      ) {
-        // Небольшая задержка для гарантии, что данные в БД обновлены
-        setTimeout(() => {
-          loadShipments();
-        }, 300);
-      }
-    },
-    onError: (error) => {
-      console.error('[ActiveShipmentsTab] Ошибка SSE:', error);
-    },
-  });
-
-  useEffect(() => {
-    loadShipments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const polling = useShipmentsPolling();
 
   const loadShipments = async () => {
     try {
@@ -81,6 +57,7 @@ export default function ActiveShipmentsTab() {
       // API возвращает задания напрямую, не обернутые в shipments
       const allTasks = [...newTasks, ...pendingTasks] as any[];
       setShipments(allTasks as any);
+      polling?.refetchDone();
     } catch (error: any) {
       // Игнорируем ошибку "Request already in progress" - это нормально при быстрых переключениях
       if (error?.message === 'Request already in progress') {
@@ -93,6 +70,17 @@ export default function ActiveShipmentsTab() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadShipments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- только при монтировании
+  }, []);
+
+  useEffect(() => {
+    if (!polling) return;
+    return polling.subscribe(loadShipments);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- подписка на polling, loadShipments стабилен по смыслу
+  }, [polling]);
 
   // Преобразуем задания в нужный формат
   const tasksWithCollectors = useMemo(() => {

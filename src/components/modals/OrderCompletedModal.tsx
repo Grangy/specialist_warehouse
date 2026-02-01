@@ -59,7 +59,7 @@ export function OrderCompletedModal({ isOpen, onClose, orderData }: OrderComplet
             <p>• Заказ: <span className="font-mono">{orderData.number}</span></p>
             <p>• Количество заданий: {orderData.tasksCount}</p>
             <p>• Статус: <span className="text-green-400">Обработан</span></p>
-            <p>• Дата обработки: {new Date(orderData.finalData?.processed_at || Date.now()).toLocaleString('ru-RU')}</p>
+            <p>• Дата обработки: {orderData.finalData?.processed_at ? new Date(orderData.finalData.processed_at).toLocaleString('ru-RU') : '—'}</p>
             <p>• Позиций в заказе: {orderData.finalData?.items_count || 0}</p>
             <p>• Общее количество: {orderData.finalData?.total_qty || 0} ед.</p>
             {orderData.finalData?.places && (

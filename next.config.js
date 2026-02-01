@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Next.js 16 по умолчанию использует Turbopack; webpack только для watchOptions в dev
+  turbopack: {},
   // Игнорируем папку scripts при сборке (это скрипты, не часть Next.js приложения)
   typescript: {
     // Игнорируем ошибки TypeScript в папке scripts

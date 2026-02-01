@@ -111,7 +111,7 @@ export default function Home() {
     setShowWarehouseModal(false);
   };
 
-  // Обновления списка — по SSE (lock/unlock, статус, исчезновение блока), без полной перезагрузки при закрытии модалок
+  // Обновления списка — по polling (lock/unlock, статус, закрытие модалок) у всех пользователей; локально — refreshShipments/refreshShipment
   const collectHook = useCollect({ onClose: () => {} });
   const confirmHook = useConfirm({
     onClose: () => {},

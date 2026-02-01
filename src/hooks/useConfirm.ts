@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { shipmentsApi } from '@/lib/api/shipments';
 import type { Shipment, ConfirmChecklistState } from '@/types';
 import { useToast } from './useToast';
+import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 
 interface UseConfirmOptions {
   onClose?: () => void | Promise<void>;
@@ -21,6 +22,7 @@ export function useConfirm(options?: UseConfirmOptions) {
   const [changedLocations, setChangedLocations] = useState<Record<number, string>>({}); // Отслеживаем измененные места
   const [dictatorId, setDictatorId] = useState<string | null>(null);
   const { showToast, showError, showSuccess } = useToast();
+  const polling = useShipmentsPolling();
 
   const openModal = useCallback((shipment: Shipment) => {
     // Очищаем список измененных мест при открытии нового модального окна
@@ -104,6 +106,7 @@ export function useConfirm(options?: UseConfirmOptions) {
     setEditState({});
     setRemovingItems(new Set());
     setChangedLocations({}); // Очищаем список измененных мест
+    polling?.triggerRefetch();
     
     // Обновляем данные на фронтенде после закрытия модального окна
     if (onClose) {
@@ -113,7 +116,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         console.error('Ошибка при обновлении данных после закрытия:', error);
       }
     }
-  }, [onClose, currentShipment, changedLocations]);
+  }, [onClose, currentShipment, changedLocations, polling]);
 
   const updateCollectedQty = useCallback(async (lineIndex: number, qty: number) => {
     if (!currentShipment) return;
@@ -155,13 +158,15 @@ export function useConfirm(options?: UseConfirmOptions) {
         };
       });
 
-      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData }).catch((error) => {
-        console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ:', error);
-      });
+      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
+        .then(() => polling?.triggerRefetch())
+        .catch((error) => {
+          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ:', error);
+        });
 
       return newState;
     });
-  }, [currentShipment]);
+  }, [currentShipment, polling]);
 
   const startEditQty = useCallback((lineIndex: number) => {
     setChecklistState((prev) => {
@@ -203,9 +208,11 @@ export function useConfirm(options?: UseConfirmOptions) {
         };
       });
 
-      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData }).catch((error) => {
-        console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после редактирования:', error);
-      });
+      shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
+        .then(() => polling?.triggerRefetch())
+        .catch((error) => {
+          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после редактирования:', error);
+        });
 
       return newState;
     });
@@ -215,7 +222,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       delete newState[lineIndex];
       return newState;
     });
-  }, [currentShipment, checklistState]);
+  }, [currentShipment, checklistState, polling]);
 
   const cancelEditQty = useCallback((lineIndex: number) => {
     if (!currentShipment) return;
@@ -344,9 +351,11 @@ export function useConfirm(options?: UseConfirmOptions) {
             };
           });
 
-          shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData }).catch((error) => {
-            console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после подтверждения:', error);
-          });
+          shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
+            .then(() => polling?.triggerRefetch())
+            .catch((error) => {
+              console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после подтверждения:', error);
+            });
         }
         
         return newState;
@@ -358,7 +367,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         return next;
       });
     }, 500);
-  }, [currentShipment]);
+  }, [currentShipment, polling]);
 
   const confirmShipment = useCallback(async (comment?: string, places?: number, selectedDictatorId?: string | null) => {
     if (!currentShipment) {
@@ -408,6 +417,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       }
 
       const response = await shipmentsApi.confirmShipment(currentShipment.id, requestData);
+      polling?.triggerRefetch();
 
       const allTasksConfirmed = (response as any)?.all_tasks_confirmed === true;
       const finalOrderData = (response as any)?.final_order_data;
@@ -442,7 +452,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       showError('Не удалось подтвердить заказ: ' + (error?.message || 'Неизвестная ошибка'));
       throw error;
     }
-  }, [currentShipment, checklistState, closeModal, showSuccess, showError, dictatorId, onTaskConfirmed]);
+  }, [currentShipment, checklistState, closeModal, showSuccess, showError, dictatorId, onTaskConfirmed, polling]);
 
   const getProgress = useCallback(() => {
     if (!currentShipment || !currentShipment.lines) {
@@ -514,6 +524,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       }
 
       const response = await shipmentsApi.confirmShipment(shipment.id, requestData);
+      polling?.triggerRefetch();
 
       const allTasksConfirmed = (response as any)?.all_tasks_confirmed === true;
       const finalOrderData = (response as any)?.final_order_data;
@@ -545,7 +556,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       showError(error.message || 'Не удалось подтвердить все позиции');
       throw error;
     }
-  }, [showError, showSuccess, onTaskConfirmed]);
+  }, [showError, showSuccess, onTaskConfirmed, polling]);
 
   return {
     currentShipment,

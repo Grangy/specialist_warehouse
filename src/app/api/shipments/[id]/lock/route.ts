@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { emitShipmentEvent } from '@/lib/sseEvents';
+import { touchSync } from '@/lib/syncTouch';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,16 +11,15 @@ const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 секунд (таймаут акти
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // id теперь это taskId
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
     const { user } = authResult;
-
-    const { id } = params; // id теперь это taskId
 
     const task = await prisma.shipmentTask.findUnique({
       where: { id },
@@ -107,14 +107,13 @@ export async function POST(
           console.warn(`[LOCK] Предупреждение: блокировка принадлежит пользователю ${user.id}, но collectorId = ${task.collectorId}`);
         }
         
-        // Отправляем SSE событие о блокировке (модал все еще открыт)
         emitShipmentEvent('shipment:locked', {
           taskId: id,
           shipmentId: task.shipmentId,
           userId: user.id,
           userName: user.name,
         });
-        
+        await touchSync();
         return NextResponse.json({ success: true });
       }
     }
@@ -137,13 +136,13 @@ export async function POST(
       },
     });
 
-    // Отправляем SSE событие о блокировке задания (модал открыт)
     emitShipmentEvent('shipment:locked', {
       taskId: id,
       shipmentId: task.shipmentId,
       userId: user.id,
       userName: user.name,
     });
+    await touchSync();
 
     return NextResponse.json({ 
       success: true,

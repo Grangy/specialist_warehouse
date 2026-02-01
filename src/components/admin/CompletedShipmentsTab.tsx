@@ -22,7 +22,7 @@ import {
   Trash2
 } from 'lucide-react';
 import type { Shipment } from '@/types';
-import { useSSE } from '@/hooks/useSSE';
+import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
 
 interface ShipmentStats {
@@ -58,31 +58,7 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
     totalWeight: 0,
   });
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
-
-  // Подключаемся к SSE для получения обновлений в реальном времени
-  useSSE({
-    onEvent: (eventType, data) => {
-      // Обновляем список при получении событий о заказах (особенно при изменении статуса на processed)
-      if (
-        eventType === 'shipment:created' ||
-        eventType === 'shipment:updated' ||
-        eventType === 'shipment:status_changed'
-      ) {
-        // Небольшая задержка для гарантии, что данные в БД обновлены
-        setTimeout(() => {
-          loadShipments();
-        }, 300);
-      }
-    },
-    onError: (error) => {
-      console.error('[CompletedShipmentsTab] Ошибка SSE:', error);
-    },
-  });
-
-  useEffect(() => {
-    loadShipments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const polling = useShipmentsPolling();
 
   const loadShipments = async () => {
     try {
@@ -93,6 +69,7 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
       }
       const data = await res.json();
       setShipments(data);
+      polling?.refetchDone();
 
       // Вычисляем статистику
       const calculatedStats: ShipmentStats = {
@@ -109,6 +86,17 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadShipments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- только при монтировании
+  }, []);
+
+  useEffect(() => {
+    if (!polling) return;
+    return polling.subscribe(loadShipments);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- подписка на polling, loadShipments стабилен по смыслу
+  }, [polling]);
 
   // Фильтрация и сортировка
   const filteredAndSortedShipments = useMemo(() => {

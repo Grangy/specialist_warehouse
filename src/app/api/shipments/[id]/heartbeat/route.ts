@@ -9,16 +9,15 @@ const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 секунд
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // taskId
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
     const { user } = authResult;
-
-    const { id } = params; // taskId
 
     const task = await prisma.shipmentTask.findUnique({
       where: { id },
@@ -63,10 +62,10 @@ export async function POST(
 // GET endpoint для проверки активности блокировки
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params; // taskId
+    const { id } = await params; // taskId
 
     const task = await prisma.shipmentTask.findUnique({
       where: { id },

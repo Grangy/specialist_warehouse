@@ -1,22 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { touchSync } from '@/lib/syncTouch';
 
 export const dynamic = 'force-dynamic';
 
 // Сохранение прогресса сборки в БД
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // taskId
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
     const { user } = authResult;
-
-    const { id } = params; // taskId
     const body = await request.json();
     const { lines } = body; // Массив { sku, collected_qty }
 
@@ -107,6 +107,8 @@ export async function POST(
         },
       },
     });
+
+    await touchSync();
 
     // Подсчитываем прогресс
     const totalItems = updatedTask!.lines.length;

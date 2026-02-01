@@ -110,7 +110,6 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
       const interval = setInterval(loadRankingStats, 60000);
       return () => clearInterval(interval);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // Вычисляем позицию попапа при открытии и изменении размера окна

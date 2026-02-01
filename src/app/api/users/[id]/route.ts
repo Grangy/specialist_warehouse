@@ -8,15 +8,14 @@ export const dynamic = 'force-dynamic';
 // DELETE - удалить пользователя (только для админа)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const authResult = await requireAuth(request, ['admin']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
-
-    const { id } = params;
 
     // Нельзя удалить самого себя
     if (id === authResult.user.id) {
@@ -43,15 +42,14 @@ export async function DELETE(
 // PATCH - обновить пользователя (только для админа)
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const authResult = await requireAuth(request, ['admin']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
-
-    const { id } = params;
     const body = await request.json();
     const { login, password, name, role } = body;
 

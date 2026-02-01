@@ -252,6 +252,8 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error('[API CREATE] Ошибка при отправке SSE события:', error);
     }
+    const { touchSync } = await import('@/lib/syncTouch');
+    await touchSync();
 
     // Проверяем, что все позиции созданы с правильным статусом
     const checkedCount = shipment.lines.filter(line => line.checked === true).length;

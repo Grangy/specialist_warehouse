@@ -11,9 +11,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: shipmentId } = await params;
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
@@ -26,8 +27,6 @@ export async function POST(
         { status: 403 }
       );
     }
-
-    const shipmentId = params.id;
     let body: { pin?: boolean } = {};
     try {
       body = await request.json();

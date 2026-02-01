@@ -152,6 +152,7 @@ export function CollectModal({
     if (selectedLine && currentShipment) {
       const currentState = checklistState[selectedLine.index];
       if (currentState && currentState.collectedQty !== selectedLine.collected) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- синхронизация с checklistState
         setSelectedLine(prev => prev ? {
           ...prev,
           collected: currentState.collectedQty,
@@ -194,6 +195,7 @@ export function CollectModal({
 
   // Сортируем индексы: сначала по статусу сборки (несобранные сверху), затем по местам (А-Я)
   // ВАЖНО: хуки должны быть до условного возврата
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- сложная сортировка по currentShipment/checklistState
   const sortedIndices = useMemo(() => {
     if (!currentShipment) return [];
     return currentShipment.lines

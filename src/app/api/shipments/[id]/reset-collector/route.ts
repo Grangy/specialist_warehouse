@@ -14,9 +14,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // taskId
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
@@ -30,8 +31,6 @@ export async function POST(
         { status: 403 }
       );
     }
-
-    const { id } = params; // taskId
 
     const task = await prisma.shipmentTask.findUnique({
       where: { id },

@@ -6,9 +6,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
@@ -23,8 +24,6 @@ export async function GET(
         { status: 403 }
       );
     }
-
-    const { id } = params;
 
     // Получаем заказ со всеми связанными данными
     const shipment = await prisma.shipment.findUnique({

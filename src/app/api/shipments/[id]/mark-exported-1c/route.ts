@@ -12,9 +12,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: shipmentId } = await params;
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
@@ -23,12 +24,6 @@ export async function POST(
     if (user.role !== 'admin') {
       return NextResponse.json({ error: 'Доступ только для администратора' }, { status: 403 });
     }
-
-    const shipmentId = params?.id;
-    if (!shipmentId) {
-      return NextResponse.json({ error: 'ID заказа не указан' }, { status: 400 });
-    }
-
     const shipment = await prisma.shipment.findFirst({
       where: { id: shipmentId, deleted: false },
       select: { id: true, number: true, status: true, exportedTo1C: true },

@@ -8,23 +8,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { emitShipmentEvent } from '@/lib/sseEvents';
+import { touchSync } from '@/lib/syncTouch';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: shipmentId } = await params;
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
     const { user } = authResult;
-    const shipmentId = params?.id;
-    if (!shipmentId) {
-      return NextResponse.json({ error: 'ID заказа не указан' }, { status: 400 });
-    }
 
     const shipment = await prisma.shipment.findFirst({
       where: { id: shipmentId, deleted: false },
@@ -144,6 +142,7 @@ export async function POST(
       shipmentId: shipment.id,
       tasks: builtTasks,
     });
+    await touchSync();
 
     return NextResponse.json({ ok: true, tasksCount: builtTasks.length });
   } catch (error) {

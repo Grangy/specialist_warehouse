@@ -15,6 +15,10 @@ export interface SessionUser {
 // Уменьшена длительность сессии для безопасности: с 7 дней до 24 часов
 const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 часа
 
+// Кэш сессии в памяти (TTL 60 сек) — снижает нагрузку на БД при частых запросах (поллинг)
+const SESSION_CACHE_TTL_MS = 60 * 1000;
+const sessionCache = new Map<string, { user: SessionUser; expiry: number }>();
+
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
 }
@@ -43,19 +47,25 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     const cookieStore = await cookies();
     const token = cookieStore.get('session_token')?.value;
 
-    if (!token) {
-      return null;
+    if (!token) return null;
+
+    const now = Date.now();
+    const cached = sessionCache.get(token);
+    if (cached && cached.expiry > now) return cached.user;
+    // Очищаем устаревшие записи при промахе кэша
+    for (const [k, v] of sessionCache.entries()) {
+      if (v.expiry <= now) sessionCache.delete(k);
     }
 
     const session = await prisma.session.findUnique({
       where: { token },
-      include: { 
-        user: true 
+      include: {
+        user: true,
       },
     });
 
     if (!session || session.expiresAt < new Date()) {
-      // Удаляем истекшую сессию
+      sessionCache.delete(token);
       if (session) {
         await prisma.session.delete({ where: { id: session.id } });
       }
@@ -66,12 +76,14 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       return null;
     }
 
-    return {
+    const user: SessionUser = {
       id: session.user.id,
       login: session.user.login,
       name: session.user.name,
       role: session.user.role as UserRole,
     };
+    sessionCache.set(token, { user, expiry: Date.now() + SESSION_CACHE_TTL_MS });
+    return user;
   } catch (error) {
     console.error('Ошибка при получении сессии:', error);
     return null;
@@ -79,6 +91,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 }
 
 export async function deleteSession(token: string): Promise<void> {
+  sessionCache.delete(token);
   await prisma.session.deleteMany({
     where: { token },
   });

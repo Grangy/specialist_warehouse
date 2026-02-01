@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { ToastProvider } from '@/contexts/ToastContext';
+import { ShipmentsPollingProvider } from '@/contexts/ShipmentsPollingContext';
 import { ToastContainer } from '@/components/ui/ToastContainer';
 import { PWARegister } from '@/components/PWARegister';
 import { Diagnostics } from '@/components/Diagnostics';
@@ -43,8 +44,10 @@ export default function RootLayout({
         <PWARegister />
         <Diagnostics />
         <ToastProvider>
-          {children}
-          <ToastContainer />
+          <ShipmentsPollingProvider>
+            {children}
+            <ToastContainer />
+          </ShipmentsPollingProvider>
         </ToastProvider>
       </body>
     </html>

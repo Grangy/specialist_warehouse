@@ -5,7 +5,7 @@ import { shipmentsApi } from '@/lib/api/shipments';
 import { isUrgent } from '@/lib/utils/helpers';
 import type { Shipment, Tab, FilterState } from '@/types';
 import { useToast } from './useToast';
-import { useSSE } from './useSSE';
+import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 
 export function useShipments() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -35,25 +35,15 @@ export function useShipments() {
   const errorShownRef = useRef(false);
   const retryCountRef = useRef(0);
   const showErrorRef = useRef(showError);
-  // ID текущего пользователя для SSE (lockedByCurrentUser и т.д.)
   const userIdRef = useRef<string | null>(null);
-  // Таймер debounce для shipment:created
-  const createdRefetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const polling = useShipmentsPolling();
+  const refetchDoneRef = useRef<(() => void) | null>(null);
+  if (polling) refetchDoneRef.current = polling.refetchDone;
 
   // Обновляем ref при изменении showError
   useEffect(() => {
     showErrorRef.current = showError;
   }, [showError]);
-
-  // Очистка debounce-таймера при размонтировании
-  useEffect(() => {
-    return () => {
-      if (createdRefetchTimeoutRef.current) {
-        clearTimeout(createdRefetchTimeoutRef.current);
-        createdRefetchTimeoutRef.current = null;
-      }
-    };
-  }, []);
 
   const [isAuthorized, setIsAuthorized] = useState(false);
 
@@ -101,7 +91,8 @@ export function useShipments() {
       const statusParam = (userRole === 'collector' && currentTab === 'new') ? 'new' : undefined;
       const data = await shipmentsApi.getAll(statusParam ? { status: statusParam } : undefined);
       setShipments(data);
-      
+      refetchDoneRef.current?.();
+
       // Восстанавливаем позицию скролла после обновления данных
       // Используем requestAnimationFrame для гарантии, что DOM обновлен
       if (typeof window !== 'undefined') {
@@ -136,102 +127,14 @@ export function useShipments() {
     }
   }, [isAuthorized, userRole, currentTab]); // Зависим от isAuthorized, userRole и currentTab
 
-  // Подключаемся к SSE для получения обновлений в реальном времени (прогрессивно, без полной перезагрузки)
-  useSSE({
-    onEvent: (eventType, data) => {
-      if (!isAuthorized) return;
-
-      const currentUserId = userIdRef.current;
-
-      if (eventType === 'shipment:locked' && data?.taskId != null) {
-        setShipments((prev) =>
-          prev.map((item) =>
-            item.id === data.taskId
-              ? {
-                  ...item,
-                  locked: true,
-                  lockedBy: data.userId ?? null,
-                  lockedByCurrentUser: (data.userId ?? null) === currentUserId,
-                  collector_id: data.userId ?? undefined,
-                  collector_name: data.userName ?? undefined,
-                }
-              : item
-          )
-        );
-        return;
-      }
-
-      if (eventType === 'shipment:unlocked' && data?.taskId != null) {
-        setShipments((prev) =>
-          prev.map((item) =>
-            item.id === data.taskId
-              ? {
-                  ...item,
-                  locked: false,
-                  lockedBy: null,
-                  lockedByCurrentUser: false,
-                  collector_id: undefined,
-                  collector_name: undefined,
-                }
-              : item
-          )
-        );
-        return;
-      }
-
-      if (eventType === 'shipment:status_changed' && data?.id != null) {
-        const shipmentId = data.id;
-        const status = data.status;
-        if (status === 'processed') {
-          // Заказ полностью подтверждён — убираем все его задания из списка (блок исчезает без перезагрузки)
-          setShipments((prev) => prev.filter((item) => item.shipment_id !== shipmentId));
-        } else {
-          setShipments((prev) =>
-            prev.map((item) =>
-              item.shipment_id === shipmentId ? { ...item, status } : item
-            )
-          );
-        }
-        return;
-      }
-
-      if (eventType === 'shipment:updated' && data?.taskId != null) {
-        const status = data.status ?? 'pending_confirmation';
-        setShipments((prev) =>
-          prev.map((item) =>
-            item.id === data.taskId ? { ...item, status } : item
-          )
-        );
-        // Обновляем только один блок (статус/ответственный уже выше), без перезагрузки списка
-        return;
-      }
-
-      if (eventType === 'shipment:refresh' && data?.shipmentId != null && Array.isArray(data?.tasks)) {
-        setShipments((prev) =>
-          prev.filter((item) => item.shipment_id !== data.shipmentId).concat(data.tasks)
-        );
-        return;
-      }
-
-      if (eventType === 'shipment:created') {
-        // Новый заказ — один раз подтягиваем список через debounce, без перерисовки всех блоков
-        if (createdRefetchTimeoutRef.current) {
-          clearTimeout(createdRefetchTimeoutRef.current);
-        }
-        createdRefetchTimeoutRef.current = setTimeout(() => {
-          createdRefetchTimeoutRef.current = null;
-          loadShipments();
-        }, 3000);
-        return;
-      }
-    },
-    onError: (error) => {
-      console.error('[useShipments] Ошибка SSE:', error);
-    },
-  });
+  // Один общий polling: при появлении изменений подтягиваем список (без SSE и без спама запросов)
+  useEffect(() => {
+    if (!polling || !isAuthorized) return;
+    return polling.subscribe(loadShipments);
+  }, [polling, isAuthorized, loadShipments]);
 
   useEffect(() => {
-    // Загружаем заказы только если пользователь авторизован. Дальше обновления — по SSE и по кнопке «Обновить».
+    // Загружаем заказы только если пользователь авторизован. Дальше обновления — по polling и по кнопке «Обновить».
     if (!isAuthorized) {
       setIsLoading(false);
       return;
@@ -365,7 +268,7 @@ export function useShipments() {
     // по приоритету регионов (согласно дням недели) и дате создания
     // Возвращаем задания в том порядке, как их вернул сервер
     return filtered;
-  }, [shipments, currentTab, filters, userRole]);
+  }, [shipments, currentTab, filters]);
 
   const warehouses = useMemo(() => {
     const uniqueWarehouses = new Set<string>();

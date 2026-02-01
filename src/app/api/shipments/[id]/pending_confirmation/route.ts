@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // id теперь это taskId
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
@@ -24,8 +25,6 @@ export async function POST(
         { status: 403 }
       );
     }
-
-    const { id } = params; // id теперь это taskId
     const body = await request.json();
     const { lines } = body;
 
@@ -113,7 +112,6 @@ export async function POST(
       },
     });
 
-    // Отправляем событие об обновлении задания через SSE
     try {
       const { emitShipmentEvent } = await import('@/lib/sseEvents');
       emitShipmentEvent('shipment:updated', {
@@ -125,6 +123,8 @@ export async function POST(
     } catch (error) {
       console.error('[API PendingConfirmation] Ошибка при отправке SSE события:', error);
     }
+    const { touchSync } = await import('@/lib/syncTouch');
+    await touchSync();
 
     // Получаем информацию о количестве заданий для прогресса
     const allTasks = await prisma.shipmentTask.findMany({

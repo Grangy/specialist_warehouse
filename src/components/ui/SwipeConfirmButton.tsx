@@ -242,8 +242,6 @@ export function SwipeConfirmButton({
     };
     // ВАЖНО: Убираем disabled из зависимостей, чтобы обработчики не пересоздавались
     // при изменении disabled. Вместо этого проверяем disabled внутри обработчиков.
-    // Также добавляем disabled в зависимости для обновления логики, но не пересоздаем обработчики
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackId, sliderId, textId, onConfirm]);
 
   return null; // Компонент не рендерит ничего, только добавляет обработчики

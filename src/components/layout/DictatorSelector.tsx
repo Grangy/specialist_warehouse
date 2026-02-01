@@ -52,7 +52,6 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
   // Загружаем текущего пользователя
   useEffect(() => {
     loadCurrentUser();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Загружаем список пользователей при открытии выбора
@@ -60,7 +59,6 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
     if (isSelecting) {
       loadUsers();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSelecting]);
 
   const loadCurrentUser = async () => {

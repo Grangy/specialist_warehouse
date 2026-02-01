@@ -2,21 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { emitShipmentEvent } from '@/lib/sseEvents';
+import { touchSync } from '@/lib/syncTouch';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // id теперь это taskId
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
     const { user } = authResult;
-
-    const { id } = params; // id теперь это taskId
 
     const task = await prisma.shipmentTask.findUnique({
       where: { id },
@@ -47,13 +47,19 @@ export async function POST(
       where: { id: lock.id },
     });
 
-    // Отправляем SSE событие о разблокировке задания (модал закрыт)
+    // Обновляем updatedAt задания — poll увидит изменение, другие пользователи подтянут список
+    await prisma.shipmentTask.update({
+      where: { id: taskId },
+      data: { updatedAt: new Date() },
+    });
+
     emitShipmentEvent('shipment:unlocked', {
       taskId,
       shipmentId,
       userId: user.id,
       userName: user.name,
     });
+    await touchSync();
 
     return NextResponse.json({ success: true });
   } catch (error) {

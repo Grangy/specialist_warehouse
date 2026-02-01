@@ -7,15 +7,14 @@ export const dynamic = 'force-dynamic';
 // DELETE - удалить приоритет региона
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const authResult = await requireAuth(request, ['admin']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
-
-    const { id } = params;
 
     await prisma.regionPriority.delete({
       where: { id },

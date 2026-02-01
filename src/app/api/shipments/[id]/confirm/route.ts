@@ -8,9 +8,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // id теперь это taskId
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
@@ -24,8 +25,6 @@ export async function POST(
         { status: 403 }
       );
     }
-
-    const { id } = params; // id теперь это taskId
     const body = await request.json();
     const { lines, comment, places, dictatorId } = body;
 

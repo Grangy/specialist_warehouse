@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { touchSync } from '@/lib/syncTouch';
 
 export const dynamic = 'force-dynamic';
 
 // Сохранение прогресса проверки в БД (отдельно от прогресса сборки)
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params; // taskId или shipmentId
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) {
       return authResult;
@@ -23,8 +25,6 @@ export async function POST(
         { status: 403 }
       );
     }
-
-    const { id } = params; // taskId или shipmentId
     const body = await request.json();
     const { lines } = body; // Массив { sku, confirmed_qty?, confirmed? }
 
@@ -129,6 +129,8 @@ export async function POST(
         },
       });
     }
+
+    await touchSync();
 
     return NextResponse.json({
       success: true,
