@@ -5,12 +5,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import {
+  getStatisticsDateRange,
+  getMoscowTodayStart,
+  getMoscowWeekStart,
+  getMoscowYearMonth,
+} from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/statistics/overview
- * Получение общей статистики склада
+ * Получение общей статистики склада (границы периодов — по Москве, UTC+3)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -19,23 +25,18 @@ export async function GET(request: NextRequest) {
       return authResult;
     }
 
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekStart = new Date(today);
-    const dayOfWeek = now.getDay();
-    const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-    weekStart.setDate(diff);
-    weekStart.setHours(0, 0, 0, 0);
+    const { startDate: todayStart, endDate: todayEnd } = getStatisticsDateRange('today');
+    const today = getMoscowTodayStart();
+    const weekStart = getMoscowWeekStart();
+    const { year: currentYear, month: currentMonth } = getMoscowYearMonth();
 
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    // Статистика за сегодня
+    // Статистика за сегодня (по Москве)
     const todayTasks = await prisma.shipmentTask.count({
       where: {
         status: 'processed',
         OR: [
-          { completedAt: { gte: today } },
-          { confirmedAt: { gte: today } },
+          { completedAt: { gte: todayStart, lte: todayEnd } },
+          { confirmedAt: { gte: todayStart, lte: todayEnd } },
         ],
       },
     });
@@ -80,10 +81,7 @@ export async function GET(request: NextRequest) {
     const weekTotalOrders = weekDailyStats.reduce((sum, s) => sum + s.orders, 0);
     const weekTotalPoints = weekDailyStats.reduce((sum, s) => sum + s.dayPoints, 0);
 
-    // Статистика за месяц
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-
+    // Статистика за месяц (год/месяц по Москве)
     const monthlyStats = await prisma.monthlyStats.findMany({
       where: {
         year: currentYear,

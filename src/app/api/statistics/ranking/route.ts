@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { getAnimalLevel } from '@/lib/ranking/levels';
+import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,27 +41,10 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || 'today'; // today, week, month
+    const periodParam = searchParams.get('period') || 'today';
+    const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
 
-    const now = new Date();
-    let startDate: Date;
-    let endDate: Date = new Date(now);
-
-    if (period === 'today') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    } else if (period === 'week') {
-      const dayOfWeek = now.getDay();
-      const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Понедельник
-      startDate = new Date(now.getFullYear(), now.getMonth(), diff);
-      startDate.setHours(0, 0, 0, 0);
-    } else if (period === 'month') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else {
-      return NextResponse.json({ error: 'Неверный период' }, { status: 400 });
-    }
-
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(23, 59, 59, 999);
+    const { startDate, endDate } = getStatisticsDateRange(period);
 
     // Получаем статистику для сборщиков
     const collectorRankings: RankingEntry[] = [];
