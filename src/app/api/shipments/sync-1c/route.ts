@@ -43,19 +43,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const ordersCount = Array.isArray(body.orders) ? body.orders.length : 0;
-    // Минимальный лог: один запрос — одна строка
-    console.log(`[Sync-1C] [${requestId}] POST ${ordersCount} orders from ${clientIp}`);
-
-    // Лог всех заказов от 1С (без пароля) — для отладки и копирования id в скрипт
-    const bodyKeys = Object.keys(body).filter((k) => k !== 'password');
-    const ordersFull = Array.isArray(body.orders)
-      ? body.orders.map((o: { id?: string; number?: string; success?: boolean }) => ({
-          id: o.id ?? null,
-          number: o.number ?? null,
-          success: o.success,
-        }))
-      : [];
-    console.log(`[Sync-1C] [${requestId}] body keys: ${bodyKeys.join(', ')}; orders (all ${ordersFull.length}):`, JSON.stringify(ordersFull));
 
     // Авторизация через заголовки, тело запроса или cookies
     const authResult = await authenticateRequest(request, body, ['admin']);
@@ -126,10 +113,6 @@ export async function POST(request: NextRequest) {
     });
 
     await Promise.all(updatePromises);
-
-    if (successIds.length > 0) {
-      console.log(`[Sync-1C] [${requestId}] success_ids: ${successIds.length} (нет в БД или удалены), отдаём 1С — убрать из списка`);
-    }
 
     // Обработка заказов с success: true, но пустым id
     // Если 1С отправляет success: true с пустым id, это может означать, что заказ был успешно обработан,
@@ -296,13 +279,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (readyOrders.length > 0) {
-      console.log(`[Sync-1C] [${requestId}] ready for export: ${readyOrders.length}`);
-    }
+    console.log(`[Sync-1C] [${requestId}] in=${ordersCount} success_ids=${successIds.length} ready=${readyOrders.length} from ${clientIp}`);
+
+    // 1С ставит success: true только когда получает заказ в ответе «готовые к выгрузке».
+    // Добавляем в orders минимальные объекты по success_id (нет в БД / удалены), чтобы 1С считал выгрузку успешной.
+    const uniqueSuccessIds = [...new Set(successIds)];
+    const ackOrders = uniqueSuccessIds.map((id) => ({ id }));
 
     return NextResponse.json({
-      orders: readyOrders,
-      success_ids: [...new Set(successIds)],
+      orders: [...readyOrders, ...ackOrders],
+      success_ids: uniqueSuccessIds,
     });
   } catch (error: any) {
     console.error(`[Sync-1C] [${requestId}] Ошибка:`, error.message);
