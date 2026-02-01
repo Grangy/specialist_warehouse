@@ -30,10 +30,8 @@ export const dynamic = 'force-dynamic';
  * 
  * Ответ:
  * {
- *   "orders": [
- *     { ... finalOrderData ... },
- *     { ... finalOrderData ... }
- *   ]
+ *   "orders": [ { ... finalOrderData ... } ],
+ *   "success_ids": [ "id1", "id2" ]  // ВРЕМЕННО: id заказов, которых нет в БД или удалены — отдаём как success, чтобы 1С убрал из списка (без доработок 1С). Потом убрать.
  * }
  */
 export async function POST(request: NextRequest) {
@@ -76,14 +74,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Обновляем статус выгрузки: success=true — помечаем выгруженными; success=false — тоже помечаем,
-    // чтобы не отдавать их снова в ready-for-export и 1С перестал их слать (обход бага/зацикливания).
-    const updatePromises = orders.map(async (order: { id: string; success: boolean; number?: string }) => {
+    // Обновляем статус выгрузки и собираем success_ids — заказов нет в БД или удалены, отдаём 1С как success (временно, без доработок 1С).
+    const successIds: string[] = [];
+    const updatePromises = orders.map(async (order: { id: string; success: boolean; number?: string }): Promise<void> => {
       if (typeof order.success !== 'boolean') {
         console.warn(`[Sync-1C] [${requestId}] Пропущен неверный формат заказа (success не boolean):`, order);
         return;
       }
-      // ВАЖНО: Если id пустой, но есть number, используем number для поиска
       const hasId = order.id && order.id.trim() !== '';
       const hasNumber = order.number && order.number.trim() !== '';
 
@@ -94,7 +91,6 @@ export async function POST(request: NextRequest) {
 
       let shipment = null;
 
-      // Сначала пытаемся найти по ID (если он не пустой)
       if (hasId) {
         shipment = await prisma.shipment.findUnique({
           where: { id: order.id },
@@ -104,41 +100,38 @@ export async function POST(request: NextRequest) {
 
       if (!shipment && hasNumber) {
         shipment = await prisma.shipment.findFirst({
-          where: { 
-            number: order.number,
-            deleted: false,
-          },
+          where: { number: order.number, deleted: false },
           select: { id: true, deleted: true, number: true, status: true, exportedTo1C: true, exportedTo1CAt: true },
         });
       }
 
       if (!shipment) {
-        console.warn(`[Sync-1C] [${requestId}] Заказ ${order.id || 'ID не указан'}${order.number ? ` (номер: ${order.number})` : ''} не найден в БД, пропускаем обновление`);
+        console.warn(`[Sync-1C] [${requestId}] Заказа нет в БД — отдаём success_ids чтобы 1С убрал: ${order.id || order.number}`);
+        if (hasId) successIds.push(order.id);
+        else if (hasNumber) successIds.push(order.number!);
         return;
       }
 
       if (shipment.deleted) {
-        console.warn(`[Sync-1C] [${requestId}] Заказ ${shipment.number} (${shipment.id}) удален, пропускаем обновление статуса`);
+        console.warn(`[Sync-1C] [${requestId}] Заказ удален — отдаём в success_ids: ${shipment.id}`);
+        successIds.push(shipment.id);
         return;
       }
 
-      if (shipment.status !== 'processed') {
-        return; // Помечаем только завершённые заказы
-      }
-
+      if (shipment.status !== 'processed') return;
       if (shipment.exportedTo1C) return;
 
-      // Помечаем как выгруженный (и при success: true, и при success: false — чтобы не отдавать снова)
       await prisma.shipment.update({
         where: { id: shipment.id },
-        data: {
-          exportedTo1C: true,
-          exportedTo1CAt: new Date(),
-        },
+        data: { exportedTo1C: true, exportedTo1CAt: new Date() },
       });
     });
 
     await Promise.all(updatePromises);
+
+    if (successIds.length > 0) {
+      console.log(`[Sync-1C] [${requestId}] success_ids (нет в БД или удалены): ${successIds.length} — 1С убирает из списка`);
+    }
 
     // Обработка заказов с success: true, но пустым id
     // Если 1С отправляет success: true с пустым id, это может означать, что заказ был успешно обработан,
@@ -309,7 +302,10 @@ export async function POST(request: NextRequest) {
       console.log(`[Sync-1C] [${requestId}] ready for export: ${readyOrders.length}`);
     }
 
-    return NextResponse.json({ orders: readyOrders });
+    return NextResponse.json({
+      orders: readyOrders,
+      success_ids: [...new Set(successIds)],
+    });
   } catch (error: any) {
     console.error(`[Sync-1C] [${requestId}] Ошибка:`, error.message);
     return NextResponse.json(
