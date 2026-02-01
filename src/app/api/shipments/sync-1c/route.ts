@@ -48,22 +48,16 @@ export async function POST(request: NextRequest) {
     // Минимальный лог: один запрос — одна строка
     console.log(`[Sync-1C] [${requestId}] POST ${ordersCount} orders from ${clientIp}`);
 
-    // ВРЕМЕННО: подробный лог тела запроса от 1С (без пароля) — убрать после отладки
+    // Лог всех заказов от 1С (без пароля) — для отладки и копирования id в скрипт
     const bodyKeys = Object.keys(body).filter((k) => k !== 'password');
-    const ordersSummary = Array.isArray(body.orders)
-      ? body.orders.slice(0, 5).map((o: { id?: string; number?: string; success?: boolean }) => ({
+    const ordersFull = Array.isArray(body.orders)
+      ? body.orders.map((o: { id?: string; number?: string; success?: boolean }) => ({
           id: o.id ?? null,
           number: o.number ?? null,
           success: o.success,
         }))
       : [];
-    console.log(
-      `[Sync-1C] [${requestId}] body keys: ${bodyKeys.join(', ')}; orders sample (first 5):`,
-      JSON.stringify(ordersSummary)
-    );
-    if (Array.isArray(body.orders) && body.orders.length > 5) {
-      console.log(`[Sync-1C] [${requestId}] ... и ещё ${body.orders.length - 5} заказов в запросе`);
-    }
+    console.log(`[Sync-1C] [${requestId}] body keys: ${bodyKeys.join(', ')}; orders (all ${ordersFull.length}):`, JSON.stringify(ordersFull));
 
     // Авторизация через заголовки, тело запроса или cookies
     const authResult = await authenticateRequest(request, body, ['admin']);
@@ -82,19 +76,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Обновляем статус выгрузки для заказов, которые были обработаны в 1С
-    // ВАЖНО: Не обновляем удаленные заказы
+    // Обновляем статус выгрузки: success=true — помечаем выгруженными; success=false — тоже помечаем,
+    // чтобы не отдавать их снова в ready-for-export и 1С перестал их слать (обход бага/зацикливания).
     const updatePromises = orders.map(async (order: { id: string; success: boolean; number?: string }) => {
-      // Улучшенная проверка: если success не boolean, пропускаем
       if (typeof order.success !== 'boolean') {
         console.warn(`[Sync-1C] [${requestId}] Пропущен неверный формат заказа (success не boolean):`, order);
         return;
       }
-
-      // Если success = false, просто пропускаем (заказ не был обработан в 1С)
-      if (order.success === false) return;
-
-      // Если success = true, обновляем статус
       // ВАЖНО: Если id пустой, но есть number, используем number для поиска
       const hasId = order.id && order.id.trim() !== '';
       const hasNumber = order.number && order.number.trim() !== '';
@@ -110,7 +98,7 @@ export async function POST(request: NextRequest) {
       if (hasId) {
         shipment = await prisma.shipment.findUnique({
           where: { id: order.id },
-          select: { id: true, deleted: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
+          select: { id: true, deleted: true, number: true, status: true, exportedTo1C: true, exportedTo1CAt: true },
         });
       }
 
@@ -118,9 +106,9 @@ export async function POST(request: NextRequest) {
         shipment = await prisma.shipment.findFirst({
           where: { 
             number: order.number,
-            deleted: false, // Исключаем удаленные
+            deleted: false,
           },
-          select: { id: true, deleted: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
+          select: { id: true, deleted: true, number: true, status: true, exportedTo1C: true, exportedTo1CAt: true },
         });
       }
 
@@ -134,9 +122,13 @@ export async function POST(request: NextRequest) {
         return;
       }
 
+      if (shipment.status !== 'processed') {
+        return; // Помечаем только завершённые заказы
+      }
+
       if (shipment.exportedTo1C) return;
 
-      // Заказ успешно обработан в 1С - помечаем как выгруженный
+      // Помечаем как выгруженный (и при success: true, и при success: false — чтобы не отдавать снова)
       await prisma.shipment.update({
         where: { id: shipment.id },
         data: {
