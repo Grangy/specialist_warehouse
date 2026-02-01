@@ -30,51 +30,40 @@ export interface StatisticsDateRange {
   endDate: Date;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Возвращает границы периода для статистики в московском времени.
  * startDate/endDate — в UTC, для сравнения с completedAt/confirmedAt в БД.
+ * - today: текущий день по Москве
+ * - week: последние 7 дней (сегодня −7 дней .. конец сегодня)
+ * - month: последние 30 дней (сегодня −30 дней .. конец сегодня)
  */
 export function getStatisticsDateRange(period: 'today' | 'week' | 'month'): StatisticsDateRange {
   const now = new Date();
   const m = getMoscowDateParts(now);
-  let startYear = m.year;
-  let startMonth = m.month;
-  let startDate = m.date;
+  const todayStart = startOfDayMoscowUTC(m.year, m.month, m.date);
+  const todayEnd = endOfDayMoscowUTC(m.year, m.month, m.date);
 
   if (period === 'today') {
-    return {
-      startDate: startOfDayMoscowUTC(m.year, m.month, m.date),
-      endDate: endOfDayMoscowUTC(m.year, m.month, m.date),
-    };
+    return { startDate: todayStart, endDate: todayEnd };
   }
 
   if (period === 'week') {
-    const diff = m.date - m.dayOfWeek + (m.dayOfWeek === 0 ? -6 : 1);
-    startDate = diff;
-    if (startDate < 1) {
-      const prevMonth = new Date(Date.UTC(m.year, m.month, 0));
-      startDate += prevMonth.getUTCDate();
-      startMonth = prevMonth.getUTCMonth();
-      startYear = prevMonth.getUTCFullYear();
-    }
     return {
-      startDate: startOfDayMoscowUTC(startYear, startMonth, startDate),
-      endDate: endOfDayMoscowUTC(m.year, m.month, m.date),
+      startDate: new Date(todayStart.getTime() - 7 * DAY_MS),
+      endDate: todayEnd,
     };
   }
 
   if (period === 'month') {
     return {
-      startDate: startOfDayMoscowUTC(m.year, m.month, 1),
-      endDate: endOfDayMoscowUTC(m.year, m.month, m.date),
+      startDate: new Date(todayStart.getTime() - 30 * DAY_MS),
+      endDate: todayEnd,
     };
   }
 
-  const today = startOfDayMoscowUTC(m.year, m.month, m.date);
-  return {
-    startDate: today,
-    endDate: endOfDayMoscowUTC(m.year, m.month, m.date),
-  };
+  return { startDate: todayStart, endDate: todayEnd };
 }
 
 /**

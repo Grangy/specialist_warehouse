@@ -1,18 +1,113 @@
 /**
  * API endpoint для получения общей статистики склада
+ * Агрегация по task_statistics в московских границах периодов — совпадает с рейтингами.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
-import {
-  getStatisticsDateRange,
-  getMoscowTodayStart,
-  getMoscowWeekStart,
-  getMoscowYearMonth,
-} from '@/lib/utils/moscowDate';
+import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
+
+type PeriodAgg = {
+  positions: number;
+  units: number;
+  orders: number;
+  points: number;
+  activeUsers: number;
+  tasks: number;
+};
+
+async function aggregatePeriod(
+  startDate: Date,
+  endDate: Date,
+  adminUserIds: string[]
+): Promise<PeriodAgg> {
+  const byCompleted = await prisma.taskStatistics.findMany({
+    where: {
+      roleType: 'collector',
+      userId: { notIn: adminUserIds },
+      task: { completedAt: { gte: startDate, lte: endDate } },
+    },
+    select: {
+      taskId: true,
+      positions: true,
+      units: true,
+      shipmentId: true,
+      orderPoints: true,
+      userId: true,
+    },
+  });
+  const byConfirmed = await prisma.taskStatistics.findMany({
+    where: {
+      roleType: 'collector',
+      userId: { notIn: adminUserIds },
+      task: { confirmedAt: { gte: startDate, lte: endDate } },
+    },
+    select: {
+      taskId: true,
+      positions: true,
+      units: true,
+      shipmentId: true,
+      orderPoints: true,
+      userId: true,
+    },
+  });
+  const checkerStats = await prisma.taskStatistics.findMany({
+    where: {
+      roleType: 'checker',
+      userId: { notIn: adminUserIds },
+      task: { confirmedAt: { gte: startDate, lte: endDate } },
+    },
+    select: {
+      taskId: true,
+      shipmentId: true,
+      orderPoints: true,
+      userId: true,
+    },
+  });
+
+  const collectorByTask = new Map<
+    string,
+    { positions: number; units: number; shipmentId: string; orderPoints: number; userId: string }
+  >();
+  for (const s of [...byCompleted, ...byConfirmed]) {
+    const existing = collectorByTask.get(s.taskId);
+    if (!existing) {
+      collectorByTask.set(s.taskId, {
+        positions: s.positions,
+        units: s.units,
+        shipmentId: s.shipmentId,
+        orderPoints: s.orderPoints ?? 0,
+        userId: s.userId,
+      });
+    }
+  }
+
+  const positions = [...collectorByTask.values()].reduce((sum, s) => sum + s.positions, 0);
+  const units = [...collectorByTask.values()].reduce((sum, s) => sum + s.units, 0);
+  const orders = new Set([...collectorByTask.values()].map(s => s.shipmentId)).size;
+  const collectorPoints = [...collectorByTask.values()].reduce((sum, s) => sum + s.orderPoints, 0);
+  const checkerPoints = checkerStats.reduce((sum, s) => sum + (s.orderPoints ?? 0), 0);
+  const points = collectorPoints + checkerPoints;
+  const activeUsers = new Set([
+    ...[...collectorByTask.values()].map(s => s.userId),
+    ...checkerStats.map(s => s.userId),
+  ]).size;
+
+  const tasks = await prisma.shipmentTask.count({
+    where: {
+      status: 'processed',
+      OR: [
+        { completedAt: { gte: startDate, lte: endDate } },
+        { confirmedAt: { gte: startDate, lte: endDate } },
+      ],
+    },
+  });
+
+  return { positions, units, orders, points, activeUsers, tasks };
+}
 
 /**
  * GET /api/statistics/overview
@@ -25,119 +120,51 @@ export async function GET(request: NextRequest) {
       return authResult;
     }
 
-    const { startDate: todayStart, endDate: todayEnd } = getStatisticsDateRange('today');
-    const today = getMoscowTodayStart();
-    const weekStart = getMoscowWeekStart();
-    const { year: currentYear, month: currentMonth } = getMoscowYearMonth();
-
-    // Статистика за сегодня (по Москве)
-    const todayTasks = await prisma.shipmentTask.count({
-      where: {
-        status: 'processed',
-        OR: [
-          { completedAt: { gte: todayStart, lte: todayEnd } },
-          { confirmedAt: { gte: todayStart, lte: todayEnd } },
-        ],
-      },
-    });
-
-    // Получаем всех пользователей-админов для исключения
     const adminUsers = await prisma.user.findMany({
       where: { role: 'admin' },
       select: { id: true },
     });
     const adminUserIds = adminUsers.map(u => u.id);
 
-    const todayDailyStats = await prisma.dailyStats.findMany({
-      where: {
-        date: {
-          gte: today,
-        },
-        userId: {
-          notIn: adminUserIds,
-        },
-      },
-    });
+    const todayRange = getStatisticsDateRange('today');
+    const weekRange = getStatisticsDateRange('week');
+    const monthRange = getStatisticsDateRange('month');
 
-    const todayTotalPositions = todayDailyStats.reduce((sum, s) => sum + s.positions, 0);
-    const todayTotalUnits = todayDailyStats.reduce((sum, s) => sum + s.units, 0);
-    const todayTotalOrders = todayDailyStats.reduce((sum, s) => sum + s.orders, 0);
-    const todayTotalPoints = todayDailyStats.reduce((sum, s) => sum + s.dayPoints, 0);
+    const [today, week, month] = await Promise.all([
+      aggregatePeriod(todayRange.startDate, todayRange.endDate, adminUserIds),
+      aggregatePeriod(weekRange.startDate, weekRange.endDate, adminUserIds),
+      aggregatePeriod(monthRange.startDate, monthRange.endDate, adminUserIds),
+    ]);
 
-    // Статистика за неделю
-    const weekDailyStats = await prisma.dailyStats.findMany({
-      where: {
-        date: {
-          gte: weekStart,
-        },
-        userId: {
-          notIn: adminUserIds,
-        },
-      },
-    });
-
-    const weekTotalPositions = weekDailyStats.reduce((sum, s) => sum + s.positions, 0);
-    const weekTotalUnits = weekDailyStats.reduce((sum, s) => sum + s.units, 0);
-    const weekTotalOrders = weekDailyStats.reduce((sum, s) => sum + s.orders, 0);
-    const weekTotalPoints = weekDailyStats.reduce((sum, s) => sum + s.dayPoints, 0);
-
-    // Статистика за месяц (год/месяц по Москве)
-    const monthlyStats = await prisma.monthlyStats.findMany({
-      where: {
-        year: currentYear,
-        month: currentMonth,
-        userId: {
-          notIn: adminUserIds,
-        },
-      },
-    });
-
-    const monthTotalPositions = monthlyStats.reduce((sum, s) => sum + s.totalPositions, 0);
-    const monthTotalUnits = monthlyStats.reduce((sum, s) => sum + s.totalUnits, 0);
-    const monthTotalOrders = monthlyStats.reduce((sum, s) => sum + s.totalOrders, 0);
-    const monthTotalPoints = monthlyStats.reduce((sum, s) => sum + s.monthPoints, 0);
-
-    // Общая статистика
     const totalTasks = await prisma.shipmentTask.count({
-      where: {
-        status: 'processed',
-      },
+      where: { status: 'processed' },
     });
-
     const totalUsers = await prisma.user.count({
-      where: {
-        role: {
-          in: ['collector', 'checker'],
-        },
-      },
+      where: { role: { in: ['collector', 'checker'] } },
     });
-
-    const activeUsersToday = new Set(todayDailyStats.map(s => s.userId)).size;
-    const activeUsersWeek = new Set(weekDailyStats.map(s => s.userId)).size;
-    const activeUsersMonth = new Set(monthlyStats.map(s => s.userId)).size;
 
     return NextResponse.json({
       today: {
-        tasks: todayTasks,
-        positions: todayTotalPositions,
-        units: todayTotalUnits,
-        orders: todayTotalOrders,
-        points: todayTotalPoints,
-        activeUsers: activeUsersToday,
+        tasks: today.tasks,
+        positions: today.positions,
+        units: today.units,
+        orders: today.orders,
+        points: today.points,
+        activeUsers: today.activeUsers,
       },
       week: {
-        positions: weekTotalPositions,
-        units: weekTotalUnits,
-        orders: weekTotalOrders,
-        points: weekTotalPoints,
-        activeUsers: activeUsersWeek,
+        positions: week.positions,
+        units: week.units,
+        orders: week.orders,
+        points: week.points,
+        activeUsers: week.activeUsers,
       },
       month: {
-        positions: monthTotalPositions,
-        units: monthTotalUnits,
-        orders: monthTotalOrders,
-        points: monthTotalPoints,
-        activeUsers: activeUsersMonth,
+        positions: month.positions,
+        units: month.units,
+        orders: month.orders,
+        points: month.points,
+        activeUsers: month.activeUsers,
       },
       total: {
         tasks: totalTasks,

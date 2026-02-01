@@ -92,4 +92,10 @@ scripts/test-*.sh
 scripts/test-*.ts
 scripts/create-test-*.ts
 scripts/fill-analytics-test-data.ts
+# Аудит баллов (локальный скрипт, отчёт и выводы — не коммитить)
+scripts/audit-points-week-from-26.ts
+scripts/audit-points-week-from-26-report.md
+scripts/audit-points-week-from-26-conclusions.md
+scripts/audit-positions-difficulty.ts
+scripts/audit-positions-full-report.md
 backups/

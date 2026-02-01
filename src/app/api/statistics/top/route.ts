@@ -1,12 +1,13 @@
 /**
- * Публичный API: общий топ дня без авторизации
- * GET /api/statistics/top — возвращает объединённый рейтинг (сборщики + проверяльщики + диктовщики) за СЕГОДНЯ.
- * Ранг и уровень (животные) считаются только по баллам за текущий день, не за месяц/неделю.
+ * Публичный API: общий топ без авторизации
+ * GET /api/statistics/top?period=today|week|month — объединённый рейтинг за период (Москва).
+ * today = текущий день, week = последние 7 дней, month = последние 30 дней.
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAnimalLevel } from '@/lib/ranking/levels';
+import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,28 +31,34 @@ interface RankingEntry {
   efficiency: number | null;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endDate = new Date(now);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(23, 59, 59, 999);
+    const { searchParams } = new URL(request.url);
+    const periodParam = searchParams.get('period') || 'today';
+    const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
+    const { startDate, endDate } = getStatisticsDateRange(period);
 
-    // Сборщики за сегодня
-    const collectorTaskStats = await prisma.taskStatistics.findMany({
+    const collectorByCompleted = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'collector',
-        task: {
-          completedAt: { gte: startDate, lte: endDate },
-        },
+        task: { completedAt: { gte: startDate, lte: endDate } },
       },
-      include: {
-        user: { select: { id: true, name: true, role: true } },
-      },
+      include: { user: { select: { id: true, name: true, role: true } } },
     });
+    const collectorByConfirmed = await prisma.taskStatistics.findMany({
+      where: {
+        roleType: 'collector',
+        task: { confirmedAt: { gte: startDate, lte: endDate } },
+      },
+      include: { user: { select: { id: true, name: true, role: true } } },
+    });
+    const collectorTaskStats = [
+      ...new Map(
+        [...collectorByCompleted, ...collectorByConfirmed].map((s) => [s.id, s])
+      ).values(),
+    ];
 
-    // Проверки за сегодня (включая диктовщиков)
+    // Проверки за период (включая диктовщиков)
     const checkerTaskStats = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'checker',
@@ -64,7 +71,7 @@ export async function GET() {
       },
     });
 
-    // Сборки проверяльщиков за сегодня
+    // Сборки проверяльщиков за период
     const checkerCollectorTaskStats = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'collector',
@@ -78,7 +85,7 @@ export async function GET() {
       },
     });
 
-    // Баллы сборщиков как диктовщиков за сегодня (по confirmedAt, dictatorId = user.id)
+    // Баллы сборщиков как диктовщиков за период (по confirmedAt, dictatorId = user.id)
     const dictatorTaskStats = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'collector',
@@ -250,7 +257,7 @@ export async function GET() {
 
     allRankings.sort((a, b) => b.points - a.points);
 
-    // Ранг и уровень (животные) — только по баллам за СЕГОДНЯ (allPoints за текущий день)
+    // Ранг и уровень (животные) по баллам за выбранный период
     const allPoints = allRankings.map((s) => s.points).filter((p) => p > 0);
     if (allPoints.length > 0) {
       const sorted = [...allPoints].sort((a, b) => a - b);
@@ -284,6 +291,7 @@ export async function GET() {
 
     return NextResponse.json({
       all: allRankings,
+      period,
       date: startDate.toISOString().split('T')[0],
     });
   } catch (error: unknown) {

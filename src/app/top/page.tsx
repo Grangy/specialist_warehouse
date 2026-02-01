@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Trophy, RefreshCw, Calendar } from 'lucide-react';
 import Link from 'next/link';
+
+type Period = 'today' | 'week' | 'month';
 
 interface RankingEntry {
   userId: string;
@@ -24,18 +26,25 @@ interface RankingEntry {
   efficiency: number | null;
 }
 
+const PERIOD_LABELS: Record<Period, string> = {
+  today: 'День',
+  week: 'Неделя',
+  month: 'Месяц',
+};
+
 export default function TopPage() {
   const [list, setList] = useState<RankingEntry[]>([]);
   const [date, setDate] = useState<string>('');
+  const [period, setPeriod] = useState<Period>('week');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/statistics/top', { cache: 'no-store' });
+      const res = await fetch(`/api/statistics/top?period=${period}`, { cache: 'no-store' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || data.details || `Ошибка ${res.status}`);
@@ -50,11 +59,11 @@ export default function TopPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [period]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const formatPoints = (p: number) => Math.round(p * 100) / 100;
   const formatPPH = (pph: number | null) =>
@@ -83,7 +92,7 @@ export default function TopPage() {
         <div className="flex items-center justify-between mb-6 opacity-0 animate-top-title-in" style={{ animationFillMode: 'forwards' }}>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Trophy className="w-8 h-8 text-yellow-400 drop-shadow-[0_0_8px_rgba(234,179,8,0.4)]" />
-            Общий топ дня
+            Общий топ
           </h1>
           <Link
             href="/"
@@ -93,20 +102,36 @@ export default function TopPage() {
           </Link>
         </div>
 
-        {date && (
-          <div
-            className="flex flex-col gap-1 mb-6 opacity-0 animate-top-card-stagger"
-            style={{ animationDelay: '0.2s', animationFillMode: 'forwards' }}
-          >
+        <div
+          className="flex flex-col gap-3 mb-6 opacity-0 animate-top-card-stagger"
+          style={{ animationDelay: '0.2s', animationFillMode: 'forwards' }}
+        >
+          <div className="flex gap-2">
+            {(['today', 'week', 'month'] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriod(p)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  period === p
+                    ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
+                    : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:text-slate-200 hover:border-slate-600'
+                }`}
+              >
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          {date && (
             <div className="flex items-center gap-2 text-slate-400 text-sm">
               <Calendar className="w-4 h-4" />
-              <span>{formatDate(date)}</span>
+              <span>{PERIOD_LABELS[period]} · {formatDate(date)}</span>
             </div>
-            <p className="text-xs text-slate-500">
-              Места по баллам (учитывается скорость и объём)
-            </p>
-          </div>
-        )}
+          )}
+          <p className="text-xs text-slate-500">
+            Места по баллам (учитывается скорость и объём)
+          </p>
+        </div>
 
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -132,7 +157,7 @@ export default function TopPage() {
         {!isLoading && !error && list.length === 0 && (
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center text-slate-400 opacity-0 animate-top-card-stagger" style={{ animationFillMode: 'forwards' }}>
             <Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>Пока нет данных за сегодня.</p>
+            <p>Пока нет данных за {PERIOD_LABELS[period].toLowerCase()}.</p>
           </div>
         )}
 
