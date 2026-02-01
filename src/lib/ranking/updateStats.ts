@@ -84,7 +84,7 @@ export async function updatePositionDifficulty(taskId: string) {
     },
   });
   if (!task || !task.collectorId || !task.completedAt || !task.lines.length) return;
-  if (task.collector.role === 'admin') return;
+  if (!task.collector || task.collector.role === 'admin') return;
   if (task.warehouse === 'Склад 3' && task.completedAt < WAREHOUSE_3_CUTOFF) return;
 
   const stats = await prisma.taskStatistics.findUnique({

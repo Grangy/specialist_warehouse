@@ -34,7 +34,7 @@ interface RankingEntry {
  */
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['admin']);
+    const authResult = await requireAuth(request, ['admin', 'checker']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }

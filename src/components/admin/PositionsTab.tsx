@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown, RefreshCw, Loader2, BarChart3, Layers } from 'lucide-react';
 
 interface PositionItem {
@@ -25,7 +25,7 @@ export default function PositionsTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [minPickings] = useState(10);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({ mode });
@@ -43,11 +43,11 @@ export default function PositionsTab() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [mode, warehouse]);
 
   useEffect(() => {
     loadData();
-  }, [mode, warehouse]);
+  }, [loadData]);
 
   return (
     <div className="space-y-4 md:space-y-6">
