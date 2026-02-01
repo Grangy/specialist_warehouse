@@ -56,6 +56,17 @@ async function main() {
   const now = new Date();
 
   if (all) {
+    const totalProcessed = await prisma.shipment.count({
+      where: { status: 'processed', deleted: false },
+    });
+    const alreadyExportedCount = await prisma.shipment.count({
+      where: { status: 'processed', deleted: false, exportedTo1C: true },
+    });
+    const toMarkCount = await prisma.shipment.count({
+      where: { status: 'processed', deleted: false, exportedTo1C: false },
+    });
+    console.log(`В БД: processed и не удалённых — ${totalProcessed}, уже помечены выгруженными — ${alreadyExportedCount}, помечать сейчас — ${toMarkCount}`);
+
     const updated = await prisma.shipment.updateMany({
       where: {
         status: 'processed',
