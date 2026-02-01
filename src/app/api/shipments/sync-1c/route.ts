@@ -30,8 +30,10 @@ export const dynamic = 'force-dynamic';
  * 
  * Ответ:
  * {
- *   "orders": [ { ... finalOrderData ... } ],
- *   "success_ids": [ "id1", "id2" ]  // ВРЕМЕННО: id заказов, которых нет в БД или удалены — отдаём как success, чтобы 1С убрал из списка (без доработок 1С). Потом убрать.
+ *   "orders": [
+ *     { ... finalOrderData ... },
+ *     { ... finalOrderData ... }
+ *   ]
  * }
  */
 export async function POST(request: NextRequest) {
@@ -43,6 +45,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const ordersCount = Array.isArray(body.orders) ? body.orders.length : 0;
+    // Минимальный лог: один запрос — одна строка
+    console.log(`[Sync-1C] [${requestId}] POST ${ordersCount} orders from ${clientIp}`);
 
     // Авторизация через заголовки, тело запроса или cookies
     const authResult = await authenticateRequest(request, body, ['admin']);
@@ -61,13 +65,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Обновляем статус выгрузки и собираем success_ids — заказов нет в БД или удалены, отдаём 1С как success (временно, без доработок 1С).
-    const successIds: string[] = [];
-    const updatePromises = orders.map(async (order: { id: string; success: boolean; number?: string }): Promise<void> => {
+    // Обновляем статус выгрузки для заказов, которые были обработаны в 1С
+    // ВАЖНО: Не обновляем удаленные заказы
+    const updatePromises = orders.map(async (order: { id: string; success: boolean; number?: string }) => {
+      // Улучшенная проверка: если success не boolean, пропускаем
       if (typeof order.success !== 'boolean') {
         console.warn(`[Sync-1C] [${requestId}] Пропущен неверный формат заказа (success не boolean):`, order);
         return;
       }
+
+      // Если success = false, просто пропускаем (заказ не был обработан в 1С)
+      if (order.success === false) return;
+
+      // Если success = true, обновляем статус
+      // ВАЖНО: Если id пустой, но есть number, используем number для поиска
       const hasId = order.id && order.id.trim() !== '';
       const hasNumber = order.number && order.number.trim() !== '';
 
@@ -78,37 +89,43 @@ export async function POST(request: NextRequest) {
 
       let shipment = null;
 
+      // Сначала пытаемся найти по ID (если он не пустой)
       if (hasId) {
         shipment = await prisma.shipment.findUnique({
           where: { id: order.id },
-          select: { id: true, deleted: true, number: true, status: true, exportedTo1C: true, exportedTo1CAt: true },
+          select: { id: true, deleted: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
         });
       }
 
       if (!shipment && hasNumber) {
         shipment = await prisma.shipment.findFirst({
-          where: { number: order.number, deleted: false },
-          select: { id: true, deleted: true, number: true, status: true, exportedTo1C: true, exportedTo1CAt: true },
+          where: { 
+            number: order.number,
+            deleted: false, // Исключаем удаленные
+          },
+          select: { id: true, deleted: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
         });
       }
 
       if (!shipment) {
-        if (hasId) successIds.push(order.id);
-        else if (hasNumber) successIds.push(order.number!);
+        console.warn(`[Sync-1C] [${requestId}] Заказ ${order.id || 'ID не указан'}${order.number ? ` (номер: ${order.number})` : ''} не найден в БД, пропускаем обновление`);
         return;
       }
 
       if (shipment.deleted) {
-        successIds.push(shipment.id);
+        console.warn(`[Sync-1C] [${requestId}] Заказ ${shipment.number} (${shipment.id}) удален, пропускаем обновление статуса`);
         return;
       }
 
-      if (shipment.status !== 'processed') return;
       if (shipment.exportedTo1C) return;
 
+      // Заказ успешно обработан в 1С - помечаем как выгруженный
       await prisma.shipment.update({
         where: { id: shipment.id },
-        data: { exportedTo1C: true, exportedTo1CAt: new Date() },
+        data: {
+          exportedTo1C: true,
+          exportedTo1CAt: new Date(),
+        },
       });
     });
 
@@ -279,17 +296,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[Sync-1C] [${requestId}] in=${ordersCount} success_ids=${successIds.length} ready=${readyOrders.length} from ${clientIp}`);
+    if (readyOrders.length > 0) {
+      console.log(`[Sync-1C] [${requestId}] ready for export: ${readyOrders.length}`);
+    }
 
-    // 1С ставит success: true только когда получает заказ в ответе «готовые к выгрузке».
-    // Добавляем в orders минимальные объекты по success_id (нет в БД / удалены), чтобы 1С считал выгрузку успешной.
-    const uniqueSuccessIds = [...new Set(successIds)];
-    const ackOrders = uniqueSuccessIds.map((id) => ({ id }));
-
-    return NextResponse.json({
-      orders: [...readyOrders, ...ackOrders],
-      success_ids: uniqueSuccessIds,
-    });
+    return NextResponse.json({ orders: readyOrders });
   } catch (error: any) {
     console.error(`[Sync-1C] [${requestId}] Ошибка:`, error.message);
     return NextResponse.json(
