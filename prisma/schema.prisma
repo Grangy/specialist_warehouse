@@ -248,6 +248,22 @@ model TaskStatistics {
   @@map("task_statistics")
 }
 
+// Самообучаемая сложность позиций (SKU): обновляется после каждой сборки, только от ≥10 сборок в отчёте
+model PositionDifficulty {
+  id              String   @id @default(cuid())
+  sku             String
+  name            String   @default("")
+  warehouse       String   // "Склад 1", "Склад 2", "Склад 3"
+  taskCount       Int      @default(0) @map("task_count")   // число сборок (заданий), в которых встречался SKU
+  sumSecPerUnit   Float    @default(0) @map("sum_sec_per_unit")
+  sumSecPerPos    Float    @default(0) @map("sum_sec_per_pos")
+  totalUnits      Int      @default(0) @map("total_units")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([sku, warehouse])
+  @@map("position_difficulty")
+}
+
 // Статистика за день
 model DailyStats {
   id     String   @id @default(cuid())

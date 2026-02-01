@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin, Trophy, AlertTriangle, AlertCircle, Menu, X } from 'lucide-react';
+import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin, Trophy, AlertTriangle, AlertCircle, Menu, X, Layers } from 'lucide-react';
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
 import ActiveShipmentsTab from '@/components/admin/ActiveShipmentsTab';
@@ -12,9 +12,10 @@ import SettingsTab from '@/components/admin/SettingsTab';
 import StatisticsTab from '@/components/admin/StatisticsTab';
 import MinusTab from '@/components/admin/MinusTab';
 import WarningsTab from '@/components/admin/WarningsTab';
+import PositionsTab from '@/components/admin/PositionsTab';
 import { useToast } from '@/hooks/useToast';
 
-type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus';
+type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus' | 'positions';
 
 type AdminUserRole = 'admin' | 'checker';
 
@@ -201,6 +202,17 @@ export default function AdminPage() {
           {!isCheckerOnly && (
           <>
           <button
+            onClick={() => selectTab('positions')}
+            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+              activeTab === 'positions'
+                ? 'bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-lg shadow-violet-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <Layers className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
+            <span className="font-medium text-sm md:text-base whitespace-nowrap">Позиции</span>
+          </button>
+          <button
             onClick={() => selectTab('analytics')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'analytics'
@@ -338,6 +350,7 @@ export default function AdminPage() {
           {activeTab === 'statistics' && <StatisticsTab />}
           {activeTab === 'regions' && <RegionPrioritiesTab />}
           {activeTab === 'minus' && <MinusTab />}
+          {activeTab === 'positions' && <PositionsTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
       </main>

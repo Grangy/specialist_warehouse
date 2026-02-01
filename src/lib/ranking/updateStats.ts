@@ -68,6 +68,71 @@ function calculateRankByPercentiles(value: number, allValues: number[]): number 
   return 10;
 }
 
+/** С 2 февраля 2026 данные по Склад 3 учитываются в сложности позиций; до этой даты — нет. */
+const WAREHOUSE_3_CUTOFF = new Date('2026-02-02T00:00:00.000Z');
+
+/**
+ * Обновить самообучаемую сложность позиций после завершения сборки.
+ * Учитываются только не-админы; для Склад 3 — только сборки с completedAt >= 2026-02-02.
+ */
+export async function updatePositionDifficulty(taskId: string) {
+  const task = await prisma.shipmentTask.findUnique({
+    where: { id: taskId },
+    include: {
+      lines: { include: { shipmentLine: true } },
+      collector: true,
+    },
+  });
+  if (!task || !task.collectorId || !task.completedAt || !task.lines.length) return;
+  if (task.collector.role === 'admin') return;
+  if (task.warehouse === 'Склад 3' && task.completedAt < WAREHOUSE_3_CUTOFF) return;
+
+  const stats = await prisma.taskStatistics.findUnique({
+    where: {
+      taskId_userId_roleType: {
+        taskId,
+        userId: task.collectorId,
+        roleType: 'collector',
+      },
+    },
+  });
+  const secPerUnit = stats?.secPerUnit ?? (stats?.pickTimeSec != null && stats?.units ? stats.pickTimeSec / stats.units : null);
+  const secPerPos = stats?.secPerPos ?? (stats?.pickTimeSec != null && stats?.positions ? stats.pickTimeSec / stats.positions : null);
+  if (secPerUnit == null && secPerPos == null) return;
+
+  const now = new Date();
+  for (const line of task.lines) {
+    const sl = line.shipmentLine;
+    if (!sl) continue;
+    const sku = sl.sku || sl.name || '?';
+    const name = sl.name ?? '';
+    const qty = line.qty ?? 0;
+    await prisma.positionDifficulty.upsert({
+      where: {
+        sku_warehouse: { sku, warehouse: task.warehouse },
+      },
+      create: {
+        sku,
+        name,
+        warehouse: task.warehouse,
+        taskCount: 1,
+        sumSecPerUnit: secPerUnit ?? 0,
+        sumSecPerPos: secPerPos ?? 0,
+        totalUnits: qty,
+        updatedAt: now,
+      },
+      update: {
+        name,
+        taskCount: { increment: 1 },
+        sumSecPerUnit: { increment: secPerUnit ?? 0 },
+        sumSecPerPos: { increment: secPerPos ?? 0 },
+        totalUnits: { increment: qty },
+        updatedAt: now,
+      },
+    });
+  }
+}
+
 /**
  * Обновить статистику для сборщика после завершения сборки
  */
@@ -224,6 +289,10 @@ export async function updateCollectorStats(taskId: string) {
     // Обновляем месячную статистику
     await updateMonthlyStats(task.collectorId, task.completedAt, stats);
 
+    // Самообучаемая сложность позиций: пополняем/обновляем PositionDifficulty после каждой сборки
+    await updatePositionDifficulty(taskId).catch((err) =>
+      console.error(`[updateCollectorStats] updatePositionDifficulty:`, err)
+    );
   } catch (error) {
     console.error(`[updateCollectorStats] Ошибка при обновлении статистики для задания ${taskId}:`, error);
   }
