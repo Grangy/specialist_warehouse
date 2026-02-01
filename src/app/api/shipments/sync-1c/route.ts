@@ -106,14 +106,12 @@ export async function POST(request: NextRequest) {
       }
 
       if (!shipment) {
-        console.warn(`[Sync-1C] [${requestId}] Заказа нет в БД — отдаём success_ids чтобы 1С убрал: ${order.id || order.number}`);
         if (hasId) successIds.push(order.id);
         else if (hasNumber) successIds.push(order.number!);
         return;
       }
 
       if (shipment.deleted) {
-        console.warn(`[Sync-1C] [${requestId}] Заказ удален — отдаём в success_ids: ${shipment.id}`);
         successIds.push(shipment.id);
         return;
       }
@@ -130,7 +128,7 @@ export async function POST(request: NextRequest) {
     await Promise.all(updatePromises);
 
     if (successIds.length > 0) {
-      console.log(`[Sync-1C] [${requestId}] success_ids (нет в БД или удалены): ${successIds.length} — 1С убирает из списка`);
+      console.log(`[Sync-1C] [${requestId}] success_ids: ${successIds.length} (нет в БД или удалены), отдаём 1С — убрать из списка`);
     }
 
     // Обработка заказов с success: true, но пустым id
