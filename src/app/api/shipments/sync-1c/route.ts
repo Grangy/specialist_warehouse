@@ -48,6 +48,23 @@ export async function POST(request: NextRequest) {
     // Минимальный лог: один запрос — одна строка
     console.log(`[Sync-1C] [${requestId}] POST ${ordersCount} orders from ${clientIp}`);
 
+    // ВРЕМЕННО: подробный лог тела запроса от 1С (без пароля) — убрать после отладки
+    const bodyKeys = Object.keys(body).filter((k) => k !== 'password');
+    const ordersSummary = Array.isArray(body.orders)
+      ? body.orders.slice(0, 5).map((o: { id?: string; number?: string; success?: boolean }) => ({
+          id: o.id ?? null,
+          number: o.number ?? null,
+          success: o.success,
+        }))
+      : [];
+    console.log(
+      `[Sync-1C] [${requestId}] body keys: ${bodyKeys.join(', ')}; orders sample (first 5):`,
+      JSON.stringify(ordersSummary)
+    );
+    if (Array.isArray(body.orders) && body.orders.length > 5) {
+      console.log(`[Sync-1C] [${requestId}] ... и ещё ${body.orders.length - 5} заказов в запросе`);
+    }
+
     // Авторизация через заголовки, тело запроса или cookies
     const authResult = await authenticateRequest(request, body, ['admin']);
     if (authResult instanceof NextResponse) {
