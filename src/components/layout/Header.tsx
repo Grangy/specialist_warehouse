@@ -594,6 +594,18 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
                             </div>
                           </div>
                         )}
+
+                        {/* Выход — в профиле */}
+                        <div className="border-t border-slate-700/50 pt-4">
+                          <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-slate-700/80 hover:bg-red-600/80 border border-slate-600/50 hover:border-red-500/50 text-slate-200 hover:text-red-100 transition-all duration-200"
+                            title="Выход"
+                          >
+                            <LogOut className="w-4 h-4" />
+                            <span className="text-sm font-medium">Выход</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </>
@@ -630,14 +642,6 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
             >
               <RefreshCw className="w-4 h-4" />
               <span className="hidden sm:inline text-xs font-medium">Обновить</span>
-            </button>
-            <button
-              onClick={handleLogout}
-              className="bg-slate-800/70 hover:bg-red-600/80 active:bg-red-700/80 border border-slate-600/50 hover:border-red-500/70 text-slate-200 hover:text-red-100 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
-              title="Выход"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline text-xs font-medium">Выход</span>
             </button>
           </div>
         </div>

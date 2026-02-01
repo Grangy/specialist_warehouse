@@ -53,10 +53,12 @@ export async function GET(request: NextRequest) {
       where: { lockedAt: { gt: since } },
       select: { id: true },
     }),
-    prisma.syncTouch.findUnique({
-      where: { id: 1 },
-      select: { touchedAt: true },
-    }),
+    prisma.syncTouch
+      .findUnique({
+        where: { id: 1 },
+        select: { touchedAt: true },
+      })
+      .catch(() => null),
   ]);
 
   const hasUpdates = Boolean(

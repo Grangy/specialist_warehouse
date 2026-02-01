@@ -273,8 +273,30 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
           </div>
         </div>
         
-        {/* Статистика */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {/* Статистика: на мобилке — компактные блоки, на десктопе — полные карточки */}
+        <div className="grid grid-cols-2 gap-2 mb-4 md:hidden">
+          <div className="rounded-lg p-2.5 border border-slate-700/50 bg-slate-800/50 flex items-center justify-between gap-1">
+            <Package className="w-4 h-4 text-blue-400 flex-shrink-0" />
+            <span className="text-[10px] text-slate-400 font-medium">Заказов</span>
+            <span className="text-sm font-bold text-slate-100 tabular-nums">{stats.total}</span>
+          </div>
+          <div className="rounded-lg p-2.5 border border-slate-700/50 bg-slate-800/50 flex items-center justify-between gap-1">
+            <ShoppingCart className="w-4 h-4 text-purple-400 flex-shrink-0" />
+            <span className="text-[10px] text-slate-400 font-medium">Позиций</span>
+            <span className="text-sm font-bold text-slate-100 tabular-nums">{stats.totalItems.toLocaleString()}</span>
+          </div>
+          <div className="rounded-lg p-2.5 border border-slate-700/50 bg-slate-800/50 flex items-center justify-between gap-1">
+            <PackageCheck className="w-4 h-4 text-green-400 flex-shrink-0" />
+            <span className="text-[10px] text-slate-400 font-medium">Товаров</span>
+            <span className="text-sm font-bold text-slate-100 tabular-nums">{stats.totalQty.toLocaleString()}</span>
+          </div>
+          <div className="rounded-lg p-2.5 border border-slate-700/50 bg-slate-800/50 flex items-center justify-between gap-1">
+            <Scale className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+            <span className="text-[10px] text-slate-400 font-medium">Вес (кг)</span>
+            <span className="text-sm font-bold text-slate-100 tabular-nums">{stats.totalWeight > 0 ? stats.totalWeight.toFixed(1) : '—'}</span>
+          </div>
+        </div>
+        <div className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-gradient-to-br from-blue-600/20 to-blue-500/10 rounded-xl p-5 border-2 border-blue-500/30 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group">
             <div className="flex items-center justify-between mb-3">
               <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-500 rounded-lg flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
