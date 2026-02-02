@@ -22,7 +22,6 @@ import {
   Trash2
 } from 'lucide-react';
 import type { Shipment } from '@/types';
-import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
 
 interface ShipmentStats {
@@ -58,7 +57,6 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
     totalWeight: 0,
   });
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
-  const polling = useShipmentsPolling();
 
   const loadShipments = async () => {
     try {
@@ -69,7 +67,6 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
       }
       const data = await res.json();
       setShipments(data);
-      polling?.refetchDone();
 
       // Вычисляем статистику
       const calculatedStats: ShipmentStats = {
@@ -92,11 +89,7 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
     // eslint-disable-next-line react-hooks/exhaustive-deps -- только при монтировании
   }, []);
 
-  useEffect(() => {
-    if (!polling) return;
-    return polling.subscribe(loadShipments);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- подписка на polling, loadShipments стабилен по смыслу
-  }, [polling]);
+  // Опрос (polling) в завершённых заказах отключён — не сбрасывает попап при просмотре деталей. Обновить список можно кнопкой «Обновить».
 
   // Фильтрация и сортировка
   const filteredAndSortedShipments = useMemo(() => {
