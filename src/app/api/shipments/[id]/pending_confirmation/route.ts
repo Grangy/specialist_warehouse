@@ -17,9 +17,9 @@ export async function POST(
     }
     const { user } = authResult;
 
-    // Сборщик, проверяльщик и админ могут переводить в pending_confirmation
-    // Проверяльщик может работать в режиме сборки и отправлять заказы на проверку
-    if (user.role !== 'admin' && user.role !== 'collector' && user.role !== 'checker') {
+    // Сборщик, проверяльщик, склад 3 и админ могут переводить в pending_confirmation
+    // Проверяльщик и склад 3 могут работать в режиме сборки и отправлять заказы на проверку
+    if (user.role !== 'admin' && user.role !== 'collector' && user.role !== 'checker' && user.role !== 'warehouse_3') {
       return NextResponse.json(
         { error: 'Недостаточно прав доступа' },
         { status: 403 }

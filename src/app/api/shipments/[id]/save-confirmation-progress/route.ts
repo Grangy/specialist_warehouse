@@ -18,8 +18,8 @@ export async function POST(
     }
     const { user } = authResult;
 
-    // Проверяем роль - только проверяльщик и админ могут сохранять прогресс проверки
-    if (user.role !== 'admin' && user.role !== 'checker') {
+    // Проверяем роль - проверяльщик, склад 3 и админ могут сохранять прогресс проверки
+    if (user.role !== 'admin' && user.role !== 'checker' && user.role !== 'warehouse_3') {
       return NextResponse.json(
         { error: 'Недостаточно прав доступа' },
         { status: 403 }
