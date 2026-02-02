@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Package, TrendingUp, Clock, Award, CheckCircle, User, Calendar, BarChart3, AlertCircle } from 'lucide-react';
 
 interface UserStatsData {
@@ -99,6 +99,8 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'checker' | 'collector' | 'daily' | 'monthly'>('checker');
+  const usePublicApiRef = useRef(usePublicApi);
+  usePublicApiRef.current = usePublicApi;
 
   useEffect(() => {
     if (userId) {
@@ -112,13 +114,13 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
 
   const loadData = async () => {
     if (!userId) return;
-    
+    const usePublic = usePublicApiRef.current;
     try {
       setIsLoading(true);
       setError('');
       const query = period ? `?period=${period}` : '';
-      const base = usePublicApi ? `/api/statistics/user/${userId}/public` : `/api/statistics/user/${userId}`;
-      const res = await fetch(`${base}${query}`);
+      const base = usePublic ? `/api/statistics/user/${userId}/public` : `/api/statistics/user/${userId}`;
+      const res = await fetch(`${base}${query}`, { credentials: usePublic ? 'omit' : 'include' });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         if (res.status === 429) {
