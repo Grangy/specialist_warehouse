@@ -92,7 +92,7 @@ export async function GET(
       weight: shipment.weight,
       itemsCount: shipment.itemsCount,
       totalQty: shipment.totalQty,
-      places: shipment.places ?? shipment.tasks.reduce((sum, t) => sum + (t.places ?? 0), 0) || null, // Места по заказу (из офиса или сумма по заданиям)
+      places: (shipment.places ?? shipment.tasks.reduce((sum, t) => sum + (t.places ?? 0), 0)) || null, // Места по заказу (из офиса или сумма по заданиям)
       // Статистика
       warehousesCount: uniqueWarehouses.size,
       warehouses: Array.from(uniqueWarehouses),
