@@ -3,10 +3,10 @@
 <div align="center">
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![Next.js](https://img.shields.io/badge/Next.js-14.0-black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)
+![Next.js](https://img.shields.io/badge/Next.js-16.1-black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
 ![Prisma](https://img.shields.io/badge/Prisma-6.19-2D3748)
-![SQLite](https://img.shields.io/badge/SQLite-3.0-003B57)
+![SQLite](https://img.shields.io/badge/SQLite-3.x-003B57)
 
 **Современная система управления складскими операциями с разделением ролей, PWA поддержкой и автоматическим разбиением заказов на задания**
 
@@ -72,8 +72,8 @@
 ## 🛠 Технологический стек
 
 ### Frontend
-- **Next.js 14** - React фреймворк с App Router
-- **TypeScript** - Типизированный JavaScript
+- **Next.js 16** - React фреймворк с App Router
+- **TypeScript 5** - Типизированный JavaScript
 - **Tailwind CSS** - Utility-first CSS фреймворк
 - **React Hooks** - Управление состоянием
 
