@@ -12,19 +12,33 @@ import {
   User,
   MapPin,
   CheckCircle2,
-  XCircle,
+  ListOrdered,
+  Layers,
 } from 'lucide-react';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
 import ExcelJS from 'exceljs';
 
 interface MinusShipment extends Shipment {
-  shortage_qty?: number; // Количество товаров с недостачей
-  shortage_items?: number; // Количество позиций с недостачей
-  zero_items?: number; // Количество позиций с нулевым количеством
+  shortage_qty?: number;
+  shortage_items?: number;
+  zero_items?: number;
 }
 
+interface ShortageItem {
+  sku: string;
+  name: string;
+  date: string;
+  shortage_qty: number;
+  shipment_number: string;
+  shipment_id: string;
+  warehouse: string;
+}
+
+type MinusSubTab = 'orders' | 'items';
+
 export default function MinusTab() {
+  const [subTab, setSubTab] = useState<MinusSubTab>('orders');
   const [shipments, setShipments] = useState<MinusShipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -32,9 +46,94 @@ export default function MinusTab() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isExporting, setIsExporting] = useState(false);
 
+  // Вторая страница: товары которых в сборке не осталось
+  const [shortageItems, setShortageItems] = useState<ShortageItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError, setItemsError] = useState('');
+  const [isExportingItems, setIsExportingItems] = useState(false);
+  const [periodMode, setPeriodMode] = useState<'7days' | 'custom'>('7days');
+  const [dateFrom, setDateFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  });
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+
   useEffect(() => {
     loadShipments();
   }, []);
+
+  const loadShortageItems = async () => {
+    setItemsLoading(true);
+    setItemsError('');
+    try {
+      const from = periodMode === '7days' ? undefined : dateFrom;
+      const to = periodMode === '7days' ? undefined : dateTo;
+      const params = new URLSearchParams();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const res = await fetch(`/api/shipments/minus/items?${params.toString()}`);
+      if (!res.ok) throw new Error('Ошибка загрузки списка недостач');
+      const data = await res.json();
+      setShortageItems(data.items || []);
+    } catch (e: any) {
+      setItemsError(e.message || 'Ошибка загрузки');
+      setShortageItems([]);
+    } finally {
+      setItemsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (subTab === 'items') loadShortageItems();
+  }, [subTab]);
+
+  const handleExportItems = async () => {
+    if (shortageItems.length === 0) return;
+    try {
+      setIsExportingItems(true);
+      const exportData = shortageItems.map((item) => ({
+        'Артикул': item.sku,
+        'Название': item.name,
+        'Склад': item.warehouse || '',
+        'Дата': item.date,
+        'Не хватает, шт': item.shortage_qty,
+        'Номер заказа': item.shipment_number,
+      }));
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Товары которых в сборке не осталось');
+      const headers = Object.keys(exportData[0] || {});
+      worksheet.addRow(headers);
+      const headerRow = worksheet.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+      exportData.forEach((row) => worksheet.addRow(Object.values(row)));
+      worksheet.columns = [
+        { width: 18 },
+        { width: 40 },
+        { width: 14 },
+        { width: 12 },
+        { width: 14 },
+        { width: 16 },
+      ];
+      const fileName = `minus-items-${dateFrom}-${dateTo}.xlsx`;
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error(e);
+      setItemsError(e.message || 'Ошибка при экспорте в Excel');
+    } finally {
+      setIsExportingItems(false);
+    }
+  };
 
   const loadShipments = async () => {
     try {
@@ -169,7 +268,7 @@ export default function MinusTab() {
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="mb-6">
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 bg-gradient-to-br from-red-600 to-red-500 rounded-xl flex items-center justify-center shadow-lg shadow-red-500/30">
             <AlertTriangle className="w-6 h-6 text-white" />
           </div>
@@ -178,8 +277,163 @@ export default function MinusTab() {
             <p className="text-sm text-slate-400">Заказы с недостачами товаров при сборке или проверке</p>
           </div>
         </div>
+        <div className="flex gap-2 border-b border-slate-700/50 pb-2">
+          <button
+            type="button"
+            onClick={() => setSubTab('orders')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              subTab === 'orders'
+                ? 'bg-red-600/30 text-red-200 border border-red-500/50'
+                : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <ListOrdered className="w-4 h-4" />
+            Заказы с недостачами
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('items')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              subTab === 'items'
+                ? 'bg-red-600/30 text-red-200 border border-red-500/50'
+                : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            Товары которых в сборке не осталось
+          </button>
+        </div>
       </div>
 
+      {subTab === 'items' ? (
+        <>
+          <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 p-4 shadow-xl mb-6">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-400">Период:</span>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="period"
+                    checked={periodMode === '7days'}
+                    onChange={() => setPeriodMode('7days')}
+                    className="text-red-500"
+                  />
+                  <span className="text-slate-200">За 7 дней</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="period"
+                    checked={periodMode === 'custom'}
+                    onChange={() => setPeriodMode('custom')}
+                    className="text-red-500"
+                  />
+                  <span className="text-slate-200">Выбрать период</span>
+                </label>
+              </div>
+              {periodMode === 'custom' && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 text-sm"
+                  />
+                  <span className="text-slate-500">—</span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 text-sm"
+                  />
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={loadShortageItems}
+                disabled={itemsLoading}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-600 text-white rounded-lg text-sm font-medium flex items-center gap-2"
+              >
+                {itemsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                {itemsLoading ? 'Загрузка...' : 'Показать'}
+              </button>
+              <button
+                type="button"
+                onClick={handleExportItems}
+                disabled={isExportingItems || shortageItems.length === 0}
+                className="px-4 py-2 bg-green-600/90 hover:bg-green-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium flex items-center gap-2"
+                title="Экспорт в Excel"
+              >
+                {isExportingItems ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {isExportingItems ? 'Экспорт...' : 'Экспорт в Excel'}
+              </button>
+            </div>
+          </div>
+          {itemsError && (
+            <div className="bg-red-900/40 border border-red-500/60 text-red-200 px-4 py-3 rounded-lg mb-4 text-sm">
+              {itemsError}
+            </div>
+          )}
+          <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-900/95">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Товар (артикул / название)</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Склад</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Дата</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider">Не хватает, шт</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Номер заказа</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700/50">
+                  {itemsLoading ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                        Загрузка...
+                      </td>
+                    </tr>
+                  ) : shortageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
+                        Нет недостач за выбранный период
+                      </td>
+                    </tr>
+                  ) : (
+                    shortageItems.map((item, idx) => (
+                      <tr key={`${item.shipment_id}-${item.sku}-${idx}`} className="hover:bg-slate-700/50">
+                        <td className="px-4 py-3">
+                          <div className="text-slate-200 font-medium">{item.name}</div>
+                          <div className="text-slate-500 text-xs">{item.sku}</div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-300">{item.warehouse || '—'}</td>
+                        <td className="px-4 py-3 text-slate-300">{item.date}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex px-2 py-1 bg-red-600/20 text-red-300 rounded font-bold text-sm border border-red-500/50">
+                            {item.shortage_qty}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedShipmentId(item.shipment_id)}
+                            className="text-blue-400 hover:text-blue-300 underline"
+                          >
+                            {item.shipment_number}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
       {error && (
         <div className="bg-red-900/40 border-2 border-red-500/60 text-red-200 px-4 py-3 rounded-lg mb-4 flex items-center gap-2 shadow-lg shadow-red-500/20">
           <AlertTriangle className="w-5 h-5 text-red-400" />
@@ -459,7 +713,9 @@ export default function MinusTab() {
         </div>
       </div>
 
-      {/* Модальное окно с деталями */}
+      </>
+      )}
+
       <ShipmentDetailsModal
         shipmentId={selectedShipmentId}
         onClose={() => setSelectedShipmentId(null)}
