@@ -593,10 +593,13 @@ export async function GET(request: NextRequest) {
           }
         : null,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[API Ranking Stats] Ошибка:', error);
     return NextResponse.json(
-      { error: 'Ошибка получения статистики', details: error.message },
+      {
+        error: 'Ошибка получения статистики',
+        ...(process.env.NODE_ENV === 'development' && { details: error instanceof Error ? error.message : String(error) }),
+      },
       { status: 500 }
     );
   }

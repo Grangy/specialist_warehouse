@@ -166,10 +166,13 @@ export async function GET(request: NextRequest) {
       orders: readyOrders,
       count: readyOrders.length,
     });
-  } catch (error: any) {
-    console.error(`[Ready-For-Export] [${requestId}] Ошибка:`, error.message);
+  } catch (error: unknown) {
+    console.error(`[Ready-For-Export] [${requestId}] Ошибка:`, error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: 'Ошибка получения готовых заказов', details: error.message },
+      {
+        error: 'Ошибка получения готовых заказов',
+        ...(process.env.NODE_ENV === 'development' && { details: error instanceof Error ? error.message : String(error) }),
+      },
       { status: 500 }
     );
   }

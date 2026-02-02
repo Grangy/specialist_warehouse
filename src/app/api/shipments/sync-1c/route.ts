@@ -317,10 +317,13 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ orders: readyOrders });
-  } catch (error: any) {
-    console.error(`[Sync-1C] [${requestId}] Ошибка:`, error.message);
+  } catch (error: unknown) {
+    console.error(`[Sync-1C] [${requestId}] Ошибка:`, error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: 'Ошибка синхронизации с 1С', details: error.message },
+      {
+        error: 'Ошибка синхронизации с 1С',
+        ...(process.env.NODE_ENV === 'development' && { details: error instanceof Error ? error.message : String(error) }),
+      },
       { status: 500 }
     );
   }

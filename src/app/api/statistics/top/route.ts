@@ -299,7 +299,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Ошибка получения рейтинга',
-        details: error instanceof Error ? error.message : String(error),
+        ...(process.env.NODE_ENV === 'development' && { details: error instanceof Error ? error.message : String(error) }),
       },
       { status: 500 }
     );

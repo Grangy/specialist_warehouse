@@ -145,11 +145,9 @@ export async function POST(
     await touchSync();
 
     return NextResponse.json({ ok: true, tasksCount: builtTasks.length });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('[API Refresh] Ошибка:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Ошибка обновления' },
-      { status: 500 }
-    );
+    const message = process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : 'Ошибка обновления';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

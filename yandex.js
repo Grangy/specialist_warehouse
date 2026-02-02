@@ -1,13 +1,20 @@
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const axios = require('axios');
 const readline = require('readline-sync');
 const fs = require('fs');
 const FormData = require('form-data');
 const path = require('path');
 
-const CLIENT_ID = '[REDACTED-YANDEX-CLIENT-ID]';
-const CLIENT_SECRET = '[REDACTED-YANDEX-CLIENT-SECRET]';
-const REDIRECT_URI = 'https://oauth.yandex.ru/verification_code';
+// OAuth-данные только из переменных окружения (не коммитить в .env!)
+const CLIENT_ID = process.env.YANDEX_CLIENT_ID;
+const CLIENT_SECRET = process.env.YANDEX_CLIENT_SECRET;
+const REDIRECT_URI = process.env.YANDEX_REDIRECT_URI || 'https://oauth.yandex.ru/verification_code';
 const TOKEN_FILE = path.join(__dirname, 'token.json');
+
+if (!CLIENT_ID || !CLIENT_SECRET) {
+  console.error('Ошибка: задайте YANDEX_CLIENT_ID и YANDEX_CLIENT_SECRET в .env (см. .env.example)');
+  process.exit(1);
+}
 
 // Функция для сохранения токена
 function saveToken(accessToken, refreshToken, expiresIn) {

@@ -50,8 +50,9 @@ export async function POST(request: NextRequest) {
         login,
         details: `Invalid login format: ${loginValidation.error}`,
       });
+      const clientError = process.env.NODE_ENV === 'development' ? loginValidation.error : 'Неверный формат логина';
       return NextResponse.json(
-        { error: loginValidation.error },
+        { error: clientError },
         { status: 400 }
       );
     }
@@ -64,8 +65,9 @@ export async function POST(request: NextRequest) {
         login: loginValidation.sanitized,
         details: `Invalid password format: ${passwordValidation.error}`,
       });
+      const clientError = process.env.NODE_ENV === 'development' ? passwordValidation.error : 'Неверный формат пароля';
       return NextResponse.json(
-        { error: passwordValidation.error },
+        { error: clientError },
         { status: 400 }
       );
     }
@@ -154,13 +156,15 @@ export async function POST(request: NextRequest) {
         role: user.role,
       },
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Ошибка при входе:', error);
-    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+    }
     return NextResponse.json(
-      { 
+      {
         error: 'Ошибка сервера при входе',
-        message: error instanceof Error ? error.message : String(error)
+        ...(process.env.NODE_ENV === 'development' && { message: error instanceof Error ? error.message : String(error) }),
       },
       { status: 500 }
     );

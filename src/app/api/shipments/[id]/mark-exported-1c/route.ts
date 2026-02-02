@@ -51,11 +51,9 @@ export async function POST(
       message: `Заказ ${shipment.number} помечен как выгруженный в 1С`,
       exported_to_1c_at: now.toISOString(),
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('[API mark-exported-1c] Ошибка:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Ошибка' },
-      { status: 500 }
-    );
+    const message = process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : 'Ошибка';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

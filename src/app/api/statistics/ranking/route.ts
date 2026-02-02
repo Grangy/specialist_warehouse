@@ -1501,10 +1501,13 @@ export async function GET(request: NextRequest) {
     }
     
     return NextResponse.json(response);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[API Statistics Ranking] Ошибка:', error);
     return NextResponse.json(
-      { error: 'Ошибка получения рейтингов', details: error.message },
+      {
+        error: 'Ошибка получения рейтингов',
+        ...(process.env.NODE_ENV === 'development' && { details: error instanceof Error ? error.message : String(error) }),
+      },
       { status: 500 }
     );
   }
