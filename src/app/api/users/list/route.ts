@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // Доступен проверяльщикам и админам
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['admin', 'checker']);
+    const authResult = await requireAuth(request, ['admin', 'checker', 'warehouse_3']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }

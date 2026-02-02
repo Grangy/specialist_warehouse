@@ -376,9 +376,9 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                       </div>
 
                       <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-                        {/* Выбор диктовщика (только для проверяльщиков) */}
-                        {user.role === 'checker' && (
-                          <DictatorSelector userId={user.id} />
+                        {/* Выбор диктовщика (проверяльщики и Склад 3; для Склад 3 можно выбрать себя) */}
+                        {(user.role === 'checker' || user.role === 'warehouse_3') && (
+                          <DictatorSelector userId={user.id} userRole={user.role} />
                         )}
                         
                         {/* Дневная статистика */}

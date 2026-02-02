@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 // Для проверяльщиков: упрощенный список без статистики (для выбора диктовщика)
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['admin', 'checker']);
+    const authResult = await requireAuth(request, ['admin', 'checker', 'warehouse_3']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }

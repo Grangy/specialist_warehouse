@@ -12,9 +12,11 @@ interface User {
 
 interface DictatorSelectorProps {
   userId: string;
+  /** Для warehouse_3 разрешено выбирать себя диктовщиком */
+  userRole?: string;
 }
 
-export function DictatorSelector({ userId }: DictatorSelectorProps) {
+export function DictatorSelector({ userId, userRole }: DictatorSelectorProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDictatorId, setSelectedDictatorId] = useState<string | null>(null);
@@ -129,9 +131,8 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
     handleSelect(null, null);
   };
 
-  // Фильтруем пользователей: теперь проверяльщики могут выбирать других проверяльщиков
+  // Фильтруем пользователей по поиску; для warehouse_3 текущий пользователь всегда может выбрать себя
   const filteredUsers = users.filter((user) => {
-    // Фильтруем по поисковому запросу
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -139,6 +140,9 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
       user.login.toLowerCase().includes(query)
     );
   });
+
+  // Для warehouse_3: помечаем себя в списке, чтобы можно было выбрать «сам себе»
+  const isWarehouse3 = userRole === 'warehouse_3';
 
   return (
     <div className="bg-slate-900/80 rounded-lg p-3 border border-slate-700/50">
@@ -220,26 +224,38 @@ export function DictatorSelector({ userId }: DictatorSelectorProps) {
                   {searchQuery ? 'Пользователи не найдены' : 'Нет пользователей'}
                 </div>
               ) : (
-                filteredUsers.map((user) => (
-                  <label key={user.id} className="block p-2 hover:bg-slate-800 rounded-lg cursor-pointer">
-                    <input
-                      type="radio"
-                      name="dictator"
-                      value={user.id}
-                      checked={selectedDictatorId === user.id}
-                      onChange={() => handleSelect(user.id, user.name)}
-                      className="mr-2"
-                    />
-                    <span className="text-slate-300 text-sm">
-                      {user.name} ({user.login})
-                      {user.role && (
-                        <span className="text-slate-500 text-xs ml-2">
-                          [{user.role === 'admin' ? 'Админ' : user.role === 'collector' ? 'Сборщик' : 'Проверяющий'}]
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                ))
+                filteredUsers.map((user) => {
+                  const isSelf = currentUser && user.id === currentUser.id;
+                  return (
+                    <label key={user.id} className="block p-2 hover:bg-slate-800 rounded-lg cursor-pointer">
+                      <input
+                        type="radio"
+                        name="dictator"
+                        value={user.id}
+                        checked={selectedDictatorId === user.id}
+                        onChange={() => handleSelect(user.id, user.name)}
+                        className="mr-2"
+                      />
+                      <span className="text-slate-300 text-sm">
+                        {isWarehouse3 && isSelf ? (
+                          <>
+                            <span className="text-amber-400 font-medium">{user.name}</span>
+                            <span className="text-amber-400/80 text-xs ml-2">(я — диктовщик сам себе)</span>
+                          </>
+                        ) : (
+                          <>
+                            {user.name} ({user.login})
+                            {user.role && (
+                              <span className="text-slate-500 text-xs ml-2">
+                                [{user.role === 'admin' ? 'Админ' : user.role === 'collector' ? 'Сборщик' : user.role === 'warehouse_3' ? 'Склад 3' : 'Проверяющий'}]
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })
               )}
             </div>
           )}
