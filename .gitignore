@@ -100,3 +100,10 @@ scripts/audit-points-week-from-26-conclusions.md
 scripts/audit-positions-difficulty.ts
 scripts/audit-positions-full-report.md
 backups/
+
+# Документация: в репозитории только README.md, остальные .md — локально/не коммитить
+docs/*.md
+scripts/*.md
+SECURITY-*.md
+*.md
+!README.md
