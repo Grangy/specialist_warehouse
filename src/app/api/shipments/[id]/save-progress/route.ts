@@ -45,6 +45,13 @@ export async function POST(
         { status: 403 }
       );
     }
+    // Защита от двух сборщиков: только назначенный сборщик может сохранять прогресс
+    if (task.collectorId != null && task.collectorId !== user.id) {
+      return NextResponse.json(
+        { error: 'Задание собирает другой сборщик. Обновите список.', code: 'TAKEN_BY_OTHER' },
+        { status: 403 }
+      );
+    }
 
     // Обновляем прогресс сборки для каждой позиции
     if (lines && Array.isArray(lines)) {

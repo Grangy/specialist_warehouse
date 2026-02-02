@@ -32,6 +32,28 @@ export async function POST(
 
     const isAdmin = user.role === 'admin';
 
+    // Защита от двух сборщиков: если задание уже назначено другому и в работе — отклоняем нового
+    if (
+      !isAdmin &&
+      task.collectorId != null &&
+      task.collectorId !== user.id &&
+      task.status === 'new'
+    ) {
+      const otherUser = await prisma.user.findUnique({
+        where: { id: task.collectorId },
+        select: { name: true },
+      });
+      const lockedByName = otherUser?.name ?? 'другой сборщик';
+      return NextResponse.json(
+        {
+          error: `Задание уже собирает ${lockedByName}. Обновите список.`,
+          code: 'TAKEN_BY_OTHER',
+          lockedByName,
+        },
+        { status: 409 }
+      );
+    }
+
     // Проверяем существующую блокировку
     const existingLock = task.locks[0];
     if (existingLock) {

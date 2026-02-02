@@ -34,7 +34,8 @@
     "audit:export-1c": "tsx scripts/audit-export-1c.ts",
     "restore:art": "tsx scripts/restore-art-from-name.ts",
     "export:art": "tsx scripts/export-art-by-name.ts",
-    "apply:art": "tsx scripts/apply-art-from-base.ts"
+    "apply:art": "tsx scripts/apply-art-from-base.ts",
+    "backfill:position-difficulty": "tsx scripts/backfill-position-difficulty.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

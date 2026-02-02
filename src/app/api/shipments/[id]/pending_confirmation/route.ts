@@ -50,6 +50,17 @@ export async function POST(
         { status: 400 }
       );
     }
+    // Защита от двух сборщиков: только назначенный сборщик (или админ) может отправить на проверку
+    if (
+      user.role !== 'admin' &&
+      task.collectorId != null &&
+      task.collectorId !== user.id
+    ) {
+      return NextResponse.json(
+        { error: 'Задание собирает другой сборщик. Обновите список.', code: 'TAKEN_BY_OTHER' },
+        { status: 403 }
+      );
+    }
 
     // Вычисляем аналитические данные
     const totalItems = task.lines.length;
