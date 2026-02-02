@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
 
     const items: Array<{
       sku: string;
+      art: string | null;
       name: string;
       date: string;
       shortage_qty: number;
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest) {
             const shortageQty = originalQty - finalQty;
             items.push({
               sku: taskLine.shipmentLine.sku,
+              art: taskLine.shipmentLine.art ?? null,
               name: taskLine.shipmentLine.name,
               date: dateStr,
               shortage_qty: shortageQty,

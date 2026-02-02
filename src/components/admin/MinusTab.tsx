@@ -93,7 +93,8 @@ export default function MinusTab() {
     try {
       setIsExportingItems(true);
       const exportData = shortageItems.map((item) => ({
-        'Артикул': item.sku,
+        'Основной артикул': item.sku,
+        'Доп. артикул 1С': item.art || '',
         'Название': item.name,
         'Склад': item.warehouse || '',
         'Дата': item.date,
@@ -109,6 +110,7 @@ export default function MinusTab() {
       headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
       exportData.forEach((row) => worksheet.addRow(Object.values(row)));
       worksheet.columns = [
+        { width: 18 },
         { width: 18 },
         { width: 40 },
         { width: 14 },
@@ -406,7 +408,8 @@ export default function MinusTab() {
                       <tr key={`${item.shipment_id}-${item.sku}-${idx}`} className="hover:bg-slate-700/50">
                         <td className="px-4 py-3">
                           <div className="text-slate-200 font-medium">{item.name}</div>
-                          <div className="text-slate-500 text-xs">{item.sku}</div>
+                          <div className="text-slate-500 text-xs">Осн.: {item.sku}</div>
+                          {item.art && <div className="text-slate-500 text-xs">1С: {item.art}</div>}
                         </td>
                         <td className="px-4 py-3 text-slate-300">{item.warehouse || '—'}</td>
                         <td className="px-4 py-3 text-slate-300">{item.date}</td>
