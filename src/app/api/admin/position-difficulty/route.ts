@@ -12,13 +12,15 @@ export async function GET(request: NextRequest) {
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) return authResult;
     const { user } = authResult;
-    if (user.role !== 'admin' && user.role !== 'checker') {
+    if (user.role !== 'admin' && user.role !== 'checker' && user.role !== 'warehouse_3') {
       return NextResponse.json({ error: 'Доступ запрещён' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
     const mode = searchParams.get('mode') ?? 'hard'; // hard | easy
-    const warehouse = searchParams.get('warehouse') ?? undefined; // optional filter
+    let warehouse = searchParams.get('warehouse') ?? undefined; // optional filter
+    // Роль warehouse_3: только Склад 3
+    if (user.role === 'warehouse_3') warehouse = 'Склад 3';
 
     const where: { taskCount: { gte: number }; warehouse?: string } = {
       taskCount: { gte: MIN_PICKINGS },

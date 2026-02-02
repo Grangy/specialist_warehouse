@@ -11,6 +11,7 @@ import {
   Shield, 
   User, 
   CheckCircle,
+  Package,
   Calendar,
   Loader2,
   AlertCircle,
@@ -28,7 +29,7 @@ interface User {
   id: string;
   login: string;
   name: string;
-  role: 'admin' | 'collector' | 'checker';
+  role: 'admin' | 'collector' | 'checker' | 'warehouse_3';
   createdAt: string;
   updatedAt: string;
   dailyRank?: number | null;
@@ -51,7 +52,7 @@ export default function UsersTab() {
     login: '',
     password: '',
     name: '',
-    role: 'collector' as 'admin' | 'collector' | 'checker',
+    role: 'collector' as 'admin' | 'collector' | 'checker' | 'warehouse_3',
   });
 
   useEffect(() => {
@@ -152,10 +153,11 @@ export default function UsersTab() {
     }
   };
 
-  const roleLabels = {
+  const roleLabels: Record<string, string> = {
     admin: 'Администратор',
     collector: 'Сборщик',
     checker: 'Проверка',
+    warehouse_3: 'Склад 3',
   };
 
   if (isLoading) {
@@ -273,6 +275,7 @@ export default function UsersTab() {
                   <option value="admin">Администратор</option>
                   <option value="collector">Сборщик</option>
                   <option value="checker">Проверка</option>
+                  <option value="warehouse_3">Склад 3</option>
                 </select>
               </div>
             </div>
@@ -340,11 +343,14 @@ export default function UsersTab() {
                         ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50'
                         : user.role === 'collector'
                         ? 'bg-blue-600/20 text-blue-300 border border-blue-500/50'
-                        : 'bg-green-600/20 text-green-300 border border-green-500/50'
+                        : user.role === 'checker'
+                        ? 'bg-green-600/20 text-green-300 border border-green-500/50'
+                        : 'bg-amber-600/20 text-amber-300 border border-amber-500/50'
                     }`}>
                       {user.role === 'admin' && <Shield className="w-3.5 h-3.5" />}
                       {user.role === 'collector' && <User className="w-3.5 h-3.5" />}
                       {user.role === 'checker' && <CheckCircle className="w-3.5 h-3.5" />}
+                      {user.role === 'warehouse_3' && <Package className="w-3.5 h-3.5" />}
                       {roleLabels[user.role]}
                     </span>
                   </td>

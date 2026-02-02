@@ -25,7 +25,7 @@ interface ShipmentCardProps {
   onCollectAll?: (shipment: Shipment) => void;
   onConfirmAll?: (shipment: Shipment) => void;
   onDeleteCollection?: (shipment: Shipment) => void;
-  userRole?: 'admin' | 'collector' | 'checker' | null;
+  userRole?: 'admin' | 'collector' | 'checker' | 'warehouse_3' | null;
   /** Идёт запрос блокировки (любая карточка) — кнопку «Собрать» не нажимать */
   isCollectLocking?: boolean;
   /** Блокировка запрашивается именно для этой карточки — показать индикатор загрузки */

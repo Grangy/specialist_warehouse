@@ -8,14 +8,14 @@ interface TabsProps {
   pendingCount: number;
   waitingCount: number;
   onTabChange: (tab: Tab) => void;
-  userRole?: 'admin' | 'collector' | 'checker' | null;
+  userRole?: 'admin' | 'collector' | 'checker' | 'warehouse_3' | null;
 }
 
 export function Tabs({ currentTab, newCount, pendingCount, waitingCount, onTabChange, userRole }: TabsProps) {
-  const canAccessNew = !userRole || userRole === 'admin' || userRole === 'collector' || userRole === 'checker';
-  const canAccessProcessed = !userRole || userRole === 'admin' || userRole === 'checker';
-  const canAccessWaiting = !userRole || userRole === 'admin' || userRole === 'checker';
-  const canAccessRegions = !userRole || userRole === 'admin' || userRole === 'checker';
+  const canAccessNew = !userRole || userRole === 'admin' || userRole === 'collector' || userRole === 'checker' || userRole === 'warehouse_3';
+  const canAccessProcessed = !userRole || userRole === 'admin' || userRole === 'checker' || userRole === 'warehouse_3';
+  const canAccessWaiting = !userRole || userRole === 'admin' || userRole === 'checker' || userRole === 'warehouse_3';
+  const canAccessRegions = !userRole || userRole === 'admin' || userRole === 'checker' || userRole === 'warehouse_3';
 
   return (
     <div className="w-full border-b border-slate-800 mb-4 overflow-x-auto scrollbar-hide -mx-3 md:mx-0 px-3 md:px-0">

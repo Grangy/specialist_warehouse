@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
     }
     const { user } = authResult;
 
-    // Только админ может получать эту информацию
-    if (user.role !== 'admin') {
+    // Админ и роль warehouse_3 (только заказы со Склад 3)
+    if (user.role !== 'admin' && user.role !== 'warehouse_3') {
       return NextResponse.json(
         { error: 'Недостаточно прав доступа' },
         { status: 403 }
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Получаем все обработанные заказы с заданиями и их позициями
-    const processedShipments = await prisma.shipment.findMany({
+    const processedShipmentsRaw = await prisma.shipment.findMany({
       where: {
         status: 'processed',
         deleted: false,
@@ -66,6 +66,14 @@ export async function GET(request: NextRequest) {
         createdAt: 'desc',
       },
     });
+
+    // Роль warehouse_3: только заказы, где есть задание со Склад 3
+    const processedShipments =
+      user.role === 'warehouse_3'
+        ? processedShipmentsRaw.filter((s) =>
+            s.tasks.some((t) => t.warehouse === 'Склад 3')
+          )
+        : processedShipmentsRaw;
 
     // Фильтруем заказы с недостачами
     const shipmentsWithMinus = processedShipments

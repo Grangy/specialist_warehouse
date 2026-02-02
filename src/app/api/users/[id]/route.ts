@@ -57,7 +57,7 @@ export async function PATCH(
 
     if (name !== undefined) updateData.name = name;
     if (role !== undefined) {
-      if (!['admin', 'collector', 'checker'].includes(role)) {
+      if (!['admin', 'collector', 'checker', 'warehouse_3'].includes(role)) {
         return NextResponse.json(
           { error: 'Неверная роль' },
           { status: 400 }

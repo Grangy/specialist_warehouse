@@ -511,7 +511,7 @@ export async function GET(request: NextRequest) {
     // Если запрошены processed заказы, возвращаем заказы напрямую
     if (status === 'processed') {
 
-      const processedShipments = await prisma.shipment.findMany({
+      const processedShipmentsRaw = await prisma.shipment.findMany({
         where: {
           status: 'processed',
           // Исключаем удаленные заказы - они не должны показываться в интерфейсе
@@ -548,6 +548,14 @@ export async function GET(request: NextRequest) {
           createdAt: 'desc',
         },
       });
+
+      // Роль warehouse_3: только заказы, где есть задание со Склад 3
+      const processedShipments =
+        user.role === 'warehouse_3'
+          ? processedShipmentsRaw.filter((s) =>
+              s.tasks.some((t) => t.warehouse === 'Склад 3')
+            )
+          : processedShipmentsRaw;
 
       // Сортируем по приоритету региона, затем внутри региона по количеству позиций (от большего к меньшему), затем по дате
       processedShipments.sort((a, b) => {
@@ -595,6 +603,15 @@ export async function GET(request: NextRequest) {
         const isVisibleToCollector = shipment.businessRegion 
           ? collectorVisibleRegions.has(shipment.businessRegion)
           : true;
+
+        // Места по складам: Склад 1, Склад 2, Склад 3 (для отображения в завершённых заказах)
+        const placesByWarehouse: Record<string, number> = {};
+        for (const t of shipment.tasks) {
+          const wh = t.warehouse || '';
+          const places = t.places ?? 0;
+          placesByWarehouse[wh] = (placesByWarehouse[wh] ?? 0) + places;
+        }
+        const totalPlaces = shipment.places ?? Object.values(placesByWarehouse).reduce((a, b) => a + b, 0);
         
         return {
           id: shipment.id,
@@ -619,6 +636,8 @@ export async function GET(request: NextRequest) {
           confirmed_at: shipment.confirmedAt?.toISOString() || null,
           tasks_count: shipment.tasks.length,
           warehouses: Array.from(new Set(shipment.tasks.map((t) => t.warehouse))),
+          places: totalPlaces > 0 ? totalPlaces : null,
+          places_by_warehouse: Object.keys(placesByWarehouse).length > 0 ? placesByWarehouse : null,
           collector_visible: isVisibleToCollector,
           exported_to_1c: shipment.exportedTo1C,
           exported_to_1c_at: shipment.exportedTo1CAt?.toISOString() || null,
@@ -743,6 +762,12 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Роль warehouse_3: только заказы, где есть задание со Склад 3
+      if (user.role === 'warehouse_3') {
+        const hasWarehouse3 = shipment.tasks.some((t: { warehouse: string }) => t.warehouse === 'Склад 3');
+        if (!hasWarehouse3) continue;
+      }
+
       // Подсчитываем прогресс подтверждения для заказа ПО ВСЕМ заданиям
       const allShipmentTasks = shipment.tasks || [];
       const confirmedTasksCount = allShipmentTasks.filter((t: any) => t.status === 'processed').length;
@@ -765,6 +790,10 @@ export async function GET(request: NextRequest) {
             continue;
           }
         }
+        // Роль warehouse_3: только задания Склад 3
+        if (user.role === 'warehouse_3' && task.warehouse !== 'Склад 3') {
+          continue;
+        }
         // Для режима ожидания показываем все задания (включая processed)
 
         // Получаем блокировку из загруженных locks
@@ -786,9 +815,9 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Для проверяльщиков в режиме сборки: скрываем задания, которые уже взял сборщик
+        // Для проверяльщиков и warehouse_3 в режиме сборки: скрываем задания, которые уже взял сборщик
         // Проверяем для статуса 'new' (режим сборки)
-        if (user.role === 'checker' && task.status === 'new') {
+        if ((user.role === 'checker' || user.role === 'warehouse_3') && task.status === 'new') {
           // Проверяем, есть ли активная блокировка от сборщика
           if (lock) {
             const lockUser = await prisma.user.findUnique({

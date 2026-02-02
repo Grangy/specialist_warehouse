@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     }
     const { user } = authResult;
 
-    if (user.role !== 'admin') {
+    if (user.role !== 'admin' && user.role !== 'warehouse_3') {
       return NextResponse.json(
         { error: 'Недостаточно прав доступа' },
         { status: 403 }
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const fromDate = new Date(fromStr + 'T00:00:00.000Z');
     const toDate = new Date(toStr + 'T23:59:59.999Z');
 
-    const processedShipments = await prisma.shipment.findMany({
+    const processedShipmentsRaw = await prisma.shipment.findMany({
       where: {
         status: 'processed',
         deleted: false,
@@ -64,6 +64,13 @@ export async function GET(request: NextRequest) {
       orderBy: { confirmedAt: 'asc' },
     });
 
+    const processedShipments =
+      user.role === 'warehouse_3'
+        ? processedShipmentsRaw.filter((s) =>
+            s.tasks.some((t) => t.warehouse === 'Склад 3')
+          )
+        : processedShipmentsRaw;
+
     const items: Array<{
       sku: string;
       art: string | null;
@@ -81,6 +88,7 @@ export async function GET(request: NextRequest) {
         : '';
 
       for (const task of shipment.tasks) {
+        if (user.role === 'warehouse_3' && task.warehouse !== 'Склад 3') continue;
         const warehouse = task.warehouse || '';
         for (const taskLine of task.lines) {
           const originalQty = taskLine.qty;

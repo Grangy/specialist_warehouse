@@ -17,7 +17,7 @@ interface User {
   id: string;
   login: string;
   name: string;
-  role: 'admin' | 'collector' | 'checker';
+  role: 'admin' | 'collector' | 'checker' | 'warehouse_3';
 }
 
 interface RankingStats {
@@ -224,10 +224,11 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
     return null;
   }
 
-  const roleLabels = {
+  const roleLabels: Record<string, string> = {
     admin: 'Администратор',
     collector: 'Сборщик',
     checker: 'Проверка',
+    warehouse_3: 'Склад 3',
   };
 
   return (
@@ -625,14 +626,14 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
               <ChevronUp className="w-4 h-4" />
             </button>
             
-            {(user.role === 'admin' || user.role === 'checker') && (
+            {(user.role === 'admin' || user.role === 'checker' || user.role === 'warehouse_3') && (
               <button
                 onClick={() => router.push('/admin')}
                 className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
-                title={user.role === 'admin' ? 'Админка' : 'Завершенные заказы'}
+                title={user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка (Склад 3)' : 'Завершенные заказы'}
               >
                 <Settings className="w-4 h-4" />
-                <span className="hidden md:inline text-xs font-medium">{user.role === 'admin' ? 'Админка' : 'Заказы'}</span>
+                <span className="hidden md:inline text-xs font-medium">{user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка' : 'Заказы'}</span>
               </button>
             )}
             <button

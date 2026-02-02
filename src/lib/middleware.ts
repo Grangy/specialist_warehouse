@@ -190,7 +190,7 @@ export function canAccessTab(role: UserRole, tab: 'new' | 'processed'): boolean 
   if (role === 'collector') {
     return tab === 'new';
   }
-  if (role === 'checker') {
+  if (role === 'checker' || role === 'warehouse_3') {
     return tab === 'new' || tab === 'processed';
   }
   return false;
@@ -203,7 +203,7 @@ export function canAccessStatus(role: UserRole, status: string): boolean {
   if (role === 'collector') {
     return status === 'new';
   }
-  if (role === 'checker') {
+  if (role === 'checker' || role === 'warehouse_3') {
     return status === 'new' || status === 'pending_confirmation' || status === 'processed';
   }
   return false;

@@ -35,10 +35,12 @@ interface RankingEntry {
  */
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['admin', 'checker']);
+    const authResult = await requireAuth(request, ['admin', 'checker', 'warehouse_3']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
+    const { user } = authResult;
+    const warehouseFilter = user.role === 'warehouse_3' ? 'Склад 3' : undefined;
 
     const { searchParams } = new URL(request.url);
     const periodParam = searchParams.get('period') || 'today';
@@ -63,6 +65,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -83,6 +86,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -180,6 +184,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -205,6 +210,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -391,6 +397,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -528,6 +535,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -548,6 +556,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -645,6 +654,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -670,6 +680,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -856,6 +867,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -985,6 +997,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -1005,6 +1018,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -1102,6 +1116,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -1127,6 +1142,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {
@@ -1313,6 +1329,7 @@ export async function GET(request: NextRequest) {
               gte: startDate,
               lte: endDate,
             },
+            ...(warehouseFilter && { warehouse: warehouseFilter }),
           },
         },
         include: {

@@ -69,7 +69,12 @@ interface OverviewData {
 
 import UserStatsModal from './UserStatsModal';
 
-export default function StatisticsTab() {
+interface StatisticsTabProps {
+  /** Если задан (например "Склад 3"), показываем баннер: статистика только по этому складу. */
+  warehouseScope?: string;
+}
+
+export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {}) {
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
   const [collectors, setCollectors] = useState<RankingEntry[]>([]);
   const [checkers, setCheckers] = useState<RankingEntry[]>([]);
@@ -166,6 +171,12 @@ export default function StatisticsTab() {
 
   return (
     <div className="space-y-6">
+      {warehouseScope && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 px-4 py-3 text-sm flex items-center gap-2">
+          <Trophy className="w-5 h-5 text-amber-400 flex-shrink-0" />
+          <span>Показаны только рейтинги и статистика по <strong>{warehouseScope}</strong>.</span>
+        </div>
+      )}
       {/* Заголовок */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>

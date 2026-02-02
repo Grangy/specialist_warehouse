@@ -218,8 +218,8 @@ export default function Home() {
   };
 
   const handleConfirm = (shipment: Shipment) => {
-    // Для проверяльщика используем сохраненного диктовщика из localStorage
-    if (userRole === 'checker' && userInfo) {
+    // Для проверяльщика и warehouse_3 используем сохраненного диктовщика из localStorage
+    if ((userRole === 'checker' || userRole === 'warehouse_3') && userInfo) {
       try {
         const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
         const storageKey = `dictator_${userInfo.id}_${today}`;

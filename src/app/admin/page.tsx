@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/useToast';
 
 type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus' | 'positions';
 
-type AdminUserRole = 'admin' | 'checker';
+type AdminUserRole = 'admin' | 'checker' | 'warehouse_3';
 
 export default function AdminPage() {
   const [userRole, setUserRole] = useState<AdminUserRole | null>(null);
@@ -30,6 +30,7 @@ export default function AdminPage() {
   const { showToast } = useToast();
 
   const isCheckerOnly = userRole === 'checker';
+  const isWarehouse3 = userRole === 'warehouse_3';
   const closeMenu = () => setMenuOpen(false);
   const selectTab = (tab: Tab) => {
     setActiveTab(tab);
@@ -66,12 +67,13 @@ export default function AdminPage() {
         return;
       }
       const role = data.user.role;
-      if (role !== 'admin' && role !== 'checker') {
+      if (role !== 'admin' && role !== 'checker' && role !== 'warehouse_3') {
         router.push('/');
         return;
       }
       setUserRole(role);
       if (role === 'checker') setActiveTab('shipments');
+      if (role === 'warehouse_3') setActiveTab('active');
       setIsLoading(false);
     } catch (error) {
       console.error('[Admin] Ошибка при проверке авторизации:', error);
@@ -144,7 +146,7 @@ export default function AdminPage() {
           </button>
         </div>
         <nav className="p-2 md:p-4 space-y-1 md:space-y-2 flex-1 overflow-y-auto flex flex-col">
-          {!isCheckerOnly && (
+          {!isCheckerOnly && !isWarehouse3 && (
             <button
               onClick={() => selectTab('users')}
               className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
@@ -157,7 +159,7 @@ export default function AdminPage() {
               <span className="font-medium text-sm md:text-base whitespace-nowrap">Пользователи</span>
             </button>
           )}
-          {!isCheckerOnly && (
+          {(!isCheckerOnly || isWarehouse3) && (
           <button
             onClick={() => selectTab('active')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
@@ -181,7 +183,7 @@ export default function AdminPage() {
             <Package className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Завершенные заказы</span>
           </button>
-          {!isCheckerOnly && (
+          {!isCheckerOnly && !isWarehouse3 && (
           <button
             onClick={() => selectTab('warnings')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
@@ -199,7 +201,7 @@ export default function AdminPage() {
             )}
           </button>
           )}
-          {!isCheckerOnly && (
+          {(!isCheckerOnly || isWarehouse3) && (
           <>
           <button
             onClick={() => selectTab('positions')}
@@ -234,6 +236,7 @@ export default function AdminPage() {
             <Trophy className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Статистика</span>
           </button>
+          {!isCheckerOnly && !isWarehouse3 && (
           <button
             onClick={() => selectTab('regions')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
@@ -245,6 +248,7 @@ export default function AdminPage() {
             <MapPin className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Приоритеты регионов</span>
           </button>
+          )}
           <button
             onClick={() => selectTab('minus')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
@@ -256,6 +260,7 @@ export default function AdminPage() {
             <AlertTriangle className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Минусы</span>
           </button>
+          {!isCheckerOnly && !isWarehouse3 && (
           <button
             onClick={() => selectTab('settings')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
@@ -267,11 +272,12 @@ export default function AdminPage() {
             <Settings className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Настройки</span>
           </button>
+          )}
           </>
           )}
         </nav>
         <div className="p-2 md:p-4 border-t border-slate-700/50 space-y-1 md:space-y-2">
-          {!isCheckerOnly && (
+          {!isCheckerOnly && !isWarehouse3 && (
           <button
             onClick={async () => {
               setIsCreatingTestOrder(true);
@@ -344,13 +350,13 @@ export default function AdminPage() {
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 md:py-4 lg:py-6">
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'active' && <ActiveShipmentsTab />}
-          {activeTab === 'shipments' && <CompletedShipmentsTab canDelete={userRole === 'admin'} />}
+          {activeTab === 'shipments' && <CompletedShipmentsTab canDelete={userRole === 'admin'} warehouseScope={isWarehouse3 ? 'Склад 3' : undefined} />}
           {activeTab === 'warnings' && <WarningsTab onWarningsChange={setWarningsCount} />}
           {activeTab === 'analytics' && <AnalyticsTab />}
-          {activeTab === 'statistics' && <StatisticsTab />}
+          {activeTab === 'statistics' && <StatisticsTab warehouseScope={isWarehouse3 ? 'Склад 3' : undefined} />}
           {activeTab === 'regions' && <RegionPrioritiesTab />}
           {activeTab === 'minus' && <MinusTab />}
-          {activeTab === 'positions' && <PositionsTab />}
+          {activeTab === 'positions' && <PositionsTab warehouseScope={isWarehouse3 ? 'Склад 3' : undefined} />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
       </main>

@@ -18,18 +18,25 @@ interface PositionItem {
 
 type Mode = 'hard' | 'easy';
 
-export default function PositionsTab() {
+interface PositionsTabProps {
+  /** Если задан (например "Склад 3"), показываем только этот склад и скрываем выбор склада. */
+  warehouseScope?: string;
+}
+
+export default function PositionsTab({ warehouseScope }: PositionsTabProps = {}) {
   const [mode, setMode] = useState<Mode>('hard');
-  const [warehouse, setWarehouse] = useState<string>('');
+  const [warehouse, setWarehouse] = useState<string>(warehouseScope ?? '');
   const [items, setItems] = useState<PositionItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [minPickings] = useState(10);
+
+  const effectiveWarehouse = warehouseScope ?? warehouse;
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({ mode });
-      if (warehouse) params.set('warehouse', warehouse);
+      if (effectiveWarehouse) params.set('warehouse', effectiveWarehouse);
       const res = await fetch(`/api/admin/position-difficulty?${params}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
@@ -43,7 +50,11 @@ export default function PositionsTab() {
     } finally {
       setIsLoading(false);
     }
-  }, [mode, warehouse]);
+  }, [mode, effectiveWarehouse]);
+
+  useEffect(() => {
+    if (warehouseScope) setWarehouse(warehouseScope);
+  }, [warehouseScope]);
 
   useEffect(() => {
     loadData();
@@ -104,6 +115,7 @@ export default function PositionsTab() {
             Лёгкие позиции
           </button>
         </div>
+        {!warehouseScope && (
         <div className="flex items-center gap-2">
           <label htmlFor="wh-filter" className="text-slate-400 text-sm whitespace-nowrap">
             Склад:
@@ -120,6 +132,12 @@ export default function PositionsTab() {
             <option value="Склад 3">Склад 3</option>
           </select>
         </div>
+        )}
+        {warehouseScope && (
+          <div className="text-slate-400 text-sm">
+            Склад: <span className="text-slate-200 font-medium">{warehouseScope}</span>
+          </div>
+        )}
       </div>
 
       {/* Таблица */}

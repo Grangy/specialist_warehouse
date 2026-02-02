@@ -16,9 +16,8 @@ export async function GET(
     }
     const { user } = authResult;
 
-    // Разрешаем доступ для админа, сборщика и проверяльщика
-    // Проверяльщик и сборщик могут просматривать детали своих заданий
-    if (user.role !== 'admin' && user.role !== 'checker' && user.role !== 'collector') {
+    // Разрешаем доступ для админа, сборщика, проверяльщика и роли Склад 3
+    if (user.role !== 'admin' && user.role !== 'checker' && user.role !== 'collector' && user.role !== 'warehouse_3') {
       return NextResponse.json(
         { error: 'Недостаточно прав доступа' },
         { status: 403 }

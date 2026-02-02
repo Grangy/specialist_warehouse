@@ -11,7 +11,7 @@ export function useShipments() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState<Tab>('new');
-  const [userRole, setUserRole] = useState<'admin' | 'collector' | 'checker' | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'collector' | 'checker' | 'warehouse_3' | null>(null);
   // Загружаем сохраненный склад из localStorage при инициализации
   const getStoredWarehouse = (): string => {
     if (typeof window === 'undefined') return '';

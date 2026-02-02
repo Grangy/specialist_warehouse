@@ -8,7 +8,6 @@ import {
   Scale,
   Calendar,
   User,
-  MapPin,
   Loader2,
   TrendingUp,
   AlertCircle,
@@ -19,7 +18,8 @@ import {
   ArrowUpDown,
   Eye,
   CheckCircle2,
-  Trash2
+  Trash2,
+  MessageCircle
 } from 'lucide-react';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
@@ -39,9 +39,11 @@ const ITEMS_PER_PAGE = 20;
 interface CompletedShipmentsTabProps {
   /** Показывать кнопку «Удалить заказ». Для проверяльщиков — false. */
   canDelete?: boolean;
+  /** Если задан (например "Склад 3"), показываем баннер: только заказы с участием этого склада. */
+  warehouseScope?: string;
 }
 
-export default function CompletedShipmentsTab({ canDelete = true }: CompletedShipmentsTabProps) {
+export default function CompletedShipmentsTab({ canDelete = true, warehouseScope }: CompletedShipmentsTabProps) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -57,6 +59,7 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
     totalWeight: 0,
   });
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
+  const [warehouseFilter, setWarehouseFilter] = useState<string>('');
 
   const loadShipments = async () => {
     try {
@@ -86,7 +89,6 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
 
   useEffect(() => {
     loadShipments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- только при монтировании
   }, []);
 
   // Опрос (polling) в завершённых заказах отключён — не сбрасывает попап при просмотре деталей. Обновить список можно кнопкой «Обновить».
@@ -95,13 +97,20 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
   const filteredAndSortedShipments = useMemo(() => {
     let filtered = [...shipments];
 
-    // Поиск
+    // Фильтр по складу
+    if (warehouseFilter) {
+      filtered = filtered.filter((s) => {
+        const whs = s.warehouses ?? [];
+        return whs.includes(warehouseFilter);
+      });
+    }
+
+    // Поиск (без направления)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((s) => {
         const number = (s.shipment_number || s.number || '').toLowerCase();
         const customer = (s.customer_name || '').toLowerCase();
-        const destination = (s.destination || '').toLowerCase();
         const collector = (s.collector_name || '').toLowerCase();
         const collectors = (s.collectors || []).join(' ').toLowerCase();
         const checker = (s.checker_name || '').toLowerCase();
@@ -112,7 +121,6 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
         return (
           number.includes(query) ||
           customer.includes(query) ||
-          destination.includes(query) ||
           collector.includes(query) ||
           collectors.includes(query) ||
           checker.includes(query) ||
@@ -160,7 +168,7 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
     });
 
     return filtered;
-  }, [shipments, searchQuery, sortField, sortDirection]);
+  }, [shipments, searchQuery, sortField, sortDirection, warehouseFilter]);
 
   // Пагинация
   const totalPages = Math.ceil(filteredAndSortedShipments.length / ITEMS_PER_PAGE);
@@ -189,7 +197,7 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, warehouseFilter]);
 
   const handleDeletePermanent = async (shipmentId: string, shipmentNumber: string) => {
     // Подтверждение удаления
@@ -255,6 +263,12 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
 
   return (
     <div className="space-y-6 animate-fadeIn">
+      {warehouseScope && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 px-4 py-3 text-sm flex items-center gap-2">
+          <Package className="w-5 h-5 text-amber-400 flex-shrink-0" />
+          <span>Показаны только заказы с участием <strong>{warehouseScope}</strong>. Статистика выше — только по ним.</span>
+        </div>
+      )}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 bg-gradient-to-br from-green-600 to-green-500 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/30">
@@ -349,7 +363,7 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
               type="text"
-              placeholder="Поиск по номеру, клиенту, направлению, бизнес-региону, сборщику..."
+              placeholder="Поиск по номеру, клиенту, бизнес-региону, сборщику..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
@@ -364,11 +378,34 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
             <Loader2 className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Обновить</span>
           </button>
-          <div className="flex items-center gap-2 text-sm text-slate-400">
-            <Filter className="w-4 h-4" />
-            <span>Найдено: {filteredAndSortedShipments.length} из {shipments.length}</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-400 whitespace-nowrap">Склад:</span>
+              <select
+                value={warehouseFilter}
+                onChange={(e) => setWarehouseFilter(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-800 text-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Все</option>
+                <option value="Склад 1">Склад 1</option>
+                <option value="Склад 2">Склад 2</option>
+                <option value="Склад 3">Склад 3</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <Filter className="w-4 h-4" />
+              <span>Найдено: {filteredAndSortedShipments.length} из {shipments.length}</span>
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* Легенда: места по складам */}
+      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 px-1">
+        <span className="font-medium text-slate-500">Мст (финальная сборка):</span>
+        <span><span className="inline-block w-5 h-5 rounded bg-emerald-500/30 text-emerald-300 font-semibold text-center leading-5">1</span> Склад 1</span>
+        <span><span className="inline-block w-5 h-5 rounded bg-blue-500/30 text-blue-300 font-semibold text-center leading-5">2</span> Склад 2</span>
+        <span><span className="inline-block w-5 h-5 rounded bg-red-500/30 text-red-300 font-semibold text-center leading-5">3</span> Склад 3</span>
       </div>
 
       <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 overflow-hidden shadow-xl">
@@ -394,7 +431,7 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
                     <SortIcon field="customer_name" />
                   </div>
                 </th>
-                <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Направление</th>
+                <th className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider">Мст</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Бизнес-регион</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Сборщик</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Проверяльщик</th>
@@ -463,11 +500,37 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
                         {shipment.customer_name}
                       </button>
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2 text-slate-200 group">
-                        <MapPin className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
-                        <span className="group-hover:text-blue-300 transition-colors">{shipment.destination}</span>
-                      </div>
+                    <td className="px-4 py-4 text-center">
+                      {(() => {
+                        const byWh = shipment.places_by_warehouse ?? {};
+                        const w1 = byWh['Склад 1'];
+                        const w2 = byWh['Склад 2'];
+                        const w3 = byWh['Склад 3'];
+                        const hasMultiple = [w1, w2, w3].filter((n) => n != null && n > 0).length > 1;
+                        if (!w1 && !w2 && !w3 && (shipment.places ?? 0) > 0) {
+                          return <span className="text-slate-300 font-medium tabular-nums">{shipment.places}</span>;
+                        }
+                        if (!w1 && !w2 && !w3) return <span className="text-slate-500">—</span>;
+                        return (
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            {w1 != null && w1 > 0 && (
+                              <span className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-300 font-semibold tabular-nums text-sm">
+                                {w1}
+                              </span>
+                            )}
+                            {w2 != null && w2 > 0 && (
+                              <span className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded bg-blue-500/25 text-blue-300 font-semibold tabular-nums text-sm">
+                                {w2}
+                              </span>
+                            )}
+                            {w3 != null && w3 > 0 && (
+                              <span className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded bg-red-500/25 text-red-300 font-semibold tabular-nums text-sm">
+                                {w3}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-4">
                       {shipment.business_region ? (
@@ -539,6 +602,37 @@ export default function CompletedShipmentsTab({ canDelete = true }: CompletedShi
                         <div className="flex items-center gap-2 text-slate-200 group">
                           <CheckCircle2 className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
                           <span className="group-hover:text-purple-300 transition-colors">{shipment.checker_name}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4">
+                      {shipment.dictators && shipment.dictators.length > 0 ? (
+                        shipment.dictators.length === 1 ? (
+                          <div className="flex items-center gap-2 text-slate-200 group">
+                            <MessageCircle className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                            <span className="group-hover:text-amber-300 transition-colors">{shipment.dictators[0]}</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <MessageCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                            <div className="flex flex-wrap gap-1">
+                              {shipment.dictators.map((dictator, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center px-2 py-0.5 bg-amber-600/20 text-amber-300 rounded text-xs font-medium border border-amber-500/50 hover:bg-amber-600/30 transition-colors"
+                                >
+                                  {dictator}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      ) : shipment.dictator_name ? (
+                        <div className="flex items-center gap-2 text-slate-200 group">
+                          <MessageCircle className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                          <span className="group-hover:text-amber-300 transition-colors">{shipment.dictator_name}</span>
                         </div>
                       ) : (
                         <span className="text-slate-500">—</span>

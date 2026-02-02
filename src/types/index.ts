@@ -61,7 +61,9 @@ export interface Shipment {
   task_id?: string; // ID задания (для режима подтверждения)
   tasks?: ShipmentTask[]; // Массив заданий для режима ожидания
   collector_visible?: boolean; // Виден ли заказ сборщику (для проверяльщиков и админов)
-  places?: number | null; // Количество мест для задания
+  places?: number | null; // Количество мест (всего или для задания)
+  places_by_warehouse?: Record<string, number> | null; // Места по складам: Склад 1, Склад 2, Склад 3
+  warehouses?: string[];
   exported_to_1c?: boolean;
   exported_to_1c_at?: string | null;
   last_sent_to_1c_at?: string | null; // Когда заказ последний раз отдавался в ответе 1С (ready-for-export)

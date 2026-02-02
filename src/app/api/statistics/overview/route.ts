@@ -22,13 +22,22 @@ type PeriodAgg = {
 async function aggregatePeriod(
   startDate: Date,
   endDate: Date,
-  adminUserIds: string[]
+  adminUserIds: string[],
+  warehouseFilter?: string
 ): Promise<PeriodAgg> {
+  const taskCompletedWhere = {
+    completedAt: { gte: startDate, lte: endDate },
+    ...(warehouseFilter && { warehouse: warehouseFilter }),
+  };
+  const taskConfirmedWhere = {
+    confirmedAt: { gte: startDate, lte: endDate },
+    ...(warehouseFilter && { warehouse: warehouseFilter }),
+  };
   const byCompleted = await prisma.taskStatistics.findMany({
     where: {
       roleType: 'collector',
       userId: { notIn: adminUserIds },
-      task: { completedAt: { gte: startDate, lte: endDate } },
+      task: taskCompletedWhere,
     },
     select: {
       taskId: true,
@@ -43,7 +52,7 @@ async function aggregatePeriod(
     where: {
       roleType: 'collector',
       userId: { notIn: adminUserIds },
-      task: { confirmedAt: { gte: startDate, lte: endDate } },
+      task: taskConfirmedWhere,
     },
     select: {
       taskId: true,
@@ -58,7 +67,7 @@ async function aggregatePeriod(
     where: {
       roleType: 'checker',
       userId: { notIn: adminUserIds },
-      task: { confirmedAt: { gte: startDate, lte: endDate } },
+      task: taskConfirmedWhere,
     },
     select: {
       taskId: true,
@@ -99,6 +108,7 @@ async function aggregatePeriod(
   const tasks = await prisma.shipmentTask.count({
     where: {
       status: 'processed',
+      ...(warehouseFilter && { warehouse: warehouseFilter }),
       OR: [
         { completedAt: { gte: startDate, lte: endDate } },
         { confirmedAt: { gte: startDate, lte: endDate } },
@@ -115,10 +125,12 @@ async function aggregatePeriod(
  */
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['admin', 'checker']);
+    const authResult = await requireAuth(request, ['admin', 'checker', 'warehouse_3']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
+    const { user } = authResult;
+    const warehouseFilter = user.role === 'warehouse_3' ? 'Склад 3' : undefined;
 
     const adminUsers = await prisma.user.findMany({
       where: { role: 'admin' },
@@ -131,9 +143,9 @@ export async function GET(request: NextRequest) {
     const monthRange = getStatisticsDateRange('month');
 
     const [today, week, month] = await Promise.all([
-      aggregatePeriod(todayRange.startDate, todayRange.endDate, adminUserIds),
-      aggregatePeriod(weekRange.startDate, weekRange.endDate, adminUserIds),
-      aggregatePeriod(monthRange.startDate, monthRange.endDate, adminUserIds),
+      aggregatePeriod(todayRange.startDate, todayRange.endDate, adminUserIds, warehouseFilter),
+      aggregatePeriod(weekRange.startDate, weekRange.endDate, adminUserIds, warehouseFilter),
+      aggregatePeriod(monthRange.startDate, monthRange.endDate, adminUserIds, warehouseFilter),
     ]);
 
     const totalTasks = await prisma.shipmentTask.count({

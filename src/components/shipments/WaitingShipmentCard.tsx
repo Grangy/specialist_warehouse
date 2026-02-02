@@ -20,7 +20,7 @@ interface WaitingShipmentCardProps {
     collector_name?: string;
     created_at: string;
   }>;
-  userRole?: 'admin' | 'collector' | 'checker' | null;
+  userRole?: 'admin' | 'collector' | 'checker' | 'warehouse_3' | null;
 }
 
 export function WaitingShipmentCard({ 

@@ -15,6 +15,7 @@ enum UserRole {
   admin
   collector
   checker
+  warehouse_3  // Ограниченная админка: только Склад 3 (активные/завершённые/минусы/статистика/позиции/аналитика)
 }
 
 enum ShipmentStatus {
