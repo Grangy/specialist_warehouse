@@ -7,7 +7,10 @@ import { touchSync } from '@/lib/syncTouch';
 export const dynamic = 'force-dynamic';
 
 const LOCK_TIMEOUT = 30 * 60 * 1000; // 30 минут (максимальное время жизни блокировки)
-const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 секунд (таймаут активности)
+/** 5 минут без прогресса сборки (startedAt = null) — другой сборщик может перехватить */
+const IDLE_NO_PROGRESS_MS = 5 * 60 * 1000;
+/** 15 минут с момента последнего действия, если сборка уже начата — другой сборщик может перехватить */
+const IDLE_WITH_PROGRESS_MS = 15 * 60 * 1000;
 
 export async function POST(
   request: NextRequest,
@@ -21,6 +24,16 @@ export async function POST(
     }
     const { user } = authResult;
 
+    let body: { confirmTakeOver?: boolean } = {};
+    try {
+      const raw = await request.json();
+      if (raw && typeof raw === 'object' && 'confirmTakeOver' in raw) {
+        body = { confirmTakeOver: Boolean(raw.confirmTakeOver) };
+      }
+    } catch {
+      // body optional
+    }
+
     const task = await prisma.shipmentTask.findUnique({
       where: { id },
       include: { locks: true },
@@ -32,35 +45,12 @@ export async function POST(
 
     const isAdmin = user.role === 'admin';
 
-    // Защита от двух сборщиков: если задание уже назначено другому и в работе — отклоняем нового
-    if (
-      !isAdmin &&
-      task.collectorId != null &&
-      task.collectorId !== user.id &&
-      task.status === 'new'
-    ) {
-      const otherUser = await prisma.user.findUnique({
-        where: { id: task.collectorId },
-        select: { name: true },
-      });
-      const lockedByName = otherUser?.name ?? 'другой сборщик';
-      return NextResponse.json(
-        {
-          error: `Задание уже собирает ${lockedByName}. Обновите список.`,
-          code: 'TAKEN_BY_OTHER',
-          lockedByName,
-        },
-        { status: 409 }
-      );
-    }
-
     // Проверяем существующую блокировку
     const existingLock = task.locks[0];
     if (existingLock) {
       // Проверяем, не истекла ли блокировка (максимальное время жизни)
       const lockAge = Date.now() - existingLock.lockedAt.getTime();
       if (lockAge > LOCK_TIMEOUT) {
-        // Удаляем истекшую блокировку
         await prisma.shipmentTaskLock.delete({
           where: { id: existingLock.id },
         });
@@ -69,7 +59,10 @@ export async function POST(
         const now = Date.now();
         const lastHeartbeatTime = existingLock.lastHeartbeat.getTime();
         const timeSinceHeartbeat = now - lastHeartbeatTime;
-        const isActive = timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
+
+        // Таймаут: 5 мин без прогресса (startedAt = null), 15 мин с момента последнего действия при начатой сборке
+        const idleTimeoutMs = task.startedAt == null ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
+        const isActive = timeSinceHeartbeat < idleTimeoutMs;
 
         const lockUser = await prisma.user.findUnique({
           where: { id: existingLock.userId },
@@ -78,7 +71,7 @@ export async function POST(
         const lockedByName = lockUser?.name ?? 'другой сборщик';
 
         if (isActive) {
-          // Блокировка активна (попап открыт у другого) — перехват только для админа
+          // Блокировка активна — перехват только для админа, с подтверждением
           if (!isAdmin) {
             return NextResponse.json(
               {
@@ -89,7 +82,17 @@ export async function POST(
               { status: 409 }
             );
           }
-          // Админ может перехватить
+          // Админ может перехватить только с подтверждением
+          if (!body.confirmTakeOver) {
+            return NextResponse.json(
+              {
+                error: `Задание собирает ${lockedByName}. Вы точно уверены, что хотите перехватить?`,
+                code: 'CAN_TAKE_OVER',
+                lockedByName,
+              },
+              { status: 409 }
+            );
+          }
           emitShipmentEvent('shipment:unlocked', {
             taskId: id,
             shipmentId: task.shipmentId,
@@ -99,16 +102,22 @@ export async function POST(
             where: { id: existingLock.id },
           });
         } else {
-          // Блокировка неактивна (попап закрыт или пользователь вышел) — можно перехватить
-          
-          // Отправляем SSE событие о разблокировке перед удалением (модал закрыт)
+          // Таймаут прошёл — любой сборщик может перехватить, но только с подтверждением
+          if (!body.confirmTakeOver) {
+            return NextResponse.json(
+              {
+                error: `Задание долго было без активности. Сборку начал: ${lockedByName}. Вы точно уверены, что хотите перехватить?`,
+                code: 'CAN_TAKE_OVER',
+                lockedByName,
+              },
+              { status: 409 }
+            );
+          }
           emitShipmentEvent('shipment:unlocked', {
             taskId: id,
             shipmentId: task.shipmentId,
             userId: existingLock.userId,
           });
-          
-          // Удаляем неактивную блокировку
           await prisma.shipmentTaskLock.delete({
             where: { id: existingLock.id },
           });

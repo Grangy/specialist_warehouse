@@ -17,10 +17,11 @@ export const shipmentsApi = {
   },
 
   /**
-   * Заблокировать заказ
+   * Заблокировать заказ.
+   * confirmTakeOver: true — подтверждение перехвата (после алерта «Вы точно уверены?»).
    */
-  async lock(shipmentId: string): Promise<LockResponse> {
-    return apiClient.post<LockResponse>(`/shipments/${shipmentId}/lock`, {});
+  async lock(shipmentId: string, options?: { confirmTakeOver?: boolean }): Promise<LockResponse> {
+    return apiClient.post<LockResponse>(`/shipments/${shipmentId}/lock`, options ?? {});
   },
 
   /**

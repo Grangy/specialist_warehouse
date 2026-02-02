@@ -55,7 +55,7 @@ export function useCollect(options?: UseCollectOptions) {
     }
   }, []);
 
-  const openModal = useCallback(async (shipment: Shipment) => {
+  const openModal = useCallback(async (shipment: Shipment, options?: { confirmTakeOver?: boolean }) => {
     // Предотвращаем множественные открытия и повторные клики во время ожидания блокировки
     if (currentShipment !== null || isLocking) {
       return;
@@ -65,24 +65,25 @@ export function useCollect(options?: UseCollectOptions) {
     setLockingShipmentId(shipment.id);
 
     try {
-      // Блокируем заказ
+      // Блокируем заказ (confirmTakeOver — после подтверждения перехвата на фронте)
       let lockResponse;
       try {
-        lockResponse = await shipmentsApi.lock(shipment.id);
+        lockResponse = await shipmentsApi.lock(shipment.id, options);
       } catch (error: any) {
-        // Обрабатываем ошибку блокировки (например, 409 Conflict)
+        // CAN_TAKE_OVER — перехват возможен, нужен алерт «Вы точно уверены?»; пробрасываем наверх
+        if (error?.code === 'CAN_TAKE_OVER') {
+          setIsLocking(false);
+          setLockingShipmentId(null);
+          throw error;
+        }
+        // Остальные ошибки блокировки (409 LOCKED_BY_OTHER и др.)
         console.error('[useCollect] Ошибка блокировки:', error);
-        
-        // Извлекаем сообщение из ошибки
         let message = 'Задание уже начато другим сборщиком. Только администратор может вмешаться в сборку.';
-        
-        // APIError имеет структуру { message: string, status?: number }
         if (error?.message) {
           message = error.message;
         } else if (typeof error === 'string') {
           message = error;
         }
-        
         showError(message);
         setIsLocking(false);
         setLockingShipmentId(null);

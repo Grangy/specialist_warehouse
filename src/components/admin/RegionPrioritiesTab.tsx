@@ -72,10 +72,6 @@ export default function RegionPrioritiesTab() {
   const [showAddTemporaryModal, setShowAddTemporaryModal] = useState(false);
   const [isAddingTemporary, setIsAddingTemporary] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const loadTemporaryToday = useCallback(async () => {
     try {
       const res = await fetch('/api/regions/temporary-today');
@@ -88,11 +84,7 @@ export default function RegionPrioritiesTab() {
     }
   }, []);
 
-  useEffect(() => {
-    loadTemporaryToday();
-  }, [loadTemporaryToday]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError('');
@@ -118,7 +110,15 @@ export default function RegionPrioritiesTab() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [loadTemporaryToday]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    loadTemporaryToday();
+  }, [loadTemporaryToday]);
 
   const getDayPriority = (priority: RegionPriority, day: DayOfWeek): number | null => {
     switch (day) {

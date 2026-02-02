@@ -8,6 +8,11 @@ import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscow
 
 export const dynamic = 'force-dynamic';
 
+/** 5 минут без прогресса сборки (startedAt = null) — другой сборщик может перехватить */
+const IDLE_NO_PROGRESS_MS = 5 * 60 * 1000;
+/** 15 минут с момента последнего действия при начатой сборке — другой сборщик может перехватить */
+const IDLE_WITH_PROGRESS_MS = 15 * 60 * 1000;
+
 // Функция для проверки авторизации через заголовки, тело запроса или cookies
 async function authenticateRequest(request: NextRequest, body: any): Promise<{ user: any } | NextResponse> {
   let login: string | null = null;
@@ -810,14 +815,12 @@ export async function GET(request: NextRequest) {
         
         // Для сборщиков: скрываем задания, которые заблокированы другими сборщиками (модал открыт)
         if (user.role === 'collector' && lock && lock.userId !== user.id) {
-          // Проверяем, активна ли блокировка (heartbeat не старше 30 секунд)
+          // Таймаут: 5 мин без прогресса, 15 мин с момента последнего действия при начатой сборке
           const now = Date.now();
           const lastHeartbeatTime = lock.lastHeartbeat.getTime();
           const timeSinceHeartbeat = now - lastHeartbeatTime;
-          const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 секунд
-          const isActive = timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
-          
-          // Если блокировка активна (модал открыт другим сборщиком), скрываем задание
+          const idleTimeoutMs = task.startedAt == null ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
+          const isActive = timeSinceHeartbeat < idleTimeoutMs;
           if (isActive) {
             continue;
           }
@@ -929,36 +932,20 @@ export async function GET(request: NextRequest) {
         if (task.collector_id === user.id) {
           myTasks.push(task);
         } else {
-          // Проверяем, свободно ли задание
-          // Задание свободно ТОЛЬКО если:
-          // 1. collectorId === null (никто не начал работу)
-          // 2. И нет активной блокировки от другого сборщика
-          
-          if (task.collector_id !== null) {
-            // Если collectorId установлен (даже если это другой сборщик), задание занято
-            // Пропускаем его
-            return;
-          }
-          
-          // Если collectorId === null, проверяем блокировку
+          // Задание не своё — свободно, если нет активной блокировки от другого сборщика
+          // (при истёкшей блокировке 5/15 мин показываем как свободное — можно перехватить)
           const taskLocks = locksMap.get(task.id) || [];
           const lock = taskLocks[0] || null;
-          
-          if (lock) {
-            // Проверяем, активна ли блокировка (heartbeat не старше 30 секунд)
+          if (lock && lock.userId !== user.id) {
             const now = Date.now();
             const lastHeartbeatTime = lock.lastHeartbeat.getTime();
             const timeSinceHeartbeat = now - lastHeartbeatTime;
-            const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 секунд
-            const isActive = timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
-            
-            // Если блокировка активна и принадлежит другому пользователю, задание занято
-            if (isActive && lock.userId !== user.id) {
-              return; // Пропускаем занятое задание
+            const idleTimeoutMs = !task.started_at ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
+            const isActive = timeSinceHeartbeat < idleTimeoutMs;
+            if (isActive) {
+              return; // Занято другим сборщиком, блокировка активна
             }
           }
-          
-          // Задание свободно: collectorId === null и нет активной блокировки от другого сборщика
           freeTasks.push(task);
         }
       });

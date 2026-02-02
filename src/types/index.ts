@@ -108,6 +108,10 @@ export interface Toast {
 export interface APIError {
   message: string;
   status?: number;
+  /** Код ошибки (например CAN_TAKE_OVER, LOCKED_BY_OTHER) */
+  code?: string;
+  /** Имя пользователя, заблокировавшего задание (для перехвата) */
+  lockedByName?: string;
 }
 
 // Lock response

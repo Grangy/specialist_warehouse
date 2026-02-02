@@ -11,14 +11,29 @@ const POLL_INTERVAL_MAX_MS = 120_000;
 /** После скольких ответов "нет изменений" подряд увеличивать интервал */
 const BACKOFF_AFTER_NO_UPDATES = 5;
 
+export interface PendingMessagePayload {
+  id: string;
+  text: string;
+  fromName: string;
+  sentAt: string;
+}
+
+export interface LastPollResult {
+  hasUpdates: boolean;
+  pendingMessage?: PendingMessagePayload;
+}
+
 type OnHasUpdates = () => void;
 
 interface ShipmentsPollingContextValue {
   subscribe: (callback: OnHasUpdates) => () => void;
   refetchDone: () => void;
-  /** Вызвать обновление списка у всех подписчиков сразу (после save-progress / save-confirmation и т.д.) */
   triggerRefetch: () => void;
   isPolling: boolean;
+  /** Последний ответ poll (hasUpdates + pendingMessage от админа) */
+  lastPollResult: LastPollResult | null;
+  /** Очистить отображаемое сообщение после закрытия попапа (вызов после dismiss API) */
+  clearPendingMessage: () => void;
 }
 
 const ShipmentsPollingContext = createContext<ShipmentsPollingContextValue | null>(null);
@@ -30,6 +45,7 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
   const noUpdatesCountRef = useRef(0);
   const currentIntervalMsRef = useRef(POLL_INTERVAL_MS);
   const [isPolling, setIsPolling] = useState(false);
+  const [lastPollResult, setLastPollResult] = useState<LastPollResult | null>(null);
 
   const stopPolling = useCallback(() => {
     if (intervalRef.current) {
@@ -60,6 +76,10 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
       const res = await fetch(url, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
+      setLastPollResult({
+        hasUpdates: Boolean(data.hasUpdates),
+        pendingMessage: data.pendingMessage ?? undefined,
+      });
       if (data.hasUpdates) {
         noUpdatesCountRef.current = 0;
         currentIntervalMsRef.current = POLL_INTERVAL_MS;
@@ -121,6 +141,12 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
     });
   }, []);
 
+  const clearPendingMessage = useCallback(() => {
+    setLastPollResult((prev) =>
+      prev ? { ...prev, pendingMessage: undefined } : null
+    );
+  }, []);
+
   useEffect(() => {
     const onVisibility = () => {
       if (document.hidden) {
@@ -140,8 +166,15 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
   }, [poll, startPolling, stopPolling]);
 
   const value = useMemo<ShipmentsPollingContextValue>(
-    () => ({ subscribe, refetchDone, triggerRefetch, isPolling }),
-    [subscribe, refetchDone, triggerRefetch, isPolling]
+    () => ({
+      subscribe,
+      refetchDone,
+      triggerRefetch,
+      isPolling,
+      lastPollResult,
+      clearPendingMessage,
+    }),
+    [subscribe, refetchDone, triggerRefetch, isPolling, lastPollResult, clearPendingMessage]
   );
 
   return (

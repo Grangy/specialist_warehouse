@@ -16,7 +16,9 @@ import {
   Loader2,
   AlertCircle,
   Trophy,
-  TrendingUp
+  TrendingUp,
+  MessageCircle,
+  Send
 } from 'lucide-react';
 
 interface AnimalLevel {
@@ -46,7 +48,14 @@ export default function UsersTab() {
   const [error, setError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [messageTarget, setMessageTarget] = useState<User | null>(null);
+  const [messageText, setMessageText] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageError, setMessageError] = useState('');
   const router = useRouter();
+
+  const canReceiveMessage = (role: string) =>
+    role === 'collector' || role === 'checker' || role === 'warehouse_3';
 
   const [formData, setFormData] = useState({
     login: '',
@@ -130,6 +139,36 @@ export default function UsersTab() {
       role: user.role,
     });
     setShowAddForm(true);
+  };
+
+  const handleSendMessage = (user: User) => {
+    setMessageTarget(user);
+    setMessageText('');
+    setMessageError('');
+  };
+
+  const handleSubmitMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!messageTarget) return;
+    setMessageError('');
+    setSendingMessage(true);
+    try {
+      const res = await fetch('/api/admin/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: messageTarget.id, text: messageText.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Ошибка отправки');
+      }
+      setMessageTarget(null);
+      setMessageText('');
+    } catch (err: any) {
+      setMessageError(err.message || 'Ошибка отправки сообщения');
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -325,6 +364,7 @@ export default function UsersTab() {
                   </div>
                 </th>
                 <th className="px-4 py-4 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Создан</th>
+                <th className="px-4 py-4 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider">Сообщение</th>
                 <th className="px-4 py-4 text-right text-sm font-semibold text-slate-200 uppercase tracking-wider">Действия</th>
               </tr>
             </thead>
@@ -392,6 +432,21 @@ export default function UsersTab() {
                     <Calendar className="w-4 h-4" />
                     {new Date(user.createdAt).toLocaleDateString('ru-RU')}
                   </td>
+                  <td className="px-4 py-4 text-center">
+                    {canReceiveMessage(user.role) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSendMessage(user)}
+                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-amber-600/20 hover:bg-amber-500/30 text-amber-400 hover:text-amber-300 border border-amber-500/40 hover:border-amber-400/50 transition-all duration-200 hover:scale-110 active:scale-95 shadow-md hover:shadow-amber-500/20"
+                        title="Отправить сообщение"
+                        aria-label={`Отправить сообщение ${user.name}`}
+                      >
+                        <MessageCircle className="w-5 h-5" />
+                      </button>
+                    ) : (
+                      <span className="text-slate-500 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-4 text-right">
                     <div className="flex gap-2 justify-end">
                       <button
@@ -416,6 +471,87 @@ export default function UsersTab() {
           </table>
         </div>
       </div>
+
+      {/* Модалка отправки сообщения пользователю */}
+      {messageTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="send-message-title"
+        >
+          <div
+            className="absolute inset-0"
+            onClick={() => !sendingMessage && setMessageTarget(null)}
+            aria-hidden="true"
+          />
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-slate-800/95 border-2 border-amber-500/40 shadow-2xl shadow-amber-500/10 animate-[slideDown_0.3s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg">
+                  <MessageCircle className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 id="send-message-title" className="text-lg font-semibold text-slate-100">
+                    Отправить сообщение
+                  </h3>
+                  <p className="text-sm text-slate-400">
+                    {messageTarget.name} ({roleLabels[messageTarget.role]})
+                  </p>
+                </div>
+              </div>
+              <form onSubmit={handleSubmitMessage} className="space-y-4">
+                <div>
+                  <label htmlFor="message-text" className="block text-sm font-medium text-slate-300 mb-2">
+                    Текст сообщения
+                  </label>
+                  <textarea
+                    id="message-text"
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    placeholder="Введите сообщение..."
+                    rows={4}
+                    required
+                    className="w-full bg-slate-700/90 border-2 border-slate-600/50 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition-all duration-200 resize-none"
+                  />
+                </div>
+                {messageError && (
+                  <div className="flex items-center gap-2 text-red-400 text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {messageError}
+                  </div>
+                )}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="submit"
+                    disabled={sendingMessage || !messageText.trim()}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold flex items-center justify-center gap-2 shadow-lg hover:shadow-amber-500/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  >
+                    {sendingMessage ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Send className="w-5 h-5" />
+                    )}
+                    {sendingMessage ? 'Отправка...' : 'Отправить'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => !sendingMessage && setMessageTarget(null)}
+                    disabled={sendingMessage}
+                    className="px-5 py-3 rounded-xl bg-slate-700/90 hover:bg-slate-600 text-slate-200 font-semibold flex items-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                  >
+                    <X className="w-5 h-5" />
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -99,6 +99,8 @@ class APIClient {
         const error: APIError = {
           message: errorMessage,
           status: response.status,
+          ...(errorData.code != null && { code: String(errorData.code) }),
+          ...(errorData.lockedByName != null && { lockedByName: String(errorData.lockedByName) }),
         };
         if (!isUnauthorized) {
           console.log('[apiClient] Выбрасываем ошибку:', error);

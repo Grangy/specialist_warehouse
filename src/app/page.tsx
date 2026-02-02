@@ -15,12 +15,16 @@ import { OrderCompletedModal } from '@/components/modals/OrderCompletedModal';
 import { SendToOfficeModal } from '@/components/modals/SendToOfficeModal';
 import { WarehouseSelectModal } from '@/components/modals/WarehouseSelectModal';
 import { CollectionCompletedModal } from '@/components/modals/CollectionCompletedModal';
+import { AdminMessagePopup } from '@/components/AdminMessagePopup';
 import { useShipments } from '@/hooks/useShipments';
 import { useCollect } from '@/hooks/useCollect';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useModal } from '@/hooks/useModal';
 import { useToast } from '@/hooks/useToast';
+import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 import type { Shipment } from '@/types';
+
+const ROLES_WITH_ADMIN_MESSAGES = ['collector', 'checker', 'warehouse_3'] as const;
 
 export default function Home() {
   const router = useRouter();
@@ -64,6 +68,20 @@ export default function Home() {
     updateTaskStatusInList,
     userRole,
   } = useShipments({ showOnlyToday });
+
+  const polling = useShipmentsPolling();
+  const showAdminMessagePopup =
+    userInfo &&
+    ROLES_WITH_ADMIN_MESSAGES.includes(userInfo.role as (typeof ROLES_WITH_ADMIN_MESSAGES)[number]) &&
+    polling?.lastPollResult?.pendingMessage;
+
+  const handleDismissAdminMessage = useCallback(async () => {
+    try {
+      await fetch('/api/notifications/dismiss', { method: 'POST', credentials: 'include' });
+    } finally {
+      polling?.clearPendingMessage();
+    }
+  }, [polling]);
 
   // Проверяем, нужно ли показать модальное окно выбора склада
   useEffect(() => {
@@ -196,27 +214,24 @@ export default function Home() {
   });
 
   const handleCollect = async (shipment: Shipment) => {
-    // Проверяем блокировку перед открытием модального окна
-    // Если задание заблокировано другим пользователем и текущий пользователь не админ,
-    // показываем сообщение и не открываем модальное окно
-    if (shipment.locked && shipment.lockedBy && shipment.lockedByCurrentUser === false) {
-      // Если пользователь не админ, не позволяем вмешиваться в сборку другого
-      if (userRole !== 'admin') {
-        const collectorName = shipment.collector_name || 'другой сборщик';
-        showError(`Задание уже начато другим сборщиком. Сборку начал: ${collectorName}. Только администратор может вмешаться в сборку другого пользователя.`);
+    try {
+      await collectHook.openModal(shipment);
+    } catch (e: unknown) {
+      const err = e as { code?: string; lockedByName?: string; message?: string };
+      if (err?.code === 'CAN_TAKE_OVER') {
+        const name = err.lockedByName || 'другой сборщик';
+        const confirmed = window.confirm(
+          `Сборку начал: ${name}\n\nВы точно уверены, что хотите перехватить?`
+        );
+        if (confirmed) {
+          await collectHook.openModal(shipment, { confirmTakeOver: true });
+        }
         return;
       }
-      // Если админ, показываем предупреждение, но позволяем вмешаться
-      const collectorName = shipment.collector_name || 'другой сборщик';
-      const confirmed = window.confirm(
-        `Задание уже начато другим сборщиком.\nСборку начал: ${collectorName}\n\nВы администратор. Хотите вмешаться в сборку?`
-      );
-      if (!confirmed) {
-        return;
+      if (err?.message) {
+        showError(err.message);
       }
     }
-    
-    await collectHook.openModal(shipment);
   };
 
   const handleConfirmProcessing = async () => {
@@ -560,6 +575,12 @@ export default function Home() {
         taskNumber={completedCollectionData?.taskNumber}
         totalTasks={completedCollectionData?.totalTasks}
       />
+      {showAdminMessagePopup && polling?.lastPollResult?.pendingMessage && (
+        <AdminMessagePopup
+          message={polling.lastPollResult.pendingMessage}
+          onClose={handleDismissAdminMessage}
+        />
+      )}
     </div>
   );
 }

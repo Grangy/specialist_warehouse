@@ -1,32 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/middleware';
 import { prisma } from '@/lib/prisma';
+import { getPendingMessage } from '@/lib/adminMessages';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const ROLES_WITH_MESSAGES = ['collector', 'checker', 'warehouse_3'] as const;
 
 /**
  * GET /api/shipments/poll?since=ISO_TIMESTAMP
  *
  * Лёгкий запрос: есть ли изменения после since (заказы, задания, блокировки).
- * Используется для синхронизации между пользователями без SSE:
- * при любых действиях (сборка, проверка, lock/unlock, закрытие модалок)
- * другие пользователи получают обновление списка при следующем опросе (без перезагрузки страницы).
+ * Для сборщика/проверяльщика/склад 3 также возвращает pendingMessage, если админ отправил сообщение.
  */
 export async function GET(request: NextRequest) {
   const authResult = await authenticateRequest(request, {});
   if (authResult instanceof NextResponse) {
     return authResult as Response;
   }
+  const { user } = authResult as { user: { id: string; role: string } };
 
   const sinceParam = request.nextUrl.searchParams.get('since');
   const since = sinceParam ? new Date(sinceParam) : null;
   if (sinceParam && (isNaN(since!.getTime()))) {
-    return NextResponse.json({ hasUpdates: true });
+    const payload: { hasUpdates: boolean; pendingMessage?: object } = { hasUpdates: true };
+    if (ROLES_WITH_MESSAGES.includes(user.role as (typeof ROLES_WITH_MESSAGES)[number])) {
+      const msg = getPendingMessage(user.id);
+      if (msg) {
+        payload.pendingMessage = {
+          id: msg.id,
+          text: msg.text,
+          fromName: msg.fromName,
+          sentAt: msg.sentAt.toISOString(),
+        };
+      }
+    }
+    return NextResponse.json(payload);
   }
 
   if (!since) {
-    return NextResponse.json({ hasUpdates: true });
+    const payload: { hasUpdates: boolean; pendingMessage?: object } = { hasUpdates: true };
+    if (ROLES_WITH_MESSAGES.includes(user.role as (typeof ROLES_WITH_MESSAGES)[number])) {
+      const msg = getPendingMessage(user.id);
+      if (msg) {
+        payload.pendingMessage = {
+          id: msg.id,
+          text: msg.text,
+          fromName: msg.fromName,
+          sentAt: msg.sentAt.toISOString(),
+        };
+      }
+    }
+    return NextResponse.json(payload);
   }
 
   const [shipmentUpdated, taskUpdated, lockUpdated, syncTouchRow] = await Promise.all([
@@ -67,5 +93,17 @@ export async function GET(request: NextRequest) {
       lockUpdated ||
       (syncTouchRow != null && syncTouchRow.touchedAt > since)
   );
-  return NextResponse.json({ hasUpdates });
+  const payload: { hasUpdates: boolean; pendingMessage?: object } = { hasUpdates };
+  if (ROLES_WITH_MESSAGES.includes(user.role as (typeof ROLES_WITH_MESSAGES)[number])) {
+    const msg = getPendingMessage(user.id);
+    if (msg) {
+      payload.pendingMessage = {
+        id: msg.id,
+        text: msg.text,
+        fromName: msg.fromName,
+        sentAt: msg.sentAt.toISOString(),
+      };
+    }
+  }
+  return NextResponse.json(payload);
 }
