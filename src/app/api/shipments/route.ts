@@ -776,12 +776,6 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Роль warehouse_3: только заказы, где есть задание со Склад 3
-      if (user.role === 'warehouse_3') {
-        const hasWarehouse3 = shipment.tasks.some((t: { warehouse: string }) => t.warehouse === 'Склад 3');
-        if (!hasWarehouse3) continue;
-      }
-
       // Подсчитываем прогресс подтверждения для заказа ПО ВСЕМ заданиям
       const allShipmentTasks = shipment.tasks || [];
       const confirmedTasksCount = allShipmentTasks.filter((t: any) => t.status === 'processed').length;
@@ -921,9 +915,11 @@ export async function GET(request: NextRequest) {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
-    // Для сборщиков: показываем свои задания (где collectorId === userId) + 1 свободное с каждого склада
-    // Это позволяет сборщику не терять свои заказы, даже если он вышел из модала
-    if (user.role === 'collector' && tasks.length > 0) {
+    // ВАЖНО: админ, проверяльщик и склад_3 всегда получают ВСЕ задания (new + pending_confirmation).
+    // Ограничение «свои + 1 свободное с склада» применяется ТОЛЬКО к роли collector,
+    // чтобы активные заказы в админке совпадали с разделами Новые/На руках/Подтверждение/Ожидание на фронте.
+    const onlyCollectorSeesFilteredList = user.role === 'collector';
+    if (onlyCollectorSeesFilteredList && tasks.length > 0) {
       // Разделяем задания на свои и свободные
       const myTasks: typeof tasks = []; // Задания, где collectorId === userId
       const freeTasks: typeof tasks = []; // Свободные задания (collectorId === null или истекла блокировка)
@@ -1031,6 +1027,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(filteredTasks);
     }
 
+    // Админ, проверяльщик, склад_3: возвращаем полный список заданий (без фильтра по collector_id)
     return NextResponse.json(tasks);
   } catch (error: any) {
     console.error('Ошибка при получении заказов:', error);

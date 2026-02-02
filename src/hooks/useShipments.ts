@@ -250,15 +250,13 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
       return filtered;
     }
     
-    // «На руках» — только взятые сборщиком и с начатым прогрессом (хотя бы 1 позиция собрана)
-    const hasCollectionProgress = (s: Shipment) =>
-      Array.isArray(s.lines) && s.lines.some((l) => (l.collected_qty ?? 0) > 0);
-
+    // «На руках» — все задания, взятые сборщиком (collector_id != null), чтобы админ/проверяльщик/склад 3 всегда видели заказы в работе
     const filtered = displayShipments.filter((shipment) => {
       // Фильтр по вкладке
       if (currentTab === 'new' && (shipment.status !== 'new' || shipment.collector_id != null)) return false;
       if (currentTab === 'on_hands') {
-        if (shipment.status !== 'new' || shipment.collector_id == null || !hasCollectionProgress(shipment)) return false;
+        // Показываем все задания со статусом new и назначенным сборщиком (без требования прогресса — иначе заказ «пропадает» до первой собранной позиции)
+        if (shipment.status !== 'new' || shipment.collector_id == null) return false;
       }
       if (currentTab === 'processed' && shipment.status !== 'pending_confirmation') return false;
 
@@ -307,10 +305,9 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
 
   const onHandsCount = useMemo(
     () => {
-      // Только взятые сборщиком и с прогрессом (хотя бы 1 позиция собрана)
-      const hasProgress = (s: Shipment) => Array.isArray(s.lines) && s.lines.some((l) => (l.collected_qty ?? 0) > 0);
+      // Все взятые сборщиком (collector_id != null), без требования прогресса — чтобы счётчик совпадал с вкладкой «На руках»
       let filtered = displayShipments.filter(
-        (s) => s.status === 'new' && s.collector_id != null && hasProgress(s)
+        (s) => s.status === 'new' && s.collector_id != null
       );
       if (filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
