@@ -250,9 +250,16 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
       return filtered;
     }
     
+    // «На руках» — только взятые сборщиком и с начатым прогрессом (хотя бы 1 позиция собрана)
+    const hasCollectionProgress = (s: Shipment) =>
+      Array.isArray(s.lines) && s.lines.some((l) => (l.collected_qty ?? 0) > 0);
+
     const filtered = displayShipments.filter((shipment) => {
       // Фильтр по вкладке
-      if (currentTab === 'new' && shipment.status !== 'new') return false;
+      if (currentTab === 'new' && (shipment.status !== 'new' || shipment.collector_id != null)) return false;
+      if (currentTab === 'on_hands') {
+        if (shipment.status !== 'new' || shipment.collector_id == null || !hasCollectionProgress(shipment)) return false;
+      }
       if (currentTab === 'processed' && shipment.status !== 'pending_confirmation') return false;
 
       // Фильтр по поиску
@@ -300,7 +307,11 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
 
   const onHandsCount = useMemo(
     () => {
-      let filtered = displayShipments.filter((s) => s.status === 'new' && s.collector_id != null);
+      // Только взятые сборщиком и с прогрессом (хотя бы 1 позиция собрана)
+      const hasProgress = (s: Shipment) => Array.isArray(s.lines) && s.lines.some((l) => (l.collected_qty ?? 0) > 0);
+      let filtered = displayShipments.filter(
+        (s) => s.status === 'new' && s.collector_id != null && hasProgress(s)
+      );
       if (filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }

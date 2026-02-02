@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,11 @@ export async function GET(
     if (authResult instanceof NextResponse) {
       return authResult;
     }
+
+    const { searchParams } = new URL(request.url);
+    const periodParam = searchParams.get('period') || '';
+    const period = periodParam === 'week' || periodParam === 'month' ? periodParam : periodParam === 'today' ? 'today' : undefined;
+    const dateRange = period ? getStatisticsDateRange(period) : null;
 
     // Получаем пользователя
     const user = await prisma.user.findUnique({
@@ -33,11 +39,19 @@ export async function GET(
       );
     }
 
-    // Получаем TaskStatistics для проверяльщика
+    // Получаем TaskStatistics для проверяльщика (с опциональным фильтром по периоду)
     const checkerStats = await prisma.taskStatistics.findMany({
       where: {
         userId: user.id,
         roleType: 'checker',
+        ...(dateRange && {
+          task: {
+            confirmedAt: {
+              gte: dateRange.startDate,
+              lte: dateRange.endDate,
+            },
+          },
+        }),
       },
       include: {
         task: {
@@ -69,11 +83,19 @@ export async function GET(
       take: 100, // Ограничиваем последними 100 заданиями
     });
 
-    // Получаем TaskStatistics для сборщика
+    // Получаем TaskStatistics для сборщика (с опциональным фильтром по периоду: completedAt или confirmedAt в диапазоне)
     const collectorStats = await prisma.taskStatistics.findMany({
       where: {
         userId: user.id,
         roleType: 'collector',
+        ...(dateRange && {
+          task: {
+            OR: [
+              { completedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
+              { confirmedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
+            ],
+          },
+        }),
       },
       include: {
         task: {
@@ -100,18 +122,24 @@ export async function GET(
       take: 100,
     });
 
-    // Получаем DailyStats
+    // Получаем DailyStats (при периоде — только даты в диапазоне)
     const dailyStats = await prisma.dailyStats.findMany({
       where: {
         userId: user.id,
+        ...(dateRange && {
+          date: {
+            gte: dateRange.startDate,
+            lte: dateRange.endDate,
+          },
+        }),
       },
       orderBy: {
         date: 'desc',
       },
-      take: 30,
+      take: dateRange ? 31 : 30,
     });
 
-    // Получаем MonthlyStats
+    // Получаем MonthlyStats (при периоде month — только месяцы в диапазоне)
     const monthlyStats = await prisma.monthlyStats.findMany({
       where: {
         userId: user.id,
@@ -135,6 +163,7 @@ export async function GET(
     const collectorTotalOrders = new Set(collectorStats.map(s => s.shipmentId)).size;
 
     return NextResponse.json({
+      period: period ?? null,
       user: {
         id: user.id,
         name: user.name,

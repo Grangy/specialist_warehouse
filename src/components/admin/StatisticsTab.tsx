@@ -14,10 +14,10 @@ import {
   Zap,
   BarChart3,
   Info,
-  Sparkles,
   Mic,
   RefreshCw,
 } from 'lucide-react';
+import { PointsHelpModal } from '@/components/PointsHelpModal';
 
 interface RankingEntry {
   userId: string;
@@ -27,6 +27,7 @@ interface RankingEntry {
   units: number;
   orders: number;
   points: number;
+  dictatorPoints?: number;
   rank: number | null;
   level: {
     name: string;
@@ -82,22 +83,18 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
   const [allRankings, setAllRankings] = useState<RankingEntry[]>([]);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [showPointsInfo, setShowPointsInfo] = useState(false);
+  const [showPointsHelp, setShowPointsHelp] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState('');
 
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // Добавляем timestamp для предотвращения кэширования
       const timestamp = new Date().getTime();
-      const [rankingRes, overviewRes] = await Promise.all([
-        fetch(`/api/statistics/ranking?period=${period}&_t=${timestamp}`, {
-          cache: 'no-store',
-        }),
-        fetch(`/api/statistics/overview?_t=${timestamp}`, {
-          cache: 'no-store',
-        }),
+      const [rankingRes, overviewRes, topRes] = await Promise.all([
+        fetch(`/api/statistics/ranking?period=${period}&_t=${timestamp}`, { cache: 'no-store' }),
+        fetch(`/api/statistics/overview?_t=${timestamp}`, { cache: 'no-store' }),
+        period === 'today' ? fetch(`/api/statistics/top?period=today&_t=${timestamp}`, { cache: 'no-store' }) : Promise.resolve({ ok: false } as Response),
       ]);
 
       if (rankingRes.ok) {
@@ -105,7 +102,13 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
         setCollectors(rankingData.collectors || []);
         setCheckers(rankingData.checkers || []);
         setDictators(rankingData.dictators || []);
-        setAllRankings(rankingData.all || []);
+        // Общий топ дня — только из того же API, что и страница /top, чтобы цифры совпадали
+        if (period === 'today' && topRes?.ok) {
+          const topData = await topRes.json();
+          setAllRankings(topData.all || []);
+        } else {
+          setAllRankings(rankingData.all || []);
+        }
       } else {
         console.error('[StatisticsTab] Ошибка загрузки рейтинга:', rankingRes.status, rankingRes.statusText);
       }
@@ -197,7 +200,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
             <span className="hidden sm:inline">Обновить</span>
           </button>
           <button
-            onClick={() => setShowPointsInfo(!showPointsInfo)}
+            onClick={() => setShowPointsHelp(true)}
             className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center gap-2"
           >
             <Info className="w-4 h-4" />
@@ -206,52 +209,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
         </div>
       </div>
 
-      {/* Информация о системе баллов */}
-      {showPointsInfo && (
-        <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6 backdrop-blur-sm">
-          <h3 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-yellow-400" />
-            Система расчета баллов
-          </h3>
-          <div className="space-y-4 text-slate-300">
-            <div>
-              <h4 className="font-semibold text-slate-100 mb-2">1. Базовые очки (base_points)</h4>
-              <p className="text-sm">base_points = positions + M × switches</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Где M = 3 (коэффициент за переключение склада). <strong>Единицы не учитываются</strong> - трудозатратность одинаковая независимо от количества единиц.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-slate-100 mb-2">2. Ожидаемое время (expected_time)</h4>
-              <p className="text-sm">expected_time = A × positions + C × switches</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Где A = 30 сек/позиция (основной показатель), C = 120 сек за переключение склада. <strong>Единицы не учитываются</strong>.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-slate-100 mb-2">3. Эффективность (efficiency)</h4>
-              <p className="text-sm">efficiency = expected_time / pick_time</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Ограничивается диапазоном от 0.9 до 1.1 (clamp) — скорость ±10%
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-slate-100 mb-2">4. Финальные очки за заказ</h4>
-              <p className="text-sm">order_points = base_points × efficiency_clamped</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Чем быстрее выполняется заказ относительно нормы, тем больше баллов
-              </p>
-            </div>
-            <div className="pt-2 border-t border-slate-700">
-              <p className="text-xs text-slate-400">
-                <strong>PPH</strong> (positions per hour) — позиций в час<br />
-                <strong>UPH</strong> (units per hour) — единиц в час<br />
-                <strong>Efficiency</strong> — эффективность выполнения относительно нормы
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      <PointsHelpModal isOpen={showPointsHelp} onClose={() => setShowPointsHelp(false)} />
 
       {/* Основные метрики склада */}
       {overview && (
@@ -411,8 +369,13 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold text-slate-100">{formatPoints(user.points)}</div>
-                    <div className="text-xs text-slate-400">баллов</div>
-                    {user.pph && (
+                    <div className="text-xs text-slate-400">
+                      баллов
+                      {user.dictatorPoints != null && user.dictatorPoints > 0 && (
+                        <span className="block text-amber-400/90">из них {formatPoints(user.dictatorPoints)} — диктовщик</span>
+                      )}
+                    </div>
+                    {user.pph != null && (
                       <div className="text-xs text-slate-500 mt-1">
                         {formatPPH(user.pph)} PPH
                       </div>
@@ -671,10 +634,11 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
         </div>
       </div>
 
-      {/* Модальное окно с детальной статистикой */}
+      {/* Модальное окно с детальной статистикой (за выбранный период: день / неделя / месяц) */}
       <UserStatsModal
         userId={selectedUserId}
         userName={selectedUserName}
+        period={period}
         onClose={() => {
           setSelectedUserId(null);
           setSelectedUserName('');

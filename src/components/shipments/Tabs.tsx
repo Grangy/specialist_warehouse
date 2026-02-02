@@ -34,18 +34,6 @@ export function Tabs({ currentTab, newCount, onHandsCount, pendingCount, waiting
             Новые <span className="ml-0.5 sm:ml-1">({newCount})</span>
           </button>
         )}
-        {canAccessProcessed && (
-          <button
-            onClick={() => onTabChange('processed')}
-            className={`tab-btn px-2.5 sm:px-4 md:px-6 py-2 md:py-3 font-semibold border-b-2 transition-all duration-200 whitespace-nowrap flex-shrink-0 text-xs sm:text-sm md:text-base touch-manipulation ${
-              currentTab === 'processed'
-                ? 'text-blue-400 border-blue-400 bg-blue-400/5'
-                : 'text-slate-400 border-transparent hover:text-slate-300 hover:bg-slate-800/50'
-            }`}
-          >
-            Подтверждения <span className="ml-0.5 sm:ml-1">({pendingCount})</span>
-          </button>
-        )}
         {canAccessOnHands && (
           <button
             onClick={() => onTabChange('on_hands')}
@@ -56,6 +44,18 @@ export function Tabs({ currentTab, newCount, onHandsCount, pendingCount, waiting
             }`}
           >
             На руках <span className="ml-0.5 sm:ml-1">({onHandsCount})</span>
+          </button>
+        )}
+        {canAccessProcessed && (
+          <button
+            onClick={() => onTabChange('processed')}
+            className={`tab-btn px-2.5 sm:px-4 md:px-6 py-2 md:py-3 font-semibold border-b-2 transition-all duration-200 whitespace-nowrap flex-shrink-0 text-xs sm:text-sm md:text-base touch-manipulation ${
+              currentTab === 'processed'
+                ? 'text-blue-400 border-blue-400 bg-blue-400/5'
+                : 'text-slate-400 border-transparent hover:text-slate-300 hover:bg-slate-800/50'
+            }`}
+          >
+            Подтверждения <span className="ml-0.5 sm:ml-1">({pendingCount})</span>
           </button>
         )}
         {canAccessWaiting && (

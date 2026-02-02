@@ -87,10 +87,12 @@ interface UserStatsData {
 interface UserStatsModalProps {
   userId: string | null;
   userName: string;
+  /** Период, выбранный на вкладке «Статистика» — детали показываются за этот период */
+  period?: 'today' | 'week' | 'month';
   onClose: () => void;
 }
 
-export default function UserStatsModal({ userId, userName, onClose }: UserStatsModalProps) {
+export default function UserStatsModal({ userId, userName, period, onClose }: UserStatsModalProps) {
   const [data, setData] = useState<UserStatsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -104,7 +106,7 @@ export default function UserStatsModal({ userId, userName, onClose }: UserStatsM
       setError('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, period]);
 
   const loadData = async () => {
     if (!userId) return;
@@ -112,7 +114,8 @@ export default function UserStatsModal({ userId, userName, onClose }: UserStatsM
     try {
       setIsLoading(true);
       setError('');
-      const res = await fetch(`/api/statistics/user/${userId}`);
+      const query = period ? `?period=${period}` : '';
+      const res = await fetch(`/api/statistics/user/${userId}${query}`);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || 'Ошибка загрузки статистики');
@@ -182,7 +185,14 @@ export default function UserStatsModal({ userId, userName, onClose }: UserStatsM
               <h2 className="text-xl font-bold text-slate-100">
                 {data ? `Статистика: ${data.user.name}` : userName}
               </h2>
-              <p className="text-sm text-slate-400">Детальная информация о баллах и заданиях</p>
+              <p className="text-sm text-slate-400">
+                Детальная информация о баллах и заданиях
+                {period && (
+                  <span className="ml-1 text-amber-400/90">
+                    · {period === 'today' ? 'за день' : period === 'week' ? 'за неделю' : 'за месяц'}
+                  </span>
+                )}
+              </p>
             </div>
           </div>
           <button

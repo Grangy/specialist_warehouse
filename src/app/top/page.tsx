@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Trophy, RefreshCw, Calendar } from 'lucide-react';
+import { Trophy, RefreshCw, Calendar, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
+import UserStatsModal from '@/components/admin/UserStatsModal';
+import { PointsHelpModal } from '@/components/PointsHelpModal';
 
 type Period = 'today' | 'week' | 'month';
 
@@ -39,6 +41,9 @@ export default function TopPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserName, setSelectedUserName] = useState('');
+  const [showPointsHelp, setShowPointsHelp] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -128,10 +133,22 @@ export default function TopPage() {
               <span>{PERIOD_LABELS[period]} · {formatDate(date)}</span>
             </div>
           )}
-          <p className="text-xs text-slate-500">
-            Места по баллам (учитывается скорость и объём)
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-slate-500">
+              Места по баллам (учитывается скорость и объём)
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowPointsHelp(true)}
+              className="text-xs text-amber-400/90 hover:text-amber-400 flex items-center gap-1 underline underline-offset-2"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              Как считаются баллы
+            </button>
+          </div>
         </div>
+
+        <PointsHelpModal isOpen={showPointsHelp} onClose={() => setShowPointsHelp(false)} />
 
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -179,7 +196,20 @@ export default function TopPage() {
               {list.slice(0, 20).map((user, index) => (
                 <div
                   key={user.userId}
-                  className={`rounded-xl border p-4 transition-all opacity-0 ${getCardAnimation(index)} ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    setSelectedUserId(user.userId);
+                    setSelectedUserName(user.userName);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedUserId(user.userId);
+                      setSelectedUserName(user.userName);
+                    }
+                  }}
+                  className={`rounded-xl border p-4 transition-all opacity-0 cursor-pointer hover:ring-2 hover:ring-yellow-500/30 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 ${getCardAnimation(index)} ${
                     index === 0
                       ? 'border-yellow-500/50 bg-gradient-to-r from-yellow-900/30 to-slate-900/50'
                       : index === 1
@@ -266,6 +296,16 @@ export default function TopPage() {
             )}
           </>
         )}
+
+        <UserStatsModal
+          userId={selectedUserId}
+          userName={selectedUserName}
+          period={period}
+          onClose={() => {
+            setSelectedUserId(null);
+            setSelectedUserName('');
+          }}
+        />
       </div>
     </div>
   );
