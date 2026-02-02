@@ -332,12 +332,12 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                 </div>
               )}
 
-              {/* Информация по сборщикам */}
+              {/* Сборщики, задания и детали (объединённый блок) */}
               {filteredCollectors.length > 0 && (
                 <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
                   <div className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
                     <User className="w-4 h-4" />
-                    Сборщики и их задания
+                    Сборщики и задания (с деталями)
                   </div>
                   <div className="space-y-4">
                     {filteredCollectors.map((collector, idx) => (
@@ -375,7 +375,13 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                                     {task.places != null && <span className="ml-1 text-cyan-400">· {task.places} мест</span>}
                                   </span>
                                 </button>
-                                <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 mb-2">
+                                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 mb-2">
+                                  {fullTask?.checkerName && (
+                                    <div className="flex items-center gap-1">
+                                      <User className="w-3 h-3 text-purple-400" />
+                                      <span className="text-purple-300">Проверяющий: {fullTask.checkerName}</span>
+                                    </div>
+                                  )}
                                   <div className="flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
                                     Начало: {formatDateTime(task.startedAt)}
@@ -384,10 +390,25 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                                     <CheckCircle2 className="w-3 h-3" />
                                     Завершение: {formatDateTime(task.completedAt)}
                                   </div>
+                                  {fullTask?.checkerName && (
+                                    <>
+                                      <div className="flex items-center gap-1 text-purple-400/80">
+                                        Начало проверки: {formatDateTime(fullTask.checkerStartedAt)}
+                                      </div>
+                                      <div className="flex items-center gap-1 text-purple-400/80">
+                                        Завершение проверки: {formatDateTime(fullTask.checkerConfirmedAt)}
+                                      </div>
+                                    </>
+                                  )}
+                                  {fullTask?.timePer100Items != null && (
+                                    <span className="text-slate-400">
+                                      Время на 100 поз.: {formatTime(fullTask.timePer100Items)}
+                                    </span>
+                                  )}
                                 </div>
                                 {isExpanded && taskLines.length > 0 && (
                                   <div className="mt-3 pt-3 border-t border-slate-700/30 overflow-x-auto">
-                                    <div className="text-xs font-semibold text-slate-400 mb-2">Товары в задании:</div>
+                                    <div className="text-xs font-semibold text-slate-400 mb-2">Позиции в задании:</div>
                                     <table className="w-full text-xs">
                                       <thead>
                                         <tr className="border-b border-slate-700/50 text-slate-500">
@@ -419,70 +440,6 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                   </div>
                 </div>
               )}
-
-              {/* Детали заданий */}
-              <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
-                <div className="text-sm font-semibold text-slate-300 mb-4">Детали заданий</div>
-                <div className="space-y-4">
-                  {filteredTasks.map((task) => (
-                    <div key={task.id} className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/30">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Warehouse className="w-4 h-4 text-blue-400" />
-                          <span className="font-semibold text-slate-100">{task.warehouse}</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-slate-400">
-                          {task.collectorName && (
-                            <div className="flex items-center gap-1">
-                              <User className="w-3 h-3 text-green-400" />
-                              <span className="text-green-300">{task.collectorName}</span>
-                            </div>
-                          )}
-                          {task.checkerName && (
-                            <div className="flex items-center gap-1">
-                              <User className="w-3 h-3 text-purple-400" />
-                              <span className="text-purple-300">{task.checkerName}</span>
-                            </div>
-                          )}
-                          <span>{task.totalItems} позиций</span>
-                          <span>{task.totalUnits} ед.</span>
-                          {task.places != null && <span className="text-cyan-400">{task.places} мест</span>}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 mb-3 text-xs text-slate-400">
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          Начало сборки: {formatDateTime(task.startedAt)}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Завершение сборки: {formatDateTime(task.completedAt)}
-                        </div>
-                        {task.checkerName && (
-                          <>
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-purple-400" />
-                              Начало проверки: {formatDateTime(task.checkerStartedAt)}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-purple-400" />
-                              Завершение проверки: {formatDateTime(task.checkerConfirmedAt)}
-                            </div>
-                          </>
-                        )}
-                        {task.timePer100Items && (
-                          <div className="col-span-2 text-slate-400">
-                            Время на 100 позиций: {formatTime(task.timePer100Items)}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        Позиций в задании: {task.lines.length}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
 
               {/* Позиции заказа */}
               <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
