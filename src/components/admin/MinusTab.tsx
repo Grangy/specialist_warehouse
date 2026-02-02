@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   AlertTriangle,
   Download,
@@ -27,6 +27,7 @@ interface MinusShipment extends Shipment {
 
 interface ShortageItem {
   sku: string;
+  art?: string | null;
   name: string;
   date: string;
   shortage_qty: number;
@@ -63,7 +64,7 @@ export default function MinusTab() {
     loadShipments();
   }, []);
 
-  const loadShortageItems = async () => {
+  const loadShortageItems = useCallback(async () => {
     setItemsLoading(true);
     setItemsError('');
     try {
@@ -82,11 +83,11 @@ export default function MinusTab() {
     } finally {
       setItemsLoading(false);
     }
-  };
+  }, [periodMode, dateFrom, dateTo]);
 
   useEffect(() => {
     if (subTab === 'items') loadShortageItems();
-  }, [subTab]);
+  }, [subTab, loadShortageItems]);
 
   const handleExportItems = async () => {
     if (shortageItems.length === 0) return;
