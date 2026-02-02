@@ -254,23 +254,22 @@ export default function Home() {
         const storageKey = `dictator_${userInfo.id}_${today}`;
         const saved = localStorage.getItem(storageKey);
         let dictatorId: string | null = null;
-        
         if (saved) {
           const data = JSON.parse(saved);
           dictatorId = data.id;
         }
-        
-        // Устанавливаем диктовщика перед открытием модального окна
+        // Для warehouse_3 по умолчанию диктовщик — сам пользователь (баллы всегда себе)
+        if (userRole === 'warehouse_3' && !dictatorId) {
+          dictatorId = userInfo.id;
+        }
         confirmHook.setDictatorId(dictatorId);
       } catch (error) {
         console.error('Ошибка при загрузке диктовщика из localStorage:', error);
-        confirmHook.setDictatorId(null);
+        confirmHook.setDictatorId(userRole === 'warehouse_3' && userInfo ? userInfo.id : null);
       }
     } else {
-      // Для не-проверяльщиков сбрасываем диктовщика
       confirmHook.setDictatorId(null);
     }
-    
     confirmHook.openModal(shipment);
   };
 

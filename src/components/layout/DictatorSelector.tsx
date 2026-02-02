@@ -56,6 +56,19 @@ export function DictatorSelector({ userId, userRole }: DictatorSelectorProps) {
     loadCurrentUser();
   }, []);
 
+  // Для warehouse_3 по умолчанию диктовщик — сам пользователь (баллы всегда себе)
+  useEffect(() => {
+    if (typeof window === 'undefined' || userRole !== 'warehouse_3' || !currentUser) return;
+    const today = new Date().toISOString().split('T')[0];
+    const storageKey = `dictator_${userId}_${today}`;
+    const saved = localStorage.getItem(storageKey);
+    if (!saved) {
+      setSelectedDictatorId(currentUser.id);
+      setSelectedDictatorName(currentUser.name);
+      localStorage.setItem(storageKey, JSON.stringify({ id: currentUser.id, name: currentUser.name }));
+    }
+  }, [userRole, currentUser, userId]);
+
   // Загружаем список пользователей при открытии выбора
   useEffect(() => {
     if (isSelecting) {

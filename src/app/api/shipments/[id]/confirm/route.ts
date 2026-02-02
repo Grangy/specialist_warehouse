@@ -18,15 +18,19 @@ export async function POST(
     }
     const { user } = authResult;
 
-    // Только проверяющий и админ могут подтверждать
-    if (user.role !== 'admin' && user.role !== 'checker') {
+    // Подтверждать могут админ, проверяльщик и склад 3
+    if (user.role !== 'admin' && user.role !== 'checker' && user.role !== 'warehouse_3') {
       return NextResponse.json(
         { error: 'Недостаточно прав доступа' },
         { status: 403 }
       );
     }
     const body = await request.json();
-    const { lines, comment, places, dictatorId } = body;
+    let { lines, comment, places, dictatorId } = body;
+    // Для warehouse_3 диктовщик всегда сам пользователь — все баллы проверяльщика ему
+    if (user.role === 'warehouse_3') {
+      dictatorId = user.id;
+    }
 
     const task = await prisma.shipmentTask.findUnique({
       where: { id },
