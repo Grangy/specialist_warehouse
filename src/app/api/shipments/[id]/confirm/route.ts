@@ -48,6 +48,14 @@ export async function POST(
       return NextResponse.json({ error: 'Задание не найдено' }, { status: 404 });
     }
 
+    // Заказ уже закрыт (отправлен в офис) — не разрешаем повторную отправку
+    if (task.shipment.status === 'processed') {
+      return NextResponse.json(
+        { error: 'Заказ уже закрыт (отправлен в офис). Обновите список.' },
+        { status: 400 }
+      );
+    }
+
     if (task.status !== 'pending_confirmation') {
       return NextResponse.json(
         { error: 'Задание не находится в статусе ожидания подтверждения' },
