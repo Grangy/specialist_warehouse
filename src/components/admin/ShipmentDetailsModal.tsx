@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Package, Calendar, Clock, User, MapPin, Warehouse, CheckCircle2, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ShipmentDetails {
@@ -16,6 +16,7 @@ interface ShipmentDetails {
   weight: number | null;
   itemsCount: number;
   totalQty: number;
+  places: number | null;
   warehousesCount: number;
   warehouses: string[];
   tasksCount: number;
@@ -23,6 +24,7 @@ interface ShipmentDetails {
     id: string;
     warehouse: string;
     status: string;
+    places: number | null;
     collectorId: string | null;
     collectorName: string | null;
     collectorLogin: string | null;
@@ -54,6 +56,7 @@ interface ShipmentDetails {
     tasks: Array<{
       id: string;
       warehouse: string;
+      places: number | null;
       startedAt: string | null;
       completedAt: string | null;
       totalItems: number;
@@ -83,6 +86,7 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+  const [warehouseFilter, setWarehouseFilter] = useState<string>('');
 
   const toggleTaskExpanded = (taskId: string) => {
     setExpandedTaskIds((prev) => {
@@ -117,12 +121,30 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
   useEffect(() => {
     if (shipmentId) {
       loadDetails();
+      setWarehouseFilter('');
     } else {
       setDetails(null);
       setError('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shipmentId]);
+
+  const filteredTasks = useMemo(() => {
+    if (!details) return [];
+    if (!warehouseFilter) return details.tasks;
+    return details.tasks.filter((t) => t.warehouse === warehouseFilter);
+  }, [details, warehouseFilter]);
+
+  const filteredCollectors = useMemo(() => {
+    if (!details) return [];
+    if (!warehouseFilter) return details.collectors;
+    return details.collectors
+      .map((c) => ({
+        ...c,
+        tasks: c.tasks.filter((t) => t.warehouse === warehouseFilter),
+      }))
+      .filter((c) => c.tasks.length > 0);
+  }, [details, warehouseFilter]);
 
   // Закрытие по Escape
   useEffect(() => {
@@ -249,7 +271,7 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
               </div>
 
               {/* Статистика */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="bg-gradient-to-br from-blue-600/20 to-blue-500/10 rounded-lg p-4 border border-blue-500/30">
                   <div className="text-sm text-slate-400 mb-1">Складов</div>
                   <div className="text-2xl font-bold text-slate-100">{details.warehousesCount}</div>
@@ -266,16 +288,38 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                   <div className="text-sm text-slate-400 mb-1">Единиц</div>
                   <div className="text-2xl font-bold text-slate-100">{details.totalQty}</div>
                 </div>
+                {details.places != null && (
+                  <div className="bg-gradient-to-br from-cyan-600/20 to-cyan-500/10 rounded-lg p-4 border border-cyan-500/30">
+                    <div className="text-sm text-slate-400 mb-1">Мест</div>
+                    <div className="text-2xl font-bold text-slate-100">{details.places}</div>
+                  </div>
+                )}
               </div>
 
-              {/* Список складов */}
+              {/* Фильтр по складу и список складов */}
               {details.warehouses.length > 0 && (
                 <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
                   <div className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
                     <Warehouse className="w-4 h-4" />
                     Участвующие склады
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="text-sm text-slate-400">Показать задания:</label>
+                    <select
+                      value={warehouseFilter}
+                      onChange={(e) => setWarehouseFilter(e.target.value)}
+                      className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-slate-200 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Все склады</option>
+                      {details.warehouses.map((wh) => (
+                        <option key={wh} value={wh}>{wh}</option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-slate-500">
+                      {warehouseFilter ? `Показано заданий: ${filteredTasks.length}` : `Всего заданий: ${details.tasksCount}`}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
                     {details.warehouses.map((warehouse) => (
                       <span
                         key={warehouse}
@@ -289,14 +333,14 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
               )}
 
               {/* Информация по сборщикам */}
-              {details.collectors.length > 0 && (
+              {filteredCollectors.length > 0 && (
                 <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
                   <div className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
                     <User className="w-4 h-4" />
                     Сборщики и их задания
                   </div>
                   <div className="space-y-4">
-                    {details.collectors.map((collector, idx) => (
+                    {filteredCollectors.map((collector, idx) => (
                       <div key={idx} className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/30">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
@@ -328,6 +372,7 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                                   <span className="text-slate-300 font-medium">{task.warehouse}</span>
                                   <span className="text-slate-400">
                                     {task.totalItems} позиций, {task.totalUnits} ед.
+                                    {task.places != null && <span className="ml-1 text-cyan-400">· {task.places} мест</span>}
                                   </span>
                                 </button>
                                 <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 mb-2">
@@ -379,7 +424,7 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
               <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
                 <div className="text-sm font-semibold text-slate-300 mb-4">Детали заданий</div>
                 <div className="space-y-4">
-                  {details.tasks.map((task) => (
+                  {filteredTasks.map((task) => (
                     <div key={task.id} className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/30">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
@@ -401,6 +446,7 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                           )}
                           <span>{task.totalItems} позиций</span>
                           <span>{task.totalUnits} ед.</span>
+                          {task.places != null && <span className="text-cyan-400">{task.places} мест</span>}
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 mb-3 text-xs text-slate-400">

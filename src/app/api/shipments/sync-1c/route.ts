@@ -30,11 +30,7 @@ export const dynamic = 'force-dynamic';
  * Идентификация заказа: сначала по id, затем по number+customer_name (или customer), затем по number.
  * (id в 1С может отличаться при каждой выгрузке — ищем по номеру и клиенту.)
  *
- * Ответ:
- * {
- *   "orders": [ { ... finalOrderData ... } ],
- *   "errors": [ { "number": "N123", "customer_name": "Клиент", "error": "already_exported" } ]  // если заказ уже выгружен — ошибка, как при активном заказе
- * }
+ * Ответ: { "orders": [ { ... finalOrderData ... } ] } — только заказы, готовые к выгрузке. Уже выгруженные не обновляем и не включаем в ответ.
  */
 export async function POST(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
@@ -45,8 +41,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const ordersCount = Array.isArray(body.orders) ? body.orders.length : 0;
-    // Минимальный лог: один запрос — одна строка
-    console.log(`[Sync-1C] [${requestId}] POST ${ordersCount} orders from ${clientIp}`);
+    // Лог полного POST body от 1С (без пароля)
+    const logBody = { ...body, password: body.password ? '[REDACTED]' : undefined };
+    console.log(`[Sync-1C] [${requestId}] POST ${ordersCount} orders from ${clientIp}`, JSON.stringify(logBody));
 
     // Авторизация через заголовки, тело запроса или cookies
     const authResult = await authenticateRequest(request, body, ['admin']);
@@ -319,13 +316,7 @@ export async function POST(request: NextRequest) {
       console.log(`[Sync-1C] [${requestId}] ready for export: ${readyOrders.length}`);
     }
 
-    // Заказы, которые уже выгружены — отдаём ошибку по номеру+клиенту, чтобы 1С не слал их повторно (как при активном заказе)
-    const response: { orders: typeof readyOrders; errors?: Array<{ number: string; customer_name: string; error: string }> } = { orders: readyOrders };
-    if (alreadyExportedList.length > 0) {
-      response.errors = alreadyExportedList;
-    }
-
-    return NextResponse.json(response);
+    return NextResponse.json({ orders: readyOrders });
   } catch (error: any) {
     console.error(`[Sync-1C] [${requestId}] Ошибка:`, error.message);
     return NextResponse.json(
