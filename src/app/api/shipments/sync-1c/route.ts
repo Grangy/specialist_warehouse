@@ -23,17 +23,17 @@ export const dynamic = 'force-dynamic';
  *   "login": "admin",
  *   "password": "YOUR_PASSWORD",
  *   "orders": [
- *     { "id": "shipment_id", "success": true },
- *     { "id": "shipment_id_2", "success": false }
+ *     { "id": "shipment_id", "number": "N123", "customer_name": "Клиент", "success": true },
+ *     { "number": "N456", "customer_name": "Клиент 2", "success": false }
  *   ]
  * }
- * 
+ * Идентификация заказа: сначала по id, затем по number+customer_name (или customer), затем по number.
+ * (id в 1С может отличаться при каждой выгрузке — ищем по номеру и клиенту.)
+ *
  * Ответ:
  * {
- *   "orders": [
- *     { ... finalOrderData ... },
- *     { ... finalOrderData ... }
- *   ]
+ *   "orders": [ { ... finalOrderData ... } ],
+ *   "errors": [ { "number": "N123", "customer_name": "Клиент", "error": "already_exported" } ]  // если заказ уже выгружен — ошибка, как при активном заказе
  * }
  */
 export async function POST(request: NextRequest) {
@@ -65,71 +65,90 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Обновляем статус выгрузки для заказов, которые были обработаны в 1С
-    // ВАЖНО: Не обновляем удаленные заказы
-    const updatePromises = orders.map(async (order: { id: string; success: boolean; number?: string }) => {
-      // Улучшенная проверка: если success не boolean, пропускаем
+    // Идентификация по номеру + клиенту (id в 1С может отличаться от нашего при каждой выгрузке).
+    // Собираем заказы, которые уже выгружены — отдаём им ошибку в ответе, чтобы 1С перестал слать.
+    const alreadyExportedList: Array<{ number: string; customer_name: string; error: string }> = [];
+    const notFoundLog: Array<{ number?: string; customer?: string; id?: string }> = [];
+
+    const updatePromises = orders.map(async (order: { id?: string; success: boolean; number?: string; customer_name?: string; customer?: string }) => {
       if (typeof order.success !== 'boolean') {
-        console.warn(`[Sync-1C] [${requestId}] Пропущен неверный формат заказа (success не boolean):`, order);
+        console.warn(`[Sync-1C] [${requestId}] Пропущен неверный формат заказа (success не boolean):`, JSON.stringify({ id: order.id, number: order.number, customer: order.customer_name || order.customer }));
         return;
       }
-
-      // Если success = false, просто пропускаем (заказ не был обработан в 1С)
       if (order.success === false) return;
 
-      // Если success = true, обновляем статус
-      // ВАЖНО: Если id пустой, но есть number, используем number для поиска
       const hasId = order.id && order.id.trim() !== '';
       const hasNumber = order.number && order.number.trim() !== '';
+      const customer = (order.customer_name || order.customer || '').trim();
+      const hasCustomer = customer !== '';
 
       if (!hasId && !hasNumber) {
-        console.warn(`[Sync-1C] [${requestId}] Пропущен заказ без ID и номера:`, order);
+        console.warn(`[Sync-1C] [${requestId}] Пропущен заказ без ID и номера: number=${order.number || '—'}, customer=${customer || '—'}`);
         return;
       }
 
-      let shipment = null;
+      let shipment: { id: string; deleted: boolean; number: string; customerName: string; exportedTo1C: boolean; exportedTo1CAt: Date | null } | null = null;
+      let foundBy = '';
 
-      // Сначала пытаемся найти по ID (если он не пустой)
       if (hasId) {
         shipment = await prisma.shipment.findUnique({
           where: { id: order.id },
-          select: { id: true, deleted: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
+          select: { id: true, deleted: true, number: true, customerName: true, exportedTo1C: true, exportedTo1CAt: true },
         });
+        if (shipment) foundBy = 'id';
       }
-
+      if (!shipment && hasNumber && hasCustomer) {
+        shipment = await prisma.shipment.findFirst({
+          where: {
+            number: order.number,
+            customerName: customer,
+            deleted: false,
+          },
+          select: { id: true, deleted: true, number: true, customerName: true, exportedTo1C: true, exportedTo1CAt: true },
+        });
+        if (shipment) foundBy = 'number+customer';
+      }
       if (!shipment && hasNumber) {
         shipment = await prisma.shipment.findFirst({
-          where: { 
-            number: order.number,
-            deleted: false, // Исключаем удаленные
-          },
-          select: { id: true, deleted: true, number: true, exportedTo1C: true, exportedTo1CAt: true },
+          where: { number: order.number, deleted: false },
+          select: { id: true, deleted: true, number: true, customerName: true, exportedTo1C: true, exportedTo1CAt: true },
         });
+        if (shipment) foundBy = 'number';
       }
 
       if (!shipment) {
-        console.warn(`[Sync-1C] [${requestId}] Заказ ${order.id || 'ID не указан'}${order.number ? ` (номер: ${order.number})` : ''} не найден в БД, пропускаем обновление`);
+        notFoundLog.push({ id: order.id, number: order.number || undefined, customer: customer || undefined });
+        console.warn(`[Sync-1C] [${requestId}] Заказ не найден в БД: number=${order.number || '—'}, customer=${customer || '—'}, id=${order.id || '—'} (поиск по id, затем number+customer, затем number)`);
         return;
       }
+
+      console.log(`[Sync-1C] [${requestId}] Найден по ${foundBy}: number=${shipment.number}, customer=${shipment.customerName}, id=${shipment.id}`);
 
       if (shipment.deleted) {
-        console.warn(`[Sync-1C] [${requestId}] Заказ ${shipment.number} (${shipment.id}) удален, пропускаем обновление статуса`);
+        console.warn(`[Sync-1C] [${requestId}] Заказ удалён в БД: number=${shipment.number}, customer=${shipment.customerName}, пропускаем`);
         return;
       }
 
-      if (shipment.exportedTo1C) return;
+      if (shipment.exportedTo1C) {
+        alreadyExportedList.push({
+          number: shipment.number,
+          customer_name: shipment.customerName,
+          error: 'already_exported',
+        });
+        console.warn(`[Sync-1C] [${requestId}] Заказ уже выгружен (отдаём ошибку в ответе): number=${shipment.number}, customer=${shipment.customerName}`);
+        return;
+      }
 
-      // Заказ успешно обработан в 1С - помечаем как выгруженный
       await prisma.shipment.update({
         where: { id: shipment.id },
-        data: {
-          exportedTo1C: true,
-          exportedTo1CAt: new Date(),
-        },
+        data: { exportedTo1C: true, exportedTo1CAt: new Date() },
       });
+      console.log(`[Sync-1C] [${requestId}] Помечен как выгруженный: number=${shipment.number}, customer=${shipment.customerName}`);
     });
 
     await Promise.all(updatePromises);
+
+    console.log(`[Sync-1C] [${requestId}] Итог: уже выгружены (ошибка в ответе)=${alreadyExportedList.length}, не найдено в БД=${notFoundLog.length}`);
 
     // Обработка заказов с success: true, но пустым id
     // Если 1С отправляет success: true с пустым id, это может означать, что заказ был успешно обработан,
@@ -300,7 +319,13 @@ export async function POST(request: NextRequest) {
       console.log(`[Sync-1C] [${requestId}] ready for export: ${readyOrders.length}`);
     }
 
-    return NextResponse.json({ orders: readyOrders });
+    // Заказы, которые уже выгружены — отдаём ошибку по номеру+клиенту, чтобы 1С не слал их повторно (как при активном заказе)
+    const response: { orders: typeof readyOrders; errors?: Array<{ number: string; customer_name: string; error: string }> } = { orders: readyOrders };
+    if (alreadyExportedList.length > 0) {
+      response.errors = alreadyExportedList;
+    }
+
+    return NextResponse.json(response);
   } catch (error: any) {
     console.error(`[Sync-1C] [${requestId}] Ошибка:`, error.message);
     return NextResponse.json(
