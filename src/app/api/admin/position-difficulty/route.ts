@@ -43,10 +43,11 @@ export async function GET(request: NextRequest) {
       updatedAt: r.updatedAt.toISOString(),
     }));
 
+    // Основной показатель сложности — сек/поз (среднее время на одну позицию)
     if (mode === 'easy') {
-      items.sort((a, b) => a.avgSecPerUnit - b.avgSecPerUnit);
+      items.sort((a, b) => a.avgSecPerPos - b.avgSecPerPos);
     } else {
-      items.sort((a, b) => b.avgSecPerUnit - a.avgSecPerUnit);
+      items.sort((a, b) => b.avgSecPerPos - a.avgSecPerPos);
     }
 
     return NextResponse.json({

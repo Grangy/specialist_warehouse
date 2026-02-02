@@ -147,7 +147,7 @@ export default function PositionsTab() {
                   <th className="px-3 md:px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Кратность</th>
                   <th className="px-3 md:px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Сек/ед</th>
                   <th className="px-3 md:px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Сек/поз</th>
-                  <th className="px-3 md:px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Коэф. сложности</th>
+                  <th className="px-3 md:px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Коэф. сложности (сек/поз)</th>
                 </tr>
               </thead>
               <tbody>
@@ -168,19 +168,19 @@ export default function PositionsTab() {
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                           mode === 'hard'
-                            ? row.avgSecPerUnit >= 50
+                            ? row.avgSecPerPos >= 50
                               ? 'bg-amber-500/20 text-amber-400'
-                              : row.avgSecPerUnit >= 20
+                              : row.avgSecPerPos >= 20
                                 ? 'bg-orange-500/20 text-orange-400'
                                 : 'bg-slate-600/40 text-slate-300'
-                            : row.avgSecPerUnit <= 5
+                            : row.avgSecPerPos <= 5
                               ? 'bg-emerald-500/20 text-emerald-400'
-                              : row.avgSecPerUnit <= 15
+                              : row.avgSecPerPos <= 15
                                 ? 'bg-teal-500/20 text-teal-400'
                                 : 'bg-slate-600/40 text-slate-300'
                         }`}
                       >
-                        {row.avgSecPerUnit.toFixed(1)} с/ед
+                        {row.avgSecPerPos.toFixed(1)} с/поз
                       </span>
                     </td>
                   </tr>
@@ -193,7 +193,7 @@ export default function PositionsTab() {
 
       {!isLoading && items.length > 0 && (
         <p className="text-slate-500 text-xs">
-          Коэффициент сложности = среднее время на сборку одной единицы товара (сек/ед). Данные обновляются после каждой сборки.
+          Коэффициент сложности = среднее время на сборку одной позиции (сек/поз). Данные обновляются после каждой сборки.
         </p>
       )}
     </div>
