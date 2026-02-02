@@ -140,18 +140,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Проверяем, есть ли уже заказ с таким номером
-    const existing = await prisma.shipment.findUnique({
+    // Проверяем, есть ли уже заказ с таким номером (точное совпадение)
+    let existing = await prisma.shipment.findUnique({
       where: { number },
-      select: { id: true, number: true, deleted: true, status: true },
+      select: { id: true, number: true, deleted: true, status: true, exportedTo1C: true },
     });
 
-    // Активный заказ (в сборке или на подтверждении) не перезаписываем — не принимаем из 1С, ответ как для завершённого
+    // Если не найден — пробуем вариант A/А (латинская A vs кириллическая А), чтобы не создавать дубликат
+    if (!existing && /^[AА]ВУТ-/.test(number)) {
+      const altNumber = number.startsWith('A') ? 'А' + number.slice(1) : 'A' + number.slice(1);
+      existing = await prisma.shipment.findUnique({
+        where: { number: altNumber },
+        select: { id: true, number: true, deleted: true, status: true, exportedTo1C: true },
+      });
+      if (existing) {
+        console.log(`[API POST] Заказ найден по варианту номера: запрос "${number}", в БД "${existing.number}"`);
+      }
+    }
+
+    // Активный заказ (в сборке или на подтверждении) не перезаписываем — не принимаем из 1С
     if (existing && !existing.deleted && (existing.status === 'new' || existing.status === 'pending_confirmation')) {
+      console.log(`[API POST] Заказ ${number} пропущен: в сборке или на подтверждении (status=${existing.status})`);
       return NextResponse.json(
         {
           success: false,
           message: `Заказ ${number} в сборке или на подтверждении, повторная выгрузка из 1С не принимается`,
+          skipped: true,
+        },
+        { status: 200 }
+      );
+    }
+
+    // Завершённый заказ (processed, выгружен в 1С) не перезаписываем — не принимаем из 1С (как при активном заказе)
+    if (existing && !existing.deleted && existing.status === 'processed') {
+      console.log(`[API POST] Заказ ${number} пропущен: уже завершён и выгружен в 1С (exportedTo1C=${existing.exportedTo1C})`);
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Заказ ${number} уже завершён и выгружен в 1С, повторная выгрузка не принимается`,
           skipped: true,
         },
         { status: 200 }
