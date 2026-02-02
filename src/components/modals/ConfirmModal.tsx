@@ -1069,6 +1069,27 @@ export function ConfirmModal({
         currentItemNumber={currentShipment.lines.findIndex((_, idx) => idx === selectedLine.index) + 1}
         totalItems={currentShipment.lines.length}
         buttonLabel="Подтв."
+        showSosButton={Boolean(currentShipment.collector_id)}
+        collectorName={currentShipment.collector_name}
+        onSosClick={async () => {
+          try {
+            const res = await fetch('/api/checker/call-collector', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                taskId: currentShipment.id,
+                lineIndex: selectedLine.index,
+              }),
+            });
+            if (!res.ok) {
+              const data = await res.json();
+              throw new Error(data.error || 'Ошибка вызова');
+            }
+          } catch (err) {
+            console.error('[ConfirmModal] SOS call:', err);
+          }
+        }}
       />
     )}
     </>

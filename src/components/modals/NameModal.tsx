@@ -30,6 +30,10 @@ interface NameModalProps {
   totalItems?: number;
   // Текст кнопки для десктопа
   buttonLabel?: string;
+  // СОС: позвать кладовщика (режим проверки)
+  showSosButton?: boolean;
+  collectorName?: string;
+  onSosClick?: () => void | Promise<void>;
 }
 
 export function NameModal({ 
@@ -54,6 +58,9 @@ export function NameModal({
   currentItemNumber,
   totalItems,
   buttonLabel = 'Сборка',
+  showSosButton = false,
+  collectorName,
+  onSosClick,
 }: NameModalProps) {
   const [localCollectedQty, setLocalCollectedQty] = useState(collected);
   const [localIsEditing, setLocalIsEditing] = useState(false);
@@ -289,6 +296,17 @@ export function NameModal({
             ) : (
               // Обычный режим - кнопки в одну строку, всегда видимы
               <div className="space-y-4">
+                {showSosButton && onSosClick && (
+                  <button
+                    type="button"
+                    onClick={() => void onSosClick()}
+                    className="w-full px-4 py-3 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-semibold flex items-center justify-center gap-2 shadow-lg hover:shadow-amber-500/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] border-2 border-amber-500/50"
+                    title={collectorName ? `Позвать сборщика: ${collectorName}` : 'Позвать сборщика'}
+                  >
+                    <span className="text-lg" aria-hidden>🆘</span>
+                    СОС — позвать кладовщика{collectorName ? ` (${collectorName})` : ''}
+                  </button>
+                )}
                 <div className="flex flex-col sm:flex-row gap-3 items-stretch">
                   {/* Кнопка Редактировать - всегда видима */}
                   <button

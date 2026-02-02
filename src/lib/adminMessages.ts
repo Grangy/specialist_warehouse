@@ -8,6 +8,8 @@ export interface PendingMessage {
   text: string;
   fromName: string;
   sentAt: Date;
+  /** URL звука (например /music/wc3.mp3 для СОС); если не задан — используется дефолтный */
+  soundUrl?: string;
 }
 
 const pendingByUserId = new Map<string, PendingMessage>();
@@ -18,13 +20,14 @@ function generateId(): string {
 
 export function setPendingMessage(
   userId: string,
-  payload: { text: string; fromName: string }
+  payload: { text: string; fromName: string; soundUrl?: string }
 ): PendingMessage {
   const msg: PendingMessage = {
     id: generateId(),
     text: payload.text,
     fromName: payload.fromName,
     sentAt: new Date(),
+    soundUrl: payload.soundUrl,
   };
   pendingByUserId.set(userId, msg);
   return msg;

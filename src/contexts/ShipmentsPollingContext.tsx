@@ -16,6 +16,8 @@ export interface PendingMessagePayload {
   text: string;
   fromName: string;
   sentAt: string;
+  /** URL звука (например /music/wc3.mp3 для СОС) */
+  soundUrl?: string;
 }
 
 export interface LastPollResult {

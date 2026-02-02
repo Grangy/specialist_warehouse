@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
           text: msg.text,
           fromName: msg.fromName,
           sentAt: msg.sentAt.toISOString(),
+          ...(msg.soundUrl != null && { soundUrl: msg.soundUrl }),
         };
       }
     }
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
           text: msg.text,
           fromName: msg.fromName,
           sentAt: msg.sentAt.toISOString(),
+          ...(msg.soundUrl != null && { soundUrl: msg.soundUrl }),
         };
       }
     }
@@ -102,6 +104,7 @@ export async function GET(request: NextRequest) {
         text: msg.text,
         fromName: msg.fromName,
         sentAt: msg.sentAt.toISOString(),
+        ...(msg.soundUrl != null && { soundUrl: msg.soundUrl }),
       };
     }
   }

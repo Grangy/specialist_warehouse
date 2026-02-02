@@ -578,7 +578,7 @@ export default function Home() {
       {showAdminMessagePopup && polling?.lastPollResult?.pendingMessage && (
         <AdminMessagePopup
           message={polling.lastPollResult.pendingMessage}
-          onClose={handleDismissAdminMessage}
+          onAccept={handleDismissAdminMessage}
         />
       )}
     </div>

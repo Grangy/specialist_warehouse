@@ -40,6 +40,8 @@ model User {
   taskStatistics TaskStatistics[] @relation("UserTaskStatistics")
   dailyStats     DailyStats[]
   monthlyStats   MonthlyStats[]
+  collectorCallsReceived CollectorCall[] @relation("CollectorCallsAsCollector")
+  collectorCallsMade      CollectorCall[] @relation("CollectorCallsAsChecker")
 
   @@map("users")
 }
@@ -130,8 +132,25 @@ model ShipmentTask {
   lines           ShipmentTaskLine[]
   locks           ShipmentTaskLock[]
   statistics      TaskStatistics[] // Может быть несколько статистик: для сборщика и проверяльщика
+  collectorCalls CollectorCall[]
 
   @@map("shipment_tasks")
+}
+
+// Подзыв кладовщика проверяльщиком: в какой позиции/заказе какой сборщик был вызван (для анализа)
+model CollectorCall {
+  id          String       @id @default(cuid())
+  taskId      String       @map("task_id")
+  lineIndex   Int          @map("line_index") // индекс позиции в заказе
+  collectorId String       @map("collector_id")
+  checkerId   String       @map("checker_id")
+  calledAt    DateTime     @default(now()) @map("called_at")
+
+  task      ShipmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  collector User         @relation("CollectorCallsAsCollector", fields: [collectorId], references: [id], onDelete: Cascade)
+  checker   User         @relation("CollectorCallsAsChecker", fields: [checkerId], references: [id], onDelete: Cascade)
+
+  @@map("collector_calls")
 }
 
 model ShipmentTaskLine {
