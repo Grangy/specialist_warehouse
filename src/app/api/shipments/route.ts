@@ -815,45 +815,8 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Для проверяльщиков и warehouse_3 в режиме сборки: скрываем задания, которые уже взял сборщик
-        // Проверяем для статуса 'new' (режим сборки)
-        if ((user.role === 'checker' || user.role === 'warehouse_3') && task.status === 'new') {
-          // Проверяем, есть ли активная блокировка от сборщика
-          if (lock) {
-            const lockUser = await prisma.user.findUnique({
-              where: { id: lock.userId },
-              select: { role: true },
-            });
-            
-            // Если блокировка от сборщика (не от проверяльщика)
-            if (lockUser && lockUser.role === 'collector') {
-              const now = Date.now();
-              const lastHeartbeatTime = lock.lastHeartbeat.getTime();
-              const timeSinceHeartbeat = now - lastHeartbeatTime;
-              const HEARTBEAT_TIMEOUT = 30 * 1000; // 30 секунд
-              const isActive = timeSinceHeartbeat < HEARTBEAT_TIMEOUT;
-              
-              // Если блокировка активна (сборщик работает с заданием), скрываем для проверяльщика
-              if (isActive) {
-                continue;
-              }
-            }
-          }
-          
-          // Также проверяем, начал ли сборщик работу (collectorId установлен и startedAt есть)
-          // Если сборщик начал работу, скрываем задание для проверяльщика в режиме сборки
-          if (task.collectorId && task.startedAt) {
-            const collector = await prisma.user.findUnique({
-              where: { id: task.collectorId },
-              select: { role: true },
-            });
-            
-            // Если это сборщик работает с заданием, скрываем для проверяльщика
-            if (collector && collector.role === 'collector') {
-              continue;
-            }
-          }
-        }
+        // Для проверяльщиков и warehouse_3 задания «в процессе» (collector взял) не скрываем —
+        // они отображаются во вкладке «На руках»; в «Новое» фильтрация по collector_id на клиенте.
 
         // Пропускаем задания из обработанных заказов (если не запрошены явно)
         if (!status && shipment.status === 'processed') {

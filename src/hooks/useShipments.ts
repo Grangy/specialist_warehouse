@@ -7,7 +7,8 @@ import type { Shipment, Tab, FilterState } from '@/types';
 import { useToast } from './useToast';
 import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 
-export function useShipments() {
+export function useShipments(options?: { showOnlyToday?: boolean }) {
+  const showOnlyToday = options?.showOnlyToday ?? false;
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState<Tab>('new');
@@ -148,7 +149,7 @@ export function useShipments() {
     if (!userRole) return false;
     if (userRole === 'admin') return true;
     if (userRole === 'collector') return tab === 'new';
-    if (userRole === 'checker') return tab === 'new' || tab === 'processed' || tab === 'waiting' || tab === 'regions';
+    if (userRole === 'checker' || userRole === 'warehouse_3') return tab === 'new' || tab === 'processed' || tab === 'on_hands' || tab === 'waiting' || tab === 'regions';
     return false;
   };
 
@@ -164,12 +165,18 @@ export function useShipments() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userRole, currentTab]);
 
+  // Для проверяльщика/админа/склад 3: фильтр «только сегодня» — только заказы из активных по регионам
+  const displayShipments = useMemo(() => {
+    if (!showOnlyToday) return shipments;
+    return shipments.filter((s) => s.collector_visible === true);
+  }, [shipments, showOnlyToday]);
+
   const filteredShipments = useMemo(() => {
     // Для режима ожидания группируем задания по shipment_id
     if (currentTab === 'waiting') {
       const groupedByShipment = new Map<string, Shipment[]>();
       
-      shipments.forEach((shipment) => {
+      displayShipments.forEach((shipment) => {
         if (shipment.shipment_id) {
           const key = shipment.shipment_id;
           if (!groupedByShipment.has(key)) {
@@ -243,7 +250,7 @@ export function useShipments() {
       return filtered;
     }
     
-    const filtered = shipments.filter((shipment) => {
+    const filtered = displayShipments.filter((shipment) => {
       // Фильтр по вкладке
       if (currentTab === 'new' && shipment.status !== 'new') return false;
       if (currentTab === 'processed' && shipment.status !== 'pending_confirmation') return false;
@@ -268,7 +275,7 @@ export function useShipments() {
     // по приоритету регионов (согласно дням недели) и дате создания
     // Возвращаем задания в том порядке, как их вернул сервер
     return filtered;
-  }, [shipments, currentTab, filters]);
+  }, [displayShipments, currentTab, filters]);
 
   const warehouses = useMemo(() => {
     const uniqueWarehouses = new Set<string>();
@@ -282,20 +289,29 @@ export function useShipments() {
 
   const newCount = useMemo(
     () => {
-      let filtered = shipments.filter((s) => s.status === 'new');
-      // Фильтруем по выбранному складу, если он указан
-      // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
+      let filtered = displayShipments.filter((s) => s.status === 'new' && s.collector_id == null);
       if (filters.warehouse) {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
     },
-    [shipments, filters.warehouse]
+    [displayShipments, filters.warehouse]
+  );
+
+  const onHandsCount = useMemo(
+    () => {
+      let filtered = displayShipments.filter((s) => s.status === 'new' && s.collector_id != null);
+      if (filters.warehouse) {
+        filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
+      }
+      return filtered.length;
+    },
+    [displayShipments, filters.warehouse]
   );
 
   const pendingCount = useMemo(
     () => {
-      let filtered = shipments.filter((s) => s.status === 'pending_confirmation');
+      let filtered = displayShipments.filter((s) => s.status === 'pending_confirmation');
       // Фильтруем по выбранному складу, если он указан
       // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
       if (filters.warehouse) {
@@ -303,12 +319,12 @@ export function useShipments() {
       }
       return filtered.length;
     },
-    [shipments, filters.warehouse]
+    [displayShipments, filters.warehouse]
   );
 
   const waitingCount = useMemo(
     () => {
-      let filtered = shipments.filter((s) => {
+      let filtered = displayShipments.filter((s) => {
         // Заказы в ожидании: есть подтвержденные задания, но не все
         if (!s.tasks_progress) return false;
         const { confirmed, total } = s.tasks_progress;
@@ -321,7 +337,7 @@ export function useShipments() {
       }
       return filtered.length;
     },
-    [shipments, filters.warehouse]
+    [displayShipments, filters.warehouse]
   );
 
   // Обертка для setFilters с сохранением склада в localStorage
@@ -377,6 +393,7 @@ export function useShipments() {
     setFilters: handleFiltersChange,
     warehouses,
     newCount,
+    onHandsCount,
     pendingCount,
     waitingCount,
     refreshShipments: loadShipments,

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PackageIcon } from '@/components/icons/PackageIcon';
-import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X } from 'lucide-react';
+import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X, Calendar } from 'lucide-react';
 import { getAchievementName, getAchievementEmoji } from '@/lib/ranking/achievements';
 import { DictatorSelector } from './DictatorSelector';
 
@@ -11,6 +11,9 @@ interface HeaderProps {
   newCount: number;
   pendingCount: number;
   onRefresh: () => void;
+  /** Показывать только заказы активных регионов на сегодня (для проверяльщика/админа/склад 3) */
+  showOnlyToday?: boolean;
+  onToggleShowOnlyToday?: () => void;
 }
 
 interface User {
@@ -90,7 +93,7 @@ interface RankingStats {
   } | null;
 }
 
-export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
+export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = false, onToggleShowOnlyToday }: HeaderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isHidden, setIsHidden] = useState(false);
   const [rankingStats, setRankingStats] = useState<RankingStats | null>(null);
@@ -627,14 +630,27 @@ export function Header({ newCount, pendingCount, onRefresh }: HeaderProps) {
             </button>
             
             {(user.role === 'admin' || user.role === 'checker' || user.role === 'warehouse_3') && (
-              <button
-                onClick={() => router.push('/admin')}
-                className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
-                title={user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка (Склад 3)' : 'Завершенные заказы'}
-              >
-                <Settings className="w-4 h-4" />
-                <span className="hidden md:inline text-xs font-medium">{user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка' : 'Заказы'}</span>
-              </button>
+              <>
+                <button
+                  onClick={onToggleShowOnlyToday}
+                  className={`px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98] border ${
+                    showOnlyToday
+                      ? 'bg-amber-500/20 border-amber-500/60 text-amber-400 hover:bg-amber-500/30'
+                      : 'bg-slate-800/70 hover:bg-slate-700/80 border-slate-600/50 hover:border-slate-500/70 text-slate-200'
+                  }`}
+                  title={showOnlyToday ? 'Показать все заказы' : 'Только заказы на сегодня (активные регионы)'}
+                >
+                  <Calendar className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => router.push('/admin')}
+                  className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
+                  title={user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка (Склад 3)' : 'Завершенные заказы'}
+                >
+                  <Settings className="w-4 h-4" />
+                  <span className="hidden md:inline text-xs font-medium">{user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка' : 'Заказы'}</span>
+                </button>
+              </>
             )}
             <button
               onClick={onRefresh}

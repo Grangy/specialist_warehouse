@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { FilterPanel } from '@/components/layout/FilterPanel';
@@ -27,6 +27,8 @@ export default function Home() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userInfo, setUserInfo] = useState<{ id: string; name: string; role: string } | null>(null);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
+  // «Только сегодня» — для проверяльщика/админа/склад 3: показывать только заказы активных регионов на сегодня
+  const [showOnlyToday, setShowOnlyToday] = useState(false);
 
   useEffect(() => {
     // Проверяем авторизацию
@@ -53,6 +55,7 @@ export default function Home() {
     filters,
     setFilters,
     newCount,
+    onHandsCount,
     pendingCount,
     waitingCount,
     refreshShipments,
@@ -60,7 +63,7 @@ export default function Home() {
     updateListAfterShipmentProcessed,
     updateTaskStatusInList,
     userRole,
-  } = useShipments();
+  } = useShipments({ showOnlyToday });
 
   // Проверяем, нужно ли показать модальное окно выбора склада
   useEffect(() => {
@@ -83,6 +86,32 @@ export default function Home() {
       console.error('Ошибка при проверке выбора склада:', error);
     }
   }, [userInfo, isCheckingAuth]);
+
+  // Загружаем «только сегодня» из localStorage (для проверяльщика/админа/склад 3)
+  useEffect(() => {
+    if (!userInfo?.id || (userInfo.role !== 'checker' && userInfo.role !== 'admin' && userInfo.role !== 'warehouse_3')) return;
+    try {
+      const key = `showOnlyToday_${userInfo.id}`;
+      const saved = localStorage.getItem(key);
+      setShowOnlyToday(saved === 'true');
+    } catch {
+      // ignore
+    }
+  }, [userInfo?.id, userInfo?.role]);
+
+  const toggleShowOnlyToday = useCallback(() => {
+    setShowOnlyToday((prev) => {
+      const next = !prev;
+      if (userInfo?.id && typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`showOnlyToday_${userInfo.id}`, String(next));
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
+  }, [userInfo?.id]);
 
   // Обработчик выбора склада
   const handleWarehouseSelect = (warehouse: string) => {
@@ -343,10 +372,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <Header newCount={newCount} pendingCount={pendingCount} onRefresh={refreshShipments} />
+      <Header newCount={newCount} pendingCount={pendingCount} onRefresh={refreshShipments} showOnlyToday={showOnlyToday} onToggleShowOnlyToday={toggleShowOnlyToday} />
       <FilterPanel shipments={filteredShipments} filters={filters} onFiltersChange={setFilters} />
       <main className="max-w-7xl mx-auto px-3 md:px-6 py-4 md:py-6">
-        <Tabs currentTab={currentTab} newCount={newCount} pendingCount={pendingCount} waitingCount={waitingCount} onTabChange={setCurrentTab} userRole={userRole} />
+        <Tabs currentTab={currentTab} newCount={newCount} onHandsCount={onHandsCount} pendingCount={pendingCount} waitingCount={waitingCount} onTabChange={setCurrentTab} userRole={userRole} />
         {currentTab === 'regions' ? (
           <RegionsStatsTab filters={filters} onFiltersChange={setFilters} />
         ) : (

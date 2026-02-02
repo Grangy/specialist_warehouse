@@ -5,15 +5,17 @@ import type { Tab } from '@/types';
 interface TabsProps {
   currentTab: Tab;
   newCount: number;
+  onHandsCount: number;
   pendingCount: number;
   waitingCount: number;
   onTabChange: (tab: Tab) => void;
   userRole?: 'admin' | 'collector' | 'checker' | 'warehouse_3' | null;
 }
 
-export function Tabs({ currentTab, newCount, pendingCount, waitingCount, onTabChange, userRole }: TabsProps) {
+export function Tabs({ currentTab, newCount, onHandsCount, pendingCount, waitingCount, onTabChange, userRole }: TabsProps) {
   const canAccessNew = !userRole || userRole === 'admin' || userRole === 'collector' || userRole === 'checker' || userRole === 'warehouse_3';
   const canAccessProcessed = !userRole || userRole === 'admin' || userRole === 'checker' || userRole === 'warehouse_3';
+  const canAccessOnHands = userRole === 'admin' || userRole === 'checker' || userRole === 'warehouse_3';
   const canAccessWaiting = !userRole || userRole === 'admin' || userRole === 'checker' || userRole === 'warehouse_3';
   const canAccessRegions = !userRole || userRole === 'admin' || userRole === 'checker' || userRole === 'warehouse_3';
 
@@ -42,6 +44,18 @@ export function Tabs({ currentTab, newCount, pendingCount, waitingCount, onTabCh
             }`}
           >
             Подтверждения <span className="ml-0.5 sm:ml-1">({pendingCount})</span>
+          </button>
+        )}
+        {canAccessOnHands && (
+          <button
+            onClick={() => onTabChange('on_hands')}
+            className={`tab-btn px-2.5 sm:px-4 md:px-6 py-2 md:py-3 font-semibold border-b-2 transition-all duration-200 whitespace-nowrap flex-shrink-0 text-xs sm:text-sm md:text-base touch-manipulation ${
+              currentTab === 'on_hands'
+                ? 'text-amber-400 border-amber-400 bg-amber-400/5'
+                : 'text-slate-400 border-transparent hover:text-slate-300 hover:bg-slate-800/50'
+            }`}
+          >
+            На руках <span className="ml-0.5 sm:ml-1">({onHandsCount})</span>
           </button>
         )}
         {canAccessWaiting && (

@@ -69,7 +69,7 @@ export interface Shipment {
   last_sent_to_1c_at?: string | null; // Когда заказ последний раз отдавался в ответе 1С (ready-for-export)
 }
 
-export type Tab = 'new' | 'processed' | 'waiting' | 'regions';
+export type Tab = 'new' | 'processed' | 'on_hands' | 'waiting' | 'regions';
 
 // Состояние для сборки
 export interface CollectChecklistState {
