@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   MapPin,
   Loader2,
@@ -67,10 +67,30 @@ export default function RegionPrioritiesTab() {
   const [selectedRegionToAdd, setSelectedRegionToAdd] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  // Временные регионы на сегодня (до 21:00 МСК)
+  const [temporaryToday, setTemporaryToday] = useState<Array<{ id: string; region: string; priority: number }>>([]);
+  const [showAddTemporaryModal, setShowAddTemporaryModal] = useState(false);
+  const [isAddingTemporary, setIsAddingTemporary] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const loadTemporaryToday = useCallback(async () => {
+    try {
+      const res = await fetch('/api/regions/temporary-today');
+      if (res.ok) {
+        const data = await res.json();
+        setTemporaryToday(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      setTemporaryToday([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTemporaryToday();
+  }, [loadTemporaryToday]);
 
   const loadData = async () => {
     try {
@@ -91,6 +111,7 @@ export default function RegionPrioritiesTab() {
       setPriorities(prioritiesData);
       setRegionList(regionsData);
       setHasChanges(false);
+      loadTemporaryToday();
     } catch (error) {
       console.error('Ошибка при загрузке данных:', error);
       setError('Ошибка при загрузке данных');
@@ -128,6 +149,73 @@ export default function RegionPrioritiesTab() {
         return aPriority - bPriority;
       });
   };
+
+  // Текущий день недели (Пн=0 .. Пт=4) для отображения блока «Временно на сегодня»
+  const dayOfWeek = (new Date().getDay() + 6) % 7;
+  const currentDayIndex = Math.min(dayOfWeek, 4);
+  const todayKey: DayOfWeek | null = DAYS_OF_WEEK[currentDayIndex]?.key ?? null;
+
+  const handleAddTemporaryToday = useCallback(async (region: string) => {
+    try {
+      setIsAddingTemporary(true);
+      setError('');
+      const res = await fetch('/api/regions/temporary-today', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ region }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Ошибка добавления');
+      }
+      setShowAddTemporaryModal(false);
+      await loadTemporaryToday();
+      setSuccess(`Регион "${region}" добавлен на сегодня до 21:00`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Ошибка добавления временного региона');
+      setTimeout(() => setError(''), 4000);
+    } finally {
+      setIsAddingTemporary(false);
+    }
+  }, [loadTemporaryToday]);
+
+  const handleMoveTemporaryUp = useCallback(async (index: number) => {
+    if (index <= 0) return;
+    const next = [...temporaryToday];
+    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+    const items = next.map((r, i) => ({ region: r.region, priority: i }));
+    const res = await fetch('/api/regions/temporary-today', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setTemporaryToday(Array.isArray(data) ? data : next);
+    }
+  }, [temporaryToday]);
+
+  const handleMoveTemporaryDown = useCallback(async (index: number) => {
+    if (index >= temporaryToday.length - 1) return;
+    const next = [...temporaryToday];
+    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+    const items = next.map((r, i) => ({ region: r.region, priority: i }));
+    const res = await fetch('/api/regions/temporary-today', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setTemporaryToday(Array.isArray(data) ? data : next);
+    }
+  }, [temporaryToday]);
+
+  const handleRemoveTemporary = useCallback(async (region: string) => {
+    const res = await fetch(`/api/regions/temporary-today?region=${encodeURIComponent(region)}`, { method: 'DELETE' });
+    if (res.ok) await loadTemporaryToday();
+  }, [loadTemporaryToday]);
 
   // Проверяет, добавлен ли регион во все дни недели
   const isRegionInAllDays = (region: string): boolean => {
@@ -769,6 +857,7 @@ export default function RegionPrioritiesTab() {
                   <li>Каждый день недели полностью независим</li>
                   <li>Используйте кнопку &quot;Копировать&quot; для применения приоритетов одного дня на все дни</li>
                   <li>Регион остается в списке доступных, пока не добавлен во все дни</li>
+                  <li><strong className="text-amber-300">Временно на сегодня:</strong> в колонке текущего дня можно добавить регион &quot;до 21:00 МСК&quot; — он участвует в приоритизации сегодня и сбросится в конце рабочего дня</li>
                 </ul>
               </div>
             </div>
@@ -794,6 +883,7 @@ export default function RegionPrioritiesTab() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {DAYS_OF_WEEK.map((day) => {
           const dayRegions = getRegionsForDay(day.key);
+          const isToday = todayKey === day.key;
           return (
             <DaySection
               key={day.key}
@@ -803,6 +893,12 @@ export default function RegionPrioritiesTab() {
               onMoveDown={(regionId) => moveRegionDown(day.key, regionId)}
               onRemove={(regionId) => handleRemoveRegion(regionId, day.key)}
               onCopy={copyDayToAllDays}
+              isToday={isToday}
+              temporaryToday={isToday ? temporaryToday : undefined}
+              onAddTemporary={() => setShowAddTemporaryModal(true)}
+              onMoveTemporaryUp={handleMoveTemporaryUp}
+              onMoveTemporaryDown={handleMoveTemporaryDown}
+              onRemoveTemporary={handleRemoveTemporary}
             />
           );
         })}
@@ -829,6 +925,47 @@ export default function RegionPrioritiesTab() {
                 {region}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно: добавить регион на сегодня (до 21:00) */}
+      {showAddTemporaryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full border border-amber-500/40">
+            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+              <div>
+                <h2 className="text-lg font-bold text-slate-100">Регион на сегодня</h2>
+                <p className="text-xs text-amber-200/80 mt-1">До 21:00 МСК, затем сбросится</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddTemporaryModal(false)}
+                className="text-slate-400 hover:text-slate-100"
+              >
+                <XIcon className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto">
+              <div className="flex flex-wrap gap-2">
+                {regionList.all
+                  .filter((r) => !temporaryToday.some((t) => t.region === r))
+                  .map((region) => (
+                    <button
+                      key={region}
+                      type="button"
+                      onClick={() => handleAddTemporaryToday(region)}
+                      disabled={isAddingTemporary}
+                      className="px-3 py-2 bg-amber-600/20 hover:bg-amber-600/40 text-amber-200 rounded-lg border border-amber-500/50 text-sm font-medium disabled:opacity-50"
+                    >
+                      {region}
+                    </button>
+                  ))}
+                {regionList.all.filter((r) => !temporaryToday.some((t) => t.region === r)).length === 0 && (
+                  <p className="text-slate-500 text-sm">Все регионы уже добавлены на сегодня</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -898,6 +1035,12 @@ export default function RegionPrioritiesTab() {
   );
 }
 
+interface TemporaryItem {
+  id: string;
+  region: string;
+  priority: number;
+}
+
 interface DaySectionProps {
   day: typeof DAYS_OF_WEEK[0];
   regions: RegionPriority[];
@@ -905,9 +1048,28 @@ interface DaySectionProps {
   onMoveDown: (regionId: string) => void;
   onRemove: (regionId: string) => void;
   onCopy: (day: DayOfWeek) => void;
+  isToday?: boolean;
+  temporaryToday?: TemporaryItem[];
+  onAddTemporary?: () => void;
+  onMoveTemporaryUp?: (index: number) => void;
+  onMoveTemporaryDown?: (index: number) => void;
+  onRemoveTemporary?: (region: string) => void;
 }
 
-function DaySection({ day, regions, onMoveUp, onMoveDown, onRemove, onCopy }: DaySectionProps) {
+function DaySection({
+  day,
+  regions,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+  onCopy,
+  isToday = false,
+  temporaryToday = [],
+  onAddTemporary,
+  onMoveTemporaryUp,
+  onMoveTemporaryDown,
+  onRemoveTemporary,
+}: DaySectionProps) {
   return (
     <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 shadow-xl overflow-hidden flex flex-col">
       {/* Заголовок секции дня */}
@@ -955,6 +1117,75 @@ function DaySection({ day, regions, onMoveUp, onMoveDown, onRemove, onCopy }: Da
                 onRemove={onRemove}
               />
             ))}
+          </div>
+        )}
+
+        {/* Временно на сегодня (до 21:00 МСК) — только в колонке текущего дня */}
+        {isToday && (onAddTemporary || temporaryToday.length > 0) && (
+          <div className="mt-6 pt-4 border-t border-amber-500/30">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-amber-400/90 font-semibold text-sm flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4" />
+                Временно на сегодня
+              </span>
+              {onAddTemporary && (
+                <button
+                  type="button"
+                  onClick={onAddTemporary}
+                  className="px-2 py-1.5 bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 rounded-lg text-xs font-medium border border-amber-500/50 transition-all"
+                >
+                  + Добавить регион
+                </button>
+              )}
+            </div>
+            <p className="text-amber-200/70 text-xs mb-3">До 21:00 МСК, затем сбросится</p>
+            {temporaryToday.length === 0 ? (
+              <p className="text-slate-500 text-sm">Нет временных регионов</p>
+            ) : (
+              <div className="space-y-2">
+                {temporaryToday.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 rounded-lg px-3 py-2.5 bg-amber-900/30 border border-amber-500/50 group"
+                  >
+                    <span className="w-6 text-amber-300/90 text-sm font-medium">{index + 1}</span>
+                    <span className="flex-1 text-amber-100 font-medium">{item.region}</span>
+                    {onMoveTemporaryUp && (
+                      <button
+                        type="button"
+                        onClick={() => onMoveTemporaryUp(index)}
+                        disabled={index === 0}
+                        className="p-1.5 bg-amber-700/40 hover:bg-amber-600/50 text-amber-200 rounded disabled:opacity-30"
+                        title="Вверх"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                    )}
+                    {onMoveTemporaryDown && (
+                      <button
+                        type="button"
+                        onClick={() => onMoveTemporaryDown(index)}
+                        disabled={index === temporaryToday.length - 1}
+                        className="p-1.5 bg-amber-700/40 hover:bg-amber-600/50 text-amber-200 rounded disabled:opacity-30"
+                        title="Вниз"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    )}
+                    {onRemoveTemporary && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveTemporary(item.region)}
+                        className="p-1.5 bg-red-600/30 hover:bg-red-600/50 text-red-200 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Удалить"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -102,3 +102,23 @@ export function getMoscowYearMonth(): { year: number; month: number } {
   const m = getMoscowDateParts(now);
   return { year: m.year, month: m.month + 1 };
 }
+
+/** Текущая дата по Москве в формате YYYY-MM-DD (для временных регионов). */
+export function getMoscowDateString(utcNow: Date = new Date()): string {
+  const m = getMoscowDateParts(utcNow);
+  const y = m.year;
+  const month = String(m.month + 1).padStart(2, '0');
+  const date = String(m.date).padStart(2, '0');
+  return `${y}-${month}-${date}`;
+}
+
+/** Текущий час по Москве (0–23). */
+export function getMoscowHour(utcNow: Date = new Date()): number {
+  const moscowTime = new Date(utcNow.getTime() + MSK_OFFSET_MS);
+  return moscowTime.getUTCHours();
+}
+
+/** Временные регионы действуют до 21:00 МСК. После 21:00 «сегодня» для них закончилось. */
+export function isBeforeEndOfWorkingDay(utcNow: Date = new Date()): boolean {
+  return getMoscowHour(utcNow) < 21;
+}

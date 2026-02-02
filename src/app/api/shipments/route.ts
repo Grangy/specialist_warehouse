@@ -4,6 +4,7 @@ import { requireAuth, canAccessStatus } from '@/lib/middleware';
 import { cleanupExpiredSessions, verifyPassword, getSessionUser } from '@/lib/auth';
 import { splitShipmentIntoTasks } from '@/lib/shipmentTasks';
 import { detectWarehouseFromLocation } from '@/lib/warehouseDetector';
+import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -507,6 +508,19 @@ export async function GET(request: NextRequest) {
         collectorVisibleRegions.add(p.region);
       }
     });
+
+    // Временные регионы на сегодня (до 21:00 МСК): видимы сборщику и участвуют в сортировке
+    if (isBeforeEndOfWorkingDay(new Date())) {
+      const todayStr = getMoscowDateString(new Date());
+      const temporaries = await prisma.temporaryRegionPriority.findMany({
+        where: { date: todayStr },
+        orderBy: { priority: 'asc' },
+      });
+      temporaries.forEach((t, index) => {
+        collectorVisibleRegions.add(t.region);
+        priorityMap.set(t.region, 5000 + index);
+      });
+    }
 
     // Если запрошены processed заказы, возвращаем заказы напрямую
     if (status === 'processed') {

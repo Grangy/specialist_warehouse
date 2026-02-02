@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +66,20 @@ export async function GET(request: NextRequest) {
         activeRegionsToday.add(p.region);
       }
     });
+
+    // Временные регионы на сегодня (до 21:00 МСК): добавляем в активные и в карту приоритетов
+    if (isBeforeEndOfWorkingDay(new Date())) {
+      const todayStr = getMoscowDateString(new Date());
+      const temporaries = await prisma.temporaryRegionPriority.findMany({
+        where: { date: todayStr },
+        orderBy: { priority: 'asc' },
+      });
+      temporaries.forEach((t, index) => {
+        activeRegionsToday.add(t.region);
+        // Приоритет после обычных: 5000 + index, чтобы шли после расписания
+        priorityMap.set(t.region, 5000 + index);
+      });
+    }
 
     // Получаем только задания активных заказов (заказ и задание в new/pending_confirmation)
     // Исключаем задания, у которых заказ уже processed — иначе виджет показывает регионы «без» активных сборок

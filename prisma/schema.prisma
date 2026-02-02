@@ -195,6 +195,18 @@ model RegionPriority {
   @@map("region_priorities")
 }
 
+// Временный регион на сегодня: действует до 21:00 МСК, затем сбрасывается
+model TemporaryRegionPriority {
+  id        String   @id @default(cuid())
+  date      String   // YYYY-MM-DD по Москве
+  region    String
+  priority  Int      @default(0) // Порядок среди временных (меньше = выше)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([date, region])
+  @@map("temporary_region_priorities")
+}
+
 // Статистика по заданию (расчетные метрики)
 model TaskStatistics {
   id         String @id @default(cuid())
