@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
     }
     const { user } = authResult;
 
-    // Только проверяльщик и админ могут видеть статистику по регионам
-    if (user.role !== 'admin' && user.role !== 'checker') {
+    // Проверяльщик, склад 3 и админ могут видеть статистику по регионам (активные сборки)
+    if (user.role !== 'admin' && user.role !== 'checker' && user.role !== 'warehouse_3') {
       return NextResponse.json(
         { error: 'Недостаточно прав доступа' },
         { status: 403 }
