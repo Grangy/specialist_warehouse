@@ -301,6 +301,7 @@ export default function TopPage() {
           userId={selectedUserId}
           userName={selectedUserName}
           period={period}
+          usePublicApi
           onClose={() => {
             setSelectedUserId(null);
             setSelectedUserName('');

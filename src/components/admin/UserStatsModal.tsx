@@ -89,10 +89,12 @@ interface UserStatsModalProps {
   userName: string;
   /** Период, выбранный на вкладке «Статистика» — детали показываются за этот период */
   period?: 'today' | 'week' | 'month';
+  /** Использовать публичный API (без авторизации, с rate limit) — для страницы /top */
+  usePublicApi?: boolean;
   onClose: () => void;
 }
 
-export default function UserStatsModal({ userId, userName, period, onClose }: UserStatsModalProps) {
+export default function UserStatsModal({ userId, userName, period, usePublicApi = false, onClose }: UserStatsModalProps) {
   const [data, setData] = useState<UserStatsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -106,7 +108,7 @@ export default function UserStatsModal({ userId, userName, period, onClose }: Us
       setError('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, period]);
+  }, [userId, period, usePublicApi]);
 
   const loadData = async () => {
     if (!userId) return;
@@ -115,9 +117,14 @@ export default function UserStatsModal({ userId, userName, period, onClose }: Us
       setIsLoading(true);
       setError('');
       const query = period ? `?period=${period}` : '';
-      const res = await fetch(`/api/statistics/user/${userId}${query}`);
+      const base = usePublicApi ? `/api/statistics/user/${userId}/public` : `/api/statistics/user/${userId}`;
+      const res = await fetch(`${base}${query}`);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          const sec = errorData.retryAfter ?? 60;
+          throw new Error(`Слишком много запросов. Подождите ${sec} сек.`);
+        }
         throw new Error(errorData.error || 'Ошибка загрузки статистики');
       }
       const userData = await res.json();

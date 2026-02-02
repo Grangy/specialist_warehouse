@@ -31,11 +31,17 @@ const RATE_LIMIT_CONFIG = {
     windowMs: 60 * 1000, // 1 минута
     blockDurationMs: 5 * 60 * 1000,
   },
+  // Публичная статистика пользователя (/top): антиспам, без авторизации
+  publicStats: {
+    maxAttempts: 25,
+    windowMs: 60 * 1000, // 1 минута
+    blockDurationMs: 3 * 60 * 1000, // блок на 3 минуты при превышении
+  },
 };
 
 export function checkRateLimit(
   identifier: string,
-  type: 'login' | 'api' | 'general' = 'general'
+  type: 'login' | 'api' | 'general' | 'publicStats' = 'general'
 ): { allowed: boolean; remaining: number; resetTime: number } {
   const config = RATE_LIMIT_CONFIG[type];
   const now = Date.now();
