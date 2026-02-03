@@ -47,16 +47,11 @@ export async function POST(
       where: { id: lock.id },
     });
 
-    // При выходе из режима сборки (закрытие попапа) переносим заказ из «На руках» в «Новое»:
-    // сбрасываем сборщика, чтобы заказ снова отображался во вкладке «Новое»
+    // При выходе из режима сборки НЕ сбрасываем сборщика: задание остаётся «моим» до перехвата другим
+    // (по таймауту 5/15 мин другой сможет взять; тогда ему присвоится collector_id)
     await prisma.shipmentTask.update({
       where: { id: taskId },
-      data: {
-        updatedAt: new Date(),
-        collectorId: null,
-        collectorName: null,
-        startedAt: null,
-      },
+      data: { updatedAt: new Date() },
     });
 
     emitShipmentEvent('shipment:unlocked', {

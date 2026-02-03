@@ -813,8 +813,14 @@ export async function GET(request: NextRequest) {
         const taskLocks = locksMap.get(task.id) || [];
         const lock = taskLocks[0] || null; // Берем самую свежую блокировку
         
-        // Для сборщиков: скрываем задания, которые заблокированы другими сборщиками (модал открыт)
-        if (user.role === 'collector' && lock && lock.userId !== user.id) {
+        // Для сборщиков: своё задание (collectorId === user.id) всегда показываем; чужие — только если блокировка истекла
+        if (
+          user.role === 'collector' &&
+          task.collectorId !== user.id &&
+          lock &&
+          lock.userId !== user.id
+        ) {
+          // Скрываем чужие задания с активной блокировкой (модал открыт у другого)
           // Таймаут: 5 мин без прогресса, 15 мин с момента последнего действия при начатой сборке
           const now = Date.now();
           const lastHeartbeatTime = lock.lastHeartbeat.getTime();
@@ -923,34 +929,26 @@ export async function GET(request: NextRequest) {
     // чтобы активные заказы в админке совпадали с разделами Новые/На руках/Подтверждение/Ожидание на фронте.
     const onlyCollectorSeesFilteredList = user.role === 'collector';
     if (onlyCollectorSeesFilteredList && tasks.length > 0) {
-      // Разделяем задания на свои и свободные
-      const myTasks: typeof tasks = []; // Задания, где collectorId === userId
-      const freeTasks: typeof tasks = []; // Свободные задания (collectorId === null или истекла блокировка)
-      
+      // Приоритет: сначала свободные (без сборщика), затем свои начатые (до перехвата другим).
+      // Свои задания (начал сборку — вижу до тех пор, пока не взял другой)
+      const myTasks: typeof tasks = [];
+      // Свободные = без сборщика (collector_id == null); по 1 с каждого склада в приоритете
+      const freeTasks: typeof tasks = [];
+
       tasks.forEach((task) => {
-        // Проверяем, является ли задание "своим" (collectorId === userId)
         if (task.collector_id === user.id) {
           myTasks.push(task);
-        } else {
-          // Задание не своё — свободно, если нет активной блокировки от другого сборщика
-          // (при истёкшей блокировке 5/15 мин показываем как свободное — можно перехватить)
+        } else if (task.collector_id == null) {
+          // Только задания без сборщика — не показываем «доступные для перехвата» в слоте «1 с склада»
           const taskLocks = locksMap.get(task.id) || [];
           const lock = taskLocks[0] || null;
-          if (lock && lock.userId !== user.id) {
-            const now = Date.now();
-            const lastHeartbeatTime = lock.lastHeartbeat.getTime();
-            const timeSinceHeartbeat = now - lastHeartbeatTime;
-            const idleTimeoutMs = !task.started_at ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
-            const isActive = timeSinceHeartbeat < idleTimeoutMs;
-            if (isActive) {
-              return; // Занято другим сборщиком, блокировка активна
-            }
-          }
+          if (lock && lock.userId !== user.id) return; // кем-то заблокировано
           freeTasks.push(task);
         }
+        // Задания с другим сборщиком (в т.ч. с истёкшей блокировкой) не попадают в freeTasks для «1 с склада»
       });
-      
-      // Группируем свободные задания по складам
+
+      // Группируем свободные (без сборщика) по складам — по 1 заявке с каждого склада
       const freeTasksByWarehouse = new Map<string, typeof tasks>();
       freeTasks.forEach((task) => {
         const warehouse = task.warehouse || 'Неизвестный склад';
@@ -959,56 +957,59 @@ export async function GET(request: NextRequest) {
         }
         freeTasksByWarehouse.get(warehouse)!.push(task);
       });
-      
-      // Для каждого склада берем только первое свободное задание (ближайшее по приоритету и дате)
-      const oneFreePerWarehouse: typeof tasks = [];
-      freeTasksByWarehouse.forEach((warehouseTasks, warehouse) => {
-        if (warehouseTasks.length > 0) {
-          let taskToAdd = null;
-          
-          // Если запрошен конкретный статус, ищем первое задание с этим статусом
-          if (status) {
-            taskToAdd = warehouseTasks.find(t => t.status === status) || null;
-          } else {
-            // Если статус не указан, берем первое задание (уже отсортировано по приоритету и дате)
-            taskToAdd = warehouseTasks[0];
-          }
-          
-          if (taskToAdd) {
-            oneFreePerWarehouse.push(taskToAdd);
-          }
-        }
-      });
-      
-      // Объединяем свои задания + по 1 свободному с каждого склада
-      const filteredTasks = [...myTasks, ...oneFreePerWarehouse];
-      
-      // Сортируем результат: сначала поднятые заказы, затем по приоритету региона, затем по количеству позиций, затем по дате
-      filteredTasks.sort((a, b) => {
+
+      const sortTaskByPriority = (a: (typeof tasks)[0], b: (typeof tasks)[0]) => {
         if (a.pinned_at && !b.pinned_at) return -1;
         if (!a.pinned_at && b.pinned_at) return 1;
         if (a.pinned_at && b.pinned_at) {
           return new Date(b.pinned_at).getTime() - new Date(a.pinned_at).getTime();
         }
-
-        const aPriority = a.business_region
-          ? priorityMap.get(a.business_region) ?? 9999
-          : 9999;
-        const bPriority = b.business_region
-          ? priorityMap.get(b.business_region) ?? 9999
-          : 9999;
-
-        if (aPriority !== bPriority) {
-          return aPriority - bPriority;
-        }
-
-        const aItemsCount = a.items_count || a.lines?.length || 0;
-        const bItemsCount = b.items_count || b.lines?.length || 0;
-        if (aItemsCount !== bItemsCount) {
-          return bItemsCount - aItemsCount;
-        }
-
+        const aPriority = a.business_region ? priorityMap.get(a.business_region) ?? 9999 : 9999;
+        const bPriority = b.business_region ? priorityMap.get(b.business_region) ?? 9999 : 9999;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        const aItems = a.items_count || a.lines?.length || 0;
+        const bItems = b.items_count || b.lines?.length || 0;
+        if (aItems !== bItems) return bItems - aItems;
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      };
+
+      // Для каждого склада берём ровно одно свободное задание (лучшее по приоритету и дате)
+      const oneFreePerWarehouse: typeof tasks = [];
+      freeTasksByWarehouse.forEach((warehouseTasks) => {
+        if (warehouseTasks.length === 0) return;
+        const sorted = [...warehouseTasks].sort(sortTaskByPriority);
+        const taskToAdd = status
+          ? sorted.find((t) => t.status === status) ?? null
+          : sorted[0];
+        if (taskToAdd) {
+          oneFreePerWarehouse.push(taskToAdd);
+        }
+      });
+      
+      // Сначала свободные (без сборщика) по 1 с склада, затем свои
+      const filteredTasks = [...oneFreePerWarehouse, ...myTasks];
+
+      const sortTaskByPriorityOnly = (a: (typeof tasks)[0], b: (typeof tasks)[0]) => {
+        if (a.pinned_at && !b.pinned_at) return -1;
+        if (!a.pinned_at && b.pinned_at) return 1;
+        if (a.pinned_at && b.pinned_at) {
+          return new Date(b.pinned_at).getTime() - new Date(a.pinned_at).getTime();
+        }
+        const aPriority = a.business_region ? priorityMap.get(a.business_region) ?? 9999 : 9999;
+        const bPriority = b.business_region ? priorityMap.get(b.business_region) ?? 9999 : 9999;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        const aItems = a.items_count || a.lines?.length || 0;
+        const bItems = b.items_count || b.lines?.length || 0;
+        if (aItems !== bItems) return bItems - aItems;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      };
+
+      // Сортировка: сначала свободные (без сборщика), потом свои; внутри группы — по приоритету
+      filteredTasks.sort((a, b) => {
+        const aFree = a.collector_id == null ? 0 : 1;
+        const bFree = b.collector_id == null ? 0 : 1;
+        if (aFree !== bFree) return aFree - bFree;
+        return sortTaskByPriorityOnly(a, b);
       });
       
       return NextResponse.json(filteredTasks);

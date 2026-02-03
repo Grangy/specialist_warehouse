@@ -253,7 +253,11 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
     // «На руках» — все задания, взятые сборщиком (collector_id != null), чтобы админ/проверяльщик/склад 3 всегда видели заказы в работе
     const filtered = displayShipments.filter((shipment) => {
       // Фильтр по вкладке
-      if (currentTab === 'new' && (shipment.status !== 'new' || shipment.collector_id != null)) return false;
+      // Для сборщика на «Новое» показываем всё, что вернул API (свои + по 1 с каждого склада, в т.ч. доступные для перехвата с collector_id)
+      if (currentTab === 'new') {
+        if (shipment.status !== 'new') return false;
+        if (userRole !== 'collector' && shipment.collector_id != null) return false;
+      }
       if (currentTab === 'on_hands') {
         // Показываем все задания со статусом new и назначенным сборщиком (без требования прогресса — иначе заказ «пропадает» до первой собранной позиции)
         if (shipment.status !== 'new' || shipment.collector_id == null) return false;
@@ -280,7 +284,7 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
     // по приоритету регионов (согласно дням недели) и дате создания
     // Возвращаем задания в том порядке, как их вернул сервер
     return filtered;
-  }, [displayShipments, currentTab, filters]);
+  }, [displayShipments, currentTab, filters, userRole]);
 
   const warehouses = useMemo(() => {
     const uniqueWarehouses = new Set<string>();
