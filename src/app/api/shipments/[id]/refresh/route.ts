@@ -86,9 +86,11 @@ export async function POST(
     const allShipmentTasks = shipment.tasks;
     const confirmedTasksCount = allShipmentTasks.filter((t) => t.status === 'processed').length;
     const totalTasksCount = allShipmentTasks.length;
-    const isVisibleToCollector = shipment.businessRegion
-      ? collectorVisibleRegions.has(shipment.businessRegion)
-      : true;
+    const commentHasSamovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
+    const isVisibleToCollector = !shipment.businessRegion
+      || collectorVisibleRegions.has(shipment.businessRegion)
+      || !!shipment.pinnedAt
+      || commentHasSamovyvoz;
 
     const builtTasks: any[] = [];
     for (const task of shipment.tasks) {

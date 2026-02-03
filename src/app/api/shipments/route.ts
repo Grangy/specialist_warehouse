@@ -234,6 +234,8 @@ export async function POST(request: NextRequest) {
       await prisma.shipmentLock.deleteMany({
         where: { shipmentId: existing.id },
       });
+      const commentStr = comment || '';
+      const autoPin = commentStr.toLowerCase().includes('самовывоз');
       shipment = await prisma.shipment.update({
         where: { id: existing.id },
         data: {
@@ -242,16 +244,19 @@ export async function POST(request: NextRequest) {
           itemsCount: itemsCount || lines.length,
           totalQty: totalQty || lines.reduce((sum: number, line: any) => sum + (line.qty || 0), 0),
           weight: weight || null,
-          comment: comment || '',
+          comment: commentStr,
           businessRegion: businessRegion || null,
           status: 'new',
           deleted: false,
           deletedAt: null,
+          pinnedAt: autoPin ? new Date() : undefined,
           lines: { create: shipmentLines },
         },
         include: { lines: true, tasks: true },
       });
     } else {
+      const commentStr = comment || '';
+      const autoPin = commentStr.toLowerCase().includes('самовывоз');
       shipment = await prisma.shipment.create({
         data: {
           number,
@@ -260,10 +265,11 @@ export async function POST(request: NextRequest) {
           itemsCount: itemsCount || lines.length,
           totalQty: totalQty || lines.reduce((sum: number, line: any) => sum + (line.qty || 0), 0),
           weight: weight || null,
-          comment: comment || '',
+          comment: commentStr,
           businessRegion: businessRegion || null,
           status: 'new',
           createdAt: new Date(),
+          pinnedAt: autoPin ? new Date() : undefined,
           lines: { create: shipmentLines },
         },
         include: { lines: true, tasks: true },
@@ -773,10 +779,12 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // Для сборщиков: фильтруем заказы по дням недели
-      // Если регион не в приоритетах текущего дня, сборщик не видит заказы этого региона
-      if (user.role === 'collector' && shipment.businessRegion) {
-        if (!collectorVisibleRegions.has(shipment.businessRegion)) {
+      // Для сборщиков: показываем заказ, если регион в приоритете сегодня ИЛИ заказ поднят админом ИЛИ в комментарии «самовывоз»
+      if (user.role === 'collector') {
+        const inRegion = !shipment.businessRegion || collectorVisibleRegions.has(shipment.businessRegion);
+        const pinned = !!shipment.pinnedAt;
+        const samovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
+        if (!inRegion && !pinned && !samovyvoz) {
           continue;
         }
       }
@@ -855,10 +863,12 @@ export async function GET(request: NextRequest) {
           confirmed: taskLine.confirmed, // Флаг подтверждения (для проверки)
         }));
 
-        // Определяем, виден ли заказ сборщику (для проверяльщиков и админов)
-        const isVisibleToCollector = shipment.businessRegion 
-          ? collectorVisibleRegions.has(shipment.businessRegion)
-          : true; // Если региона нет, считаем видимым
+        // Виден сборщику: регион в приоритете ИЛИ поднят админом ИЛИ в комментарии «самовывоз»
+        const commentHasSamovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
+        const isVisibleToCollector = !shipment.businessRegion
+          || collectorVisibleRegions.has(shipment.businessRegion)
+          || !!shipment.pinnedAt
+          || commentHasSamovyvoz;
 
         tasks.push({
           id: task.id,
