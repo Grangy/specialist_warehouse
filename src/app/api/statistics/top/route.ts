@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAnimalLevel } from '@/lib/ranking/levels';
-import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import { getStatisticsDateRange, getMoscowDateString } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -289,10 +289,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Дата для отображения — всегда «сегодня» по Москве (не UTC, иначе показывало вчера)
+    const displayDate = getMoscowDateString(new Date());
+
     return NextResponse.json({
       all: allRankings,
       period,
-      date: startDate.toISOString().split('T')[0],
+      date: displayDate,
     });
   } catch (error: unknown) {
     console.error('[API Statistics Top] Ошибка:', error);
