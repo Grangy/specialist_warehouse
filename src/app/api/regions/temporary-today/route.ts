@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
+import { touchSync } from '@/lib/syncTouch';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
       update: { priority: nextPriority },
     });
 
+    await touchSync();
     return NextResponse.json({ id: created.id, region: created.region, priority: created.priority });
   } catch (error) {
     console.error('[API temporary-today POST]', error);
@@ -117,6 +119,7 @@ export async function PUT(request: NextRequest) {
       where: { date },
       orderBy: { priority: 'asc' },
     });
+    await touchSync();
     return NextResponse.json(list.map((r) => ({ id: r.id, region: r.region, priority: r.priority })));
   } catch (error) {
     console.error('[API temporary-today PUT]', error);
@@ -145,6 +148,7 @@ export async function DELETE(request: NextRequest) {
       where: { date, region },
     });
 
+    await touchSync();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[API temporary-today DELETE]', error);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Package, Home, Settings, LogOut, TrendingUp, Plus, Loader2, MapPin, Trophy, AlertTriangle, AlertCircle, Menu, X, Layers } from 'lucide-react';
+import { Users, Package, Home, Settings, LogOut, TrendingUp, MapPin, Trophy, AlertTriangle, AlertCircle, Menu, X, Layers } from 'lucide-react';
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
 import ActiveShipmentsTab from '@/components/admin/ActiveShipmentsTab';
@@ -13,8 +13,6 @@ import StatisticsTab from '@/components/admin/StatisticsTab';
 import MinusTab from '@/components/admin/MinusTab';
 import WarningsTab from '@/components/admin/WarningsTab';
 import PositionsTab from '@/components/admin/PositionsTab';
-import { useToast } from '@/hooks/useToast';
-
 type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus' | 'positions';
 
 type AdminUserRole = 'admin' | 'checker' | 'warehouse_3';
@@ -24,10 +22,8 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('users');
   const [warningsCount, setWarningsCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCreatingTestOrder, setIsCreatingTestOrder] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
-  const { showToast } = useToast();
 
   const isCheckerOnly = userRole === 'checker';
   const isWarehouse3 = userRole === 'warehouse_3';
@@ -94,17 +90,40 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col md:flex-row">
-      {/* Мобильный хедер */}
-      <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-slate-900/98 backdrop-blur-sm border-b border-slate-700/50 z-40 flex items-center gap-3 px-4">
+      {/* Хедер: меню (мобилка), заголовок, Назад на главную, Выход */}
+      <header className="fixed top-0 left-0 right-0 h-14 bg-slate-900/98 backdrop-blur-sm border-b border-slate-700/50 z-40 flex items-center gap-2 sm:gap-3 px-3 sm:px-4">
         <button
           type="button"
           onClick={() => setMenuOpen((o) => !o)}
-          className="p-2 -ml-2 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+          className="md:hidden p-2 -ml-1 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors flex-shrink-0"
           aria-label={menuOpen ? 'Закрыть меню' : 'Открыть меню'}
         >
           {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
-        <h1 className="text-lg font-bold text-slate-100 truncate flex-1">Админ-панель</h1>
+        <h1 className="text-base sm:text-lg font-bold text-slate-100 truncate flex-1 min-w-0">Админ-панель</h1>
+        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            className="p-2 sm:px-3 sm:py-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 transition-all flex items-center gap-1.5 sm:gap-2 hover:scale-105 active:scale-95"
+            title="Назад на главную"
+          >
+            <Home className="w-5 h-5 sm:w-5 sm:h-5" />
+            <span className="hidden sm:inline text-sm font-medium">На главную</span>
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch('/api/auth/logout', { method: 'POST' });
+              router.push('/login');
+            }}
+            className="p-2 sm:px-3 sm:py-2 rounded-lg bg-red-600/90 hover:bg-red-500 text-white transition-all flex items-center gap-1.5 sm:gap-2 hover:scale-105 active:scale-95"
+            title="Выход"
+          >
+            <LogOut className="w-5 h-5 sm:w-5 sm:h-5" />
+            <span className="hidden sm:inline text-sm font-medium">Выход</span>
+          </button>
+        </div>
       </header>
 
       {/* Оверлей при открытом меню (мобилка), под хедером */}
@@ -121,7 +140,7 @@ export default function AdminPage() {
       <aside
         className={`
           w-64 bg-slate-900/98 backdrop-blur-sm border-r border-slate-700/50 flex-shrink-0 flex flex-col shadow-xl
-          fixed md:static inset-y-0 left-0 z-50 md:z-auto
+          fixed md:static inset-y-0 left-0 z-50 md:z-auto pt-14 md:pt-14
           transform transition-transform duration-200 ease-out
           ${menuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
@@ -276,77 +295,10 @@ export default function AdminPage() {
           </>
           )}
         </nav>
-        <div className="p-2 md:p-4 border-t border-slate-700/50 space-y-1 md:space-y-2">
-          {!isCheckerOnly && !isWarehouse3 && (
-          <button
-            onClick={async () => {
-              setIsCreatingTestOrder(true);
-              try {
-                const res = await fetch('/api/shipments/create-test', {
-                  method: 'POST',
-                });
-                const data = await res.json();
-                if (res.ok) {
-                  showToast(
-                    `Тестовый заказ создан! Номер: ${data.shipment.number}, заданий: ${data.shipment.tasks_count}`,
-                    'success'
-                  );
-                  // Обновления придут через SSE, не нужно перезагружать страницу
-                } else {
-                  showToast(
-                    data.error || 'Не удалось создать тестовый заказ',
-                    'error'
-                  );
-                }
-              } catch (error) {
-                console.error('Ошибка при создании тестового заказа:', error);
-                showToast(
-                  'Ошибка при создании тестового заказа',
-                  'error'
-                );
-              } finally {
-                setIsCreatingTestOrder(false);
-              }
-            }}
-            disabled={isCreatingTestOrder}
-            className="w-full px-3 md:px-4 py-2 md:py-3 bg-green-600/90 hover:bg-green-500 text-white rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group shadow-md hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
-          >
-            {isCreatingTestOrder ? (
-              <>
-                <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin" />
-                <span className="font-medium">Создание...</span>
-              </>
-            ) : (
-              <>
-                <Plus className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" />
-                <span className="font-medium">Создать тестовый заказ</span>
-              </>
-            )}
-          </button>
-          )}
-          <button
-            onClick={() => router.push('/')}
-            className="w-full px-3 md:px-4 py-2 md:py-3 bg-slate-800/90 hover:bg-slate-700 text-slate-200 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group shadow-md hover:shadow-lg hover:scale-105 active:scale-95 text-sm md:text-base"
-          >
-            <Home className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" />
-            <span className="font-medium">Назад на главную</span>
-          </button>
-          <button
-            onClick={async () => {
-              await fetch('/api/auth/logout', { method: 'POST' });
-              router.push('/login');
-              // router.push уже перенаправляет, refresh не нужен
-            }}
-            className="w-full px-3 md:px-4 py-2 md:py-3 bg-red-600/90 hover:bg-red-500 text-white rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group shadow-md hover:shadow-lg hover:scale-105 active:scale-95 text-sm md:text-base"
-          >
-            <LogOut className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform duration-200" />
-            <span className="font-medium">Выход</span>
-          </button>
-        </div>
       </aside>
 
       {/* Основной контент */}
-      <main className="flex-1 overflow-auto bg-slate-950 pt-14 md:pt-0 min-h-0">
+      <main className="flex-1 overflow-auto bg-slate-950 pt-14 min-h-0">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 md:py-4 lg:py-6">
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'active' && <ActiveShipmentsTab />}

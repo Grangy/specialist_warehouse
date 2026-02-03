@@ -71,6 +71,7 @@ export default function RegionPrioritiesTab() {
   const [temporaryToday, setTemporaryToday] = useState<Array<{ id: string; region: string; priority: number }>>([]);
   const [showAddTemporaryModal, setShowAddTemporaryModal] = useState(false);
   const [isAddingTemporary, setIsAddingTemporary] = useState(false);
+  const [selectedRegionForTemporary, setSelectedRegionForTemporary] = useState<string | null>(null);
 
   const loadTemporaryToday = useCallback(async () => {
     try {
@@ -168,10 +169,11 @@ export default function RegionPrioritiesTab() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Ошибка добавления');
       }
-      setShowAddTemporaryModal(false);
+      setSelectedRegionForTemporary(null);
       await loadTemporaryToday();
       setSuccess(`Регион "${region}" добавлен на сегодня до 21:00`);
       setTimeout(() => setSuccess(''), 3000);
+      setShowAddTemporaryModal(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Ошибка добавления временного региона');
       setTimeout(() => setError(''), 4000);
@@ -895,7 +897,7 @@ export default function RegionPrioritiesTab() {
               onCopy={copyDayToAllDays}
               isToday={isToday}
               temporaryToday={isToday ? temporaryToday : undefined}
-              onAddTemporary={() => setShowAddTemporaryModal(true)}
+              onAddTemporary={() => { setShowAddTemporaryModal(true); setSelectedRegionForTemporary(null); }}
               onMoveTemporaryUp={handleMoveTemporaryUp}
               onMoveTemporaryDown={handleMoveTemporaryDown}
               onRemoveTemporary={handleRemoveTemporary}
@@ -929,42 +931,66 @@ export default function RegionPrioritiesTab() {
         </div>
       )}
 
-      {/* Модальное окно: добавить регион на сегодня (до 21:00) */}
+      {/* Модальное окно: добавить регион на сегодня (до 21:00) — выбор региона, затем Сохранить */}
       {showAddTemporaryModal && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full border border-amber-500/40">
-            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+          <div className="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full border border-amber-500/40 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-4 border-b border-slate-700 flex-shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-slate-100">Регион на сегодня</h2>
-                <p className="text-xs text-amber-200/80 mt-1">До 21:00 МСК, затем сбросится</p>
+                <p className="text-xs text-amber-200/80 mt-1">Выберите регион и нажмите Сохранить. До 21:00 МСК.</p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowAddTemporaryModal(false)}
+                onClick={() => { setShowAddTemporaryModal(false); setSelectedRegionForTemporary(null); }}
                 className="text-slate-400 hover:text-slate-100"
               >
                 <XIcon className="w-6 h-6" />
               </button>
             </div>
-            <div className="p-4 max-h-[60vh] overflow-y-auto">
-              <div className="flex flex-wrap gap-2">
-                {regionList.all
-                  .filter((r) => !temporaryToday.some((t) => t.region === r))
-                  .map((region) => (
-                    <button
-                      key={region}
-                      type="button"
-                      onClick={() => handleAddTemporaryToday(region)}
-                      disabled={isAddingTemporary}
-                      className="px-3 py-2 bg-amber-600/20 hover:bg-amber-600/40 text-amber-200 rounded-lg border border-amber-500/50 text-sm font-medium disabled:opacity-50"
-                    >
-                      {region}
-                    </button>
-                  ))}
-                {regionList.all.filter((r) => !temporaryToday.some((t) => t.region === r)).length === 0 && (
-                  <p className="text-slate-500 text-sm">Все регионы уже добавлены на сегодня</p>
+            <div className="p-4 max-h-[50vh] overflow-y-auto flex flex-wrap gap-2">
+              {regionList.all
+                .filter((r) => !temporaryToday.some((t) => t.region === r))
+                .map((region) => (
+                  <button
+                    key={region}
+                    type="button"
+                    onClick={() => setSelectedRegionForTemporary(region)}
+                    disabled={isAddingTemporary}
+                    className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all disabled:opacity-50 ${
+                      selectedRegionForTemporary === region
+                        ? 'bg-amber-500 text-slate-900 border-amber-400'
+                        : 'bg-amber-600/20 hover:bg-amber-600/40 text-amber-200 border-amber-500/50'
+                    }`}
+                  >
+                    {region}
+                  </button>
+                ))}
+              {regionList.all.filter((r) => !temporaryToday.some((t) => t.region === r)).length === 0 && (
+                <p className="text-slate-500 text-sm w-full">Все регионы уже добавлены на сегодня</p>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-700 flex-shrink-0 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowAddTemporaryModal(false); setSelectedRegionForTemporary(null); }}
+                className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-slate-200 rounded-lg text-sm font-medium"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedRegionForTemporary && handleAddTemporaryToday(selectedRegionForTemporary)}
+                disabled={isAddingTemporary || !selectedRegionForTemporary}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isAddingTemporary ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
                 )}
-              </div>
+                Сохранить
+              </button>
             </div>
           </div>
         </div>

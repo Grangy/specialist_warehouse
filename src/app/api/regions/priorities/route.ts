@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { touchSync } from '@/lib/syncTouch';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      await touchSync();
       return NextResponse.json(updatedPriorities);
     }
 
@@ -108,6 +110,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    await touchSync();
     return NextResponse.json(updatedPriorities);
   } catch (error) {
     console.error('Ошибка при обновлении приоритетов регионов:', error);
