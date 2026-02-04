@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { append1cLog } from '@/lib/1cLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +47,15 @@ export async function POST(
       data: { exportedTo1C: true, exportedTo1CAt: now },
     });
 
+    append1cLog({
+      ts: now.toISOString(),
+      type: 'mark-exported-1c',
+      direction: 'out',
+      endpoint: `POST /api/shipments/${shipmentId}/mark-exported-1c`,
+      summary: `Заказ ${shipment.number} помечен как выгруженный в 1С (ручная пометка админом)`,
+      details: { shipmentId, number: shipment.number, exported_to_1c_at: now.toISOString() },
+    });
+
     return NextResponse.json({
       ok: true,
       message: `Заказ ${shipment.number} помечен как выгруженный в 1С`,
@@ -53,6 +63,14 @@ export async function POST(
     });
   } catch (error: unknown) {
     console.error('[API mark-exported-1c] Ошибка:', error);
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'mark-exported-1c',
+      direction: 'out',
+      endpoint: `POST /api/shipments/[id]/mark-exported-1c`,
+      summary: `Ошибка: ${error instanceof Error ? error.message : String(error)}`,
+      details: { error: String(error) },
+    });
     const message = process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : 'Ошибка';
     return NextResponse.json({ error: message }, { status: 500 });
   }

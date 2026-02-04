@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { authenticateRequest } from '@/lib/middleware';
 import { areAllTasksConfirmed } from '@/lib/shipmentTasks';
+import { append1cLog } from '@/lib/1cLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,9 +33,28 @@ export async function GET(request: NextRequest) {
                    'unknown';
 
   try {
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'ready-for-export',
+      direction: 'in',
+      requestId,
+      endpoint: 'GET /api/shipments/ready-for-export',
+      summary: '1С запросил список готовых к выгрузке заказов',
+      details: { clientIp },
+    });
+
     // Авторизация через заголовки или cookies
     const authResult = await authenticateRequest(request, {}, ['admin']);
     if (authResult instanceof NextResponse) {
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'ready-for-export',
+        direction: 'out',
+        requestId,
+        endpoint: 'GET /api/shipments/ready-for-export',
+        summary: 'Ответ: ошибка авторизации',
+        details: { status: 401 },
+      });
       return authResult;
     }
     const { user } = authResult;
@@ -162,12 +182,31 @@ export async function GET(request: NextRequest) {
       console.log(`[Ready-For-Export] [${requestId}] ${readyOrders.length} orders from ${clientIp}`);
     }
 
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'ready-for-export',
+      direction: 'out',
+      requestId,
+      endpoint: 'GET /api/shipments/ready-for-export',
+      summary: `Ответ: отдано заказов ${readyOrders.length}, обновлён lastSentTo1CAt`,
+      details: { count: readyOrders.length, numbers: readyOrders.map((o: { number: string }) => o.number) },
+    });
+
     return NextResponse.json({
       orders: readyOrders,
       count: readyOrders.length,
     });
   } catch (error: unknown) {
     console.error(`[Ready-For-Export] [${requestId}] Ошибка:`, error instanceof Error ? error.message : error);
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'ready-for-export',
+      direction: 'out',
+      requestId,
+      endpoint: 'GET /api/shipments/ready-for-export',
+      summary: `Ошибка: ${error instanceof Error ? error.message : String(error)}`,
+      details: { error: String(error) },
+    });
     return NextResponse.json(
       {
         error: 'Ошибка получения готовых заказов',

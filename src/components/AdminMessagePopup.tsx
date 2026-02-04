@@ -36,9 +36,9 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
     setHiddenWithoutAccept(true);
   }, [stopSound]);
 
-  // При смене сообщения сбрасываем «скрыто без принятия»
+  // При смене сообщения сбрасываем «скрыто без принятия» (отложенно, чтобы не вызывать setState синхронно в эффекте)
   useEffect(() => {
-    setHiddenWithoutAccept(false);
+    queueMicrotask(() => setHiddenWithoutAccept(false));
   }, [message.id]);
 
   // При возврате во вкладку снова показываем попап, пока сообщение не принято

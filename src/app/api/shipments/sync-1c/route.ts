@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { authenticateRequest } from '@/lib/middleware';
 import { areAllTasksConfirmed } from '@/lib/shipmentTasks';
+import { append1cLog } from '@/lib/1cLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,9 +46,28 @@ export async function POST(request: NextRequest) {
     const logBody = { ...body, password: body.password ? '[REDACTED]' : undefined };
     console.log(`[Sync-1C] [${requestId}] POST ${ordersCount} orders from ${clientIp}`, JSON.stringify(logBody));
 
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'sync-1c',
+      direction: 'in',
+      requestId,
+      endpoint: 'POST /api/shipments/sync-1c',
+      summary: `1С прислал результат: ${ordersCount} заказов`,
+      details: { ordersCount, clientIp, ordersSummary: Array.isArray(body.orders) ? body.orders.map((o: { id?: string; number?: string; success?: boolean }) => ({ id: o.id, number: o.number, success: o.success })) : [] },
+    });
+
     // Авторизация через заголовки, тело запроса или cookies
     const authResult = await authenticateRequest(request, body, ['admin']);
     if (authResult instanceof NextResponse) {
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'sync-1c',
+        direction: 'out',
+        requestId,
+        endpoint: 'POST /api/shipments/sync-1c',
+        summary: 'Ответ: ошибка авторизации',
+        details: { status: 401 },
+      });
       return authResult;
     }
     const { user } = authResult;
@@ -56,6 +76,15 @@ export async function POST(request: NextRequest) {
     const { login, password, orders } = body;
 
     if (!Array.isArray(orders)) {
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'sync-1c',
+        direction: 'out',
+        requestId,
+        endpoint: 'POST /api/shipments/sync-1c',
+        summary: 'Ответ: неверный формат (нет массива orders)',
+        details: { status: 400 },
+      });
       return NextResponse.json(
         { error: 'Неверный формат запроса. Ожидается массив orders' },
         { status: 400 }
@@ -316,9 +345,28 @@ export async function POST(request: NextRequest) {
       console.log(`[Sync-1C] [${requestId}] ready for export: ${readyOrders.length}`);
     }
 
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'sync-1c',
+      direction: 'out',
+      requestId,
+      endpoint: 'POST /api/shipments/sync-1c',
+      summary: `Ответ 1С: отдано готовых к выгрузке ${readyOrders.length}; в запросе помечено выгруженными по id/number, уже выгружены=${alreadyExportedList.length}, не найдено=${notFoundLog.length}`,
+      details: { readyCount: readyOrders.length, alreadyExported: alreadyExportedList.length, notFound: notFoundLog.length, readyNumbers: readyOrders.map((o: { number: string }) => o.number) },
+    });
+
     return NextResponse.json({ orders: readyOrders });
   } catch (error: unknown) {
     console.error(`[Sync-1C] [${requestId}] Ошибка:`, error instanceof Error ? error.message : error);
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'sync-1c',
+      direction: 'out',
+      requestId,
+      endpoint: 'POST /api/shipments/sync-1c',
+      summary: `Ошибка: ${error instanceof Error ? error.message : String(error)}`,
+      details: { error: String(error) },
+    });
     return NextResponse.json(
       {
         error: 'Ошибка синхронизации с 1С',

@@ -5,6 +5,7 @@ import { cleanupExpiredSessions, verifyPassword, getSessionUser } from '@/lib/au
 import { splitShipmentIntoTasks } from '@/lib/shipmentTasks';
 import { detectWarehouseFromLocation } from '@/lib/warehouseDetector';
 import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
+import { append1cLog } from '@/lib/1cLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -140,11 +141,28 @@ export async function POST(request: NextRequest) {
 
     // Валидация обязательных полей
     if (!number || !customerName || !destination || !lines || !Array.isArray(lines) || lines.length === 0) {
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'shipments-post',
+        direction: 'out',
+        endpoint: 'POST /api/shipments',
+        summary: 'Ответ: неверный формат (нет number/customerName/destination/lines)',
+        details: { status: 400 },
+      });
       return NextResponse.json(
         { error: 'Необходимо указать: number, customerName, destination, lines' },
         { status: 400 }
       );
     }
+
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'shipments-post',
+      direction: 'in',
+      endpoint: 'POST /api/shipments',
+      summary: `Приём заказа от 1С: ${number}, ${customerName}, позиций ${lines.length}`,
+      details: { number, customerName, linesCount: lines.length },
+    });
 
     // Проверяем, есть ли уже заказ с таким номером (точное совпадение)
     let existing = await prisma.shipment.findUnique({
@@ -167,6 +185,14 @@ export async function POST(request: NextRequest) {
     // Активный заказ (в сборке или на подтверждении) не перезаписываем — не принимаем из 1С
     if (existing && !existing.deleted && (existing.status === 'new' || existing.status === 'pending_confirmation')) {
       console.log(`[API POST] Заказ ${number} пропущен: в сборке или на подтверждении (status=${existing.status})`);
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'shipments-post',
+        direction: 'out',
+        endpoint: 'POST /api/shipments',
+        summary: `Заказ ${number} отклонён: в сборке или на подтверждении`,
+        details: { number, action: 'rejected', reason: 'in_progress', status: existing.status },
+      });
       return NextResponse.json(
         {
           success: false,
@@ -180,6 +206,14 @@ export async function POST(request: NextRequest) {
     // Завершённый заказ (processed, выгружен в 1С) не перезаписываем — не принимаем из 1С (как при активном заказе)
     if (existing && !existing.deleted && existing.status === 'processed') {
       console.log(`[API POST] Заказ ${number} пропущен: уже завершён и выгружен в 1С (exportedTo1C=${existing.exportedTo1C})`);
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'shipments-post',
+        direction: 'out',
+        endpoint: 'POST /api/shipments',
+        summary: `Заказ ${number} отклонён: уже завершён и выгружен в 1С`,
+        details: { number, action: 'rejected', reason: 'already_processed', exportedTo1C: existing.exportedTo1C },
+      });
       return NextResponse.json(
         {
           success: false,
@@ -369,7 +403,14 @@ export async function POST(request: NextRequest) {
 
     if (totalChecked > 0 || totalCollected > 0) {
       console.error(`[API CREATE] Заказ ${number}: проверенных позиций ${totalChecked}, с собранным количеством ${totalCollected}`);
-      
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'shipments-post',
+        direction: 'out',
+        endpoint: 'POST /api/shipments',
+        summary: `Заказ ${number}: ошибка — создан с проверенными позициями`,
+        details: { number, action: 'error', checkedCount: totalChecked, collectedCount: totalCollected, status: 500 },
+      });
       // Строгая валидация: если найдены проверенные позиции, возвращаем ошибку
       // Это критическая ошибка, так как новые заказы должны быть непроверенными
       return NextResponse.json(
@@ -384,6 +425,15 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'shipments-post',
+      direction: 'out',
+      endpoint: 'POST /api/shipments',
+      summary: `Заказ ${number} принят: ${existing ? 'обновлён' : 'создан'}, заданий ${createdTasks.length}`,
+      details: { number, action: existing ? 'updated' : 'created', shipmentId: shipment.id, tasksCount: createdTasks.length },
+    });
 
     return NextResponse.json(
       {
@@ -437,6 +487,14 @@ export async function POST(request: NextRequest) {
     );
   } catch (error: any) {
     console.error('Ошибка при создании заказа:', error);
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'shipments-post',
+      direction: 'out',
+      endpoint: 'POST /api/shipments',
+      summary: `Ошибка сервера при создании/обновлении заказа: ${error?.message || String(error)}`,
+      details: { action: 'error', status: 500, message: error?.message || String(error) },
+    });
     return NextResponse.json(
       { error: error.message || 'Ошибка сервера при создании заказа' },
       { status: 500 }
