@@ -196,12 +196,17 @@ export async function updateCollectorStats(taskId: string) {
       units,
     };
 
+    // ВАЖНО: для расчёта elapsed/gap/switches учитываем только задачи ЭТОГО сборщика в рамках заказа.
+    // Иначе gapShare «наказывает» за время, когда заказ активен, но собирает другой сборщик.
+    const collectorTasksInShipment = allTasks.filter((t) => t.collectorId === task.collectorId);
+    const collectorWarehousesCount = new Set(collectorTasksInShipment.map((t) => t.warehouse)).size || 1;
+
     const shipmentData = {
       shipmentId: task.shipmentId,
       createdAt: task.shipment.createdAt,
       confirmedAt: task.shipment.confirmedAt,
-      warehousesCount: new Set(allTasks.map(t => t.warehouse)).size,
-      tasks: allTasks.map(t => ({
+      warehousesCount: collectorWarehousesCount,
+      tasks: collectorTasksInShipment.map((t) => ({
         taskId: t.id,
         userId: t.collectorId || '',
         shipmentId: t.shipmentId,

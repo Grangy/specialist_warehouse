@@ -101,6 +101,9 @@ scripts/audit-positions-difficulty.ts
 scripts/audit-positions-full-report.md
 backups/
 
+# Локальные отчёты аудита/аналитики
+/reports/
+
 # Документация: в репозитории только README.md, остальные .md — локально/не коммитить
 docs/*.md
 scripts/*.md
