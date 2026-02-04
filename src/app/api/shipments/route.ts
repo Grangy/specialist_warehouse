@@ -624,10 +624,12 @@ export async function GET(request: NextRequest) {
           .map((task) => task.dictator!.name)
           .filter((name, index, self) => self.indexOf(name) === index); // Уникальные имена
         
-        // Определяем, виден ли заказ сборщику (используем уже созданную переменную collectorVisibleRegions)
-        const isVisibleToCollector = shipment.businessRegion 
-          ? collectorVisibleRegions.has(shipment.businessRegion)
-          : true;
+        // Виден сборщику: регион в приоритете ИЛИ поднят админом ИЛИ в комментарии «самовывоз»
+        const commentHasSamovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
+        const isVisibleToCollector = !shipment.businessRegion
+          || collectorVisibleRegions.has(shipment.businessRegion)
+          || !!shipment.pinnedAt
+          || commentHasSamovyvoz;
 
         // Места по складам: Склад 1, Склад 2, Склад 3 (для отображения в завершённых заказах)
         const placesByWarehouse: Record<string, number> = {};
