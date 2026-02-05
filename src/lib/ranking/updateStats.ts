@@ -535,10 +535,13 @@ export async function updateCheckerStats(taskId: string) {
         },
       });
 
-      if (!createdDictatorStats || createdDictatorStats.orderPoints !== dictatorPoints) {
+      const pointsMatch =
+        createdDictatorStats?.orderPoints != null &&
+        Math.abs(createdDictatorStats.orderPoints - dictatorPoints) < 1e-6;
+      if (!createdDictatorStats || !pointsMatch) {
         console.error(
           `[updateCheckerStats] Ошибка: TaskStatistics для диктовщика ${task.dictatorId} не создана или имеет неправильные баллы. ` +
-          `Ожидалось: ${dictatorPoints}, получено: ${createdDictatorStats?.orderPoints || 'null'}`
+          `Ожидалось: ${dictatorPoints}, получено: ${createdDictatorStats?.orderPoints ?? 'null'}`
         );
         // Продолжаем выполнение, но логируем ошибку
       }

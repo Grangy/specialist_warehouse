@@ -45,6 +45,17 @@ export async function POST(
 
     const isAdmin = user.role === 'admin';
 
+    // Сборка заданий «Склад 3» разрешена только пользователям с ролью Склад 3 или админу
+    if (task.warehouse === 'Склад 3' && user.role !== 'warehouse_3' && !isAdmin) {
+      return NextResponse.json(
+        {
+          error: 'Сборка по Склад 3 доступна только пользователям с ролью «Склад 3».',
+          code: 'WAREHOUSE_3_ONLY',
+        },
+        { status: 403 }
+      );
+    }
+
     // Проверяем существующую блокировку
     const existingLock = task.locks[0];
     if (existingLock) {
