@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, Package, Calendar, Clock, User, MapPin, Warehouse, CheckCircle2, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Package, Calendar, Clock, User, MapPin, Warehouse, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, RefreshCw, Loader2 } from 'lucide-react';
 
 interface ShipmentDetails {
   id: string;
@@ -33,6 +33,9 @@ interface ShipmentDetails {
     checkerId: string | null;
     checkerName: string | null;
     checkerLogin: string | null;
+    dictatorId: string | null;
+    dictatorName: string | null;
+    dictatorLogin: string | null;
     checkerStartedAt: string | null;
     checkerConfirmedAt: string | null;
     totalItems: number;
@@ -76,17 +79,31 @@ interface ShipmentDetails {
   }>;
 }
 
+interface UserOption {
+  id: string;
+  name: string;
+  login: string;
+  role: string;
+}
+
 interface ShipmentDetailsModalProps {
   shipmentId: string | null;
   onClose: () => void;
+  /** Показывать блок «Переначислить» (только для админов) */
+  canReassign?: boolean;
 }
 
-export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDetailsModalProps) {
+export default function ShipmentDetailsModal({ shipmentId, onClose, canReassign = false }: ShipmentDetailsModalProps) {
   const [details, setDetails] = useState<ShipmentDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
   const [warehouseFilter, setWarehouseFilter] = useState<string>('');
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [assignments, setAssignments] = useState<Record<string, { collectorId: string; checkerId: string; dictatorId: string }>>({});
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [reassignError, setReassignError] = useState('');
 
   const toggleTaskExpanded = (taskId: string) => {
     setExpandedTaskIds((prev) => {
@@ -128,6 +145,38 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shipmentId]);
+
+  // Инициализация назначений при загрузке деталей (для переначисления)
+  useEffect(() => {
+    if (!details?.tasks || !canReassign) return;
+    const next: Record<string, { collectorId: string; checkerId: string; dictatorId: string }> = {};
+    for (const t of details.tasks) {
+      next[t.id] = {
+        collectorId: t.collectorId ?? '',
+        checkerId: t.checkerId ?? '',
+        dictatorId: t.dictatorId ?? '',
+      };
+    }
+    setAssignments(next);
+  }, [details?.tasks, canReassign]);
+
+  // Загрузка списка пользователей для селектов переначисления
+  useEffect(() => {
+    if (!canReassign || !reassignOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/users/list');
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const list = Array.isArray(data.users) ? data.users : (Array.isArray(data) ? data : []);
+        if (!cancelled) setUsers(list);
+      } catch {
+        if (!cancelled) setUsers([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [canReassign, reassignOpen]);
 
   const filteredTasks = useMemo(() => {
     if (!details) return [];
@@ -181,6 +230,48 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
       return `${hours}ч ${minutes}м ${secs}с`;
     }
     return `${minutes}м ${secs}с`;
+  };
+
+  const handleReassignSubmit = async () => {
+    if (!shipmentId || !details) return;
+    setReassignError('');
+    setReassignLoading(true);
+    try {
+      const assignmentsPayload = details.tasks.map((t) => {
+        const a = assignments[t.id];
+        return {
+          taskId: t.id,
+          collectorId: a?.collectorId || null,
+          checkerId: a?.checkerId || null,
+          dictatorId: a?.dictatorId || null,
+        };
+      });
+      const res = await fetch(`/api/admin/shipments/${shipmentId}/reassign-stats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignments: assignmentsPayload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Ошибка пересчёта');
+      }
+      setReassignOpen(false);
+      await loadDetails();
+    } catch (e: unknown) {
+      setReassignError(e instanceof Error ? e.message : 'Ошибка пересчёта баллов');
+    } finally {
+      setReassignLoading(false);
+    }
+  };
+
+  const updateAssignment = (taskId: string, field: 'collectorId' | 'checkerId' | 'dictatorId', value: string) => {
+    setAssignments((prev) => ({
+      ...prev,
+      [taskId]: {
+        ...(prev[taskId] ?? { collectorId: '', checkerId: '', dictatorId: '' }),
+        [field]: value,
+      },
+    }));
   };
 
   if (!shipmentId) return null;
@@ -438,6 +529,102 @@ export default function ShipmentDetailsModal({ shipmentId, onClose }: ShipmentDe
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Переначислить баллы (только для админов) */}
+              {canReassign && details.tasks.length > 0 && (
+                <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
+                  <div className="flex items-center justify-between gap-4 mb-3">
+                    <div className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4 text-amber-400" />
+                      Переначислить баллы
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReassignOpen((v) => !v)}
+                      className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 rounded-lg text-sm font-medium border border-amber-500/50 transition-all"
+                    >
+                      {reassignOpen ? 'Свернуть' : 'Изменить сборщика / проверяльщика / диктовщика'}
+                    </button>
+                  </div>
+                  {reassignOpen && (
+                    <div className="space-y-4">
+                      <p className="text-xs text-slate-400">
+                        Измените назначения по заданиям и нажмите «Пересчитать баллы». Старые баллы будут сняты с предыдущих пользователей и начислены новым.
+                      </p>
+                      {reassignError && (
+                        <div className="bg-red-900/40 border border-red-500/50 text-red-200 px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                          {reassignError}
+                        </div>
+                      )}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-600 text-slate-400 text-left">
+                              <th className="py-2 pr-4">Склад</th>
+                              <th className="py-2 pr-4">Сборщик</th>
+                              <th className="py-2 pr-4">Проверяльщик</th>
+                              <th className="py-2 pr-4">Диктовщик</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {details.tasks.map((task) => (
+                              <tr key={task.id} className="border-b border-slate-700/50">
+                                <td className="py-2 pr-4 font-medium text-slate-300">{task.warehouse}</td>
+                                <td className="py-2 pr-4">
+                                  <select
+                                    value={assignments[task.id]?.collectorId ?? ''}
+                                    onChange={(e) => updateAssignment(task.id, 'collectorId', e.target.value)}
+                                    className="w-full min-w-[140px] px-2 py-1.5 bg-slate-900 border border-slate-600 rounded text-slate-200 text-sm focus:ring-2 focus:ring-amber-500/50"
+                                  >
+                                    <option value="">— не назначен —</option>
+                                    {users.map((u) => (
+                                      <option key={u.id} value={u.id}>{u.name} ({u.login})</option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="py-2 pr-4">
+                                  <select
+                                    value={assignments[task.id]?.checkerId ?? ''}
+                                    onChange={(e) => updateAssignment(task.id, 'checkerId', e.target.value)}
+                                    className="w-full min-w-[140px] px-2 py-1.5 bg-slate-900 border border-slate-600 rounded text-slate-200 text-sm focus:ring-2 focus:ring-amber-500/50"
+                                  >
+                                    <option value="">— не назначен —</option>
+                                    {users.map((u) => (
+                                      <option key={u.id} value={u.id}>{u.name} ({u.login})</option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="py-2 pr-4">
+                                  <select
+                                    value={assignments[task.id]?.dictatorId ?? ''}
+                                    onChange={(e) => updateAssignment(task.id, 'dictatorId', e.target.value)}
+                                    className="w-full min-w-[140px] px-2 py-1.5 bg-slate-900 border border-slate-600 rounded text-slate-200 text-sm focus:ring-2 focus:ring-amber-500/50"
+                                  >
+                                    <option value="">— нет —</option>
+                                    {users.map((u) => (
+                                      <option key={u.id} value={u.id}>{u.name} ({u.login})</option>
+                                    ))}
+                                  </select>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleReassignSubmit}
+                        disabled={reassignLoading}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {reassignLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        Пересчитать баллы
+                      </button>
+                </div>
+                  )}
                 </div>
               )}
 

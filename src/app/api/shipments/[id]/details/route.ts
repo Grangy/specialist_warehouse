@@ -47,6 +47,13 @@ export async function GET(
                 login: true,
               },
             },
+            dictator: {
+              select: {
+                id: true,
+                name: true,
+                login: true,
+              },
+            },
             lines: {
               include: {
                 shipmentLine: true,
@@ -109,6 +116,9 @@ export async function GET(
         checkerId: task.checkerId,
         checkerName: task.checkerName,
         checkerLogin: task.checker?.login || null,
+        dictatorId: task.dictatorId,
+        dictatorName: task.dictator?.name ?? null,
+        dictatorLogin: task.dictator?.login || null,
         checkerStartedAt: task.checkerStartedAt?.toISOString() ?? task.completedAt?.toISOString() ?? null, // Время начала проверки = когда подтверждена первая позиция
         checkerConfirmedAt: task.confirmedAt?.toISOString() || null, // Время окончания проверки = когда проверяльщик подтвердил задание
         totalItems: task.totalItems || task.lines.length,

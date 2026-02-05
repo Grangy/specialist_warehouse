@@ -39,11 +39,13 @@ const ITEMS_PER_PAGE = 20;
 interface CompletedShipmentsTabProps {
   /** Показывать кнопку «Удалить заказ». Для проверяльщиков — false. */
   canDelete?: boolean;
+  /** Показывать в деталях заказа блок «Переначислить баллы» (только для админов). */
+  canReassign?: boolean;
   /** Если задан (например "Склад 3"), показываем баннер: только заказы с участием этого склада. */
   warehouseScope?: string;
 }
 
-export default function CompletedShipmentsTab({ canDelete = true, warehouseScope }: CompletedShipmentsTabProps) {
+export default function CompletedShipmentsTab({ canDelete = true, canReassign = false, warehouseScope }: CompletedShipmentsTabProps) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -779,6 +781,7 @@ export default function CompletedShipmentsTab({ canDelete = true, warehouseScope
       <ShipmentDetailsModal
         shipmentId={selectedShipmentId}
         onClose={() => setSelectedShipmentId(null)}
+        canReassign={canReassign}
       />
     </div>
   );
