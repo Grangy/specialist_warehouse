@@ -155,13 +155,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const logBody = { ...body, password: body.password ? '[REDACTED]' : undefined, login: body.login ? '[REDACTED]' : undefined };
     append1cLog({
       ts: new Date().toISOString(),
       type: 'shipments-post',
       direction: 'in',
       endpoint: 'POST /api/shipments',
       summary: `Приём заказа от 1С: ${number}, ${customerName}, позиций ${lines.length}`,
-      details: { number, customerName, linesCount: lines.length },
+      details: {
+        number,
+        customerName,
+        linesCount: lines.length,
+        fullRequest: { method: 'POST', url: request.url, body: logBody },
+      },
     });
 
     // Проверяем, есть ли уже заказ с таким номером (точное совпадение)

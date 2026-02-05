@@ -53,7 +53,12 @@ export async function POST(request: NextRequest) {
       requestId,
       endpoint: 'POST /api/shipments/sync-1c',
       summary: `1С прислал результат: ${ordersCount} заказов`,
-      details: { ordersCount, clientIp, ordersSummary: Array.isArray(body.orders) ? body.orders.map((o: { id?: string; number?: string; success?: boolean }) => ({ id: o.id, number: o.number, success: o.success })) : [] },
+      details: {
+        ordersCount,
+        clientIp,
+        fullRequest: { method: 'POST', url: request.url, body: logBody },
+        ordersSummary: Array.isArray(body.orders) ? body.orders.map((o: { id?: string; number?: string; success?: boolean }) => ({ id: o.id, number: o.number, success: o.success })) : [],
+      },
     });
 
     // Авторизация через заголовки, тело запроса или cookies

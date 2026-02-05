@@ -33,6 +33,16 @@ export async function GET(request: NextRequest) {
                    'unknown';
 
   try {
+    const url = request.url;
+    const searchParams = request.nextUrl ? Object.fromEntries(request.nextUrl.searchParams.entries()) : {};
+    const headers: Record<string, string | null> = {
+      'content-type': request.headers.get('content-type'),
+      'user-agent': request.headers.get('user-agent'),
+      'x-login': request.headers.get('x-login'),
+      'x-password': request.headers.get('x-password') ? '[REDACTED]' : null,
+      'x-forwarded-for': request.headers.get('x-forwarded-for'),
+      host: request.headers.get('host'),
+    };
     append1cLog({
       ts: new Date().toISOString(),
       type: 'ready-for-export',
@@ -40,7 +50,10 @@ export async function GET(request: NextRequest) {
       requestId,
       endpoint: 'GET /api/shipments/ready-for-export',
       summary: '1С запросил список готовых к выгрузке заказов',
-      details: { clientIp },
+      details: {
+        clientIp,
+        fullRequest: { method: 'GET', url, searchParams, headers },
+      },
     });
 
     // Авторизация через заголовки или cookies
