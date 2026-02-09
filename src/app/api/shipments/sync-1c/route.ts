@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { authenticateRequest } from '@/lib/middleware';
 import { areAllTasksConfirmed } from '@/lib/shipmentTasks';
 import { append1cLog } from '@/lib/1cLog';
+import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -181,6 +182,62 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Sync-1C] [${requestId}] Итог: уже выгружены (ошибка в ответе)=${alreadyExportedList.length}, не найдено в БД=${notFoundLog.length}`);
 
+    // Обработка заказов с success: false от 1С: если заказ мы уже помечали как выгруженный, но 1С сообщает,
+    // что он не дошёл (success: false), снова ставим его в очередь на выгрузку. Только для завершённых заказов
+    // и только для сегодняшних по Москве (confirmedAt сегодня).
+    const { startDate: todayStart, endDate: todayEnd } = getStatisticsDateRange('today');
+    const resetForReexport: Array<{ id: string; number: string; customerName: string }> = [];
+    for (const order of orders as Array<{ id?: string; success: boolean; number?: string; customer_name?: string; customer?: string }>) {
+      if (order.success !== false) continue;
+      const hasId = order.id && order.id.trim() !== '';
+      const hasNumber = order.number && order.number.trim() !== '';
+      const customer = (order.customer_name || order.customer || '').trim();
+      const hasCustomer = customer !== '';
+      if (!hasId && !hasNumber) continue;
+
+      type ShipmentForReset = { id: string; deleted: boolean; number: string; customerName: string; status: string; confirmedAt: Date | null; exportedTo1C: boolean; exportedTo1CAt: Date | null };
+      let shipment: ShipmentForReset | null = null;
+      if (hasId) {
+        shipment = await prisma.shipment.findUnique({
+          where: { id: order.id },
+          select: { id: true, deleted: true, number: true, customerName: true, status: true, confirmedAt: true, exportedTo1C: true, exportedTo1CAt: true },
+        });
+      }
+      if (!shipment && hasNumber && hasCustomer) {
+        shipment = await prisma.shipment.findFirst({
+          where: { number: order.number, customerName: customer, deleted: false },
+          select: { id: true, deleted: true, number: true, customerName: true, status: true, confirmedAt: true, exportedTo1C: true, exportedTo1CAt: true },
+        });
+      }
+      if (!shipment && hasNumber) {
+        shipment = await prisma.shipment.findFirst({
+          where: { number: order.number, deleted: false },
+          select: { id: true, deleted: true, number: true, customerName: true, status: true, confirmedAt: true, exportedTo1C: true, exportedTo1CAt: true },
+        });
+      }
+      if (!shipment || shipment.deleted || shipment.status !== 'processed' || !shipment.exportedTo1C) continue;
+      const confirmedAt = shipment.confirmedAt;
+      if (!confirmedAt || confirmedAt < todayStart || confirmedAt > todayEnd) continue;
+
+      await prisma.shipment.update({
+        where: { id: shipment.id },
+        data: { exportedTo1C: false, exportedTo1CAt: null },
+      });
+      resetForReexport.push({ id: shipment.id, number: shipment.number, customerName: shipment.customerName });
+      console.log(`[Sync-1C] [${requestId}] 1С вернул success:false — снята пометка выгрузки для повторной отправки: number=${shipment.number}, customer=${shipment.customerName}`);
+    }
+    if (resetForReexport.length > 0) {
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'sync-1c',
+        direction: 'out',
+        requestId,
+        endpoint: 'POST /api/shipments/sync-1c',
+        summary: `1С вернул success:false по ${resetForReexport.length} заказам — снята пометка выгрузки для повторной отправки (только сегодняшние)`,
+        details: { resetForReexport: resetForReexport.map((o) => ({ id: o.id, number: o.number, customerName: o.customerName })) },
+      });
+    }
+
     // Обработка заказов с success: true, но пустым id
     // Если 1С отправляет success: true с пустым id, это может означать, что заказ был успешно обработан,
     // но 1С не смог вернуть правильный id. В этом случае попробуем найти недавно отправленные заказы
@@ -356,8 +413,14 @@ export async function POST(request: NextRequest) {
       direction: 'out',
       requestId,
       endpoint: 'POST /api/shipments/sync-1c',
-      summary: `Ответ 1С: отдано готовых к выгрузке ${readyOrders.length}; в запросе помечено выгруженными по id/number, уже выгружены=${alreadyExportedList.length}, не найдено=${notFoundLog.length}`,
-      details: { readyCount: readyOrders.length, alreadyExported: alreadyExportedList.length, notFound: notFoundLog.length, readyNumbers: readyOrders.map((o: { number: string }) => o.number) },
+      summary: `Ответ 1С: отдано готовых к выгрузке ${readyOrders.length}; в запросе помечено выгруженными по id/number, уже выгружены=${alreadyExportedList.length}, не найдено=${notFoundLog.length}${resetForReexport.length > 0 ? `; снята пометка для повторной выгрузки=${resetForReexport.length}` : ''}`,
+      details: {
+        readyCount: readyOrders.length,
+        alreadyExported: alreadyExportedList.length,
+        notFound: notFoundLog.length,
+        resetForReexportCount: resetForReexport.length,
+        readyNumbers: readyOrders.map((o: { number: string }) => o.number),
+      },
     });
 
     return NextResponse.json({ orders: readyOrders });
