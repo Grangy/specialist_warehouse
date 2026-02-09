@@ -9,17 +9,24 @@ export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/shipments/sync-1c
- * 
+ *
  * Синхронизация заказов с 1С:
  * - Принимает список заказов с результатами обработки в 1С
  * - Обновляет статус выгрузки заказов в БД
  * - Возвращает список готовых к выгрузке заказов
- * 
+ *
+ * АУДИТ: В 1С отдаются только полностью завершённые заказы.
+ * - В ответ попадают только заказы с status = 'processed' (все задания подтверждены проверяльщиком).
+ * - Дополнительно проверяется areAllTasksConfirmed(tasks) — каждое задание в статусе 'processed'.
+ * - Поле places берётся из shipment.places, которое устанавливается один раз при подтверждении
+ *   последнего задания (confirm) и не меняется промежуточно. Промежуточной выгрузки не собранных
+ *   заказов или мест нет.
+ *
  * Авторизация:
  * - Через заголовки: X-Login и X-Password
  * - Через тело запроса: login и password
  * - Через cookies (стандартная авторизация)
- * 
+ *
  * Запрос:
  * {
  *   "login": "admin",
@@ -47,18 +54,26 @@ export async function POST(request: NextRequest) {
     const logBody = { ...body, password: body.password ? '[REDACTED]' : undefined };
     console.log(`[Sync-1C] [${requestId}] POST ${ordersCount} orders from ${clientIp}`, JSON.stringify(logBody));
 
+    const ordersSummary = Array.isArray(body.orders)
+      ? body.orders.map((o: { id?: string; number?: string; success?: boolean }) => ({ id: o.id, number: o.number, success: o.success }))
+      : [];
+    const successTrueCount = ordersSummary.filter((o: { success?: boolean }) => o.success === true).length;
+    const successFalseCount = ordersSummary.filter((o: { success?: boolean }) => o.success === false).length;
     append1cLog({
       ts: new Date().toISOString(),
       type: 'sync-1c',
       direction: 'in',
       requestId,
       endpoint: 'POST /api/shipments/sync-1c',
-      summary: `1С прислал результат: ${ordersCount} заказов`,
+      summary: `1С прислал результат: ${ordersCount} заказов (success: true=${successTrueCount}, false=${successFalseCount})`,
       details: {
+        step: 'incoming',
         ordersCount,
+        successTrueCount,
+        successFalseCount,
         clientIp,
         fullRequest: { method: 'POST', url: request.url, body: logBody },
-        ordersSummary: Array.isArray(body.orders) ? body.orders.map((o: { id?: string; number?: string; success?: boolean }) => ({ id: o.id, number: o.number, success: o.success })) : [],
+        ordersSummary,
       },
     });
 
@@ -101,6 +116,8 @@ export async function POST(request: NextRequest) {
     // Собираем заказы, которые уже выгружены — отдаём им ошибку в ответе, чтобы 1С перестал слать.
     const alreadyExportedList: Array<{ number: string; customer_name: string; error: string }> = [];
     const notFoundLog: Array<{ number?: string; customer?: string; id?: string }> = [];
+    /** Для аудита: заказы, помеченные как выгруженные в 1С по success: true в этом запросе */
+    const markedAsExported: Array<{ id: string; number: string; customerName: string; exportedTo1CAt: string }> = [];
 
     const updatePromises = orders.map(async (order: { id?: string; success: boolean; number?: string; customer_name?: string; customer?: string }) => {
       if (typeof order.success !== 'boolean') {
@@ -171,14 +188,33 @@ export async function POST(request: NextRequest) {
         return;
       }
 
+      const exportedTo1CAt = new Date();
       await prisma.shipment.update({
         where: { id: shipment.id },
-        data: { exportedTo1C: true, exportedTo1CAt: new Date() },
+        data: { exportedTo1C: true, exportedTo1CAt },
+      });
+      markedAsExported.push({
+        id: shipment.id,
+        number: shipment.number,
+        customerName: shipment.customerName,
+        exportedTo1CAt: exportedTo1CAt.toISOString(),
       });
       console.log(`[Sync-1C] [${requestId}] Помечен как выгруженный: number=${shipment.number}, customer=${shipment.customerName}`);
     });
 
     await Promise.all(updatePromises);
+
+    if (markedAsExported.length > 0) {
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'sync-1c',
+        direction: 'out',
+        requestId,
+        endpoint: 'POST /api/shipments/sync-1c',
+        summary: `Процесс: помечены как выгруженные в 1С (success: true) — ${markedAsExported.length} заказов`,
+        details: { step: 'marked_exported', count: markedAsExported.length, orders: markedAsExported },
+      });
+    }
 
     console.log(`[Sync-1C] [${requestId}] Итог: уже выгружены (ошибка в ответе)=${alreadyExportedList.length}, не найдено в БД=${notFoundLog.length}`);
 
@@ -233,8 +269,8 @@ export async function POST(request: NextRequest) {
         direction: 'out',
         requestId,
         endpoint: 'POST /api/shipments/sync-1c',
-        summary: `1С вернул success:false по ${resetForReexport.length} заказам — снята пометка выгрузки для повторной отправки (только сегодняшние)`,
-        details: { resetForReexport: resetForReexport.map((o) => ({ id: o.id, number: o.number, customerName: o.customerName })) },
+        summary: `Процесс: 1С вернул success:false — снята пометка выгрузки для повторной отправки (только сегодняшние) — ${resetForReexport.length} заказов`,
+        details: { step: 'reset_for_reexport', count: resetForReexport.length, orders: resetForReexport.map((o) => ({ id: o.id, number: o.number, customerName: o.customerName })) },
       });
     }
 
@@ -272,16 +308,27 @@ export async function POST(request: NextRequest) {
       });
 
       if (recentlyReadyShipments.length > 0) {
+        const markedByEmptyId: Array<{ id: string; number: string }> = [];
         for (const shipment of recentlyReadyShipments) {
           if (!shipment.exportedTo1C && !shipment.exportedTo1CAt) {
+            const at = new Date();
             await prisma.shipment.update({
               where: { id: shipment.id },
-              data: {
-                exportedTo1C: true,
-                exportedTo1CAt: new Date(),
-              },
+              data: { exportedTo1C: true, exportedTo1CAt: at },
             });
+            markedByEmptyId.push({ id: shipment.id, number: shipment.number });
           }
+        }
+        if (markedByEmptyId.length > 0) {
+          append1cLog({
+            ts: new Date().toISOString(),
+            type: 'sync-1c',
+            direction: 'out',
+            requestId,
+            endpoint: 'POST /api/shipments/sync-1c',
+            summary: `Процесс: помечены как выгруженные по пустому id от 1С — ${markedByEmptyId.length} заказов`,
+            details: { step: 'marked_by_empty_id', count: markedByEmptyId.length, orders: markedByEmptyId },
+          });
         }
       } else if (successOrdersWithEmptyId.length > 0) {
         console.warn(`[Sync-1C] [${requestId}] Не найдены заказы для сопоставления с ${successOrdersWithEmptyId.length} заказами с пустым id`);
@@ -317,10 +364,20 @@ export async function POST(request: NextRequest) {
 
     // Проверяем, что все задания действительно подтверждены
     const readyOrders = [];
+    /** Для аудита: заказы, не попавшие в ответ (причина) */
+    const skippedFromReady: Array<{ id: string; number: string; reason: string }> = [];
+    /** Для аудита: краткое описание заказов, отданных в ответе 1С */
+    const readyOrderSummaries: Array<{ id: string; number: string; places: number | null; items_count: number; total_qty: number }> = [];
+
     for (const shipment of readyShipments) {
       // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Убеждаемся, что заказ действительно не был выгружен
       // Это защита от race condition или проблем с обновлением БД
       if (shipment.exportedTo1C || shipment.exportedTo1CAt) {
+        skippedFromReady.push({
+          id: shipment.id,
+          number: shipment.number,
+          reason: 'already_exported_in_db',
+        });
         console.warn(`[Sync-1C] [${requestId}] ⚠️ Заказ ${shipment.number} (${shipment.id}) уже выгружен (exportedTo1C: ${shipment.exportedTo1C}, exportedTo1CAt: ${shipment.exportedTo1CAt?.toISOString() || 'null'}), пропускаем`);
         continue;
       }
@@ -329,6 +386,14 @@ export async function POST(request: NextRequest) {
       const allTasksConfirmed = areAllTasksConfirmed(
         allTasks.map((t) => ({ status: t.status }))
       );
+
+      if (!allTasksConfirmed) {
+        skippedFromReady.push({
+          id: shipment.id,
+          number: shipment.number,
+          reason: 'not_all_tasks_confirmed',
+        });
+      }
 
       if (allTasksConfirmed) {
         // ВАЖНО: Формируем финальные количества на основе confirmedQty из заданий
@@ -400,8 +465,30 @@ export async function POST(request: NextRequest) {
         };
 
         readyOrders.push(finalOrderData);
+        readyOrderSummaries.push({
+          id: shipment.id,
+          number: shipment.number,
+          places: shipment.places ?? null,
+          items_count: shipment.lines.length,
+          total_qty: finalOrderData.total_qty,
+        });
       }
     }
+
+    append1cLog({
+      ts: new Date().toISOString(),
+      type: 'sync-1c',
+      direction: 'out',
+      requestId,
+      endpoint: 'POST /api/shipments/sync-1c',
+      summary: `Процесс: сформирован список готовых к выгрузке — ${readyOrders.length} заказов${skippedFromReady.length > 0 ? `, пропущено ${skippedFromReady.length}` : ''}`,
+      details: {
+        step: 'ready_build',
+        readyCount: readyOrders.length,
+        readyOrderSummaries,
+        skippedFromReady: skippedFromReady.length > 0 ? skippedFromReady : undefined,
+      },
+    });
 
     if (readyOrders.length > 0) {
       console.log(`[Sync-1C] [${requestId}] ready for export: ${readyOrders.length}`);
@@ -415,11 +502,14 @@ export async function POST(request: NextRequest) {
       endpoint: 'POST /api/shipments/sync-1c',
       summary: `Ответ 1С: отдано готовых к выгрузке ${readyOrders.length}; в запросе помечено выгруженными по id/number, уже выгружены=${alreadyExportedList.length}, не найдено=${notFoundLog.length}${resetForReexport.length > 0 ? `; снята пометка для повторной выгрузки=${resetForReexport.length}` : ''}`,
       details: {
+        step: 'response',
         readyCount: readyOrders.length,
+        markedAsExportedCount: markedAsExported.length,
         alreadyExported: alreadyExportedList.length,
         notFound: notFoundLog.length,
         resetForReexportCount: resetForReexport.length,
         readyNumbers: readyOrders.map((o: { number: string }) => o.number),
+        readyOrderSummaries,
       },
     });
 

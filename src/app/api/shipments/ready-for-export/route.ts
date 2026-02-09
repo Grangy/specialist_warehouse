@@ -8,15 +8,23 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/shipments/ready-for-export
- * 
+ *
  * Возвращает список заказов, готовых к выгрузке в 1С.
  * Это заказы со статусом 'processed', где все задания подтверждены,
  * но еще не выгружены в 1С (exportedTo1C = false).
- * 
+ *
+ * АУДИТ: Промежуточная выгрузка не выполняется.
+ * - В выборку попадают только shipment со status = 'processed' (заказ становится processed
+ *   только когда проверяльщик подтвердил последнее задание в POST /api/shipments/[id]/confirm;
+ *   до этого заказ в new или pending_confirmation и в этот endpoint не попадает).
+ * - Дополнительно проверяется areAllTasksConfirmed(tasks) — все задания в статусе 'processed'.
+ * - Места (places) записываются в момент подтверждения последнего задания и в 1С отдаются
+ *   уже финальные. Несобранные или неподтверждённые заказы в ответ не включаются.
+ *
  * Авторизация:
  * - Через заголовки: X-Login и X-Password
  * - Через cookies (стандартная авторизация)
- * 
+ *
  * Ответ:
  * {
  *   "orders": [
@@ -51,6 +59,7 @@ export async function GET(request: NextRequest) {
       endpoint: 'GET /api/shipments/ready-for-export',
       summary: '1С запросил список готовых к выгрузке заказов',
       details: {
+        step: 'incoming',
         clientIp,
         fullRequest: { method: 'GET', url, searchParams, headers },
       },
@@ -103,11 +112,24 @@ export async function GET(request: NextRequest) {
     // Проверяем, что все задания действительно подтверждены
     const readyOrders = [];
     const sentShipmentIds: string[] = [];
+    /** Для аудита: заказы, отданные 1С в этом ответе */
+    const sentOrderSummaries: Array<{ id: string; number: string; places: number | null; items_count: number; total_qty: number }> = [];
+    /** Для аудита: заказы из выборки processed, не попавшие в ответ */
+    const skippedFromReady: Array<{ id: string; number: string; reason: string }> = [];
+
     for (const shipment of readyShipments) {
       const allTasks = shipment.tasks;
       const allTasksConfirmed = areAllTasksConfirmed(
         allTasks.map((t) => ({ status: t.status }))
       );
+
+      if (!allTasksConfirmed) {
+        skippedFromReady.push({
+          id: shipment.id,
+          number: shipment.number,
+          reason: 'not_all_tasks_confirmed',
+        });
+      }
 
       if (allTasksConfirmed) {
         sentShipmentIds.push(shipment.id);
@@ -179,12 +201,18 @@ export async function GET(request: NextRequest) {
         };
 
         readyOrders.push(finalOrderData);
+        sentOrderSummaries.push({
+          id: shipment.id,
+          number: shipment.number,
+          places: shipment.places ?? null,
+          items_count: shipment.lines.length,
+          total_qty: finalOrderData.total_qty,
+        });
       }
     }
 
-    // Помечаем отданные 1С заказы: они были отправлены в ответе (для счётчика «предупреждений»)
+    const now = new Date();
     if (sentShipmentIds.length > 0) {
-      const now = new Date();
       await prisma.shipment.updateMany({
         where: { id: { in: sentShipmentIds } },
         data: { lastSentTo1CAt: now },
@@ -196,13 +224,20 @@ export async function GET(request: NextRequest) {
     }
 
     append1cLog({
-      ts: new Date().toISOString(),
+      ts: now.toISOString(),
       type: 'ready-for-export',
       direction: 'out',
       requestId,
       endpoint: 'GET /api/shipments/ready-for-export',
-      summary: `Ответ: отдано заказов ${readyOrders.length}, обновлён lastSentTo1CAt`,
-      details: { count: readyOrders.length, numbers: readyOrders.map((o: { number: string }) => o.number) },
+      summary: `Процесс: отдано 1С заказов ${readyOrders.length}, обновлён lastSentTo1CAt для ${sentShipmentIds.length} заказов${skippedFromReady.length > 0 ? `; пропущено (не все задания подтверждены)=${skippedFromReady.length}` : ''}`,
+      details: {
+        step: 'sent_to_1c',
+        count: readyOrders.length,
+        lastSentTo1CAt: now.toISOString(),
+        sentOrderSummaries,
+        sentShipmentIds,
+        skippedFromReady: skippedFromReady.length > 0 ? skippedFromReady : undefined,
+      },
     });
 
     return NextResponse.json({

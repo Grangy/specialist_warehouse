@@ -47,13 +47,15 @@ export async function POST(
       data: { exportedTo1C: true, exportedTo1CAt: now },
     });
 
+    const requestId = Math.random().toString(36).substring(7);
     append1cLog({
       ts: now.toISOString(),
       type: 'mark-exported-1c',
       direction: 'out',
+      requestId,
       endpoint: `POST /api/shipments/${shipmentId}/mark-exported-1c`,
-      summary: `Заказ ${shipment.number} помечен как выгруженный в 1С (ручная пометка админом)`,
-      details: { shipmentId, number: shipment.number, exported_to_1c_at: now.toISOString() },
+      summary: `Процесс: заказ ${shipment.number} помечен как выгруженный в 1С (ручная пометка админом)`,
+      details: { step: 'manual_mark', shipmentId, number: shipment.number, exported_to_1c_at: now.toISOString() },
     });
 
     return NextResponse.json({
