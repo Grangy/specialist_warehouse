@@ -63,14 +63,16 @@ export async function POST(
       console.log(`[RESET-COLLECTOR] Блокировка задания ${id} удалена`);
     }
 
-    // Сбрасываем collectorId, collectorName и startedAt
-    // НО прогресс сборки (collectedQty, checked) сохраняется в taskLines
+    // Сбрасываем сборщика и пишем «кто бросил» (админ сбросил — показываем плашку следующему)
     await prisma.shipmentTask.update({
       where: { id },
       data: {
         collectorId: null,
         collectorName: null,
         startedAt: null,
+        droppedByCollectorId: task.collectorId,
+        droppedByCollectorName: previousCollector?.name ?? task.collectorName ?? null,
+        droppedAt: new Date(),
       },
     });
 

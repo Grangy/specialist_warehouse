@@ -160,14 +160,16 @@ export async function POST(
         }
       } else {
         // Блокировка уже существует и принадлежит текущему пользователю
-        // Обновляем heartbeat и возвращаем успех
         await prisma.shipmentTaskLock.update({
           where: { id: existingLock.id },
-          data: {
-            lastHeartbeat: new Date(),
-          },
+          data: { lastHeartbeat: new Date() },
         });
-        
+        if (task.droppedByCollectorId != null || task.droppedByCollectorName != null) {
+          await prisma.shipmentTask.update({
+            where: { id },
+            data: { droppedByCollectorId: null, droppedByCollectorName: null, droppedAt: null },
+          });
+        }
         // Проверяем, что collectorId тоже соответствует
         if (task.collectorId && task.collectorId !== user.id) {
           // Это не должно происходить, но на всякий случай проверяем
@@ -194,12 +196,15 @@ export async function POST(
       },
     });
 
-    // Назначаем задание текущему пользователю. startedAt ставится при первой собранной позиции (save-progress)
+    // Назначаем задание текущему пользователю; сбрасываем «кто бросил» — задание снова в работе
     await prisma.shipmentTask.update({
       where: { id },
       data: {
         collectorName: user.name,
         collectorId: user.id,
+        droppedByCollectorId: null,
+        droppedByCollectorName: null,
+        droppedAt: null,
       },
     });
 

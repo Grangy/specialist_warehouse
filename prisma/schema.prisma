@@ -125,6 +125,9 @@ model ShipmentTask {
   timePer100Items Float?             @map("time_per_100_items") // Время на 100 позиций в секундах
   places          Int? // Количество мест для этого задания (сохраняется при подтверждении)
   updatedAt       DateTime?          @map("updated_at") // Обновляется при unlock и др. — для синхронизации через poll
+  droppedByCollectorId   String?     @map("dropped_by_collector_id") // Кто бросил сборку (сброс по таймауту или админом)
+  droppedByCollectorName String?     @map("dropped_by_collector_name")
+  droppedAt       DateTime?          @map("dropped_at")
   shipment        Shipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   collector       User?              @relation("CollectorTasks", fields: [collectorId], references: [id], onDelete: SetNull)
   checker         User?              @relation("CheckerTasks", fields: [checkerId], references: [id], onDelete: SetNull)

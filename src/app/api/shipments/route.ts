@@ -885,21 +885,33 @@ export async function GET(request: NextRequest) {
 
         if (timeSinceProgress >= idleTimeoutMs) {
           const previousCollectorId = task.collectorId ?? lock?.userId ?? null;
+          const previousCollectorName = task.collectorName ?? null;
+          const droppedAt = new Date();
           // Удаляем блокировку, если она ещё есть
           if (lock) {
             await prisma.shipmentTaskLock.delete({ where: { id: lock.id } }).catch(() => {});
             locksMap.set(task.id, []);
           }
-          // Принудительный перенос в «Новое»: сбрасываем сборщика и startedAt (прогресс в линиях сохраняется)
+          // Принудительный перенос в «Новое»: сбрасываем сборщика, пишем «кто бросил» для плашки
           await prisma.shipmentTask.update({
             where: { id: task.id },
             data: {
               collectorId: null,
               collectorName: null,
               startedAt: null,
+              droppedByCollectorId: previousCollectorId,
+              droppedByCollectorName: previousCollectorName,
+              droppedAt,
             },
           }).catch(() => {});
-          Object.assign(task, { collectorId: null, collectorName: null, startedAt: null });
+          Object.assign(task, {
+            collectorId: null,
+            collectorName: null,
+            startedAt: null,
+            droppedByCollectorId: previousCollectorId,
+            droppedByCollectorName: previousCollectorName,
+            droppedAt,
+          });
           // Уведомляем клиентов, чтобы список обновился и задание появилось в «Новое»
           try {
             const { emitShipmentEvent } = await import('@/lib/sseEvents');
@@ -1041,6 +1053,8 @@ export async function GET(request: NextRequest) {
           collector_name: task.collectorName || null,
           collector_id: task.collectorId || null,
           started_at: task.startedAt ? task.startedAt.toISOString() : null,
+          dropped_by_collector_name: task.droppedByCollectorName || null,
+          dropped_at: task.droppedAt ? task.droppedAt.toISOString() : null,
           places: task.places || null, // Количество мест для этого задания
           lines: taskLines,
           locked: !!lock,

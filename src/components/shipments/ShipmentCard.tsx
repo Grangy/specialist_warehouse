@@ -204,6 +204,17 @@ export function ShipmentCard({
         </div>
       )}
 
+      {/* Кто бросил сборку — показываем в «Новое», чтобы следующий сборщик знал, с кого спросить */}
+      {shipment.status === 'new' && shipment.dropped_by_collector_name && (
+        <div className="mb-3 flex items-center gap-2 p-2 bg-pink-900/30 rounded-lg border border-pink-500/50">
+          <User className="w-4 h-4 text-pink-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-pink-300/90">Бросил сборку</div>
+            <div className="text-sm font-semibold text-pink-200 truncate">{shipment.dropped_by_collector_name}</div>
+          </div>
+        </div>
+      )}
+
       {/* Прогресс сборки - показываем если есть собранные товары */}
       {/* ВАЖНО: считаем только позиции с checked = true, так как collected_qty может быть установлен по умолчанию */}
       {shipment.status === 'new' && shipment.lines && shipment.lines.some(line => line.checked === true) && (
