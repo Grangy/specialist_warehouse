@@ -134,6 +134,7 @@ export function CollectModal({
           index: nextIndex,
           name: nextLine.name,
           sku: nextLine.sku,
+          art: nextLine.art,
           location: nextLine.location || '—',
           qty: nextLine.qty,
           collected: nextState.collectedQty,
@@ -497,17 +498,11 @@ export function CollectModal({
                     {/* Информация */}
                     <div className="flex items-center gap-2 text-xs text-slate-400 min-w-0">
                       {line.art && (
-                        <span 
-                          className="truncate flex-shrink-0"
+                        <span
+                          className="flex-shrink-0 font-mono text-[11px] text-slate-300 whitespace-normal break-all max-w-[180px]"
                           title={line.art}
-                          style={{ 
-                            maxWidth: '60px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}
                         >
-                          {truncateArt(line.art, 8, 3, 2)}
+                          {line.art}
                         </span>
                       )}
                       {line.location && (
@@ -686,11 +681,11 @@ export function CollectModal({
                             <div className="flex items-center gap-2 flex-1 min-w-0">
                               {line.art && (
                                 <div 
-                                  className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors whitespace-nowrap flex-shrink-0"
+                                  className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors whitespace-normal break-all flex-shrink-0 max-w-[240px] font-mono leading-tight"
                                   onClick={() => handleInfoClick(line, index)}
                                   title={line.art}
                                 >
-                                  {truncateArt(line.art, 10, 4, 3)}
+                                  {line.art}
                                 </div>
                               )}
                               <div 
@@ -841,11 +836,11 @@ export function CollectModal({
                             <div className="flex items-center gap-1.5 flex-1 min-w-0">
                               {line.art && (
                                 <div 
-                                  className="text-xs font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors whitespace-nowrap flex-shrink-0"
+                                  className="text-xs font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors whitespace-normal break-all flex-shrink-0 max-w-[180px] font-mono leading-tight"
                                   onClick={() => handleInfoClick(line, index)}
                                   title={line.art}
                                 >
-                                  {truncateArt(line.art, 8, 3, 2)}
+                                  {line.art}
                                 </div>
                               )}
                               <div 
@@ -896,17 +891,11 @@ export function CollectModal({
                       <td className={`px-2 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '120px', minWidth: '120px', maxWidth: '120px' }}>
                         {line.art && (
                           <div 
-                            className="text-xs font-bold text-blue-400 truncate cursor-pointer hover:text-blue-300 transition-colors duration-200 font-mono"
+                            className="text-xs font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors duration-200 font-mono whitespace-normal break-all leading-tight"
                             onClick={() => handleInfoClick(line, index)}
                             title={line.art}
-                            style={{ 
-                              maxWidth: '100%',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
-                            }}
                           >
-                            {truncateArt(line.art, 12, 4, 3)}
+                            {line.art}
                           </div>
                         )}
                       </td>

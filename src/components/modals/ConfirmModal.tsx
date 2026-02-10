@@ -289,6 +289,7 @@ export function ConfirmModal({
           index: nextIndex,
           name: nextLine.name,
           sku: nextLine.sku,
+          art: nextLine.art,
           location: nextLine.location || '—',
           qty: nextLine.qty,
           collected: nextState.collectedQty,
@@ -572,16 +573,10 @@ export function ConfirmModal({
                             {line.art && (
                               <div className="flex items-center gap-1 mt-0.5">
                                 <div 
-                                  className="text-[9px] text-slate-400 truncate flex-shrink-0"
+                                  className="text-[9px] text-slate-400 whitespace-normal break-all font-mono leading-tight"
                                   title={line.art}
-                                  style={{ 
-                                    maxWidth: '100%',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap'
-                                  }}
                                 >
-                                  {truncateArt(line.art, 8, 3, 2)}
+                                  {line.art}
                                 </div>
                               </div>
                             )}
@@ -709,7 +704,7 @@ export function ConfirmModal({
                             <div className="flex items-center gap-2 flex-wrap flex-1 text-[10px]">
                               {line.art && (
                                 <div 
-                                  className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
+                                  className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors whitespace-normal break-all max-w-full"
                                   onClick={() => handleInfoClick(line, index)}
                                 >
                                   {line.art}
@@ -868,11 +863,11 @@ export function ConfirmModal({
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 {line.art && (
                                   <div 
-                                    className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors whitespace-nowrap flex-shrink-0"
+                                    className="text-[10px] text-slate-500 cursor-pointer hover:text-blue-400 transition-colors whitespace-normal break-all flex-shrink-0 max-w-[200px] font-mono leading-tight"
                                     onClick={() => handleInfoClick(line, index)}
                                     title={line.art}
                                   >
-                                    {truncateArt(line.art, 8, 3, 2)}
+                                    {line.art}
                                   </div>
                                 )}
                                 <div 
@@ -939,17 +934,11 @@ export function ConfirmModal({
                         <td className={`px-3 py-3 border-b border-slate-700/50 hidden md:table-cell align-middle ${Object.values(editState).some(Boolean) ? 'hidden' : ''}`} style={{ width: '140px', minWidth: '140px' }}>
                           {line.art && (
                             <div 
-                              className="text-xs text-slate-300 truncate cursor-pointer hover:text-blue-400 transition-colors duration-200 font-mono"
+                              className="text-xs text-slate-300 cursor-pointer hover:text-blue-400 transition-colors duration-200 font-mono whitespace-normal break-all leading-tight"
                               onClick={() => handleInfoClick(line, index)}
                               title={line.art}
-                              style={{ 
-                                maxWidth: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}
                             >
-                              {truncateArt(line.art, 15, 6, 4)}
+                              {line.art}
                             </div>
                           )}
                         </td>

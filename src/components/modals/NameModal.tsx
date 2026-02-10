@@ -180,7 +180,9 @@ export function NameModal({
           {sku && (
             <div>
               <div className="text-base md:text-lg text-slate-400 mb-3">Артикул</div>
-              <p className="text-2xl md:text-3xl text-slate-100 font-bold">{sku}</p>
+              <p className="text-xl md:text-3xl text-slate-100 font-bold font-mono whitespace-pre-wrap break-all leading-tight">
+                {sku}
+              </p>
             </div>
           )}
           <div>
