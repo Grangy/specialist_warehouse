@@ -103,6 +103,7 @@ backups/
 
 # Локальные отчёты аудита/аналитики
 /reports/
+reports/analytics-report.html
 
 # Документация: в репозитории только README.md, остальные .md — локально/не коммитить
 docs/*.md

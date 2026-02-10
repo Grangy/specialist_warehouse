@@ -836,29 +836,83 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Авто-снятие просроченных блокировок: 5 мин без старта сборки, 15 мин без прогресса.
-    // Тогда задание возвращается в «Новое» для всех, не висит «на руках».
+    // Авто-снятие просроченных «на руках»:
+    // - 5 мин без старта сборки (startedAt = null) — задание возвращается в «Новое»
+    // - 15 мин без ПРОГРЕССА (updatedAt/startedAt) — задание тоже возвращается в «Новое»
+    // Работает и для заданий с активной блокировкой, и для заданий без блокировки, но с collectorId.
     for (const shipment of shipments) {
       if (!shipment.tasks) continue;
       for (const task of shipment.tasks) {
         const taskLocks = locksMap.get(task.id) || [];
         const lock = taskLocks[0] || null;
-        if (!lock) continue;
+
+        // Если ни блокировки, ни назначенного сборщика — нечего сбрасывать
+        if (!lock && !task.collectorId) {
+          continue;
+        }
+
         const noProgressYet = task.startedAt == null;
-        const progressAt = (task.updatedAt ?? task.startedAt ?? lock.lockedAt).getTime();
         const now = Date.now();
-        const timeSinceProgress = noProgressYet
-          ? now - lock.lockedAt.getTime()
-          : now - progressAt;
+
+        let baseTime: number | null = null;
+
+        if (lock) {
+          // Есть блокировка: считаем, как и в /[id]/lock
+          if (noProgressYet) {
+            baseTime = lock.lockedAt.getTime();
+          } else {
+            const progressAt = (task.updatedAt ?? task.startedAt ?? lock.lockedAt).getTime();
+            baseTime = progressAt;
+          }
+        } else if (task.collectorId) {
+          // Блокировки уже нет (пользователь вышел из попапа), но задание числится за сборщиком.
+          // В этом случае:
+          // - до старта сборки считаем от updatedAt (если ставили при назначении) или от createdAt;
+          // - после старта — от updatedAt/startedAt.
+          if (noProgressYet) {
+            const ts = (task.updatedAt ?? task.createdAt);
+            baseTime = ts.getTime();
+          } else {
+            const ts = (task.updatedAt ?? task.startedAt ?? task.createdAt);
+            baseTime = ts.getTime();
+          }
+        }
+
+        if (baseTime == null) continue;
+
         const idleTimeoutMs = noProgressYet ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
+        const timeSinceProgress = now - baseTime;
+
         if (timeSinceProgress >= idleTimeoutMs) {
-          await prisma.shipmentTaskLock.delete({ where: { id: lock.id } }).catch(() => {});
+          const previousCollectorId = task.collectorId ?? lock?.userId ?? null;
+          // Удаляем блокировку, если она ещё есть
+          if (lock) {
+            await prisma.shipmentTaskLock.delete({ where: { id: lock.id } }).catch(() => {});
+            locksMap.set(task.id, []);
+          }
+          // Принудительный перенос в «Новое»: сбрасываем сборщика и startedAt (прогресс в линиях сохраняется)
           await prisma.shipmentTask.update({
             where: { id: task.id },
-            data: { collectorId: null, collectorName: null },
+            data: {
+              collectorId: null,
+              collectorName: null,
+              startedAt: null,
+            },
           }).catch(() => {});
-          locksMap.set(task.id, []);
-          Object.assign(task, { collectorId: null, collectorName: null });
+          Object.assign(task, { collectorId: null, collectorName: null, startedAt: null });
+          // Уведомляем клиентов, чтобы список обновился и задание появилось в «Новое»
+          try {
+            const { emitShipmentEvent } = await import('@/lib/sseEvents');
+            emitShipmentEvent('shipment:unlocked', {
+              taskId: task.id,
+              shipmentId: task.shipmentId,
+              userId: previousCollectorId,
+            });
+            const { touchSync } = await import('@/lib/syncTouch');
+            await touchSync();
+          } catch {
+            // игнорируем ошибки SSE / touch
+          }
         }
       }
     }

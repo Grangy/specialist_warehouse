@@ -488,11 +488,14 @@ export function ConfirmModal({
                       } ${isEditing ? 'bg-blue-900/20 border-l border-l-blue-500/50' : ''}`}
                     >
                     {isEditing ? (
-                      // Режим редактирования в компактном виде - все в одну строку
+                      // Режим редактирования в компактном виде
                       <div className="flex items-center justify-between gap-1 py-0.5">
-                        <div className="flex items-center gap-1 flex-1 min-w-0">
-                          <div className="text-[11px] md:text-xs text-slate-200 truncate font-medium">
-                            {line.name} {line.location || '—'}
+                        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                          <div className="text-[11px] md:text-xs text-slate-200 font-medium break-words">
+                            {line.name}
+                          </div>
+                          <div className="text-[10px] text-blue-300 font-semibold">
+                            {line.location || '—'}
                           </div>
                         </div>
                         <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -569,15 +572,13 @@ export function ConfirmModal({
                             >
                               {line.name}
                             </div>
-                            {/* Артикул (количество теперь рядом с кнопкой Р) */}
+                            {/* Артикул отдельной строкой */}
                             {line.art && (
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <div 
-                                  className="text-[9px] text-slate-400 whitespace-normal break-all font-mono leading-tight"
-                                  title={line.art}
-                                >
-                                  {line.art}
-                                </div>
+                              <div 
+                                className="mt-0.5 text-[9px] text-slate-400 whitespace-normal break-all font-mono leading-tight"
+                                title={line.art}
+                              >
+                                {line.art}
                               </div>
                             )}
                           </div>
@@ -700,18 +701,18 @@ export function ConfirmModal({
                       <tr className={`${rowClassName} bg-blue-900/20 border-l-2 border-l-blue-500/50 shadow-md border-b border-white/20`}>
                         <td colSpan={7} className="px-3 py-3">
                           <div className="flex items-center justify-between gap-2">
-                            {/* Левая часть: информация */}
-                            <div className="flex items-center gap-2 flex-wrap flex-1 text-[10px]">
+                            {/* Левая часть: информация — артикул и ячейка по СТРОКАМ */}
+                            <div className="flex flex-col gap-0.5 flex-1 text-[10px]">
                               {line.art && (
                                 <div 
-                                  className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors whitespace-normal break-all max-w-full"
+                                  className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors whitespace-normal break-all"
                                   onClick={() => handleInfoClick(line, index)}
                                 >
                                   {line.art}
                                 </div>
                               )}
                               <div 
-                                className="text-slate-500 cursor-pointer hover:text-blue-400 transition-colors"
+                                className="text-slate-300 font-semibold cursor-pointer hover:text-blue-400 transition-colors"
                                 onClick={() => handleInfoClick(line, index)}
                               >
                                 {line.location || '—'}

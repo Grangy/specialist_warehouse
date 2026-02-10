@@ -495,29 +495,23 @@ export function CollectModal({
                       </div>
                     </div>
                     
-                    {/* Информация */}
-                    <div className="flex items-center gap-2 text-xs text-slate-400 min-w-0">
+                    {/* Информация: артикул и ячейка в ОТДЕЛЬНЫХ строках, чтобы не перекрывать количество */}
+                    <div className="mt-1 text-xs text-slate-400 min-w-0 space-y-0.5">
                       {line.art && (
-                        <span
-                          className="flex-shrink-0 font-mono text-[11px] text-slate-300 whitespace-normal break-all max-w-[180px]"
+                        <div
+                          className="font-mono text-[11px] text-slate-300 whitespace-normal break-all"
                           title={line.art}
                         >
                           {line.art}
-                        </span>
+                        </div>
                       )}
                       {line.location && (
-                        <span 
-                          className="text-blue-400 truncate flex-shrink-0"
+                        <div 
+                          className="text-blue-400 font-semibold"
                           title={line.location}
-                          style={{ 
-                            maxWidth: '50px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}
                         >
                           {line.location}
-                        </span>
+                        </div>
                       )}
                     </div>
                     
@@ -677,11 +671,11 @@ export function CollectModal({
                           </div>
                           {/* Строка 2: Информация слева, управление количеством и кнопки справа */}
                           <div className="flex items-center justify-between gap-2 flex-wrap">
-                            {/* Левая часть: Артикул и Ячейка */}
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                            {/* Левая часть: Артикул и Ячейка В РАЗНЫХ СТРОКАХ */}
+                            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                               {line.art && (
                                 <div 
-                                  className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors whitespace-normal break-all flex-shrink-0 max-w-[240px] font-mono leading-tight"
+                                  className="text-sm font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors whitespace-normal break-all font-mono leading-tight"
                                   onClick={() => handleInfoClick(line, index)}
                                   title={line.art}
                                 >
@@ -689,7 +683,7 @@ export function CollectModal({
                                 </div>
                               )}
                               <div 
-                                className="text-sm font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors truncate border-l-2 border-slate-600 pl-2 flex-shrink-0"
+                                className="text-sm font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors"
                                 onClick={() => handleInfoClick(line, index)}
                                 title={line.location || '—'}
                               >
