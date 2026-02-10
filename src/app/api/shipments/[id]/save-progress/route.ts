@@ -37,18 +37,20 @@ export async function POST(
       return NextResponse.json({ error: 'Задание не найдено' }, { status: 404 });
     }
 
-    // Проверяем блокировку
+    // Разрешаем сохранение, если задание заблокировано мной ИЛИ назначено на меня без блокировки.
+    // Блокировка снимается при выходе из попапа (unlock), а сборщик сбрасывается только по таймауту 5/15 мин.
     const lock = task.locks[0];
-    if (!lock || lock.userId !== user.id) {
+    const lockedByMe = lock && lock.userId === user.id;
+    const assignedToMe = task.collectorId === user.id;
+    if (!lockedByMe && !assignedToMe) {
+      if (task.collectorId != null) {
+        return NextResponse.json(
+          { error: 'Задание собирает другой сборщик. Обновите список.', code: 'TAKEN_BY_OTHER' },
+          { status: 403 }
+        );
+      }
       return NextResponse.json(
         { error: 'Задание заблокировано другим пользователем или не заблокировано' },
-        { status: 403 }
-      );
-    }
-    // Защита от двух сборщиков: только назначенный сборщик может сохранять прогресс
-    if (task.collectorId != null && task.collectorId !== user.id) {
-      return NextResponse.json(
-        { error: 'Задание собирает другой сборщик. Обновите список.', code: 'TAKEN_BY_OTHER' },
         { status: 403 }
       );
     }
