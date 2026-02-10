@@ -68,12 +68,16 @@ export async function POST(
       } else if (existingLock.userId !== user.id) {
         // Задание заблокировано другим пользователем
         const now = Date.now();
-        const lastHeartbeatTime = existingLock.lastHeartbeat.getTime();
-        const timeSinceHeartbeat = now - lastHeartbeatTime;
-
-        // Таймаут: 5 мин без прогресса (startedAt = null), 15 мин с момента последнего действия при начатой сборке
-        const idleTimeoutMs = task.startedAt == null ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
-        const isActive = timeSinceHeartbeat < idleTimeoutMs;
+        const noProgressYet = task.startedAt == null;
+        // ВАЖНО: для "сброса с рук" используем НЕ heartbeat, а продвижение:
+        // - если сборка не начата (startedAt=null) → 5 минут от lockedAt
+        // - если сборка начата → 15 минут от последнего прогресса (task.updatedAt, иначе startedAt)
+        const progressAt = (task.updatedAt ?? task.startedAt ?? existingLock.lockedAt).getTime();
+        const timeSinceProgress = noProgressYet
+          ? now - existingLock.lockedAt.getTime()
+          : now - progressAt;
+        const idleTimeoutMs = noProgressYet ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
+        const canTakeOverByTimeout = timeSinceProgress >= idleTimeoutMs;
 
         const lockUser = await prisma.user.findUnique({
           where: { id: existingLock.userId },
@@ -81,14 +85,21 @@ export async function POST(
         });
         const lockedByName = lockUser?.name ?? 'другой сборщик';
 
-        if (isActive) {
-          // Блокировка активна — перехват только для админа, с подтверждением
+        if (!canTakeOverByTimeout) {
+          // Таймаут ещё не прошёл — перехват только для админа, с подтверждением
           if (!isAdmin) {
             return NextResponse.json(
               {
                 error: `Задание собирает ${lockedByName}. Дождитесь завершения или обновите список.`,
                 code: 'LOCKED_BY_OTHER',
                 lockedByName,
+                debug: {
+                  rule: noProgressYet ? 'no_progress_5m' : 'no_progress_15m',
+                  noProgressYet,
+                  timeSinceProgressMs: timeSinceProgress,
+                  thresholdMs: idleTimeoutMs,
+                  progressAt: noProgressYet ? existingLock.lockedAt.toISOString() : new Date(progressAt).toISOString(),
+                },
               },
               { status: 409 }
             );
@@ -100,6 +111,13 @@ export async function POST(
                 error: `Задание собирает ${lockedByName}. Вы точно уверены, что хотите перехватить?`,
                 code: 'CAN_TAKE_OVER',
                 lockedByName,
+                debug: {
+                  rule: noProgressYet ? 'no_progress_5m' : 'no_progress_15m',
+                  noProgressYet,
+                  timeSinceProgressMs: timeSinceProgress,
+                  thresholdMs: idleTimeoutMs,
+                  progressAt: noProgressYet ? existingLock.lockedAt.toISOString() : new Date(progressAt).toISOString(),
+                },
               },
               { status: 409 }
             );
@@ -117,9 +135,16 @@ export async function POST(
           if (!body.confirmTakeOver) {
             return NextResponse.json(
               {
-                error: `Задание долго было без активности. Сборку начал: ${lockedByName}. Вы точно уверены, что хотите перехватить?`,
+                error: `Задание долго было без продвижения. Сборку начал: ${lockedByName}. Вы точно уверены, что хотите перехватить?`,
                 code: 'CAN_TAKE_OVER',
                 lockedByName,
+                debug: {
+                  rule: noProgressYet ? 'no_progress_5m' : 'no_progress_15m',
+                  noProgressYet,
+                  timeSinceProgressMs: timeSinceProgress,
+                  thresholdMs: idleTimeoutMs,
+                  progressAt: noProgressYet ? existingLock.lockedAt.toISOString() : new Date(progressAt).toISOString(),
+                },
               },
               { status: 409 }
             );

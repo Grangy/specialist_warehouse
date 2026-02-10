@@ -894,13 +894,18 @@ export async function GET(request: NextRequest) {
           lock &&
           lock.userId !== user.id
         ) {
-          // Скрываем чужие задания с активной блокировкой (модал открыт у другого)
-          // Таймаут: 5 мин без прогресса, 15 мин с момента последнего действия при начатой сборке
+          // Скрываем чужие задания с активной блокировкой.
+          // ВАЖНО: "сброс с рук" считаем по ПРОГРЕССУ, а не по heartbeat:
+          // - startedAt=null → 5 минут от lockedAt
+          // - startedAt!=null → 15 минут от последнего прогресса (task.updatedAt, иначе startedAt)
           const now = Date.now();
-          const lastHeartbeatTime = lock.lastHeartbeat.getTime();
-          const timeSinceHeartbeat = now - lastHeartbeatTime;
-          const idleTimeoutMs = task.startedAt == null ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
-          const isActive = timeSinceHeartbeat < idleTimeoutMs;
+          const noProgressYet = task.startedAt == null;
+          const progressAt = (task.updatedAt ?? task.startedAt ?? lock.lockedAt).getTime();
+          const timeSinceProgress = noProgressYet
+            ? now - lock.lockedAt.getTime()
+            : now - progressAt;
+          const idleTimeoutMs = noProgressYet ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
+          const isActive = timeSinceProgress < idleTimeoutMs;
           if (isActive) {
             continue;
           }

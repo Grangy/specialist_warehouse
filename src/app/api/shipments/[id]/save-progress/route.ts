@@ -92,17 +92,19 @@ export async function POST(
       }
     }
 
-    // Обновляем информацию о сборщике, если еще не установлена
-    if (!task.collectorId || !task.startedAt) {
-      await prisma.shipmentTask.update({
-        where: { id },
-        data: {
-          collectorName: user.name,
-          collectorId: user.id,
-          startedAt: new Date(),
-        },
-      });
-    }
+    // Явная фиксация «прогресса» сборки:
+    // - startedAt ставим при первом сохранении прогресса (если ещё не было)
+    // - updatedAt обновляем КАЖДЫЙ раз при save-progress (это "последнее продвижение", не heartbeat)
+    const progressNow = new Date();
+    await prisma.shipmentTask.update({
+      where: { id },
+      data: {
+        collectorName: user.name,
+        collectorId: user.id,
+        startedAt: task.startedAt ? undefined : progressNow,
+        updatedAt: progressNow,
+      },
+    });
 
     const updatedTask = await prisma.shipmentTask.findUnique({
       where: { id },
