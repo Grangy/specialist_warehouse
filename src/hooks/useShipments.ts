@@ -39,6 +39,7 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
   const userIdRef = useRef<string | null>(null);
   const polling = useShipmentsPolling();
   const refetchDoneRef = useRef<(() => void) | null>(null);
+  const initialLoadDoneRef = useRef(false);
   if (polling) refetchDoneRef.current = polling.refetchDone;
 
   // Обновляем ref при изменении showError
@@ -79,12 +80,16 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
     // Предотвращаем параллельные запросы
     if (loadingRef.current) return;
     
-    // Сохраняем позицию скролла перед обновлением
+    // Сохраняем позицию скролла только при первом заходе (при refetch не скроллим)
     const savedScrollPosition = typeof window !== 'undefined' ? window.scrollY : 0;
+    const isRefetch = initialLoadDoneRef.current;
     
     try {
       loadingRef.current = true;
-      setIsLoading(true);
+      // Спиннер только при первой загрузке; при опросе/обновлении — тихо подменяем данные
+      if (!isRefetch) {
+        setIsLoading(true);
+      }
       errorShownRef.current = false;
       retryCountRef.current = 0;
       
@@ -93,10 +98,10 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
       const data = await shipmentsApi.getAll(statusParam ? { status: statusParam } : undefined);
       setShipments(data);
       refetchDoneRef.current?.();
+      initialLoadDoneRef.current = true;
 
-      // Восстанавливаем позицию скролла после обновления данных
-      // Используем requestAnimationFrame для гарантии, что DOM обновлен
-      if (typeof window !== 'undefined') {
+      // Восстанавливаем позицию скролла только при первой загрузке
+      if (!isRefetch && typeof window !== 'undefined') {
         requestAnimationFrame(() => {
           window.scrollTo(0, savedScrollPosition);
         });

@@ -836,6 +836,33 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Авто-снятие просроченных блокировок: 5 мин без старта сборки, 15 мин без прогресса.
+    // Тогда задание возвращается в «Новое» для всех, не висит «на руках».
+    for (const shipment of shipments) {
+      if (!shipment.tasks) continue;
+      for (const task of shipment.tasks) {
+        const taskLocks = locksMap.get(task.id) || [];
+        const lock = taskLocks[0] || null;
+        if (!lock) continue;
+        const noProgressYet = task.startedAt == null;
+        const progressAt = (task.updatedAt ?? task.startedAt ?? lock.lockedAt).getTime();
+        const now = Date.now();
+        const timeSinceProgress = noProgressYet
+          ? now - lock.lockedAt.getTime()
+          : now - progressAt;
+        const idleTimeoutMs = noProgressYet ? IDLE_NO_PROGRESS_MS : IDLE_WITH_PROGRESS_MS;
+        if (timeSinceProgress >= idleTimeoutMs) {
+          await prisma.shipmentTaskLock.delete({ where: { id: lock.id } }).catch(() => {});
+          await prisma.shipmentTask.update({
+            where: { id: task.id },
+            data: { collectorId: null, collectorName: null },
+          }).catch(() => {});
+          locksMap.set(task.id, []);
+          Object.assign(task, { collectorId: null, collectorName: null });
+        }
+      }
+    }
+
     // Преобразуем задания в формат для фронтенда
     const tasks: any[] = [];
 
