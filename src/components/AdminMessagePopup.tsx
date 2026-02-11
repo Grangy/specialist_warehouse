@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { MessageCircle, Check } from 'lucide-react';
 import type { PendingMessagePayload } from '@/contexts/ShipmentsPollingContext';
 
@@ -48,9 +49,10 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
     };
   }, [soundUrl]);
 
-  return (
+  const popup = (
     <div
-      className="fixed inset-0 z-[100000] flex items-center justify-center p-4 animate-[fadeIn_0.25s_ease-out]"
+      className="fixed inset-0 flex items-center justify-center p-4 animate-[fadeIn_0.25s_ease-out]"
+      style={{ zIndex: 999999 }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="admin-message-title"
@@ -103,4 +105,6 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
       </div>
     </div>
   );
+
+  return createPortal(popup, document.body);
 }
