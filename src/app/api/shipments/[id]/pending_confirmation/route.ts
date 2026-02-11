@@ -72,15 +72,35 @@ export async function POST(
     const timeElapsed = (now.getTime() - startedAt.getTime()) / 1000; // в секундах
     const timePer100Items = totalItems > 0 ? (timeElapsed / totalItems) * 100 : null;
 
+    // Определяем, кого сохранять как сборщика.
+    // ВАЖНО:
+    // - Если задание уже имеет collectorId/collectorName, мы НЕ затираем их, когда
+    //   в pending_confirmation отправляет проверяльщик/админ — иначе теряется инфа
+    //   «кто собирал» для этапа проверки.
+    // - Если сборщика ещё нет (collectorId == null), то тем, кто отправляет в
+    //   pending_confirmation, считаем сборщиком (в т.ч. проверяльщик или warehouse_3,
+    //   работающие в режиме сборки).
+    let collectorIdToSave = task.collectorId;
+    let collectorNameToSave = task.collectorName;
+
+    if (!collectorIdToSave) {
+      // Сборщик ещё не назначен — считаем, что сборку выполнял текущий пользователь
+      collectorIdToSave = user.id;
+      collectorNameToSave = user.name;
+    } else if (user.role === 'collector' && task.collectorId !== user.id) {
+      // Сборщик явно отправляет в pending_confirmation и отличается от сохранённого —
+      // позволяем перезаписать (например, пере назначили вручную).
+      collectorIdToSave = user.id;
+      collectorNameToSave = user.name;
+    }
+
     // Обновляем статус задания, имя сборщика и аналитические данные
-    // ВАЖНО: Если пользователь - проверяльщик, работающий в режиме сборки, 
-    // он также записывается как сборщик (collectorName и collectorId)
     await prisma.shipmentTask.update({
       where: { id },
       data: {
         status: 'pending_confirmation',
-        collectorName: user.name,
-        collectorId: user.id,
+        collectorName: collectorNameToSave,
+        collectorId: collectorIdToSave,
         completedAt: now,
         totalItems: totalItems,
         totalUnits: totalUnits,
