@@ -1,4 +1,6 @@
-import { prisma } from '@/lib/prisma';
+// ВАЖНО: используем относительный импорт, чтобы скрипт можно было запускать
+// на проде без tsconfig-paths и alias'а '@/...'.
+import { prisma } from '../src/lib/prisma';
 
 /**
  * Скрипт для восстановления информации о сборщике в заданиях,
@@ -13,7 +15,7 @@ import { prisma } from '@/lib/prisma';
  * - Обновляем ShipmentTask.collectorId / collectorName.
  *
  * Запуск (из корня проекта):
- *   npx ts-node -r tsconfig-paths/register scripts/fix-missing-collectors.ts
+ *   npx ts-node scripts/fix-missing-collectors.ts
  */
 
 async function main() {
