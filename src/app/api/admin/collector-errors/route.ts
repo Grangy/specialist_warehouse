@@ -96,7 +96,46 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ items });
+    // Статистика: общее кол-во ошибок и топ ошибающихся сборщиков
+    const statsCalls = await prisma.collectorCall.findMany({
+      where,
+      select: { collectorId: true, errorCount: true },
+    });
+    const totalErrors = statsCalls.reduce((s, c) => s + (c.errorCount ?? 0), 0);
+    const byCollector = new Map<string, { errorCount: number; callsCount: number }>();
+    for (const c of statsCalls) {
+      const ex = byCollector.get(c.collectorId);
+      if (ex) {
+        ex.errorCount += c.errorCount ?? 0;
+        ex.callsCount += 1;
+      } else {
+        byCollector.set(c.collectorId, { errorCount: c.errorCount ?? 0, callsCount: 1 });
+      }
+    }
+    const collectorIds = [...byCollector.keys()];
+    const users = collectorIds.length > 0
+      ? await prisma.user.findMany({ where: { id: { in: collectorIds } }, select: { id: true, name: true } })
+      : [];
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+
+    const topCollectors = [...byCollector.entries()]
+      .map(([id, v]) => ({
+        collectorId: id,
+        collectorName: nameById.get(id) ?? '—',
+        errorCount: v.errorCount,
+        callsCount: v.callsCount,
+      }))
+      .sort((a, b) => b.errorCount - a.errorCount)
+      .slice(0, 10);
+
+    return NextResponse.json({
+      items,
+      stats: {
+        totalErrors,
+        totalCalls: statsCalls.length,
+        topCollectors,
+      },
+    });
   } catch (error: unknown) {
     console.error('[API admin/collector-errors]', error);
     return NextResponse.json(

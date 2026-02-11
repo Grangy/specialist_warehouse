@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   AlertTriangle,
   Loader2,
@@ -8,6 +8,9 @@ import {
   User,
   Package,
   Filter,
+  Trash2,
+  Trophy,
+  BarChart3,
 } from 'lucide-react';
 
 interface CollectorErrorItem {
@@ -36,6 +39,13 @@ interface UserItem {
   role: string;
 }
 
+interface CollectorStats {
+  collectorId: string;
+  collectorName: string;
+  errorCount: number;
+  callsCount: number;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   new: 'Новый',
   accepted: 'Принят',
@@ -52,6 +62,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function CollectorErrorsTab() {
   const [items, setItems] = useState<CollectorErrorItem[]>([]);
+  const [stats, setStats] = useState<{ totalErrors: number; totalCalls: number; topCollectors: CollectorStats[] } | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -60,6 +71,7 @@ export default function CollectorErrorsTab() {
   const [collectorId, setCollectorId] = useState('');
   const [shipmentNumber, setShipmentNumber] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -75,6 +87,7 @@ export default function CollectorErrorsTab() {
       if (!res.ok) throw new Error('Ошибка загрузки');
       const data = await res.json();
       setItems(data.items ?? []);
+      setStats(data.stats ?? null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Ошибка загрузки');
       setItems([]);
@@ -104,6 +117,21 @@ export default function CollectorErrorsTab() {
   }, []);
 
   const collectors = users.filter((u) => u.role === 'collector');
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (!window.confirm('Удалить эту запись об ошибке?')) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/admin/collector-errors/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Ошибка удаления');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка удаления');
+    } finally {
+      setDeletingId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (isLoading && items.length === 0) {
     return (
@@ -136,6 +164,49 @@ export default function CollectorErrorsTab() {
         <div className="bg-amber-900/40 border-2 border-amber-500/60 text-amber-200 px-4 py-3 rounded-lg mb-4 flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 text-amber-400" />
           <span className="font-medium">{error}</span>
+        </div>
+      )}
+
+      {/* Статистика по ошибкам и топ ошибающихся сборщиков */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-slate-800/90 rounded-xl border border-slate-700/50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BarChart3 className="w-5 h-5 text-amber-400" />
+              <span className="font-semibold text-slate-200">Статистика по ошибкам</span>
+            </div>
+            <div className="flex flex-wrap gap-6">
+              <div>
+                <div className="text-2xl font-bold text-amber-400">{stats.totalErrors}</div>
+                <div className="text-xs text-slate-400">Всего ошибок</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-slate-300">{stats.totalCalls}</div>
+                <div className="text-xs text-slate-400">Вызовов</div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-slate-800/90 rounded-xl border border-slate-700/50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Trophy className="w-5 h-5 text-amber-400" />
+              <span className="font-semibold text-slate-200">Топ ошибающихся сборщиков</span>
+            </div>
+            {stats.topCollectors.length === 0 ? (
+              <p className="text-sm text-slate-500">Нет данных по фильтрам</p>
+            ) : (
+              <ol className="space-y-1 text-sm">
+                {stats.topCollectors.map((c, i) => (
+                  <li key={c.collectorId} className="flex justify-between items-center">
+                    <span className="text-slate-300">
+                      <span className="text-slate-500 mr-2">{i + 1}.</span>
+                      {c.collectorName || '—'}
+                    </span>
+                    <span className="text-amber-400 font-semibold">{c.errorCount} ош.</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         </div>
       )}
 
@@ -215,12 +286,13 @@ export default function CollectorErrorsTab() {
                 <th className="px-3 py-2 text-center text-xs font-semibold text-slate-300">Статус</th>
                 <th className="px-3 py-2 text-center text-xs font-semibold text-slate-300">Ошибок</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-slate-300">Комментарий</th>
+                <th className="px-3 py-2 text-center text-xs font-semibold text-slate-300 w-12">Действия</th>
               </tr>
             </thead>
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
                     Нет записей по заданным фильтрам
                   </td>
                 </tr>
@@ -250,6 +322,21 @@ export default function CollectorErrorsTab() {
                     </td>
                     <td className="px-3 py-2 text-slate-400 text-sm max-w-[150px] truncate" title={row.comment ?? ''}>
                       {row.comment ?? '—'}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(row.id)}
+                        disabled={deletingId === row.id}
+                        className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-900/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Удалить запись"
+                      >
+                        {deletingId === row.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </button>
                     </td>
                   </tr>
                 ))
