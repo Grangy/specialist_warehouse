@@ -6,8 +6,26 @@
 
 /* eslint-disable no-console */
 
+// Небольшой аудит поиска PrismaClient, чтобы при проблемах сразу видеть, откуда он берётся.
+const path = require('path');
+const fs = require('fs');
+
+const clientCandidates = [
+  '../src/generated/prisma',          // основной путь из prisma/schema.prisma (output)
+  '../node_modules/@prisma/client',   // на всякий случай, если конфиг изменят
+];
+
+console.log('[fix-missing-collectors.js] Поиск PrismaClient. __dirname =', __dirname);
+for (const rel of clientCandidates) {
+  const abs = path.resolve(__dirname, rel);
+  const exists = fs.existsSync(abs) || fs.existsSync(abs + '.js') || fs.existsSync(abs + '/index.js');
+  console.log(`  кандидат: ${rel} -> ${abs} | существует: ${exists}`);
+}
+
 // В проекте Prisma Client генерируется с output = "../src/generated/prisma"
-// (см. prisma/schema.prisma), поэтому подключаем его как модуль каталога.
+// (см. prisma/schema.prisma), поэтому основным путём остаётся этот модуль.
+// Если путь изменят, лог выше сразу покажет, какие кандидаты реально есть на диске.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { PrismaClient } = require('../src/generated/prisma');
 
 const prisma = new PrismaClient();
