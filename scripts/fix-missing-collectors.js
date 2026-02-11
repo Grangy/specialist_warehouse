@@ -22,11 +22,22 @@ for (const rel of clientCandidates) {
   console.log(`  кандидат: ${rel} -> ${abs} | существует: ${exists}`);
 }
 
-// В проекте Prisma Client генерируется с output = "../src/generated/prisma"
-// (см. prisma/schema.prisma), поэтому основным путём остаётся этот модуль.
-// Если путь изменят, лог выше сразу покажет, какие кандидаты реально есть на диске.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { PrismaClient } = require('../src/generated/prisma');
+// В проекте Prisma Client может быть как в src/generated/prisma (TS-клиент для Next),
+// так и в node_modules/@prisma/client. Пробуем сначала первый, потом fallback.
+let PrismaClient;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  PrismaClient = require('../src/generated/prisma').PrismaClient;
+  console.log('[fix-missing-collectors.js] Используем PrismaClient из src/generated/prisma');
+} catch (e) {
+  console.warn(
+    '[fix-missing-collectors.js] Не удалось подключить ../src/generated/prisma, fallback на @prisma/client:',
+    e && e.message ? e.message : e
+  );
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  PrismaClient = require('@prisma/client').PrismaClient;
+  console.log('[fix-missing-collectors.js] Используем PrismaClient из @prisma/client');
+}
 
 const prisma = new PrismaClient();
 
