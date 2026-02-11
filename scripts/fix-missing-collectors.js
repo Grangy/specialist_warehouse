@@ -6,9 +6,9 @@
 
 /* eslint-disable no-console */
 
-// В проекте Prisma Client генерируется не в @prisma/client, а в src/generated/prisma.
-// Поэтому подключаем его напрямую, минуя стандартный пакет.
-const { PrismaClient } = require('../src/generated/prisma/client');
+// В проекте Prisma Client генерируется с output = "../src/generated/prisma"
+// (см. prisma/schema.prisma), поэтому подключаем его как модуль каталога.
+const { PrismaClient } = require('../src/generated/prisma');
 
 const prisma = new PrismaClient();
 
