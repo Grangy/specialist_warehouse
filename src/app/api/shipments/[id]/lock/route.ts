@@ -196,12 +196,17 @@ export async function POST(
       },
     });
 
-    // Назначаем задание текущему пользователю; сбрасываем «кто бросил» — задание снова в работе
+    // Назначаем задание текущему пользователю; сбрасываем «кто бросил» — задание снова в работе.
+    // startedAt и updatedAt задаём явно: у ShipmentTask нет @updatedAt, без этого при выходе из попапа
+    // в GET берётся createdAt (давно) и задание сбрасывается «сразу». Таймаут 5/15 мин считается от updatedAt.
+    const now = new Date();
     await prisma.shipmentTask.update({
       where: { id },
       data: {
         collectorName: user.name,
         collectorId: user.id,
+        startedAt: now,
+        updatedAt: now,
         droppedByCollectorId: null,
         droppedByCollectorName: null,
         droppedAt: null,

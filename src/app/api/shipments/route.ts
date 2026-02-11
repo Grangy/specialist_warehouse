@@ -866,9 +866,9 @@ export async function GET(request: NextRequest) {
           }
         } else if (task.collectorId) {
           // Блокировки уже нет (пользователь вышел из попапа), но задание числится за сборщиком.
-          // В этом случае:
-          // - до старта сборки считаем от updatedAt (если ставили при назначении) или от createdAt;
-          // - после старта — от updatedAt/startedAt.
+          // Таймаут 5/15 мин считаем от последнего «прогресса» (lock или save-progress).
+          // В lock-роуте при взятии задания явно выставляются startedAt и updatedAt, иначе здесь
+          // брался бы createdAt и задание сбрасывалось бы сразу после выхода из попапа.
           if (noProgressYet) {
             const ts = (task.updatedAt ?? task.createdAt);
             baseTime = ts.getTime();
