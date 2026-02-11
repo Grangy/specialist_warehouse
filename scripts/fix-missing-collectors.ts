@@ -1,14 +1,14 @@
 /**
  * Фикс «кто собирал» для заданий в режиме проверки.
  *
- * Проблема: в ряде заданий (pending_confirmation / processed) потерялся collectorId/collectorName,
+ * Проблема: в ряде заданий (особенно в активных проверках pending_confirmation) потерялся collectorId/collectorName,
  * и проверяльщик не видит, кто реально собирал.
  *
- * Решение:
- * - ищем все shipmentTask со статусами 'pending_confirmation' и 'processed',
- *   у которых collectorId = null;
- * - для каждого такого задания берём последнюю статистику TaskStatistics с roleType='collector';
- * - восстанавливаем ShipmentTask.collectorId / collectorName из пользователя этой статистики.
+ * Решение (только для АКТИВНЫХ проверок):
+ * - ищем все shipmentTask со статусом 'pending_confirmation';
+ * - для каждого задания берём последнюю статистику TaskStatistics с roleType='collector';
+ * - проставляем ShipmentTask.collectorId / collectorName из пользователя этой статистики
+ *   (даже если там уже что‑то есть — правим на «как в статистике»).
  *
  * Запуск локально/на сервере (из корня проекта):
  *   npx tsx scripts/fix-missing-collectors.ts
@@ -45,10 +45,7 @@ async function main() {
 
   const tasks = await prisma.shipmentTask.findMany({
     where: {
-      status: { in: ['pending_confirmation', 'processed'] },
-      // Восстанавливаем только там, где сборщик не указан.
-      // Если нужно перезаписать «неправильных» сборщиков, уберите эту строку.
-      collectorId: null,
+      status: 'pending_confirmation',
     },
     select: {
       id: true,
@@ -83,17 +80,28 @@ async function main() {
       continue;
     }
 
+    const prevId = task.collectorId;
+    const prevName = task.collectorName;
+    const nextId = stat.user.id;
+    const nextName = stat.user.name;
+
+    // Если уже совпадает с последней статистикой — можно не трогать
+    if (prevId === nextId && prevName === nextName) {
+      continue;
+    }
+
     await prisma.shipmentTask.update({
       where: { id: task.id },
       data: {
-        collectorId: stat.user.id,
-        collectorName: stat.user.name,
+        collectorId: nextId,
+        collectorName: nextName,
       },
     });
 
     fixed += 1;
     console.log(
-      `[fix-missing-collectors] Обновлён collector для task=${task.id} -> ${stat.user.name} (${stat.user.id})`
+      `[fix-missing-collectors] Обновлён collector для task=${task.id} (${task.shipmentId}) ` +
+        `c ${prevName || 'NULL'} (${prevId || 'NULL'}) -> ${nextName} (${nextId})`
     );
   }
 

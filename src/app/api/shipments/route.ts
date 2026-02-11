@@ -839,10 +839,18 @@ export async function GET(request: NextRequest) {
     // Авто-снятие просроченных «на руках»:
     // - 5 мин без старта сборки (startedAt = null) — задание возвращается в «Новое»
     // - 15 мин без ПРОГРЕССА (updatedAt/startedAt) — задание тоже возвращается в «Новое»
-    // Работает и для заданий с активной блокировкой, и для заданий без блокировки, но с collectorId.
+    //
+    // ВАЖНО: это относится только к заданиям в статусе new (режим «Новые» / «На руках»).
+    // Для заданий в статусе pending_confirmation (вкладка «Подтверждения») мы НЕ должны
+    // сбрасывать collectorId/collectorName по таймауту, чтобы проверяльщик всегда видел
+    // «кто собирал» во время подтверждения.
     for (const shipment of shipments) {
       if (!shipment.tasks) continue;
       for (const task of shipment.tasks) {
+        // Авто-сброс применяем только к заданиям в статусе new.
+        if (task.status !== 'new') {
+          continue;
+        }
         const taskLocks = locksMap.get(task.id) || [];
         const lock = taskLocks[0] || null;
 
