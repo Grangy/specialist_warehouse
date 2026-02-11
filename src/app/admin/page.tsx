@@ -13,7 +13,8 @@ import StatisticsTab from '@/components/admin/StatisticsTab';
 import MinusTab from '@/components/admin/MinusTab';
 import WarningsTab from '@/components/admin/WarningsTab';
 import PositionsTab from '@/components/admin/PositionsTab';
-type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus' | 'positions';
+import CollectorErrorsTab from '@/components/admin/CollectorErrorsTab';
+type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'errors' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus' | 'positions';
 
 type AdminUserRole = 'admin' | 'checker' | 'warehouse_3';
 
@@ -220,6 +221,19 @@ export default function AdminPage() {
             )}
           </button>
           )}
+          {!isCheckerOnly && !isWarehouse3 && (
+          <button
+            onClick={() => selectTab('errors')}
+            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+              activeTab === 'errors'
+                ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white shadow-lg shadow-orange-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
+            <span className="font-medium text-sm md:text-base whitespace-nowrap">Ошибки сборщиков</span>
+          </button>
+          )}
           {(!isCheckerOnly || isWarehouse3) && (
           <>
           <button
@@ -304,6 +318,7 @@ export default function AdminPage() {
           {activeTab === 'active' && <ActiveShipmentsTab />}
           {activeTab === 'shipments' && <CompletedShipmentsTab canDelete={userRole === 'admin'} canReassign={userRole === 'admin'} warehouseScope={isWarehouse3 ? 'Склад 3' : undefined} />}
           {activeTab === 'warnings' && <WarningsTab onWarningsChange={setWarningsCount} />}
+          {activeTab === 'errors' && <CollectorErrorsTab />}
           {activeTab === 'analytics' && <AnalyticsTab />}
           {activeTab === 'statistics' && <StatisticsTab warehouseScope={isWarehouse3 ? 'Склад 3' : undefined} />}
           {activeTab === 'regions' && <RegionPrioritiesTab />}

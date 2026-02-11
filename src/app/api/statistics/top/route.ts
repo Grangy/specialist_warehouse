@@ -20,6 +20,7 @@ interface RankingEntry {
   orders: number;
   points: number;
   dictatorPoints: number;
+  errors: number;
   rank: number | null;
   level: {
     name: string;
@@ -37,6 +38,21 @@ export async function GET(request: NextRequest) {
     const periodParam = searchParams.get('period') || 'today';
     const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
     const { startDate, endDate } = getStatisticsDateRange(period);
+
+    // Ошибки сборщиков за период (CollectorCall status=done, confirmedAt в диапазоне)
+    const collectorErrorsRaw = await prisma.collectorCall.findMany({
+      where: {
+        status: 'done',
+        confirmedAt: { gte: startDate, lte: endDate },
+        errorCount: { gt: 0 },
+      },
+      select: { collectorId: true, errorCount: true },
+    });
+    const errorsByCollector = new Map<string, number>();
+    for (const c of collectorErrorsRaw) {
+      const sum = (errorsByCollector.get(c.collectorId) ?? 0) + (c.errorCount ?? 0);
+      errorsByCollector.set(c.collectorId, sum);
+    }
 
     const collectorByCompleted = await prisma.taskStatistics.findMany({
       where: {
@@ -237,6 +253,7 @@ export async function GET(request: NextRequest) {
         agg.efficiencies.length > 0
           ? agg.efficiencies.reduce((a, b) => a + b, 0) / agg.efficiencies.length
           : null;
+      const errors = errorsByCollector.get(agg.userId) ?? 0;
 
       allRankings.push({
         userId: agg.userId,
@@ -247,6 +264,7 @@ export async function GET(request: NextRequest) {
         orders: agg.orders.size,
         points: agg.points,
         dictatorPoints: agg.dictatorPoints,
+        errors: agg.role === 'collector' ? errors : 0,
         rank: null,
         level: null,
         pph,

@@ -141,13 +141,19 @@ model ShipmentTask {
 }
 
 // Подзыв кладовщика проверяльщиком: в какой позиции/заказе какой сборщик был вызван (для анализа)
+// Статусы: new — новый, accepted — принят кладовщиком, done — выполнен (ошибки подтверждены), canceled — отменён
 model CollectorCall {
-  id          String       @id @default(cuid())
-  taskId      String       @map("task_id")
-  lineIndex   Int          @map("line_index") // индекс позиции в заказе
-  collectorId String       @map("collector_id")
-  checkerId   String       @map("checker_id")
-  calledAt    DateTime     @default(now()) @map("called_at")
+  id             String    @id @default(cuid())
+  taskId         String    @map("task_id")
+  lineIndex      Int       @map("line_index") // индекс позиции в заказе
+  shipmentLineId String?   @map("shipment_line_id") // опционально, для связи с позицией
+  collectorId    String    @map("collector_id")
+  checkerId      String    @map("checker_id")
+  calledAt       DateTime  @default(now()) @map("called_at")
+  status         String    @default("new") // new | accepted | done | canceled
+  errorCount     Int?      @map("error_count") // зафиксировано при подтверждении ошибок
+  comment        String?   // комментарий при подтверждении
+  confirmedAt   DateTime? @map("confirmed_at") // когда проверяльщик подтвердил ошибки
 
   task      ShipmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
   collector User         @relation("CollectorCallsAsCollector", fields: [collectorId], references: [id], onDelete: Cascade)

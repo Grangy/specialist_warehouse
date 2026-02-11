@@ -4,6 +4,7 @@ import { useState, Fragment, useMemo, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
 import { NameModal } from '@/components/modals/NameModal';
+import { useToast } from '@/hooks/useToast';
 import { truncateArt } from '@/lib/utils/helpers';
 import type { Shipment, ConfirmChecklistState } from '@/types';
 
@@ -49,6 +50,8 @@ export function ConfirmModal({
   isReady,
   getWarnings,
 }: ConfirmModalProps) {
+  const { showSuccess, showError } = useToast();
+  const [sosCalledForLine, setSosCalledForLine] = useState<Set<number>>(new Set());
   const [selectedLine, setSelectedLine] = useState<{
     index: number;
     name: string;
@@ -78,6 +81,7 @@ export function ConfirmModal({
   const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showComment, setShowComment] = useState(false);
   const commentTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
 
   // Сохраняем выбор вида отображения в localStorage
   useEffect(() => {
@@ -203,6 +207,12 @@ export function ConfirmModal({
       clearTimeout(timer);
     };
   }, [isOpen, currentShipment]);
+
+  useEffect(() => {
+    if (!isOpen || !currentShipment?.id) {
+      setSosCalledForLine(new Set());
+    }
+  }, [isOpen, currentShipment?.id]);
 
   // Очистка таймера подтверждения при размонтировании
   useEffect(() => {
@@ -1059,8 +1069,9 @@ export function ConfirmModal({
         currentItemNumber={currentShipment.lines.findIndex((_, idx) => idx === selectedLine.index) + 1}
         totalItems={currentShipment.lines.length}
         buttonLabel="Подтв."
-        showSosButton={Boolean(currentShipment.collector_id)}
+        showSosButton={Boolean(currentShipment.collector_id ?? currentShipment.collector_name)}
         collectorName={currentShipment.collector_name}
+        sosCalled={sosCalledForLine.has(selectedLine.index)}
         onSosClick={async () => {
           try {
             const res = await fetch('/api/checker/call-collector', {
@@ -1072,11 +1083,15 @@ export function ConfirmModal({
                 lineIndex: selectedLine.index,
               }),
             });
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-              const data = await res.json();
               throw new Error(data.error || 'Ошибка вызова');
             }
+            setSosCalledForLine((prev) => new Set(prev).add(selectedLine.index));
+            showSuccess(data.message || 'Сборщик получит уведомление');
           } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Ошибка вызова';
+            showError(msg);
             console.error('[ConfirmModal] SOS call:', err);
           }
         }}

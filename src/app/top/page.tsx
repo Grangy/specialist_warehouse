@@ -17,6 +17,7 @@ interface RankingEntry {
   orders: number;
   points: number;
   dictatorPoints?: number;
+  errors?: number;
   rank: number | null;
   level: {
     name: string;
@@ -265,6 +266,9 @@ export default function TopPage() {
                           <span>📦 {user.positions} поз.</span>
                           <span>📊 {user.units} ед.</span>
                           <span>📋 {user.orders} зак.</span>
+                          {user.role === 'collector' && (user.errors ?? 0) > 0 && (
+                            <span className="text-amber-400/90">⚠ {user.errors} ош.</span>
+                          )}
                         </div>
                       </div>
                     </div>

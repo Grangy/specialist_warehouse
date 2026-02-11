@@ -28,6 +28,7 @@ interface RankingEntry {
   orders: number;
   points: number;
   dictatorPoints?: number;
+  errors?: number;
   rank: number | null;
   level: {
     name: string;
@@ -47,6 +48,7 @@ interface OverviewData {
     orders: number;
     points: number;
     activeUsers: number;
+    errors?: number;
   };
   week: {
     positions: number;
@@ -54,6 +56,7 @@ interface OverviewData {
     orders: number;
     points: number;
     activeUsers: number;
+    errors?: number;
   };
   month: {
     positions: number;
@@ -61,6 +64,7 @@ interface OverviewData {
     orders: number;
     points: number;
     activeUsers: number;
+    errors?: number;
   };
   total: {
     tasks: number;
@@ -223,6 +227,9 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
             <div className="text-sm text-slate-400">Заданий выполнено</div>
             <div className="mt-3 pt-3 border-t border-slate-700/50 text-xs text-slate-400">
               Позиций: {formatNumber(overview.today.positions)} | Единиц: {formatNumber(overview.today.units)}
+              {(overview.today.errors ?? 0) > 0 && (
+                <span className="ml-1 text-amber-400/90">| Ошибок: {formatNumber(overview.today.errors ?? 0)}</span>
+              )}
             </div>
           </div>
 
@@ -235,6 +242,9 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
             <div className="text-sm text-slate-400">Позиций собрано</div>
             <div className="mt-3 pt-3 border-t border-slate-700/50 text-xs text-slate-400">
               Заказов: {formatNumber(overview.week.orders)} | Баллов: {formatPoints(overview.week.points)}
+              {(overview.week.errors ?? 0) > 0 && (
+                <span className="ml-1 text-amber-400/90">| Ошибок: {formatNumber(overview.week.errors ?? 0)}</span>
+              )}
             </div>
           </div>
 
@@ -247,6 +257,9 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
             <div className="text-sm text-slate-400">Позиций собрано</div>
             <div className="mt-3 pt-3 border-t border-slate-700/50 text-xs text-slate-400">
               Заказов: {formatNumber(overview.month.orders)} | Баллов: {formatPoints(overview.month.points)}
+              {(overview.month.errors ?? 0) > 0 && (
+                <span className="ml-1 text-amber-400/90">| Ошибок: {formatNumber(overview.month.errors ?? 0)}</span>
+              )}
             </div>
           </div>
 
@@ -364,6 +377,9 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                         <span>📦 {user.positions} поз.</span>
                         <span>📊 {user.units} ед.</span>
                         <span>📋 {user.orders} зак.</span>
+                        {user.role === 'collector' && (user.errors ?? 0) > 0 && (
+                          <span className="text-amber-400/90">⚠ {user.errors} ош.</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -451,6 +467,9 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                           <span>📦 {user.positions} поз.</span>
                           <span>📊 {user.units} ед.</span>
                           <span>📋 {user.orders} зак.</span>
+                          {(user.errors ?? 0) > 0 && (
+                            <span className="text-amber-400/90">⚠ {user.errors} ош.</span>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -32,6 +32,7 @@ interface NameModalProps {
   buttonLabel?: string;
   // СОС: позвать кладовщика (режим проверки)
   showSosButton?: boolean;
+  sosCalled?: boolean;
   collectorName?: string;
   onSosClick?: () => void | Promise<void>;
 }
@@ -59,6 +60,7 @@ export function NameModal({
   totalItems,
   buttonLabel = 'Сборка',
   showSosButton = false,
+  sosCalled = false,
   collectorName,
   onSosClick,
 }: NameModalProps) {
@@ -239,6 +241,35 @@ export function NameModal({
           </div>
         </div>
 
+        {/* СОС — позвать кладовщика (видна отдельно, не только при hasCollectionFeatures) */}
+        {showSosButton && (
+          <div className="border-t border-slate-700 pt-6">
+            {sosCalled ? (
+              <div className="w-full px-4 py-3 rounded-xl bg-green-900/50 border-2 border-green-500/50 text-green-400 font-semibold flex items-center justify-center gap-2">
+                <span className="text-lg">✓</span>
+                Вызвано — сборщик получит уведомление
+              </div>
+            ) : onSosClick ? (
+              <button
+                type="button"
+                className="w-full px-4 py-3 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-semibold flex items-center justify-center gap-2 shadow-lg hover:shadow-amber-500/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] border-2 border-amber-500/50 cursor-pointer select-none touch-manipulation"
+                title={collectorName ? `Позвать сборщика: ${collectorName}` : 'Позвать сборщика'}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSosClick();
+                }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                <span className="text-lg pointer-events-none" aria-hidden>🆘</span>
+                <span className="pointer-events-none">СОС — позвать кладовщика{collectorName ? ` (${collectorName})` : ''}</span>
+              </button>
+            ) : null}
+          </div>
+        )}
+
         {/* Функционал сбора и редактирования */}
         {hasCollectionFeatures && (
           <div className="border-t border-slate-700 pt-6 space-y-4">
@@ -298,17 +329,6 @@ export function NameModal({
             ) : (
               // Обычный режим - кнопки в одну строку, всегда видимы
               <div className="space-y-4">
-                {showSosButton && onSosClick && (
-                  <button
-                    type="button"
-                    onClick={() => void onSosClick()}
-                    className="w-full px-4 py-3 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-semibold flex items-center justify-center gap-2 shadow-lg hover:shadow-amber-500/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] border-2 border-amber-500/50"
-                    title={collectorName ? `Позвать сборщика: ${collectorName}` : 'Позвать сборщика'}
-                  >
-                    <span className="text-lg" aria-hidden>🆘</span>
-                    СОС — позвать кладовщика{collectorName ? ` (${collectorName})` : ''}
-                  </button>
-                )}
                 <div className="flex flex-col sm:flex-row gap-3 items-stretch">
                   {/* Кнопка Редактировать - всегда видима */}
                   <button

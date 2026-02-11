@@ -17,6 +17,7 @@ type PeriodAgg = {
   points: number;
   activeUsers: number;
   tasks: number;
+  errors: number;
 };
 
 async function aggregatePeriod(
@@ -116,7 +117,18 @@ async function aggregatePeriod(
     },
   });
 
-  return { positions, units, orders, points, activeUsers, tasks };
+  const errorsResult = await prisma.collectorCall.aggregate({
+    where: {
+      status: 'done',
+      confirmedAt: { gte: startDate, lte: endDate },
+      errorCount: { gt: 0 },
+      ...(warehouseFilter && { task: { warehouse: warehouseFilter } }),
+    },
+    _sum: { errorCount: true },
+  });
+  const errors = errorsResult._sum.errorCount ?? 0;
+
+  return { positions, units, orders, points, activeUsers, tasks, errors };
 }
 
 /**
@@ -163,6 +175,7 @@ export async function GET(request: NextRequest) {
         orders: today.orders,
         points: today.points,
         activeUsers: today.activeUsers,
+        errors: today.errors,
       },
       week: {
         positions: week.positions,
@@ -170,6 +183,7 @@ export async function GET(request: NextRequest) {
         orders: week.orders,
         points: week.points,
         activeUsers: week.activeUsers,
+        errors: week.errors,
       },
       month: {
         positions: month.positions,
@@ -177,6 +191,7 @@ export async function GET(request: NextRequest) {
         orders: month.orders,
         points: month.points,
         activeUsers: month.activeUsers,
+        errors: month.errors,
       },
       total: {
         tasks: totalTasks,

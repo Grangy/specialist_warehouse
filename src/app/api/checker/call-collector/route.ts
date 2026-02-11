@@ -5,17 +5,16 @@ import { setPendingMessage } from '@/lib/adminMessages';
 
 export const dynamic = 'force-dynamic';
 
-const SOS_MESSAGE_TEXT = 'Подойдите к сборочному столу';
 const SOS_SOUND_URL = '/music/wc3.mp3';
 
 /**
  * POST /api/checker/call-collector
  * Проверяльщик вызывает сборщика к столу по позиции заказа.
- * Сообщение со звуком wc3.mp3 приходит сборщику; вызов пишется в БД для анализа.
+ * Сообщение: заказ, клиент, товар с ошибкой — сборщик сразу видит, что не так.
  */
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['checker', 'warehouse_3']);
+    const authResult = await requireAuth(request, ['admin', 'checker', 'warehouse_3']);
     if (authResult instanceof NextResponse) {
       return authResult;
     }
@@ -34,7 +33,16 @@ export async function POST(request: NextRequest) {
 
     const task = await prisma.shipmentTask.findUnique({
       where: { id: taskId },
-      select: { id: true, collectorId: true, collectorName: true },
+      include: {
+        lines: {
+          orderBy: { id: 'asc' },
+          select: {
+            shipmentLineId: true,
+            shipmentLine: { select: { name: true } },
+          },
+        },
+        shipment: { select: { number: true, customerName: true } },
+      },
     });
 
     if (!task) {
@@ -51,17 +59,54 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Проверяем, есть ли уже открытый вызов по этой позиции
+    const existingOpen = await prisma.collectorCall.findFirst({
+      where: {
+        taskId,
+        lineIndex,
+        status: { in: ['new', 'accepted'] },
+      },
+    });
+
+    if (existingOpen) {
+      // Повторное нажатие — напоминание с данными по заказу и товару
+      const line = task.lines[lineIndex];
+      const productName = line?.shipmentLine?.name ?? `Позиция ${lineIndex + 1}`;
+      const shipmentNumber = task.shipment?.number ?? 'N/A';
+      const customerName = task.shipment?.customerName ?? 'Не указан';
+      const messageText = `🐵 Ошибка. Заказ ${shipmentNumber}, клиент: ${customerName}. Неверно: ${productName}. Подойдите к столу.`;
+      setPendingMessage(task.collectorId, {
+        text: messageText,
+        fromName: checker.name,
+        soundUrl: SOS_SOUND_URL,
+      });
+      return NextResponse.json({
+        success: true,
+        message: `Напоминание отправлено сборщику ${task.collectorName || ''}.`,
+      });
+    }
+
+    const shipmentLineId =
+      task.lines[lineIndex]?.shipmentLineId ?? null;
+
+    const line = task.lines[lineIndex];
+    const productName = line?.shipmentLine?.name ?? `Позиция ${lineIndex + 1}`;
+    const shipmentNumber = task.shipment?.number ?? 'N/A';
+    const customerName = task.shipment?.customerName ?? 'Не указан';
+    const messageText = `🐵 Ошибка. Заказ ${shipmentNumber}, клиент: ${customerName}. Неверно: ${productName}. Подойдите к столу.`;
+
     await prisma.collectorCall.create({
       data: {
         taskId: task.id,
         lineIndex,
+        shipmentLineId,
         collectorId: task.collectorId,
         checkerId: checker.id,
       },
     });
 
     setPendingMessage(task.collectorId, {
-      text: SOS_MESSAGE_TEXT,
+      text: messageText,
       fromName: checker.name,
       soundUrl: SOS_SOUND_URL,
     });

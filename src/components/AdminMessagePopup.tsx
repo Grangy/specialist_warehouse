@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { X, MessageCircle, Check } from 'lucide-react';
+import { useEffect, useRef, useCallback } from 'react';
+import { MessageCircle, Check } from 'lucide-react';
 import type { PendingMessagePayload } from '@/contexts/ShipmentsPollingContext';
 
 const DEFAULT_ALERT_SOUND_URL = '/music/20031.mp3';
@@ -14,7 +14,6 @@ interface AdminMessagePopupProps {
 
 export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [hiddenWithoutAccept, setHiddenWithoutAccept] = useState(false);
 
   const stopSound = useCallback(() => {
     if (audioRef.current) {
@@ -29,36 +28,6 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
     stopSound();
     await Promise.resolve(onAccept());
   }, [onAccept, stopSound]);
-
-  /** Закрыть без принятия: только скрыть попап и остановить звук. При возврате во вкладку покажем снова. */
-  const handleCloseWithoutAccept = useCallback(() => {
-    stopSound();
-    setHiddenWithoutAccept(true);
-  }, [stopSound]);
-
-  // При смене сообщения сбрасываем «скрыто без принятия» (отложенно, чтобы не вызывать setState синхронно в эффекте)
-  useEffect(() => {
-    queueMicrotask(() => setHiddenWithoutAccept(false));
-  }, [message.id]);
-
-  // При возврате во вкладку снова показываем попап, пока сообщение не принято
-  useEffect(() => {
-    const onVisibility = () => {
-      if (!document.hidden) {
-        setHiddenWithoutAccept(false);
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleCloseWithoutAccept();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleCloseWithoutAccept]);
 
   const soundUrl = message.soundUrl || DEFAULT_ALERT_SOUND_URL;
   useEffect(() => {
@@ -79,28 +48,21 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
     };
   }, [soundUrl]);
 
-  if (hiddenWithoutAccept) {
-    return null;
-  }
-
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-[fadeIn_0.25s_ease-out]"
+      className="fixed inset-0 z-[100000] flex items-center justify-center p-4 animate-[fadeIn_0.25s_ease-out]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="admin-message-title"
     >
-      {/* Backdrop: закрытие без принятия — попап снова покажется при возврате во вкладку */}
+      {/* Backdrop: клик не закрывает — закрыть можно только через «Принял» */}
       <div
         className="absolute inset-0 bg-slate-950/90 backdrop-blur-md animate-[fadeIn_0.3s_ease-out]"
-        onClick={handleCloseWithoutAccept}
+        onClick={(e) => e.stopPropagation()}
         aria-hidden="true"
       />
       {/* Card */}
-      <div
-        className="relative w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-messagePop"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="relative w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-messagePop">
         <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-amber-500/40 via-orange-500/30 to-rose-500/40 blur-sm scale-105 opacity-80" />
         <div className="relative bg-slate-900/95 backdrop-blur-xl border-2 border-amber-500/50 rounded-2xl p-6 md:p-8">
           <div className="flex items-start justify-between gap-2">
@@ -120,15 +82,6 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
                 От: <span className="font-semibold text-slate-100">{message.fromName}</span>
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleCloseWithoutAccept}
-              className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 transition-colors"
-              title="Свернуть (сообщение покажется снова при возврате)"
-              aria-label="Свернуть"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
           <div className="mt-4 p-4 rounded-xl bg-slate-800/80 border border-slate-700/50 min-h-[100px]">
             <p className="text-slate-100 text-base md:text-lg leading-relaxed whitespace-pre-wrap">
@@ -136,7 +89,7 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
             </p>
           </div>
           <p className="mt-3 text-center text-xs text-slate-500">
-            Нажмите «Принял», чтобы подтвердить прочтение. До этого сообщение будет показываться при каждом входе.
+            Закрыть можно только нажав «Принял». Сообщение будет показываться при каждом входе в приложение до подтверждения.
           </p>
           <button
             type="button"

@@ -19,6 +19,7 @@ interface RankingEntry {
   orders: number;
   points: number;
   dictatorPoints?: number;
+  errors?: number;
   rank: number | null;
   level: {
     name: string;
@@ -48,6 +49,22 @@ export async function GET(request: NextRequest) {
     const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
 
     const { startDate, endDate } = getStatisticsDateRange(period);
+
+    // Ошибки сборщиков за период (CollectorCall status=done)
+    const collectorErrorsRaw = await prisma.collectorCall.findMany({
+      where: {
+        status: 'done',
+        confirmedAt: { gte: startDate, lte: endDate },
+        errorCount: { gt: 0 },
+        ...(warehouseFilter && { task: { warehouse: warehouseFilter } }),
+      },
+      select: { collectorId: true, errorCount: true },
+    });
+    const errorsByCollector = new Map<string, number>();
+    for (const c of collectorErrorsRaw) {
+      const sum = (errorsByCollector.get(c.collectorId) ?? 0) + (c.errorCount ?? 0);
+      errorsByCollector.set(c.collectorId, sum);
+    }
 
     // Получаем статистику для сборщиков
     const collectorRankings: RankingEntry[] = [];
@@ -168,6 +185,7 @@ export async function GET(request: NextRequest) {
           units: userStat.units,
           orders: userStat.orders.size,
           points: userStat.points,
+          errors: errorsByCollector.get(userStat.userId) ?? 0,
           rank: null, // Ранг будет рассчитан ниже
           level: null,
           pph,
@@ -638,6 +656,7 @@ export async function GET(request: NextRequest) {
           units: userStat.units,
           orders: userStat.orders.size,
           points: userStat.points,
+          errors: errorsByCollector.get(userStat.userId) ?? 0,
           rank: null,
           level: null,
           pph,
@@ -1100,6 +1119,7 @@ export async function GET(request: NextRequest) {
           units: userStat.units,
           orders: userStat.orders.size,
           points: userStat.points,
+          errors: errorsByCollector.get(userStat.userId) ?? 0,
           rank: null,
           level: null,
           pph,
