@@ -1,22 +1,44 @@
-// ВАЖНО: используем относительный импорт с явным .ts, чтобы ts-node/ESM
-// на проде корректно находил модуль без алиаса '@/...'.
-import { prisma } from '../src/lib/prisma.ts';
-
 /**
- * Скрипт для восстановления информации о сборщике в заданиях,
- * где collectorId/collectorName потерялись или были перезаписаны.
+ * Фикс «кто собирал» для заданий в режиме проверки.
  *
- * Логика:
- * - Берём задания со статусами 'pending_confirmation' и 'processed',
- *   у которых collectorId отсутствует ИЛИ, по вашему желанию, всегда
- *   переписываем collectorId из статистики.
- * - Для каждого такого задания ищем статистику TaskStatistics с
- *   roleType = 'collector' и берём пользователя с максимальным createdAt.
- * - Обновляем ShipmentTask.collectorId / collectorName.
+ * Проблема: в ряде заданий (pending_confirmation / processed) потерялся collectorId/collectorName,
+ * и проверяльщик не видит, кто реально собирал.
  *
- * Запуск (из корня проекта):
+ * Решение:
+ * - ищем все shipmentTask со статусами 'pending_confirmation' и 'processed',
+ *   у которых collectorId = null;
+ * - для каждого такого задания берём последнюю статистику TaskStatistics с roleType='collector';
+ * - восстанавливаем ShipmentTask.collectorId / collectorName из пользователя этой статистики.
+ *
+ * Запуск локально/на сервере (из корня проекта):
+ *   npx tsx scripts/fix-missing-collectors.ts
+ *   # или, если tsx нет:
  *   npx ts-node scripts/fix-missing-collectors.ts
  */
+
+import { PrismaClient } from '../src/generated/prisma/client';
+import path from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const databaseUrl = process.env.DATABASE_URL;
+let finalDatabaseUrl = databaseUrl;
+
+// Как и в других аудит-скриптах: правим относительный путь для SQLite.
+if (databaseUrl?.startsWith('file:./')) {
+  const dbPath = databaseUrl.replace('file:', '');
+  const absolutePath = path.join(process.cwd(), dbPath);
+  finalDatabaseUrl = `file:${absolutePath}`;
+}
+
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: finalDatabaseUrl || databaseUrl,
+    },
+  },
+});
 
 async function main() {
   console.log('[fix-missing-collectors] Старт');
