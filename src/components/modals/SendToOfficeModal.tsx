@@ -80,7 +80,7 @@ export function SendToOfficeModal({
           });
           
           setInitialPlacesFromTasks(totalPlacesFromTasks);
-          setPlaces(totalPlacesFromTasks > 0 ? totalPlacesFromTasks : 0);
+          setPlaces(0); // Всегда 0 — пользователь должен указать места вручную
           setErrors({});
         } catch (error) {
           console.error('[SendToOfficeModal] Ошибка загрузки данных о заказе:', error);
@@ -92,7 +92,7 @@ export function SendToOfficeModal({
             }, 0);
           }
           setInitialPlacesFromTasks(totalPlacesFromTasks);
-          setPlaces(totalPlacesFromTasks > 0 ? totalPlacesFromTasks : 0);
+          setPlaces(0);
         } finally {
           setIsLoadingPlaces(false);
         }
