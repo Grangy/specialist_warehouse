@@ -31,6 +31,7 @@ export function SendToOfficeModal({
   const [errors, setErrors] = useState<{ places?: string }>({});
   const [initialPlacesFromTasks, setInitialPlacesFromTasks] = useState<number>(0);
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
+  const [customerNameFromDetails, setCustomerNameFromDetails] = useState<string | null>(null);
 
   // Вызовы кладовщика (ошибки сборщиков) — общее кол-во, одна форма
   const [collectorCalls, setCollectorCalls] = useState<CollectorCall[]>([]);
@@ -52,6 +53,9 @@ export function SendToOfficeModal({
             throw new Error('Ошибка загрузки данных о заказе');
           }
           const details = await response.json();
+          if (details.customerName) {
+            setCustomerNameFromDetails(details.customerName);
+          }
           
           // Вычисляем сумму мест из всех заданий
           let totalPlacesFromTasks = 0;
@@ -132,7 +136,8 @@ export function SendToOfficeModal({
   useEffect(() => {
     if (isOpen && shipment) {
       setCollectorCalls([]);
-      setTotalCollectorErrors(0); // сброс до загрузки, fetchCollectorCalls выставит макс
+      setTotalCollectorErrors(0);
+      setCustomerNameFromDetails(null);
       fetchCollectorCalls();
     }
   }, [isOpen, shipment, fetchCollectorCalls]);
@@ -192,7 +197,10 @@ export function SendToOfficeModal({
   if (!isOpen || !shipment) return null;
 
   const shipmentNumber = shipment.number || shipment.shipment_number || 'N/A';
-  const customerName = shipment.customer_name || 'Не указан';
+  const customerName = shipment.customer_name
+    || (shipment as { customerName?: string }).customerName
+    || customerNameFromDetails
+    || 'Не указан';
   const businessRegion = shipment.business_region || 'Не указан';
   const comment = shipment.comment || 'Нет комментария';
 

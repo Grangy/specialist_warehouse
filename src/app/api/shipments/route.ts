@@ -978,8 +978,12 @@ export async function GET(request: NextRequest) {
             continue;
           }
         }
-        // Роль warehouse_3: только задания Склад 3
-        if (user.role === 'warehouse_3' && task.warehouse !== 'Склад 3') {
+        // Роль warehouse_3: только задания Склад 3 (кроме режима Ожидание — показываем по всем складам)
+        if (
+          user.role === 'warehouse_3' &&
+          task.warehouse !== 'Склад 3' &&
+          !isWaitingMode
+        ) {
           continue;
         }
         // Для режима ожидания показываем все задания (включая processed)

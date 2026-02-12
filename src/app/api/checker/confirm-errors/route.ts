@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
-import { setPendingMessage } from '@/lib/adminMessages';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/checker/confirm-errors
- * Фиксация ошибок сборщиков: проверяльщик подтверждает вызовы с количеством ошибок.
- * Отправляет сборщику сообщение: "Ошибка. Товары: … Клиент: … Номер сборки: …"
+ * Фиксация ошибок сборщиков при отправке в офис. Уведомление сборщику не отправляется —
+ * оно приходит только при нажатии СОС во время проверки (call-collector).
  * Body: { calls: Array<{ callId: string; errorCount?: number; comment?: string; status: 'done' | 'canceled' }> }
  */
 export async function POST(request: NextRequest) {
@@ -30,7 +29,6 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date();
-    const collectorsToNotify = new Map<string, { productNames: string[]; customerName: string; shipmentNumber: string }>();
 
     for (const item of calls) {
       const callId = typeof item.callId === 'string' ? item.callId.trim() : '';
@@ -47,20 +45,18 @@ export async function POST(request: NextRequest) {
           checkerId: true,
           status: true,
           lineIndex: true,
-          task: {
-            select: {
-              lines: {
-                orderBy: { id: 'asc' },
-                select: {
-                  qty: true,
-                  collectedQty: true,
-                  confirmedQty: true,
-                  shipmentLine: { select: { name: true } },
-                },
+        task: {
+          select: {
+            lines: {
+              orderBy: { id: 'asc' },
+              select: {
+                qty: true,
+                collectedQty: true,
+                confirmedQty: true,
               },
-              shipment: { select: { customerName: true, number: true } },
             },
           },
+        },
         },
       });
 
@@ -97,37 +93,6 @@ export async function POST(request: NextRequest) {
           comment,
           confirmedAt: now,
         },
-      });
-
-      // Собираем данные для уведомления сборщику (только при errorCount > 0)
-      if (status === 'done' && errorCount !== null && errorCount > 0 && call.collectorId && call.task?.shipment) {
-        const line = call.task.lines[call.lineIndex];
-        const productName = line?.shipmentLine?.name ?? `Позиция ${call.lineIndex + 1}`;
-        const customerName = call.task.shipment.customerName ?? 'Не указан';
-        const shipmentNumber = call.task.shipment.number ?? 'N/A';
-        const existing = collectorsToNotify.get(call.collectorId);
-        if (existing) {
-          if (!existing.productNames.includes(productName)) {
-            existing.productNames.push(productName);
-          }
-        } else {
-          collectorsToNotify.set(call.collectorId, {
-            productNames: [productName],
-            customerName,
-            shipmentNumber,
-          });
-        }
-      }
-    }
-
-    // Отправляем уведомление сборщикам
-    for (const [collectorId, data] of collectorsToNotify) {
-      const productsText = data.productNames.join(', ');
-      const text = `Ошибка. Товары: ${productsText}. Клиент: ${data.customerName}. Номер сборки: ${data.shipmentNumber}`;
-      setPendingMessage(collectorId, {
-        text,
-        fromName: checker.name,
-        soundUrl: '/music/wc3.mp3',
       });
     }
 

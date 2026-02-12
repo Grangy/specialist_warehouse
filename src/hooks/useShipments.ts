@@ -235,9 +235,13 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
         }
 
         // Фильтр по складу
-        // Если выбран конкретный склад, фильтруем по нему
-        // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
-        if (filters.warehouse && shipment.warehouse !== filters.warehouse) {
+        // warehouse_3 всегда видит Ожидание по всем складам (независимо от фильтра)
+        // Если выбран конкретный склад, фильтруем по нему (кроме warehouse_3 на вкладке Ожидание)
+        if (
+          filters.warehouse &&
+          userRole !== 'warehouse_3' &&
+          shipment.warehouse !== filters.warehouse
+        ) {
           return false;
         }
 
@@ -347,14 +351,14 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
         const { confirmed, total } = s.tasks_progress;
         return confirmed > 0 && confirmed < total;
       });
-      // Фильтруем по выбранному складу, если он указан
-      // Если выбрано "Все склады" (filters.warehouse === ""), показываем все задания
-      if (filters.warehouse) {
+      // warehouse_3 всегда видит количество по всем складам (независимо от фильтра)
+      // Фильтруем по выбранному складу, если он указан (кроме warehouse_3)
+      if (filters.warehouse && userRole !== 'warehouse_3') {
         filtered = filtered.filter((s) => s.warehouse === filters.warehouse);
       }
       return filtered.length;
     },
-    [displayShipments, filters.warehouse]
+    [displayShipments, filters.warehouse, userRole]
   );
 
   // Обертка для setFilters с сохранением склада в localStorage
