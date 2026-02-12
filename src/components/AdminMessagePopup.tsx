@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageCircle, Check } from 'lucide-react';
 import type { PendingMessagePayload } from '@/contexts/ShipmentsPollingContext';
-
-const DEFAULT_ALERT_SOUND_URL = '/music/20031.mp3';
+import { getRandomNotificationSound } from '@/lib/notificationSounds';
 
 interface AdminMessagePopupProps {
   message: PendingMessagePayload;
@@ -30,7 +29,7 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
     await Promise.resolve(onAccept());
   }, [onAccept, stopSound]);
 
-  const soundUrl = message.soundUrl || DEFAULT_ALERT_SOUND_URL;
+  const soundUrl = useMemo(() => getRandomNotificationSound(), []);
   useEffect(() => {
     const audio = new Audio(soundUrl);
     audio.loop = true;
