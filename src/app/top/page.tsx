@@ -39,8 +39,8 @@ const PERIOD_LABELS: Record<Period, string> = {
 export default function TopPage() {
   const [list, setList] = useState<RankingEntry[]>([]);
   const [date, setDate] = useState<string>('');
-  const [topCollectorsByErrors, setTopCollectorsByErrors] = useState<{ userName: string; errors: number }[]>([]);
-  const [topCheckersByErrors, setTopCheckersByErrors] = useState<{ userName: string; checkerErrors: number }[]>([]);
+  const [topCollectorsByErrors, setTopCollectorsByErrors] = useState<{ userId: string; userName: string; errors: number }[]>([]);
+  const [topCheckersByErrors, setTopCheckersByErrors] = useState<{ userId: string; userName: string; checkerErrors: number }[]>([]);
   const [totalCollectorErrors, setTotalCollectorErrors] = useState(0);
   const [totalCheckerErrors, setTotalCheckerErrors] = useState(0);
   const [period, setPeriod] = useState<Period>('week');
