@@ -594,10 +594,11 @@ export async function GET(request: NextRequest) {
         orderBy: { priority: 'asc' },
       });
       temporaries.forEach((t, index) => {
-        const nr = normalizeRegion(t.region);
+        const nr = normalizeRegion(t.region) || t.region;
         if (nr) {
           collectorVisibleRegions.add(nr);
           priorityMap.set(nr, 5000 + index);
+          priorityMap.set(t.region, 5000 + index); // raw на случай отличий в БД
         }
       });
     }
@@ -654,10 +655,10 @@ export async function GET(request: NextRequest) {
       // Сортируем по приоритету региона, затем внутри региона по количеству позиций (от большего к меньшему), затем по дате
       processedShipments.sort((a, b) => {
         const aPriority = a.businessRegion
-          ? priorityMap.get(a.businessRegion) ?? 9999
+          ? (priorityMap.get(normalizeRegion(a.businessRegion)) ?? priorityMap.get(a.businessRegion) ?? 9999)
           : 9999;
         const bPriority = b.businessRegion
-          ? priorityMap.get(b.businessRegion) ?? 9999
+          ? (priorityMap.get(normalizeRegion(b.businessRegion)) ?? priorityMap.get(b.businessRegion) ?? 9999)
           : 9999;
 
         // Сначала по приоритету региона
@@ -785,10 +786,10 @@ export async function GET(request: NextRequest) {
       }
 
       const aPriority = a.businessRegion
-        ? priorityMap.get(a.businessRegion) ?? 9999
+        ? (priorityMap.get(normalizeRegion(a.businessRegion)) ?? priorityMap.get(a.businessRegion) ?? 9999)
         : 9999;
       const bPriority = b.businessRegion
-        ? priorityMap.get(b.businessRegion) ?? 9999
+        ? (priorityMap.get(normalizeRegion(b.businessRegion)) ?? priorityMap.get(b.businessRegion) ?? 9999)
         : 9999;
 
       // По приоритету региона
@@ -1070,6 +1071,7 @@ export async function GET(request: NextRequest) {
           collector_name: task.collectorName || null,
           collector_id: task.collectorId || null,
           started_at: task.startedAt ? task.startedAt.toISOString() : null,
+          dropped_by_collector_id: task.droppedByCollectorId || null,
           dropped_by_collector_name: task.droppedByCollectorName || null,
           dropped_at: task.droppedAt ? task.droppedAt.toISOString() : null,
           places: task.places || null, // Количество мест для этого задания
@@ -1098,10 +1100,10 @@ export async function GET(request: NextRequest) {
       }
 
       const aPriority = a.business_region
-        ? priorityMap.get(a.business_region) ?? 9999
+        ? (priorityMap.get(normalizeRegion(a.business_region)) ?? priorityMap.get(a.business_region) ?? 9999)
         : 9999;
       const bPriority = b.business_region
-        ? priorityMap.get(b.business_region) ?? 9999
+        ? (priorityMap.get(normalizeRegion(b.business_region)) ?? priorityMap.get(b.business_region) ?? 9999)
         : 9999;
 
       if (aPriority !== bPriority) {
@@ -1122,9 +1124,10 @@ export async function GET(request: NextRequest) {
     // чтобы активные заказы в админке совпадали с разделами Новые/На руках/Подтверждение/Ожидание на фронте.
     const onlyCollectorSeesFilteredList = user.role === 'collector';
     if (onlyCollectorSeesFilteredList && tasks.length > 0) {
-      // Приоритет: сначала свободные (без сборщика), затем свои начатые (до перехвата другим).
-      // Свои задания (начал сборку — вижу до тех пор, пока не взял другой)
+      // Приоритет: сначала свободные (без сборщика), затем свои брошенные, затем свои начатые.
+      // Свои брошенные — всегда вижу до тех пор, пока не взяли или сам не возьму обратно
       const myTasks: typeof tasks = [];
+      const myDroppedTasks: typeof tasks = []; // Задания, которые я бросил — вижу пока свободны
       // Свободные = без сборщика (collector_id == null); по 1 с каждого склада в приоритете
       const freeTasks: typeof tasks = [];
 
@@ -1132,6 +1135,11 @@ export async function GET(request: NextRequest) {
         if (task.collector_id === user.id) {
           myTasks.push(task);
         } else if (task.collector_id == null) {
+          // Своё брошенное — всегда показываем, пока свободно
+          if (task.dropped_by_collector_id === user.id) {
+            myDroppedTasks.push(task);
+            return;
+          }
           // Только задания без сборщика — не показываем «доступные для перехвата» в слоте «1 с склада»
           const taskLocks = locksMap.get(task.id) || [];
           const lock = taskLocks[0] || null;
@@ -1157,8 +1165,8 @@ export async function GET(request: NextRequest) {
         if (a.pinned_at && b.pinned_at) {
           return new Date(b.pinned_at).getTime() - new Date(a.pinned_at).getTime();
         }
-        const aPriority = a.business_region ? priorityMap.get(a.business_region) ?? 9999 : 9999;
-        const bPriority = b.business_region ? priorityMap.get(b.business_region) ?? 9999 : 9999;
+        const aPriority = a.business_region ? (priorityMap.get(normalizeRegion(a.business_region)) ?? priorityMap.get(a.business_region) ?? 9999) : 9999;
+        const bPriority = b.business_region ? (priorityMap.get(normalizeRegion(b.business_region)) ?? priorityMap.get(b.business_region) ?? 9999) : 9999;
         if (aPriority !== bPriority) return aPriority - bPriority;
         const aItems = a.items_count || a.lines?.length || 0;
         const bItems = b.items_count || b.lines?.length || 0;
@@ -1179,8 +1187,8 @@ export async function GET(request: NextRequest) {
         }
       });
       
-      // Сначала свободные (без сборщика) по 1 с склада, затем свои
-      const filteredTasks = [...oneFreePerWarehouse, ...myTasks];
+      // Сначала свободные (1 с склада), затем свои брошенные, затем свои взявшие
+      const filteredTasks = [...oneFreePerWarehouse, ...myDroppedTasks, ...myTasks];
 
       const sortTaskByPriorityOnly = (a: (typeof tasks)[0], b: (typeof tasks)[0]) => {
         if (a.pinned_at && !b.pinned_at) return -1;
@@ -1188,8 +1196,8 @@ export async function GET(request: NextRequest) {
         if (a.pinned_at && b.pinned_at) {
           return new Date(b.pinned_at).getTime() - new Date(a.pinned_at).getTime();
         }
-        const aPriority = a.business_region ? priorityMap.get(a.business_region) ?? 9999 : 9999;
-        const bPriority = b.business_region ? priorityMap.get(b.business_region) ?? 9999 : 9999;
+        const aPriority = a.business_region ? (priorityMap.get(normalizeRegion(a.business_region)) ?? priorityMap.get(a.business_region) ?? 9999) : 9999;
+        const bPriority = b.business_region ? (priorityMap.get(normalizeRegion(b.business_region)) ?? priorityMap.get(b.business_region) ?? 9999) : 9999;
         if (aPriority !== bPriority) return aPriority - bPriority;
         const aItems = a.items_count || a.lines?.length || 0;
         const bItems = b.items_count || b.lines?.length || 0;

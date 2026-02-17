@@ -41,6 +41,7 @@ export interface Shipment {
   lines: ShipmentLine[];
   collector_name?: string;
   collector_id?: string;
+  dropped_by_collector_id?: string | null;
   dropped_by_collector_name?: string | null;
   dropped_at?: string | null;
   collectors?: string[];
