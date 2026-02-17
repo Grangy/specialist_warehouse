@@ -984,13 +984,11 @@ export async function GET(request: NextRequest) {
             continue;
           }
         }
-        // Роль warehouse_3: только задания Склад 3 (кроме режима Ожидание — показываем по всем складам)
-        if (
-          user.role === 'warehouse_3' &&
-          task.warehouse !== 'Склад 3' &&
-          !isWaitingMode
-        ) {
-          continue;
+        // Роль warehouse_3: показываем все задания заказа, если в нём участвует Склад 3
+        // (и свои задания Склад 3, и задания других складов — Склад 1, 2 — того же заказа)
+        if (user.role === 'warehouse_3') {
+          const shipmentHasWarehouse3 = shipment.tasks.some((t: { warehouse: string }) => t.warehouse === 'Склад 3');
+          if (!shipmentHasWarehouse3) continue; // Заказ без участия Склад 3 — не показываем
         }
         // Для режима ожидания показываем все задания (включая processed)
 
