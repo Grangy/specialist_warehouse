@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Trophy, RefreshCw, Calendar, HelpCircle } from 'lucide-react';
+import { Trophy, RefreshCw, Calendar, HelpCircle, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import UserStatsModal from '@/components/admin/UserStatsModal';
 import { PointsHelpModal } from '@/components/PointsHelpModal';
@@ -18,6 +18,7 @@ interface RankingEntry {
   points: number;
   dictatorPoints?: number;
   errors?: number;
+  checkerErrors?: number;
   rank: number | null;
   level: {
     name: string;
@@ -38,6 +39,8 @@ const PERIOD_LABELS: Record<Period, string> = {
 export default function TopPage() {
   const [list, setList] = useState<RankingEntry[]>([]);
   const [date, setDate] = useState<string>('');
+  const [topCollectorsByErrors, setTopCollectorsByErrors] = useState<{ userName: string; errors: number }[]>([]);
+  const [topCheckersByErrors, setTopCheckersByErrors] = useState<{ userName: string; checkerErrors: number }[]>([]);
   const [period, setPeriod] = useState<Period>('week');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,10 +61,14 @@ export default function TopPage() {
       const data = await res.json();
       setList(data.all || []);
       setDate(data.date || new Date().toISOString().split('T')[0]);
+      setTopCollectorsByErrors(data.topCollectorsByErrors || []);
+      setTopCheckersByErrors(data.topCheckersByErrors || []);
       setMounted(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить рейтинг');
       setList([]);
+      setTopCollectorsByErrors([]);
+      setTopCheckersByErrors([]);
     } finally {
       setIsLoading(false);
     }
@@ -147,6 +154,42 @@ export default function TopPage() {
               Как считаются баллы
             </button>
           </div>
+          {(topCollectorsByErrors.length > 0 || topCheckersByErrors.length > 0) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+              {topCollectorsByErrors.length > 0 && (
+                <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-semibold text-slate-300">Топ ошибающихся сборщиков</span>
+                  </div>
+                  <ol className="space-y-0.5 text-xs text-slate-400">
+                    {topCollectorsByErrors.map((c, i) => (
+                      <li key={i} className="flex justify-between">
+                        <span>{c.userName}</span>
+                        <span className="text-amber-400/90 font-medium">{c.errors} ош.</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {topCheckersByErrors.length > 0 && (
+                <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-purple-400" />
+                    <span className="text-xs font-semibold text-slate-300">Топ ошибающихся проверяльщиков</span>
+                  </div>
+                  <ol className="space-y-0.5 text-xs text-slate-400">
+                    {topCheckersByErrors.map((c, i) => (
+                      <li key={i} className="flex justify-between">
+                        <span>{c.userName}</span>
+                        <span className="text-purple-400/90 font-medium">{c.checkerErrors} ош.</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <PointsHelpModal isOpen={showPointsHelp} onClose={() => setShowPointsHelp(false)} />
@@ -266,8 +309,15 @@ export default function TopPage() {
                           <span>📦 {user.positions} поз.</span>
                           <span>📊 {user.units} ед.</span>
                           <span>📋 {user.orders} зак.</span>
-                          {user.role === 'collector' && (user.errors ?? 0) > 0 && (
-                            <span className="text-amber-400/90">⚠ {user.errors} ош.</span>
+                          {(user.errors ?? 0) > 0 && (
+                            <span className="text-amber-400/90" title="Ошибки сборщика">
+                              ⚠ {user.errors} ош. сб.
+                            </span>
+                          )}
+                          {(user.checkerErrors ?? 0) > 0 && (
+                            <span className="text-purple-400/90" title="Ошибки проверяльщика">
+                              ⚠ {user.checkerErrors} ош. пров.
+                            </span>
                           )}
                         </div>
                       </div>

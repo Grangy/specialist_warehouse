@@ -21,6 +21,7 @@ interface RankingEntry {
   points: number;
   dictatorPoints: number;
   errors: number;
+  checkerErrors: number;
   rank: number | null;
   level: {
     name: string;
@@ -39,19 +40,27 @@ export async function GET(request: NextRequest) {
     const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
     const { startDate, endDate } = getStatisticsDateRange(period);
 
-    // Ошибки сборщиков за период (CollectorCall status=done, confirmedAt в диапазоне)
-    const collectorErrorsRaw = await prisma.collectorCall.findMany({
+    // Ошибки сборщиков и проверяльщиков за период (CollectorCall status=done, confirmedAt в диапазоне)
+    const callsWithErrors = await prisma.collectorCall.findMany({
       where: {
         status: 'done',
         confirmedAt: { gte: startDate, lte: endDate },
-        errorCount: { gt: 0 },
+        OR: [{ errorCount: { gt: 0 } }, { checkerErrorCount: { gt: 0 } }],
       },
-      select: { collectorId: true, errorCount: true },
+      select: { collectorId: true, checkerId: true, errorCount: true, checkerErrorCount: true },
     });
     const errorsByCollector = new Map<string, number>();
-    for (const c of collectorErrorsRaw) {
-      const sum = (errorsByCollector.get(c.collectorId) ?? 0) + (c.errorCount ?? 0);
-      errorsByCollector.set(c.collectorId, sum);
+    const errorsByChecker = new Map<string, number>();
+    for (const c of callsWithErrors) {
+      const cc = c as { checkerErrorCount?: number | null };
+      const errCol = c.errorCount ?? 0;
+      const errChk = cc.checkerErrorCount ?? 0;
+      if (errCol > 0) {
+        errorsByCollector.set(c.collectorId, (errorsByCollector.get(c.collectorId) ?? 0) + errCol);
+      }
+      if (errChk > 0 && c.checkerId) {
+        errorsByChecker.set(c.checkerId, (errorsByChecker.get(c.checkerId) ?? 0) + errChk);
+      }
     }
 
     const collectorByCompleted = await prisma.taskStatistics.findMany({
@@ -254,6 +263,7 @@ export async function GET(request: NextRequest) {
           ? agg.efficiencies.reduce((a, b) => a + b, 0) / agg.efficiencies.length
           : null;
       const errors = errorsByCollector.get(agg.userId) ?? 0;
+      const checkerErrors = errorsByChecker.get(agg.userId) ?? 0;
 
       allRankings.push({
         userId: agg.userId,
@@ -264,7 +274,8 @@ export async function GET(request: NextRequest) {
         orders: agg.orders.size,
         points: agg.points,
         dictatorPoints: agg.dictatorPoints,
-        errors: agg.role === 'collector' ? errors : 0,
+        errors,
+        checkerErrors,
         rank: null,
         level: null,
         pph,
@@ -310,10 +321,24 @@ export async function GET(request: NextRequest) {
     // Дата для отображения — всегда «сегодня» по Москве (не UTC, иначе показывало вчера)
     const displayDate = getMoscowDateString(new Date());
 
+    // Топ ошибающихся сборщиков и проверяльщиков за период
+    const topCollectorsByErrors = [...allRankings]
+      .filter((e) => (e.errors ?? 0) > 0)
+      .sort((a, b) => (b.errors ?? 0) - (a.errors ?? 0))
+      .slice(0, 5)
+      .map((e) => ({ userId: e.userId, userName: e.userName, errors: e.errors ?? 0 }));
+    const topCheckersByErrors = [...allRankings]
+      .filter((e) => (e.checkerErrors ?? 0) > 0)
+      .sort((a, b) => (b.checkerErrors ?? 0) - (a.checkerErrors ?? 0))
+      .slice(0, 5)
+      .map((e) => ({ userId: e.userId, userName: e.userName, checkerErrors: e.checkerErrors ?? 0 }));
+
     return NextResponse.json({
       all: allRankings,
       period,
       date: displayDate,
+      topCollectorsByErrors,
+      topCheckersByErrors,
     });
   } catch (error: unknown) {
     console.error('[API Statistics Top] Ошибка:', error);
