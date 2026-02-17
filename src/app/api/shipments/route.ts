@@ -1052,12 +1052,16 @@ export async function GET(request: NextRequest) {
           || !!shipment.pinnedAt
           || commentHasSamovyvoz;
 
+        // Все склады, участвующие в этом заказе (для отображения в админке и warehouse_3)
+        const shipmentWarehouses = [...new Set(shipment.tasks.map((t: { warehouse: string }) => t.warehouse))].filter(Boolean).sort();
+
         tasks.push({
           id: task.id,
           task_id: task.id, // ID задания для режима подтверждения
           shipment_id: shipment.id,
           shipment_number: shipment.number,
           warehouse: task.warehouse,
+          warehouses: shipmentWarehouses, // Все склады заказа (Склад 1, Склад 2, Склад 3)
           created_at: task.createdAt.toISOString(),
           customer_name: shipment.customerName,
           destination: shipment.destination,

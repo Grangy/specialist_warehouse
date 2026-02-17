@@ -21,6 +21,7 @@ import ShipmentDetailsModal from './ShipmentDetailsModal';
 interface TaskWithCollector {
   taskId: string;
   warehouse: string;
+  warehouses?: string[]; // Все склады заказа (если заказ участвует в нескольких)
   collectorName: string | null;
   collectorId: string | null;
   status: string;
@@ -92,6 +93,7 @@ export default function ActiveShipmentsTab() {
         tasks.push({
           taskId: item.id || item.task_id,
           warehouse: item.warehouse || 'Не указан',
+          warehouses: item.warehouses || undefined,
           collectorName: item.collector_name || null,
           collectorId: item.collector_id || item.collectorId || null,
           status: item.status,
@@ -118,7 +120,7 @@ export default function ActiveShipmentsTab() {
         const number = task.shipmentNumber.toLowerCase();
         const customer = task.customerName.toLowerCase();
         const collector = (task.collectorName || '').toLowerCase();
-        const warehouse = task.warehouse.toLowerCase();
+        const warehouse = (task.warehouses?.join(' ') || task.warehouse).toLowerCase();
         return (
           number.includes(query) ||
           customer.includes(query) ||
@@ -296,7 +298,11 @@ export default function ActiveShipmentsTab() {
                           {task.customerName}
                         </button>
                       </td>
-                      <td className="px-4 py-3 text-slate-300">{task.warehouse}</td>
+                      <td className="px-4 py-3 text-slate-300">
+                        {task.warehouses && task.warehouses.length > 0
+                          ? task.warehouses.join(', ')
+                          : task.warehouse}
+                      </td>
                       <td className="px-4 py-3">
                         {task.collectorName ? (
                           <div className="flex items-center gap-2">
