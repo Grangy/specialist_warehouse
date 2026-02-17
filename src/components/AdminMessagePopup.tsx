@@ -6,6 +6,8 @@ import { MessageCircle, Check } from 'lucide-react';
 import type { PendingMessagePayload } from '@/contexts/ShipmentsPollingContext';
 import { getRandomNotificationSound } from '@/lib/notificationSounds';
 
+const SOS_HEADER = 'Подойдите к столу';
+
 interface AdminMessagePopupProps {
   message: PendingMessagePayload;
   /** Отметить сообщение принятым (API + сброс). Вызывается только по кнопке «Принял». */
@@ -30,6 +32,7 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
   }, [onAccept, stopSound]);
 
   const soundUrl = useMemo(() => getRandomNotificationSound(), []);
+  const isSos = message.type === 'sos';
   useEffect(() => {
     const audio = new Audio(soundUrl);
     audio.loop = true;
@@ -76,8 +79,12 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
                   </div>
                 </div>
               </div>
-              <p id="admin-message-title" className="text-center text-xs font-semibold text-amber-400/90 uppercase tracking-wider mb-2">
-                Сообщение от администратора
+              <p id="admin-message-title" className="text-center text-xs font-semibold uppercase tracking-wider mb-2">
+                {isSos ? (
+                  <span className="text-red-500">{SOS_HEADER}</span>
+                ) : (
+                  <span className="text-amber-400/90">Сообщение от администратора</span>
+                )}
               </p>
               <p className="text-center text-slate-300 text-sm mb-1">
                 От: <span className="font-semibold text-slate-100">{message.fromName}</span>
@@ -85,9 +92,16 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
             </div>
           </div>
           <div className="mt-4 p-4 rounded-xl bg-slate-800/80 border border-slate-700/50 min-h-[100px]">
-            <p className="text-slate-100 text-base md:text-lg leading-relaxed whitespace-pre-wrap">
-              {message.text}
-            </p>
+            {isSos ? (
+              <p className="text-slate-100 text-base md:text-lg leading-relaxed whitespace-pre-wrap">
+                <span className="font-semibold text-red-500">{SOS_HEADER}.</span>{' '}
+                {message.text.replace(/\s*Подойдите к столу\.?\s*/gi, ' ').replace(/\s+/g, ' ').trim()}
+              </p>
+            ) : (
+              <p className="text-slate-100 text-base md:text-lg leading-relaxed whitespace-pre-wrap">
+                {message.text}
+              </p>
+            )}
           </div>
           <p className="mt-3 text-center text-xs text-slate-500">
             Закрыть можно только нажав «Принял». Сообщение будет показываться при каждом входе в приложение до подтверждения.
@@ -97,7 +111,7 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
             onClick={() => void handleAccept()}
             className="mt-4 w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-500/20 hover:shadow-green-500/40 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] animate-pulse-slow"
           >
-            <Check className="w-5 h-5" />
+            {isSos ? <span className="text-lg" aria-hidden>🐵</span> : <Check className="w-5 h-5" />}
             Принял
           </button>
         </div>

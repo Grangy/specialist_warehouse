@@ -18,6 +18,8 @@ export interface PendingMessagePayload {
   sentAt: string;
   /** URL звука (например /music/wc3.mp3 для СОС) */
   soundUrl?: string;
+  /** sos = подзыв сборщика во время проверки (СОС) */
+  type?: 'sos' | 'admin';
 }
 
 export interface LastPollResult {

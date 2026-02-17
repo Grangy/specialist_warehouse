@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
         text: messageText,
         fromName: checker.name,
         soundUrl: SOS_SOUND_URL,
+        type: 'sos',
       });
       return NextResponse.json({
         success: true,
@@ -109,6 +110,7 @@ export async function POST(request: NextRequest) {
       text: messageText,
       fromName: checker.name,
       soundUrl: SOS_SOUND_URL,
+      type: 'sos',
     });
 
     return NextResponse.json({
