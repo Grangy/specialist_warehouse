@@ -1,6 +1,14 @@
 // Вспомогательные функции
 
 /**
+ * Нормализация региона для сравнения (trim пробелов).
+ * Данные из 1С могут содержать лишние пробелы — иначе «Мариуполь» ≠ «Мариуполь ».
+ */
+export function normalizeRegion(region: string | null | undefined): string {
+  return (region || '').trim();
+}
+
+/**
  * Экранирование HTML для безопасности
  */
 export function escapeHtml(text: string): string {

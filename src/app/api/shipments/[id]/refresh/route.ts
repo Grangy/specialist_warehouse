@@ -9,6 +9,8 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { emitShipmentEvent } from '@/lib/sseEvents';
 import { touchSync } from '@/lib/syncTouch';
+import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
+import { normalizeRegion } from '@/lib/utils/helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,15 +82,33 @@ export async function POST(
           break;
       }
       priorityMap.set(p.region, dayPriority ?? 9999);
-      if (dayPriority != null) collectorVisibleRegions.add(p.region);
+      const nr = normalizeRegion(p.region) || p.region;
+      if (nr) priorityMap.set(nr, dayPriority ?? 9999);
+      if (dayPriority != null && nr) collectorVisibleRegions.add(nr);
     });
+
+    // Временные регионы на сегодня (до 21:00 МСК) — как в основном API
+    if (isBeforeEndOfWorkingDay(today)) {
+      const todayStr = getMoscowDateString(today);
+      const temporaries = await prisma.temporaryRegionPriority.findMany({
+        where: { date: todayStr },
+        orderBy: { priority: 'asc' },
+      });
+      temporaries.forEach((t, index) => {
+        const nr = normalizeRegion(t.region) || t.region;
+        if (nr) {
+          collectorVisibleRegions.add(nr);
+          priorityMap.set(nr, 5000 + index);
+        }
+      });
+    }
 
     const allShipmentTasks = shipment.tasks;
     const confirmedTasksCount = allShipmentTasks.filter((t) => t.status === 'processed').length;
     const totalTasksCount = allShipmentTasks.length;
     const commentHasSamovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
     const isVisibleToCollector = !shipment.businessRegion
-      || collectorVisibleRegions.has(shipment.businessRegion)
+      || collectorVisibleRegions.has(normalizeRegion(shipment.businessRegion))
       || !!shipment.pinnedAt
       || commentHasSamovyvoz;
 

@@ -5,6 +5,7 @@ import { cleanupExpiredSessions, verifyPassword, getSessionUser } from '@/lib/au
 import { splitShipmentIntoTasks } from '@/lib/shipmentTasks';
 import { detectWarehouseFromLocation } from '@/lib/warehouseDetector';
 import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
+import { normalizeRegion } from '@/lib/utils/helpers';
 import { append1cLog } from '@/lib/1cLog';
 
 export const dynamic = 'force-dynamic';
@@ -576,11 +577,12 @@ export async function GET(request: NextRequest) {
           break;
       }
       
+      const nr = normalizeRegion(p.region) || p.region;
       priorityMap.set(p.region, dayPriority ?? 9999);
-      
+      if (nr) priorityMap.set(nr, dayPriority ?? 9999);
       // Если регион имеет приоритет для текущего дня, он виден сборщику
       if (dayPriority !== null && dayPriority !== undefined) {
-        collectorVisibleRegions.add(p.region);
+        if (nr) collectorVisibleRegions.add(nr);
       }
     });
 
@@ -592,8 +594,11 @@ export async function GET(request: NextRequest) {
         orderBy: { priority: 'asc' },
       });
       temporaries.forEach((t, index) => {
-        collectorVisibleRegions.add(t.region);
-        priorityMap.set(t.region, 5000 + index);
+        const nr = normalizeRegion(t.region);
+        if (nr) {
+          collectorVisibleRegions.add(nr);
+          priorityMap.set(nr, 5000 + index);
+        }
       });
     }
 
@@ -691,7 +696,7 @@ export async function GET(request: NextRequest) {
         // Виден сборщику: регион в приоритете ИЛИ поднят админом ИЛИ в комментарии «самовывоз»
         const commentHasSamovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
         const isVisibleToCollector = !shipment.businessRegion
-          || collectorVisibleRegions.has(shipment.businessRegion)
+          || collectorVisibleRegions.has(normalizeRegion(shipment.businessRegion))
           || !!shipment.pinnedAt
           || commentHasSamovyvoz;
 
@@ -948,7 +953,7 @@ export async function GET(request: NextRequest) {
 
       // Для сборщиков: показываем заказ, если регион в приоритете сегодня ИЛИ заказ поднят админом ИЛИ в комментарии «самовывоз»
       if (user.role === 'collector') {
-        const inRegion = !shipment.businessRegion || collectorVisibleRegions.has(shipment.businessRegion);
+        const inRegion = !shipment.businessRegion || collectorVisibleRegions.has(normalizeRegion(shipment.businessRegion));
         const pinned = !!shipment.pinnedAt;
         const samovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
         if (!inRegion && !pinned && !samovyvoz) {
@@ -1042,7 +1047,7 @@ export async function GET(request: NextRequest) {
         // Виден сборщику: регион в приоритете ИЛИ поднят админом ИЛИ в комментарии «самовывоз»
         const commentHasSamovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
         const isVisibleToCollector = !shipment.businessRegion
-          || collectorVisibleRegions.has(shipment.businessRegion)
+          || collectorVisibleRegions.has(normalizeRegion(shipment.businessRegion))
           || !!shipment.pinnedAt
           || commentHasSamovyvoz;
 
