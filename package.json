@@ -16,6 +16,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint src --max-warnings 0",
+    "check": "npm run lint && npm run build",
     "server": "node server.js",
     "db:seed": "tsx prisma/seed.ts",
     "db:migrate": "prisma migrate dev",

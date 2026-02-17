@@ -89,8 +89,8 @@ export async function POST(request: NextRequest) {
     });
 
     const msgText = dateStr
-      ? `⚠️ Ошибка со сборки от ${dateStr}\n\nЗаказ ${num}, позиция: ${productName}\n\nАдминистратор зафиксировал ошибку. Уведомление со звуком.`
-      : `⚠️ Ошибка сборки\n\nЗаказ ${num}, позиция: ${productName}\n\nАдминистратор зафиксировал ошибку. Уведомление со звуком.`;
+      ? `⚠️ Ошибка со сборки от ${dateStr}\n\nЗаказ ${num}, позиция: ${productName}\n\nАдминистратор зафиксировал ошибку.`
+      : `⚠️ Ошибка сборки\n\nЗаказ ${num}, позиция: ${productName}\n\nАдминистратор зафиксировал ошибку.`;
 
     setPendingMessage(task.collectorId, {
       text: msgText,
