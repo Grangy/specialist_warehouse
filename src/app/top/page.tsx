@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Trophy, RefreshCw, Calendar, HelpCircle, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import UserStatsModal from '@/components/admin/UserStatsModal';
@@ -41,6 +41,8 @@ export default function TopPage() {
   const [date, setDate] = useState<string>('');
   const [topCollectorsByErrors, setTopCollectorsByErrors] = useState<{ userName: string; errors: number }[]>([]);
   const [topCheckersByErrors, setTopCheckersByErrors] = useState<{ userName: string; checkerErrors: number }[]>([]);
+  const [totalCollectorErrors, setTotalCollectorErrors] = useState(0);
+  const [totalCheckerErrors, setTotalCheckerErrors] = useState(0);
   const [period, setPeriod] = useState<Period>('week');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,8 @@ export default function TopPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState('');
   const [showPointsHelp, setShowPointsHelp] = useState(false);
+  const [showErrorsBreakdown, setShowErrorsBreakdown] = useState(false);
+  const [expandedErrorRow, setExpandedErrorRow] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -63,12 +67,16 @@ export default function TopPage() {
       setDate(data.date || new Date().toISOString().split('T')[0]);
       setTopCollectorsByErrors(data.topCollectorsByErrors || []);
       setTopCheckersByErrors(data.topCheckersByErrors || []);
+      setTotalCollectorErrors(data.totalCollectorErrors ?? 0);
+      setTotalCheckerErrors(data.totalCheckerErrors ?? 0);
       setMounted(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить рейтинг');
       setList([]);
       setTopCollectorsByErrors([]);
       setTopCheckersByErrors([]);
+      setTotalCollectorErrors(0);
+      setTotalCheckerErrors(0);
     } finally {
       setIsLoading(false);
     }
@@ -98,6 +106,26 @@ export default function TopPage() {
     if (index <= 2) return 'animate-top-badge-pop opacity-0';
     return 'animate-top-card-stagger opacity-0';
   };
+
+  const topErrorsMerged = useMemo(() => {
+    const byUser = new Map<string, { userName: string; errors: number; checkerErrors: number }>();
+    for (const c of topCollectorsByErrors) {
+      byUser.set(c.userId, { userName: c.userName, errors: c.errors, checkerErrors: 0 });
+    }
+    for (const c of topCheckersByErrors) {
+      const ex = byUser.get(c.userId);
+      if (ex) {
+        ex.checkerErrors = c.checkerErrors;
+      } else {
+        byUser.set(c.userId, { userName: c.userName, errors: 0, checkerErrors: c.checkerErrors });
+      }
+    }
+    return [...byUser.entries()]
+      .map(([, v]) => ({ ...v, total: v.errors + v.checkerErrors }))
+      .filter((x) => x.total > 0)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [topCollectorsByErrors, topCheckersByErrors]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -154,40 +182,100 @@ export default function TopPage() {
               Как считаются баллы
             </button>
           </div>
-          {(topCollectorsByErrors.length > 0 || topCheckersByErrors.length > 0) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-              {topCollectorsByErrors.length > 0 && (
-                <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-semibold text-slate-300">Топ ошибающихся сборщиков</span>
-                  </div>
-                  <ol className="space-y-0.5 text-xs text-slate-400">
-                    {topCollectorsByErrors.map((c, i) => (
-                      <li key={i} className="flex justify-between">
-                        <span>{c.userName}</span>
-                        <span className="text-amber-400/90 font-medium">{c.errors} ош.</span>
-                      </li>
-                    ))}
-                  </ol>
+          {(totalCollectorErrors > 0 || totalCheckerErrors > 0 || topErrorsMerged.length > 0) && (
+            <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3 mt-2">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-semibold text-slate-300">Топ ошибающихся</span>
                 </div>
-              )}
-              {topCheckersByErrors.length > 0 && (
-                <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle className="w-4 h-4 text-purple-400" />
-                    <span className="text-xs font-semibold text-slate-300">Топ ошибающихся проверяльщиков</span>
-                  </div>
-                  <ol className="space-y-0.5 text-xs text-slate-400">
-                    {topCheckersByErrors.map((c, i) => (
-                      <li key={i} className="flex justify-between">
-                        <span>{c.userName}</span>
-                        <span className="text-purple-400/90 font-medium">{c.checkerErrors} ош.</span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setShowErrorsBreakdown((v) => !v)}
+                  className="inline-flex items-center gap-1.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500/50 rounded"
+                >
+                  <span
+                    className="inline-flex items-center justify-center min-w-[26px] h-6 px-2 rounded bg-purple-500/25 text-purple-400 font-semibold text-xs border border-purple-500/50"
+                    title="Всего ошибок. Клик — разбивка"
+                  >
+                    {totalCollectorErrors + totalCheckerErrors}
+                  </span>
+                  {showErrorsBreakdown && (
+                    <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                      <span className="inline-flex items-center gap-0.5" title="за сборку">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-amber-500/40 border border-amber-500/50" />
+                        {totalCollectorErrors}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5" title="за проверку">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-purple-500/40 border border-purple-500/50" />
+                        {totalCheckerErrors}
+                      </span>
+                    </span>
+                  )}
+                </button>
+              </div>
+              <table className="w-full text-xs text-slate-400 border-collapse">
+                <tbody>
+                  {topErrorsMerged.map((p, i) => (
+                    <tr key={i} className="border-b border-slate-700/30 last:border-0">
+                      <td className="py-1 pr-2 align-middle w-0 whitespace-nowrap">
+                        {i === 0 && '🐵🐵🐵'}
+                        {i === 1 && '🐵🐵'}
+                        {i === 2 && '🐵'}
+                      </td>
+                      <td className="py-1 pr-2 align-middle min-w-0">
+                        <span className="block truncate">{p.userName}</span>
+                      </td>
+                      <td className="py-1 pl-2 align-middle text-right w-24 min-w-[72px]">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedErrorRow((v) => (v === i ? null : i))}
+                          className="inline-flex items-center gap-1 flex-shrink-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500/50 rounded"
+                        >
+                          <span
+                            className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded bg-purple-500/25 text-purple-400 font-medium border border-purple-500/40"
+                            title="Всего. Клик — разбивка"
+                          >
+                            {p.total}
+                          </span>
+                          {expandedErrorRow === i && (p.errors > 0 || p.checkerErrors > 0) && (
+                            <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                              {p.errors > 0 && (
+                                <span className="inline-flex items-center gap-0.5" title="за сборку">
+                                  <span className="w-2.5 h-2.5 rounded-sm bg-amber-500/40 border border-amber-500/50" />
+                                  {p.errors}
+                                </span>
+                              )}
+                              {p.checkerErrors > 0 && (
+                                <span className="inline-flex items-center gap-0.5" title="за проверку">
+                                  <span className="w-2.5 h-2.5 rounded-sm bg-purple-500/40 border border-purple-500/50" />
+                                  {p.checkerErrors}
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="flex gap-4 mt-2.5 pt-2 border-t border-slate-700/30">
+                <span className="inline-flex items-center gap-1.5 text-[10px] text-slate-500">
+                  <span
+                    className="w-3.5 h-3 rounded-sm bg-amber-500/35 border border-amber-500/50 shrink-0"
+                    title="Ошибки за сборку"
+                  />
+                  Ошибки за сборку
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-[10px] text-slate-500">
+                  <span
+                    className="w-3.5 h-3 rounded-sm bg-purple-500/35 border border-purple-500/50 shrink-0"
+                    title="Ошибки за проверку"
+                  />
+                  Ошибки за проверку
+                </span>
+              </div>
             </div>
           )}
         </div>

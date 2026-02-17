@@ -333,10 +333,15 @@ export async function GET(request: NextRequest) {
       .slice(0, 5)
       .map((e) => ({ userId: e.userId, userName: e.userName, checkerErrors: e.checkerErrors ?? 0 }));
 
+    const totalCollectorErrors = [...errorsByCollector.values()].reduce((a, b) => a + b, 0);
+    const totalCheckerErrors = [...errorsByChecker.values()].reduce((a, b) => a + b, 0);
+
     return NextResponse.json({
       all: allRankings,
       period,
       date: displayDate,
+      totalCollectorErrors,
+      totalCheckerErrors,
       topCollectorsByErrors,
       topCheckersByErrors,
     });
