@@ -140,20 +140,24 @@ model ShipmentTask {
   @@map("shipment_tasks")
 }
 
-// Подзыв кладовщика проверяльщиком: в какой позиции/заказе какой сборщик был вызван (для анализа)
+// Подзыв кладовщика проверяльщиком или ошибка из админки: в какой позиции/заказе какой сборщик/проверяльщик
 // Статусы: new — новый, accepted — принят кладовщиком, done — выполнен (ошибки подтверждены), canceled — отменён
+// source: checker — СОС при проверке, admin — «Ошибка сборки» из админки (завершённые заказы)
 model CollectorCall {
-  id             String    @id @default(cuid())
-  taskId         String    @map("task_id")
-  lineIndex      Int       @map("line_index") // индекс позиции в заказе
-  shipmentLineId String?   @map("shipment_line_id") // опционально, для связи с позицией
-  collectorId    String    @map("collector_id")
-  checkerId      String    @map("checker_id")
-  calledAt       DateTime  @default(now()) @map("called_at")
-  status         String    @default("new") // new | accepted | done | canceled
-  errorCount     Int?      @map("error_count") // зафиксировано при подтверждении ошибок
-  comment        String?   // комментарий при подтверждении
-  confirmedAt   DateTime? @map("confirmed_at") // когда проверяльщик подтвердил ошибки
+  id                  String    @id @default(cuid())
+  taskId              String    @map("task_id")
+  lineIndex           Int       @map("line_index") // индекс позиции в заказе
+  shipmentLineId      String?   @map("shipment_line_id") // опционально, для связи с позицией
+  collectorId         String    @map("collector_id")
+  checkerId           String    @map("checker_id")
+  calledAt            DateTime  @default(now()) @map("called_at")
+  status              String    @default("new") // new | accepted | done | canceled
+  errorCount          Int?      @map("error_count") // ошибки сборщика (1 при source=admin)
+  checkerErrorCount   Int?      @map("checker_error_count") // ошибки проверяльщика (2 при source=admin «за проверку»)
+  comment             String?   // комментарий при подтверждении или «за проверку: {наименование}»
+  confirmedAt         DateTime? @map("confirmed_at") // когда проверяльщик подтвердил ошибки
+  source              String    @default("checker") // checker | admin
+  shipmentConfirmedAt DateTime? @map("shipment_confirmed_at") // дата заказа для «ошибка со сборки от DD.MM.YYYY»
 
   task      ShipmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
   collector User         @relation("CollectorCallsAsCollector", fields: [collectorId], references: [id], onDelete: Cascade)

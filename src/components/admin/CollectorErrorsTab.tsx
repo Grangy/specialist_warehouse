@@ -28,8 +28,11 @@ interface CollectorErrorItem {
   calledAt: string;
   status: string;
   errorCount: number | null;
+  checkerErrorCount: number | null;
+  source: string;
   comment: string | null;
   confirmedAt: string | null;
+  shipmentConfirmedAt: string | null;
 }
 
 interface UserItem {
@@ -46,11 +49,23 @@ interface CollectorStats {
   callsCount: number;
 }
 
+interface CheckerStats {
+  checkerId: string;
+  checkerName: string;
+  errorCount: number;
+  callsCount: number;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   new: 'Новый',
   accepted: 'Принят',
   done: 'Выполнен',
   canceled: 'Отменён',
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  checker: 'СОС при проверке',
+  admin: 'Из админки',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -62,7 +77,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function CollectorErrorsTab() {
   const [items, setItems] = useState<CollectorErrorItem[]>([]);
-  const [stats, setStats] = useState<{ totalErrors: number; totalCalls: number; topCollectors: CollectorStats[] } | null>(null);
+  const [stats, setStats] = useState<{ totalErrors: number; totalCheckerErrors: number; totalCalls: number; topCollectors: CollectorStats[]; topCheckers: CheckerStats[] } | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -71,6 +86,7 @@ export default function CollectorErrorsTab() {
   const [collectorId, setCollectorId] = useState('');
   const [shipmentNumber, setShipmentNumber] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = async () => {
@@ -83,6 +99,7 @@ export default function CollectorErrorsTab() {
       if (collectorId) params.set('collectorId', collectorId);
       if (shipmentNumber) params.set('shipmentNumber', shipmentNumber);
       if (statusFilter) params.set('status', statusFilter);
+      if (sourceFilter) params.set('source', sourceFilter);
       const res = await fetch(`/api/admin/collector-errors?${params}`);
       if (!res.ok) throw new Error('Ошибка загрузки');
       const data = await res.json();
@@ -99,7 +116,7 @@ export default function CollectorErrorsTab() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, collectorId, shipmentNumber, statusFilter]);
+  }, [dateFrom, dateTo, collectorId, shipmentNumber, statusFilter, sourceFilter]);
 
   useEffect(() => {
     const f = async () => {
@@ -167,9 +184,9 @@ export default function CollectorErrorsTab() {
         </div>
       )}
 
-      {/* Статистика по ошибкам и топ ошибающихся сборщиков */}
+      {/* Статистика по ошибкам и топ ошибающихся */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-slate-800/90 rounded-xl border border-slate-700/50 p-4">
             <div className="flex items-center gap-2 mb-3">
               <BarChart3 className="w-5 h-5 text-amber-400" />
@@ -178,11 +195,15 @@ export default function CollectorErrorsTab() {
             <div className="flex flex-wrap gap-6">
               <div>
                 <div className="text-2xl font-bold text-amber-400">{stats.totalErrors}</div>
-                <div className="text-xs text-slate-400">Всего ошибок</div>
+                <div className="text-xs text-slate-400">Ошибок сборщиков</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-amber-500/90">{stats.totalCheckerErrors ?? 0}</div>
+                <div className="text-xs text-slate-400">Ошибок проверяльщиков</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-slate-300">{stats.totalCalls}</div>
-                <div className="text-xs text-slate-400">Вызовов</div>
+                <div className="text-xs text-slate-400">Записей</div>
               </div>
             </div>
           </div>
@@ -191,17 +212,38 @@ export default function CollectorErrorsTab() {
               <Trophy className="w-5 h-5 text-amber-400" />
               <span className="font-semibold text-slate-200">Топ ошибающихся сборщиков</span>
             </div>
-            {stats.topCollectors.length === 0 ? (
+            {(stats.topCollectors?.length ?? 0) === 0 ? (
               <p className="text-sm text-slate-500">Нет данных по фильтрам</p>
             ) : (
               <ol className="space-y-1 text-sm">
-                {stats.topCollectors.map((c, i) => (
+                {(stats.topCollectors ?? []).map((c, i) => (
                   <li key={c.collectorId} className="flex justify-between items-center">
                     <span className="text-slate-300">
                       <span className="text-slate-500 mr-2">{i + 1}.</span>
                       {c.collectorName || '—'}
                     </span>
                     <span className="text-amber-400 font-semibold">{c.errorCount} ош.</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+          <div className="bg-slate-800/90 rounded-xl border border-slate-700/50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Trophy className="w-5 h-5 text-purple-400" />
+              <span className="font-semibold text-slate-200">Топ ошибающихся проверяльщиков</span>
+            </div>
+            {(stats.topCheckers?.length ?? 0) === 0 ? (
+              <p className="text-sm text-slate-500">Нет данных по фильтрам</p>
+            ) : (
+              <ol className="space-y-1 text-sm">
+                {(stats.topCheckers ?? []).map((c, i) => (
+                  <li key={c.checkerId} className="flex justify-between items-center">
+                    <span className="text-slate-300">
+                      <span className="text-slate-500 mr-2">{i + 1}.</span>
+                      {c.checkerName || '—'}
+                    </span>
+                    <span className="text-purple-400 font-semibold">{c.errorCount} ош.</span>
                   </li>
                 ))}
               </ol>
@@ -271,6 +313,15 @@ export default function CollectorErrorsTab() {
               <option value="done">Выполнен</option>
               <option value="canceled">Отменён</option>
             </select>
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="bg-slate-700 border border-slate-600 text-slate-100 rounded px-2 py-1 text-sm"
+            >
+              <option value="">Все источники</option>
+              <option value="checker">СОС при проверке</option>
+              <option value="admin">Из админки</option>
+            </select>
           </div>
         </div>
 
@@ -281,10 +332,12 @@ export default function CollectorErrorsTab() {
                 <th className="px-3 py-2 text-left text-xs font-semibold text-slate-300">Дата/время</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-slate-300">Заказ</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-slate-300">Позиция</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-slate-300">Источник</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-slate-300">Сборщик</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-slate-300">Проверяльщик</th>
                 <th className="px-3 py-2 text-center text-xs font-semibold text-slate-300">Статус</th>
-                <th className="px-3 py-2 text-center text-xs font-semibold text-slate-300">Ошибок</th>
+                <th className="px-3 py-2 text-center text-xs font-semibold text-slate-300">Ош. сб.</th>
+                <th className="px-3 py-2 text-center text-xs font-semibold text-slate-300">Ош. пров.</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold text-slate-300">Комментарий</th>
                 <th className="px-3 py-2 text-center text-xs font-semibold text-slate-300 w-12">Действия</th>
               </tr>
@@ -292,7 +345,7 @@ export default function CollectorErrorsTab() {
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={11} className="px-3 py-8 text-center text-slate-500">
                     Нет записей по заданным фильтрам
                   </td>
                 </tr>
@@ -308,6 +361,9 @@ export default function CollectorErrorsTab() {
                     <td className="px-3 py-2 text-slate-200 text-sm max-w-[200px] truncate" title={row.lineName}>
                       {row.lineName}
                     </td>
+                    <td className="px-3 py-2 text-slate-300 text-xs">
+                      {SOURCE_LABELS[row.source] ?? row.source}
+                    </td>
                     <td className="px-3 py-2 text-slate-200 text-sm">{row.collectorName || '—'}</td>
                     <td className="px-3 py-2 text-slate-200 text-sm">{row.checkerName || '—'}</td>
                     <td className="px-3 py-2 text-center">
@@ -319,6 +375,9 @@ export default function CollectorErrorsTab() {
                     </td>
                     <td className="px-3 py-2 text-center text-slate-200 text-sm">
                       {row.errorCount != null ? row.errorCount : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-center text-amber-400 text-sm">
+                      {row.checkerErrorCount != null ? row.checkerErrorCount : '—'}
                     </td>
                     <td className="px-3 py-2 text-slate-400 text-sm max-w-[150px] truncate" title={row.comment ?? ''}>
                       {row.comment ?? '—'}

@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const collectorId = searchParams.get('collectorId');
     const shipmentNumber = searchParams.get('shipmentNumber');
     const status = searchParams.get('status');
+    const source = searchParams.get('source');
 
     const where: Record<string, unknown> = {};
 
@@ -45,6 +46,9 @@ export async function GET(request: NextRequest) {
     if (status) {
       where.status = status;
     }
+    if (source) {
+      where.source = source;
+    }
     if (shipmentNumber) {
       where.task = {
         shipment: {
@@ -60,7 +64,7 @@ export async function GET(request: NextRequest) {
       include: {
         task: {
           include: {
-            shipment: { select: { id: true, number: true } },
+            shipment: { select: { id: true, number: true, confirmedAt: true } },
             lines: {
               orderBy: { id: 'asc' },
               include: {
@@ -76,6 +80,9 @@ export async function GET(request: NextRequest) {
 
     const items = calls.map((c) => {
       const line = c.task.lines[c.lineIndex];
+      const shipment = c.task?.shipment;
+      const cc = c as { shipmentConfirmedAt?: Date | null; checkerErrorCount?: number | null; source?: string };
+      const confirmedDate = cc.shipmentConfirmedAt ?? shipment?.confirmedAt;
       return {
         id: c.id,
         taskId: c.taskId,
@@ -91,19 +98,25 @@ export async function GET(request: NextRequest) {
         calledAt: c.calledAt.toISOString(),
         status: c.status,
         errorCount: c.errorCount,
+        checkerErrorCount: cc.checkerErrorCount ?? null,
+        source: cc.source ?? 'checker',
         comment: c.comment,
         confirmedAt: c.confirmedAt?.toISOString() ?? null,
+        shipmentConfirmedAt: confirmedDate?.toISOString() ?? null,
       };
     });
 
-    // Статистика: общее кол-во ошибок и топ ошибающихся сборщиков
+    // Статистика: общее кол-во ошибок сборщиков и проверяльщиков, топ ошибающихся
     const statsCalls = await prisma.collectorCall.findMany({
       where,
-      select: { collectorId: true, errorCount: true },
+      select: { collectorId: true, checkerId: true, errorCount: true, checkerErrorCount: true },
     });
     const totalErrors = statsCalls.reduce((s, c) => s + (c.errorCount ?? 0), 0);
+    const totalCheckerErrors = statsCalls.reduce((s, c) => s + ((c as { checkerErrorCount?: number }).checkerErrorCount ?? 0), 0);
     const byCollector = new Map<string, { errorCount: number; callsCount: number }>();
+    const byChecker = new Map<string, { errorCount: number; callsCount: number }>();
     for (const c of statsCalls) {
+      const cc = c as { checkerErrorCount?: number };
       const ex = byCollector.get(c.collectorId);
       if (ex) {
         ex.errorCount += c.errorCount ?? 0;
@@ -111,10 +124,22 @@ export async function GET(request: NextRequest) {
       } else {
         byCollector.set(c.collectorId, { errorCount: c.errorCount ?? 0, callsCount: 1 });
       }
+      const checkerErr = cc.checkerErrorCount ?? 0;
+      if (checkerErr > 0) {
+        const ex2 = byChecker.get(c.checkerId);
+        if (ex2) {
+          ex2.errorCount += checkerErr;
+          ex2.callsCount += 1;
+        } else {
+          byChecker.set(c.checkerId, { errorCount: checkerErr, callsCount: 1 });
+        }
+      }
     }
     const collectorIds = [...byCollector.keys()];
-    const users = collectorIds.length > 0
-      ? await prisma.user.findMany({ where: { id: { in: collectorIds } }, select: { id: true, name: true } })
+    const checkerIds = [...byChecker.keys()];
+    const allUserIds = [...new Set([...collectorIds, ...checkerIds])];
+    const users = allUserIds.length > 0
+      ? await prisma.user.findMany({ where: { id: { in: allUserIds } }, select: { id: true, name: true } })
       : [];
     const nameById = new Map(users.map((u) => [u.id, u.name]));
 
@@ -128,12 +153,24 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.errorCount - a.errorCount)
       .slice(0, 10);
 
+    const topCheckers = [...byChecker.entries()]
+      .map(([id, v]) => ({
+        checkerId: id,
+        checkerName: nameById.get(id) ?? '—',
+        errorCount: v.errorCount,
+        callsCount: v.callsCount,
+      }))
+      .sort((a, b) => b.errorCount - a.errorCount)
+      .slice(0, 10);
+
     return NextResponse.json({
       items,
       stats: {
         totalErrors,
+        totalCheckerErrors,
         totalCalls: statsCalls.length,
         topCollectors,
+        topCheckers,
       },
     });
   } catch (error: unknown) {

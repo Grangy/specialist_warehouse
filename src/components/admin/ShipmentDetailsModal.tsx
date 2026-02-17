@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, Package, Calendar, Clock, User, MapPin, Warehouse, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, RefreshCw, Loader2 } from 'lucide-react';
+import { X, Package, Calendar, Clock, User, MapPin, Warehouse, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
 
 interface ShipmentDetails {
   id: string;
@@ -104,6 +104,7 @@ export default function ShipmentDetailsModal({ shipmentId, onClose, canReassign 
   const [assignments, setAssignments] = useState<Record<string, { collectorId: string; checkerId: string; dictatorId: string }>>({});
   const [reassignLoading, setReassignLoading] = useState(false);
   const [reassignError, setReassignError] = useState('');
+  const [assemblyErrorLoading, setAssemblyErrorLoading] = useState<{ taskId: string; lineIndex: number } | null>(null);
 
   const toggleTaskExpanded = (taskId: string) => {
     setExpandedTaskIds((prev) => {
@@ -261,6 +262,31 @@ export default function ShipmentDetailsModal({ shipmentId, onClose, canReassign 
       setReassignError(e instanceof Error ? e.message : 'Ошибка пересчёта баллов');
     } finally {
       setReassignLoading(false);
+    }
+  };
+
+  const handleAssemblyError = async (taskId: string, lineIndex: number, lineName: string) => {
+    if (!details || !window.confirm(`Зафиксировать ошибку сборки по позиции «${lineName}»? Сборщику +1 ошибка, проверяльщику +2.`)) return;
+    setAssemblyErrorLoading({ taskId, lineIndex });
+    try {
+      const res = await fetch('/api/admin/assembly-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId,
+          lineIndex,
+          lineName,
+          shipmentNumber: details.number,
+          confirmedAt: details.confirmedAt,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Ошибка');
+      await loadDetails();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Ошибка фиксации');
+    } finally {
+      setAssemblyErrorLoading(null);
     }
   };
 
@@ -507,15 +533,36 @@ export default function ShipmentDetailsModal({ shipmentId, onClose, canReassign 
                                           <th className="text-left py-1.5 px-2">Наименование</th>
                                           <th className="text-center py-1.5 px-2">Кол-во</th>
                                           <th className="text-left py-1.5 px-2">Собрано</th>
+                                          {canReassign && (
+                                            <th className="text-right py-1.5 px-2 w-24">Действия</th>
+                                          )}
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {taskLines.map((line) => (
+                                        {taskLines.map((line, lineIdx) => (
                                           <tr key={line.id} className="border-b border-slate-700/20">
                                             <td className="py-1.5 px-2 font-mono text-slate-300">{line.sku}</td>
                                             <td className="py-1.5 px-2 text-slate-300">{line.name}</td>
                                             <td className="py-1.5 px-2 text-center text-slate-300">{line.qty}</td>
                                             <td className="py-1.5 px-2 text-slate-300">{line.collectedQty ?? '—'}</td>
+                                            {canReassign && (
+                                              <td className="py-1.5 px-2 text-right">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleAssemblyError(task.id, lineIdx, line.name)}
+                                                  disabled={!!assemblyErrorLoading}
+                                                  className="inline-flex items-center gap-1 px-2 py-1 bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 rounded text-xs font-medium border border-amber-500/50 disabled:opacity-50"
+                                                  title="Зафиксировать ошибку сборки: сборщику +1, проверяльщику +2, уведомления со звуком"
+                                                >
+                                                  {assemblyErrorLoading?.taskId === task.id && assemblyErrorLoading?.lineIndex === lineIdx ? (
+                                                    <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                                                  ) : (
+                                                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                                                  )}
+                                                  Ошибка сборки
+                                                </button>
+                                              </td>
+                                            )}
                                           </tr>
                                         ))}
                                       </tbody>
