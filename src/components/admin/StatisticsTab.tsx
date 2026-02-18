@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Trophy, 
   TrendingUp, 
@@ -134,8 +134,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
   const [checkers, setCheckers] = useState<RankingEntry[]>([]);
   const [dictators, setDictators] = useState<RankingEntry[]>([]);
   const [allRankings, setAllRankings] = useState<RankingEntry[]>([]);
-  const [topCollectorsByErrors, setTopCollectorsByErrors] = useState<{ userId: string; userName: string; errors: number }[]>([]);
-  const [topCheckersByErrors, setTopCheckersByErrors] = useState<{ userId: string; userName: string; checkerErrors: number }[]>([]);
+  const [topErrorsMerged, setTopErrorsMerged] = useState<{ userId: string; userName: string; errors: number; checkerErrors: number; total: number }[]>([]);
   const [totalCollectorErrors, setTotalCollectorErrors] = useState(0);
   const [totalCheckerErrors, setTotalCheckerErrors] = useState(0);
   const [overview, setOverview] = useState<OverviewData | null>(null);
@@ -168,8 +167,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
       if (topRes.ok) {
         const topData = await topRes.json();
         setAllRankings(topData.all || []);
-        setTopCollectorsByErrors(topData.topCollectorsByErrors || []);
-        setTopCheckersByErrors(topData.topCheckersByErrors || []);
+        setTopErrorsMerged(topData.topErrorsMerged || []);
         setTotalCollectorErrors(topData.totalCollectorErrors ?? 0);
         setTotalCheckerErrors(topData.totalCheckerErrors ?? 0);
       }
@@ -220,22 +218,6 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
     return (eff * 100).toFixed(1) + '%';
   };
 
-  const topErrorsMerged = useMemo(() => {
-    const byUser = new Map<string, { userName: string; errors: number; checkerErrors: number }>();
-    for (const c of topCollectorsByErrors) {
-      byUser.set(c.userId, { userName: c.userName, errors: c.errors, checkerErrors: 0 });
-    }
-    for (const c of topCheckersByErrors) {
-      const ex = byUser.get(c.userId);
-      if (ex) ex.checkerErrors = c.checkerErrors;
-      else byUser.set(c.userId, { userName: c.userName, errors: 0, checkerErrors: c.checkerErrors });
-    }
-    return [...byUser.entries()]
-      .map(([, v]) => ({ ...v, total: v.errors + v.checkerErrors }))
-      .filter((x) => x.total > 0)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
-  }, [topCollectorsByErrors, topCheckersByErrors]);
 
   const PERIOD_LABELS = { today: 'День', week: 'Неделя', month: 'Месяц' } as const;
 

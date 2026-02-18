@@ -332,17 +332,19 @@ export async function GET(request: NextRequest) {
     // Дата для отображения — всегда «сегодня» по Москве (не UTC, иначе показывало вчера)
     const displayDate = getMoscowDateString(new Date());
 
-    // Топ ошибающихся сборщиков и проверяльщиков за период
-    const topCollectorsByErrors = [...allRankings]
-      .filter((e) => (e.errors ?? 0) > 0)
-      .sort((a, b) => (b.errors ?? 0) - (a.errors ?? 0))
-      .slice(0, 5)
-      .map((e) => ({ userId: e.userId, userName: e.userName, errors: e.errors ?? 0 }));
-    const topCheckersByErrors = [...allRankings]
-      .filter((e) => (e.checkerErrors ?? 0) > 0)
-      .sort((a, b) => (b.checkerErrors ?? 0) - (a.checkerErrors ?? 0))
-      .slice(0, 5)
-      .map((e) => ({ userId: e.userId, userName: e.userName, checkerErrors: e.checkerErrors ?? 0 }));
+    // Топ ошибающихся: по сумме (errors + checkerErrors), чтобы не терять данные
+    // при объединении двух топ-5 (сборка/проверка) — иначе у тех, кто только в одном топе, теряется вторая цифра
+    const topErrorsMerged = [...allRankings]
+      .filter((e) => ((e.errors ?? 0) + (e.checkerErrors ?? 0)) > 0)
+      .sort((a, b) => (b.errors ?? 0) + (b.checkerErrors ?? 0) - ((a.errors ?? 0) + (a.checkerErrors ?? 0)))
+      .slice(0, 10)
+      .map((e) => ({
+        userId: e.userId,
+        userName: e.userName,
+        errors: e.errors ?? 0,
+        checkerErrors: e.checkerErrors ?? 0,
+        total: (e.errors ?? 0) + (e.checkerErrors ?? 0),
+      }));
 
     const totalCollectorErrors = [...errorsByCollector.values()].reduce((a, b) => a + b, 0);
     const totalCheckerErrors = [...errorsByChecker.values()].reduce((a, b) => a + b, 0);
@@ -353,8 +355,7 @@ export async function GET(request: NextRequest) {
       date: displayDate,
       totalCollectorErrors,
       totalCheckerErrors,
-      topCollectorsByErrors,
-      topCheckersByErrors,
+      topErrorsMerged,
     });
   } catch (error: unknown) {
     console.error('[API Statistics Top] Ошибка:', error);

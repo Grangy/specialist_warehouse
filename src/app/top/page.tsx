@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Trophy, RefreshCw, Calendar, HelpCircle, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import UserStatsModal from '@/components/admin/UserStatsModal';
@@ -39,8 +39,7 @@ const PERIOD_LABELS: Record<Period, string> = {
 export default function TopPage() {
   const [list, setList] = useState<RankingEntry[]>([]);
   const [date, setDate] = useState<string>('');
-  const [topCollectorsByErrors, setTopCollectorsByErrors] = useState<{ userId: string; userName: string; errors: number }[]>([]);
-  const [topCheckersByErrors, setTopCheckersByErrors] = useState<{ userId: string; userName: string; checkerErrors: number }[]>([]);
+  const [topErrorsMerged, setTopErrorsMerged] = useState<{ userId: string; userName: string; errors: number; checkerErrors: number; total: number }[]>([]);
   const [totalCollectorErrors, setTotalCollectorErrors] = useState(0);
   const [totalCheckerErrors, setTotalCheckerErrors] = useState(0);
   const [period, setPeriod] = useState<Period>('week');
@@ -65,16 +64,14 @@ export default function TopPage() {
       const data = await res.json();
       setList(data.all || []);
       setDate(data.date || new Date().toISOString().split('T')[0]);
-      setTopCollectorsByErrors(data.topCollectorsByErrors || []);
-      setTopCheckersByErrors(data.topCheckersByErrors || []);
+      setTopErrorsMerged(data.topErrorsMerged || []);
       setTotalCollectorErrors(data.totalCollectorErrors ?? 0);
       setTotalCheckerErrors(data.totalCheckerErrors ?? 0);
       setMounted(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить рейтинг');
       setList([]);
-      setTopCollectorsByErrors([]);
-      setTopCheckersByErrors([]);
+      setTopErrorsMerged([]);
       setTotalCollectorErrors(0);
       setTotalCheckerErrors(0);
     } finally {
@@ -106,26 +103,6 @@ export default function TopPage() {
     if (index <= 2) return 'animate-top-badge-pop opacity-0';
     return 'animate-top-card-stagger opacity-0';
   };
-
-  const topErrorsMerged = useMemo(() => {
-    const byUser = new Map<string, { userName: string; errors: number; checkerErrors: number }>();
-    for (const c of topCollectorsByErrors) {
-      byUser.set(c.userId, { userName: c.userName, errors: c.errors, checkerErrors: 0 });
-    }
-    for (const c of topCheckersByErrors) {
-      const ex = byUser.get(c.userId);
-      if (ex) {
-        ex.checkerErrors = c.checkerErrors;
-      } else {
-        byUser.set(c.userId, { userName: c.userName, errors: 0, checkerErrors: c.checkerErrors });
-      }
-    }
-    return [...byUser.entries()]
-      .map(([, v]) => ({ ...v, total: v.errors + v.checkerErrors }))
-      .filter((x) => x.total > 0)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
-  }, [topCollectorsByErrors, topCheckersByErrors]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
