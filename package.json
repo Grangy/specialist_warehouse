@@ -39,7 +39,8 @@
     "restore:art": "tsx scripts/restore-art-from-name.ts",
     "export:art": "tsx scripts/export-art-by-name.ts",
     "apply:art": "tsx scripts/apply-art-from-base.ts",
-    "backfill:position-difficulty": "tsx scripts/backfill-position-difficulty.ts"
+    "backfill:position-difficulty": "tsx scripts/backfill-position-difficulty.ts",
+    "analytics:two-weeks": "tsx scripts/analytics-two-weeks.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

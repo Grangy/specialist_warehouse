@@ -20,6 +20,7 @@ interface RankingEntry {
   points: number;
   dictatorPoints?: number;
   errors?: number;
+  checkerErrors?: number;
   rank: number | null;
   level: {
     name: string;
@@ -50,20 +51,28 @@ export async function GET(request: NextRequest) {
 
     const { startDate, endDate } = getStatisticsDateRange(period);
 
-    // Ошибки сборщиков за период (CollectorCall status=done)
-    const collectorErrorsRaw = await prisma.collectorCall.findMany({
+    // Ошибки сборщиков и проверяльщиков за период (CollectorCall status=done)
+    const callsWithErrors = await prisma.collectorCall.findMany({
       where: {
         status: 'done',
         confirmedAt: { gte: startDate, lte: endDate },
-        errorCount: { gt: 0 },
+        OR: [{ errorCount: { gt: 0 } }, { checkerErrorCount: { gt: 0 } }],
         ...(warehouseFilter && { task: { warehouse: warehouseFilter } }),
       },
-      select: { collectorId: true, errorCount: true },
+      select: { collectorId: true, checkerId: true, errorCount: true, checkerErrorCount: true },
     });
     const errorsByCollector = new Map<string, number>();
-    for (const c of collectorErrorsRaw) {
-      const sum = (errorsByCollector.get(c.collectorId) ?? 0) + (c.errorCount ?? 0);
-      errorsByCollector.set(c.collectorId, sum);
+    const errorsByChecker = new Map<string, number>();
+    for (const c of callsWithErrors) {
+      const cc = c as { checkerErrorCount?: number | null };
+      const errCol = c.errorCount ?? 0;
+      const errChk = cc.checkerErrorCount ?? 0;
+      if (errCol > 0) {
+        errorsByCollector.set(c.collectorId, (errorsByCollector.get(c.collectorId) ?? 0) + errCol);
+      }
+      if (errChk > 0 && c.checkerId) {
+        errorsByChecker.set(c.checkerId, (errorsByChecker.get(c.checkerId) ?? 0) + errChk);
+      }
     }
 
     // Получаем статистику для сборщиков
@@ -186,6 +195,7 @@ export async function GET(request: NextRequest) {
           orders: userStat.orders.size,
           points: userStat.points,
           errors: errorsByCollector.get(userStat.userId) ?? 0,
+          checkerErrors: errorsByChecker.get(userStat.userId) ?? 0,
           rank: null, // Ранг будет рассчитан ниже
           level: null,
           pph,
@@ -332,6 +342,8 @@ export async function GET(request: NextRequest) {
           units: userStat.units,
           orders: userStat.orders.size,
           points: userStat.points,
+          errors: errorsByCollector.get(userStat.userId) ?? 0,
+          checkerErrors: errorsByChecker.get(userStat.userId) ?? 0,
           rank: null, // Ранг будет рассчитан ниже
           level: null,
           pph,
@@ -657,6 +669,7 @@ export async function GET(request: NextRequest) {
           orders: userStat.orders.size,
           points: userStat.points,
           errors: errorsByCollector.get(userStat.userId) ?? 0,
+          checkerErrors: errorsByChecker.get(userStat.userId) ?? 0,
           rank: null,
           level: null,
           pph,
@@ -807,6 +820,8 @@ export async function GET(request: NextRequest) {
           units: userStat.units,
           orders: userStat.orders.size,
           points: userStat.points,
+          errors: errorsByCollector.get(userStat.userId) ?? 0,
+          checkerErrors: errorsByChecker.get(userStat.userId) ?? 0,
           rank: null,
           level: null,
           pph,
@@ -1120,6 +1135,7 @@ export async function GET(request: NextRequest) {
           orders: userStat.orders.size,
           points: userStat.points,
           errors: errorsByCollector.get(userStat.userId) ?? 0,
+          checkerErrors: errorsByChecker.get(userStat.userId) ?? 0,
           rank: null,
           level: null,
           pph,
@@ -1270,6 +1286,8 @@ export async function GET(request: NextRequest) {
           units: userStat.units,
           orders: userStat.orders.size,
           points: userStat.points,
+          errors: errorsByCollector.get(userStat.userId) ?? 0,
+          checkerErrors: errorsByChecker.get(userStat.userId) ?? 0,
           rank: null,
           level: null,
           pph,

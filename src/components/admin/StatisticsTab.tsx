@@ -150,10 +150,12 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
     setIsLoading(true);
     try {
       const timestamp = new Date().getTime();
+      const topParams = new URLSearchParams({ period, _t: String(timestamp) });
+      if (warehouseScope) topParams.set('warehouse', warehouseScope);
       const [rankingRes, overviewRes, topRes] = await Promise.all([
         fetch(`/api/statistics/ranking?period=${period}&_t=${timestamp}`, { cache: 'no-store' }),
         fetch(`/api/statistics/overview?_t=${timestamp}`, { cache: 'no-store' }),
-        fetch(`/api/statistics/top?period=${period}&_t=${timestamp}`, { cache: 'no-store' }),
+        fetch(`/api/statistics/top?${topParams}`, { cache: 'no-store' }),
       ]);
 
       if (rankingRes.ok) {

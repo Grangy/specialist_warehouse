@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const periodParam = searchParams.get('period') || 'today';
     const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
+    const warehouseFilter = searchParams.get('warehouse') || undefined;
     const { startDate, endDate } = getStatisticsDateRange(period);
 
     // Ошибки сборщиков и проверяльщиков за период (CollectorCall status=done, confirmedAt в диапазоне)
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
         status: 'done',
         confirmedAt: { gte: startDate, lte: endDate },
         OR: [{ errorCount: { gt: 0 } }, { checkerErrorCount: { gt: 0 } }],
+        ...(warehouseFilter && { task: { warehouse: warehouseFilter } }),
       },
       select: { collectorId: true, checkerId: true, errorCount: true, checkerErrorCount: true },
     });
@@ -66,14 +68,20 @@ export async function GET(request: NextRequest) {
     const collectorByCompleted = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'collector',
-        task: { completedAt: { gte: startDate, lte: endDate } },
+        task: {
+          completedAt: { gte: startDate, lte: endDate },
+          ...(warehouseFilter && { warehouse: warehouseFilter }),
+        },
       },
       include: { user: { select: { id: true, name: true, role: true } } },
     });
     const collectorByConfirmed = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'collector',
-        task: { confirmedAt: { gte: startDate, lte: endDate } },
+        task: {
+          confirmedAt: { gte: startDate, lte: endDate },
+          ...(warehouseFilter && { warehouse: warehouseFilter }),
+        },
       },
       include: { user: { select: { id: true, name: true, role: true } } },
     });
@@ -89,6 +97,7 @@ export async function GET(request: NextRequest) {
         roleType: 'checker',
         task: {
           confirmedAt: { gte: startDate, lte: endDate },
+          ...(warehouseFilter && { warehouse: warehouseFilter }),
         },
       },
       include: {
@@ -103,6 +112,7 @@ export async function GET(request: NextRequest) {
         user: { role: 'checker' },
         task: {
           completedAt: { gte: startDate, lte: endDate },
+          ...(warehouseFilter && { warehouse: warehouseFilter }),
         },
       },
       include: {
@@ -117,6 +127,7 @@ export async function GET(request: NextRequest) {
         task: {
           dictatorId: { not: null },
           confirmedAt: { gte: startDate, lte: endDate },
+          ...(warehouseFilter && { warehouse: warehouseFilter }),
         },
       },
       include: {
