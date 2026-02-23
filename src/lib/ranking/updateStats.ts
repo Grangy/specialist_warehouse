@@ -71,9 +71,14 @@ function calculateRankByPercentiles(value: number, allValues: number[]): number 
 /** С 2 февраля 2026 данные по Склад 3 учитываются в сложности позиций; до этой даты — нет. */
 const WAREHOUSE_3_CUTOFF = new Date('2026-02-02T00:00:00.000Z');
 
+/** Исключаем аномальные сборки: < 2 сек/поз (ошибка данных) или > 300 сек/поз (брошенные). */
+const MIN_SEC_PER_POS = 2;
+const MAX_SEC_PER_POS = 300;
+
 /**
  * Обновить самообучаемую сложность позиций после завершения сборки.
  * Учитываются только не-админы; для Склад 3 — только сборки с completedAt >= 2026-02-02.
+ * Исключаются аномальные: слишком быстрые (< 2 сек/поз) или слишком долгие (> 300 сек/поз).
  */
 export async function updatePositionDifficulty(taskId: string) {
   const task = await prisma.shipmentTask.findUnique({
@@ -99,6 +104,7 @@ export async function updatePositionDifficulty(taskId: string) {
   const secPerUnit = stats?.secPerUnit ?? (stats?.pickTimeSec != null && stats?.units ? stats.pickTimeSec / stats.units : null);
   const secPerPos = stats?.secPerPos ?? (stats?.pickTimeSec != null && stats?.positions ? stats.pickTimeSec / stats.positions : null);
   if (secPerUnit == null && secPerPos == null) return;
+  if (secPerPos != null && (secPerPos < MIN_SEC_PER_POS || secPerPos > MAX_SEC_PER_POS)) return;
 
   const now = new Date();
   for (const line of task.lines) {

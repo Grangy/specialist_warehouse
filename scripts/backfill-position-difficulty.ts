@@ -3,7 +3,8 @@
  *
  * Учитываются те же правила, что и в updatePositionDifficulty:
  * - только задания с completedAt и сборщиком (не админ);
- * - для Склад 3 — только сборки с completedAt >= 2026-02-02.
+ * - для Склад 3 — только сборки с completedAt >= 2026-02-02;
+ * - исключаются аномальные: < 2 сек/поз или > 300 сек/поз.
  *
  * По умолчанию таблица очищается и заполняется заново (без двойного учёта).
  *
@@ -19,6 +20,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const WAREHOUSE_3_CUTOFF = new Date('2026-02-02T00:00:00.000Z');
+const MIN_SEC_PER_POS = 2;
+const MAX_SEC_PER_POS = 300;
 
 const databaseUrl = process.env.DATABASE_URL;
 let finalDatabaseUrl = databaseUrl;
@@ -36,6 +39,7 @@ async function main() {
 
   console.log('📦 Бэкфилл position_difficulty по прошедшим сборкам');
   console.log('   Склад 3 учитывается только при completedAt >= 2026-02-02');
+  console.log('   Исключаются аномальные: sec/поз < 2 или > 300');
   if (!noClear) {
     console.log('   Таблица будет очищена и заполнена заново.');
   } else {
@@ -64,6 +68,7 @@ async function main() {
   let skippedAdmin = 0;
   let skippedWarehouse3 = 0;
   let skippedNoStats = 0;
+  let skippedAnomalous = 0;
   let processed = 0;
   let positionsUpdated = 0;
 
@@ -101,6 +106,10 @@ async function main() {
         : null);
     if (secPerUnit == null && secPerPos == null) {
       skippedNoStats++;
+      continue;
+    }
+    if (secPerPos != null && (secPerPos < MIN_SEC_PER_POS || secPerPos > MAX_SEC_PER_POS)) {
+      skippedAnomalous++;
       continue;
     }
 
@@ -147,6 +156,7 @@ async function main() {
   console.log(`   Пропущено (сборщик — админ): ${skippedAdmin}`);
   console.log(`   Пропущено (Склад 3 до 2026-02-02): ${skippedWarehouse3}`);
   console.log(`   Пропущено (нет статистики): ${skippedNoStats}`);
+  console.log(`   Пропущено (аномалии sec/поз): ${skippedAnomalous}`);
   const totalRows = await prisma.positionDifficulty.count();
   console.log(`   Всего записей в position_difficulty: ${totalRows}`);
 }
