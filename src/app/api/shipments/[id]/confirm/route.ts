@@ -26,10 +26,17 @@ export async function POST(
       );
     }
     const body = await request.json();
-    let { lines, comment, places, dictatorId } = body;
+    let { lines, comment, places, dictatorId, customerName } = body;
     // Для warehouse_3 диктовщик всегда сам пользователь — все баллы проверяльщика ему
     if (user.role === 'warehouse_3') {
       dictatorId = user.id;
+    }
+    // Для проверяльщика диктовщик обязателен (можно выбрать себя)
+    if (user.role === 'checker' && (!dictatorId || typeof dictatorId !== 'string')) {
+      return NextResponse.json(
+        { error: 'Укажите диктовщика на день. Выберите в меню слева → Диктовщик на день.' },
+        { status: 400 }
+      );
     }
 
     const task = await prisma.shipmentTask.findUnique({
@@ -155,6 +162,7 @@ export async function POST(
           confirmedAt: new Date(), // Записываем время подтверждения
           comment: comment !== undefined ? comment : undefined, // Обновляем комментарий, если передан
           places: finalPlaces > 0 ? finalPlaces : undefined, // Сохраняем суммарное количество мест (только если > 0)
+          customerName: customerName !== undefined && String(customerName).trim() ? String(customerName).trim() : undefined, // Имя покупателя при отправке в офис
         },
       });
 

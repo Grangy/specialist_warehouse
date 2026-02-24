@@ -283,7 +283,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       [lineIndex]: location,
     }));
 
-    // СТРОГОЕ и ПРИНУДИТЕЛЬНОЕ сохранение location в БД через API сразу
+    // СТРОГОЕ и ПРИНУДИТЕЛЬНОЕ сохранение location в БД через API сразу (только если ячейка была пустая)
     try {
       const shipmentId = currentShipment.id;
       const response = await fetch(`/api/shipments/${shipmentId}/update-location`, {
@@ -297,20 +297,36 @@ export function useConfirm(options?: UseConfirmOptions) {
         }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[useConfirm] Ошибка API при сохранении места:`, {
-          status: response.status,
-          error: errorText,
+      const data = (await response.json().catch(() => ({}))) as { skipped?: boolean; location?: string | null };
+      if (response.ok && data.skipped) {
+        // Ячейка уже заполнена — значение от 1С, не перезаписываем. Откатываем оптимистичное обновление.
+        const keptLocation = data.location ?? line.location;
+        setCurrentShipment((prev) => {
+          if (!prev) return prev;
+          const newLines = [...prev.lines];
+          newLines[lineIndex] = { ...newLines[lineIndex], location: keptLocation ?? undefined };
+          return { ...prev, lines: newLines };
         });
-        throw new Error(`Ошибка при сохранении места: ${response.status}`);
+        setChangedLocations((prev) => {
+          const next = { ...prev };
+          delete next[lineIndex];
+          return next;
+        });
+        showToast('Ячейка уже заполнена, значение от 1С сохранено', 'info');
+        return;
+      }
+
+      if (!response.ok) {
+        const errorMsg = (data as { error?: string })?.error || `Ошибка ${response.status}`;
+        console.error(`[useConfirm] Ошибка API при сохранении места:`, { status: response.status, error: errorMsg });
+        throw new Error(`Ошибка при сохранении места: ${errorMsg}`);
       }
     } catch (error) {
       console.error('[useConfirm] Ошибка при сохранении места:', error);
       showError('Не удалось сохранить место');
       // Не удаляем из changedLocations, чтобы попытаться сохранить при закрытии
     }
-  }, [currentShipment, showError]);
+  }, [currentShipment, showError, showToast]);
 
   const confirmItem = useCallback((lineIndex: number) => {
     // Помечаем товар как "улетающий" и запускаем анимацию
@@ -369,7 +385,7 @@ export function useConfirm(options?: UseConfirmOptions) {
     }, 500);
   }, [currentShipment, polling]);
 
-  const confirmShipment = useCallback(async (comment?: string, places?: number, selectedDictatorId?: string | null) => {
+  const confirmShipment = useCallback(async (comment?: string, places?: number, selectedDictatorId?: string | null, customerName?: string) => {
     if (!currentShipment) {
       console.error('[useConfirm] Ошибка: нет данных о заказе');
       showError('Ошибка: нет данных о заказе');
@@ -398,6 +414,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         comment?: string;
         places?: number;
         dictatorId?: string | null;
+        customerName?: string;
       } = {
         lines: linesData,
       };
@@ -408,6 +425,9 @@ export function useConfirm(options?: UseConfirmOptions) {
       }
       if (places !== undefined) {
         requestData.places = places;
+      }
+      if (customerName !== undefined && customerName.trim()) {
+        requestData.customerName = customerName.trim();
       }
       // Добавляем ID диктовщика, если выбран
       if (selectedDictatorId !== undefined) {
@@ -499,7 +519,7 @@ export function useConfirm(options?: UseConfirmOptions) {
     };
   }, [currentShipment, checklistState]);
 
-  const confirmAll = useCallback(async (shipment: Shipment, comment?: string, places?: number) => {
+  const confirmAll = useCallback(async (shipment: Shipment, comment?: string, places?: number, customerName?: string) => {
     try {
       const linesData = shipment.lines.map((line) => ({
         sku: line.sku,
@@ -511,6 +531,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         lines: Array<{ sku: string; collected_qty: number; checked: boolean }>;
         comment?: string;
         places?: number;
+        customerName?: string;
       } = {
         lines: linesData,
       };
@@ -521,6 +542,9 @@ export function useConfirm(options?: UseConfirmOptions) {
       }
       if (places !== undefined) {
         requestData.places = places;
+      }
+      if (customerName !== undefined && customerName.trim()) {
+        requestData.customerName = customerName.trim();
       }
 
       const response = await shipmentsApi.confirmShipment(shipment.id, requestData);

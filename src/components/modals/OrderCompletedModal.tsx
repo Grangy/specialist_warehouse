@@ -57,6 +57,9 @@ export function OrderCompletedModal({ isOpen, onClose, orderData }: OrderComplet
           <h4 className="text-blue-400 font-semibold mb-2">📋 Лог отправки:</h4>
           <div className="text-blue-300 text-sm space-y-1">
             <p>• Заказ: <span className="font-mono">{orderData.number}</span></p>
+            {orderData.finalData?.customer_name && (
+              <p>• Покупатель: <span className="font-semibold text-white">{orderData.finalData.customer_name}</span></p>
+            )}
             <p>• Количество заданий: {orderData.tasksCount}</p>
             <p>• Статус: <span className="text-green-400">Обработан</span></p>
             <p>• Дата обработки: {orderData.finalData?.processed_at ? new Date(orderData.finalData.processed_at).toLocaleString('ru-RU') : '—'}</p>

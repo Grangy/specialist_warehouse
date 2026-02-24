@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, X } from 'lucide-react';
+import { UserPlus } from 'lucide-react';
 
 interface User {
   id: string;
@@ -140,10 +140,6 @@ export function DictatorSelector({ userId, userRole }: DictatorSelectorProps) {
     }
   };
 
-  const handleRemove = () => {
-    handleSelect(null, null);
-  };
-
   // Фильтруем пользователей по поиску; для warehouse_3 текущий пользователь всегда может выбрать себя
   const filteredUsers = users.filter((user) => {
     if (!searchQuery.trim()) return true;
@@ -179,13 +175,6 @@ export function DictatorSelector({ userId, userRole }: DictatorSelectorProps) {
                   Получает 0.75 от ваших баллов
                 </div>
               </div>
-              <button
-                onClick={handleRemove}
-                className="ml-2 w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-slate-200 transition-colors flex-shrink-0"
-                title="Убрать диктовщика"
-              >
-                <X className="w-4 h-4" />
-              </button>
             </div>
           ) : (
             <div className="text-center py-2">
@@ -221,17 +210,6 @@ export function DictatorSelector({ userId, userRole }: DictatorSelectorProps) {
             <div className="text-center py-4 text-slate-500 text-xs">Загрузка пользователей...</div>
           ) : (
             <div className="space-y-1 max-h-48 overflow-y-auto">
-              <label className="block p-2 hover:bg-slate-800 rounded-lg cursor-pointer">
-                <input
-                  type="radio"
-                  name="dictator"
-                  value=""
-                  checked={selectedDictatorId === null}
-                  onChange={() => handleSelect(null, null)}
-                  className="mr-2"
-                />
-                <span className="text-slate-300 text-sm">Без диктовщика</span>
-              </label>
               {filteredUsers.length === 0 ? (
                 <div className="text-center py-4 text-slate-500 text-xs">
                   {searchQuery ? 'Пользователи не найдены' : 'Нет пользователей'}

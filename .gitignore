@@ -111,3 +111,4 @@ scripts/*.md
 SECURITY-*.md
 *.md
 !README.md
+!DEPLOY.md

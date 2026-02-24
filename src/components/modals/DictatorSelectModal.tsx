@@ -12,16 +12,21 @@ interface User {
 
 interface DictatorSelectModalProps {
   isOpen: boolean;
-  onSelect: (dictatorId: string | null) => void;
+  onSelect: (dictatorId: string, dictatorName: string) => void;
   onCancel: () => void;
+  /** Для warehouse_3 можно выбрать себя */
+  userRole?: string;
+  /** Принудительный выбор (при проверке без диктовщика) */
+  required?: boolean;
 }
 
-export function DictatorSelectModal({ isOpen, onSelect, onCancel }: DictatorSelectModalProps) {
+export function DictatorSelectModal({ isOpen, onSelect, onCancel, userRole, required }: DictatorSelectModalProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDictatorId, setSelectedDictatorId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const isWarehouse3 = userRole === 'warehouse_3';
 
   useEffect(() => {
     if (isOpen) {
@@ -75,7 +80,9 @@ export function DictatorSelectModal({ isOpen, onSelect, onCancel }: DictatorSele
   };
 
   const handleConfirm = () => {
-    onSelect(selectedDictatorId || null);
+    if (!selectedDictatorId) return;
+    const user = users.find((u) => u.id === selectedDictatorId);
+    if (user) onSelect(selectedDictatorId, user.name);
   };
 
   // Фильтруем пользователей: теперь проверяльщики могут выбирать других проверяльщиков
@@ -92,10 +99,12 @@ export function DictatorSelectModal({ isOpen, onSelect, onCancel }: DictatorSele
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title="Выберите диктовщика">
+    <Modal isOpen={isOpen} onClose={onCancel} title={required ? 'Кто диктовщик?' : 'Выберите диктовщика'}>
       <div className="space-y-4">
         <p className="text-slate-300 text-sm">
-          Выберите диктовщика, с которым вы будете делить баллы за проверку. Диктовщик получит 0.75 от ваших баллов.
+          {required
+            ? 'При проверке необходимо указать диктовщика. Выберите диктовщика, с которым вы будете делить баллы (можно себя).'
+            : 'Выберите диктовщика, с которым вы будете делить баллы за проверку. Диктовщик получит 0.75 от ваших баллов.'}
         </p>
         
         {isLoading ? (
@@ -114,42 +123,43 @@ export function DictatorSelectModal({ isOpen, onSelect, onCancel }: DictatorSele
             </div>
 
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              <label className="block p-2 hover:bg-slate-800 rounded-lg cursor-pointer">
-                <input
-                  type="radio"
-                  name="dictator"
-                  value=""
-                  checked={selectedDictatorId === ''}
-                  onChange={(e) => setSelectedDictatorId(e.target.value)}
-                  className="mr-2"
-                />
-                <span className="text-slate-300">Без диктовщика</span>
-              </label>
               {filteredUsers.length === 0 ? (
                 <div className="text-center py-4 text-slate-500">
                   {searchQuery ? 'Пользователи не найдены' : 'Нет пользователей'}
                 </div>
               ) : (
-                filteredUsers.map((user) => (
+                filteredUsers.map((user) => {
+                  const isSelf = currentUser && user.id === currentUser.id;
+                  return (
                   <label key={user.id} className="block p-2 hover:bg-slate-800 rounded-lg cursor-pointer">
                     <input
                       type="radio"
                       name="dictator"
                       value={user.id}
                       checked={selectedDictatorId === user.id}
-                      onChange={(e) => setSelectedDictatorId(e.target.value)}
+                      onChange={() => setSelectedDictatorId(user.id)}
                       className="mr-2"
                     />
                     <span className="text-slate-300">
+                      {(isWarehouse3 || required) && isSelf ? (
+                        <>
+                          <span className="text-amber-400 font-medium">{user.name}</span>
+                          <span className="text-amber-400/80 text-xs ml-2">(я — диктовщик сам себе)</span>
+                        </>
+                      ) : (
+                        <>
                       {user.name} ({user.login})
                       {user.role && (
                         <span className="text-slate-500 text-xs ml-2">
-                          [{user.role === 'admin' ? 'Админ' : user.role === 'collector' ? 'Сборщик' : 'Проверяющий'}]
+                          [{user.role === 'admin' ? 'Админ' : user.role === 'collector' ? 'Сборщик' : user.role === 'warehouse_3' ? 'Склад 3' : 'Проверяющий'}]
                         </span>
+                      )}
+                        </>
                       )}
                     </span>
                   </label>
-                ))
+                );
+                })
               )}
             </div>
           </>
@@ -164,7 +174,8 @@ export function DictatorSelectModal({ isOpen, onSelect, onCancel }: DictatorSele
           </button>
           <button
             onClick={handleConfirm}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            disabled={!selectedDictatorId}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors disabled:opacity-50"
           >
             Подтвердить
           </button>

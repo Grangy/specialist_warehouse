@@ -16,6 +16,7 @@ import { SendToOfficeModal } from '@/components/modals/SendToOfficeModal';
 import { WarehouseSelectModal } from '@/components/modals/WarehouseSelectModal';
 import { CollectionCompletedModal } from '@/components/modals/CollectionCompletedModal';
 import { AdminMessagePopup } from '@/components/AdminMessagePopup';
+import { DictatorSelectModal } from '@/components/modals/DictatorSelectModal';
 import { useShipments } from '@/hooks/useShipments';
 import { useCollect } from '@/hooks/useCollect';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -31,6 +32,7 @@ export default function Home() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [userInfo, setUserInfo] = useState<{ id: string; name: string; role: string } | null>(null);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
+  const [showDictatorRequiredModal, setShowDictatorRequiredModal] = useState(false);
   // «Только сегодня» — для проверяльщика/админа/склад 3: показывать только заказы активных регионов на сегодня
   const [showOnlyToday, setShowOnlyToday] = useState(false);
 
@@ -456,6 +458,12 @@ export default function Home() {
               return;
             }
 
+            // Проверяльщик обязан выбрать диктовщика на день (можно себя)
+            if (userRole === 'checker' && !confirmHook.dictatorId) {
+              setShowDictatorRequiredModal(true);
+              return;
+            }
+
             // Если все подтверждено, показываем модальное окно для ввода комментария и количества мест
             if (confirmHook.currentShipment) {
               setPendingShipmentForOffice(confirmHook.currentShipment);
@@ -494,7 +502,7 @@ export default function Home() {
           sendToOfficeModal.close();
           setPendingShipmentForOffice(null);
         }}
-        onConfirm={async (places: number) => {
+        onConfirm={async (places: number, customerName?: string) => {
           try {
             sendToOfficeModal.close();
             
@@ -515,9 +523,9 @@ export default function Home() {
             // Если есть текущий shipment в confirmHook, используем confirmShipment
             // Иначе используем confirmAll для shipment из pendingShipmentForOffice
             if (confirmHook.currentShipment && confirmHook.isOpen) {
-              result = await confirmHook.confirmShipment(undefined, placesToSend, confirmHook.dictatorId);
+              result = await confirmHook.confirmShipment(undefined, placesToSend, confirmHook.dictatorId, customerName);
             } else if (pendingShipmentForOffice) {
-              result = await confirmHook.confirmAll(pendingShipmentForOffice, undefined, placesToSend);
+              result = await confirmHook.confirmAll(pendingShipmentForOffice, undefined, placesToSend, customerName);
             } else {
               showError('Ошибка: нет данных о заказе для отправки');
               return;
@@ -581,6 +589,24 @@ export default function Home() {
           onAccept={handleDismissAdminMessage}
         />
       )}
+      <DictatorSelectModal
+        isOpen={showDictatorRequiredModal}
+        required
+        onSelect={(dictatorId, dictatorName) => {
+          if (userInfo) {
+            const today = new Date().toISOString().split('T')[0];
+            localStorage.setItem(`dictator_${userInfo.id}_${today}`, JSON.stringify({ id: dictatorId, name: dictatorName }));
+          }
+          confirmHook.setDictatorId(dictatorId);
+          setShowDictatorRequiredModal(false);
+          if (confirmHook.currentShipment) {
+            setPendingShipmentForOffice(confirmHook.currentShipment);
+            sendToOfficeModal.open();
+          }
+        }}
+        onCancel={() => setShowDictatorRequiredModal(false)}
+        userRole={userRole ?? undefined}
+      />
     </div>
   );
 }

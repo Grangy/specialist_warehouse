@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
           )
         : processedShipmentsRaw;
 
-    const items: Array<{
+    const rawItems: Array<{
       sku: string;
       art: string | null;
       name: string;
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
 
           if (originalQty > finalQty) {
             const shortageQty = originalQty - finalQty;
-            items.push({
+            rawItems.push({
               sku: taskLine.shipmentLine.sku,
               art: taskLine.shipmentLine.art ?? null,
               name: taskLine.shipmentLine.name,
@@ -115,6 +115,48 @@ export async function GET(request: NextRequest) {
         }
       }
     }
+
+    // Агрегируем по товару (sku + name + warehouse): не дублируем, суммируем shortage_qty
+    const aggregated = new Map<
+      string,
+      { sku: string; art: string | null; name: string; warehouse: string; shortage_qty: number; shipment_numbers: string[]; shipment_id: string; dates: string[] }
+    >();
+    for (const item of rawItems) {
+      const key = `${item.sku}\0${item.name}\0${item.warehouse}`;
+      const existing = aggregated.get(key);
+      if (existing) {
+        existing.shortage_qty += item.shortage_qty;
+        if (!existing.shipment_numbers.includes(item.shipment_number)) {
+          existing.shipment_numbers.push(item.shipment_number);
+        }
+        if (!existing.dates.includes(item.date)) {
+          existing.dates.push(item.date);
+        }
+      } else {
+        aggregated.set(key, {
+          sku: item.sku,
+          art: item.art,
+          name: item.name,
+          warehouse: item.warehouse,
+          shortage_qty: item.shortage_qty,
+          shipment_numbers: [item.shipment_number],
+          shipment_id: item.shipment_id,
+          dates: [item.date],
+        });
+      }
+    }
+
+    const items = Array.from(aggregated.values()).map((a) => ({
+      sku: a.sku,
+      art: a.art,
+      name: a.name,
+      warehouse: a.warehouse,
+      shortage_qty: a.shortage_qty,
+      shipment_number: a.shipment_numbers.join(', '),
+      shipment_numbers: a.shipment_numbers,
+      shipment_id: a.shipment_id,
+      orders_count: a.shipment_numbers.length,
+    }));
 
     return NextResponse.json({ items });
   } catch (error: any) {

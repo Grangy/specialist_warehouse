@@ -1,11 +1,16 @@
 /**
- * Анализ за последние 2 недели: все пользователи, сборка/проверка, по складам,
- * основные показатели и выполнение норм.
+ * Анализ: все пользователи, сборка/проверка, по складам, KPI и зарплаты.
  *
- * Запуск: npx tsx scripts/analytics-two-weeks.ts
- * npx tsx scripts/analytics-two-weeks.ts --days 14
- * npx tsx scripts/analytics-two-weeks.ts --no-filter  # без исключения аномалий
- * npx tsx scripts/analytics-two-weeks.ts --all       # все пользователи (не только топ-10)
+ * По умолчанию: все полные дни из БД (min–max confirmedAt). Аномалии считаются как ранее.
+ * Экстраполяция KPI до конца месяца (22 раб. дня).
+ *
+ * Запуск:
+ *   npx tsx scripts/analytics-two-weeks.ts           # период 3–20 (по умолч.)
+ *   npx tsx scripts/analytics-two-weeks.ts --days 14 # последние 14 дней
+ *   npx tsx scripts/analytics-two-weeks.ts --from 2026-02-03 --to 2026-03-20
+ *   npx tsx scripts/analytics-two-weeks.ts --period-3-20  # явно 3–20 число
+ *   npx tsx scripts/analytics-two-weeks.ts --no-filter  # без исключения аномалий
+ *   npx tsx scripts/analytics-two-weeks.ts --all       # все пользователи
  *
  * Исключаются: сек/поз < 2 (ошибка данных) или > 300 сек (брошенные сборки).
  * Результат: reports/analytics-two-weeks-YYYY-MM-DD_YYYY-MM-DD.md (и .json)
@@ -14,6 +19,7 @@
 import { PrismaClient } from '../src/generated/prisma/client';
 import path from 'path';
 import fs from 'fs';
+import { spawnSync } from 'child_process';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -37,20 +43,49 @@ const prisma = new PrismaClient({
   datasources: { db: { url: finalDatabaseUrl || databaseUrl } },
 }) as any;
 
-function parseArgs(argv: string[]): { days: number; noFilter: boolean; allUsers: boolean } {
+/** Период по умолчанию: все полные дни из БД (min–max confirmedAt). --period-3-20 или --from/--to для явного периода. */
+function parseArgs(argv: string[]): { days: number; noFilter: boolean; allUsers: boolean; useDbRange: boolean; from?: Date; to?: Date } {
   let days = DEFAULT_DAYS;
   let noFilter = false;
   let allUsers = false;
+  let useDbRange = false;
+  let from: Date | undefined;
+  let to: Date | undefined;
+  let explicitDays = false;
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--days' && argv[i + 1]) {
       days = Math.max(1, parseInt(argv[i + 1], 10) || DEFAULT_DAYS);
+      explicitDays = true;
       i++;
+      continue;
+    }
+    if (argv[i] === '--from' && argv[i + 1]) {
+      from = new Date(argv[i + 1]);
+      from.setHours(0, 0, 0, 0);
+      i++;
+      continue;
+    }
+    if (argv[i] === '--to' && argv[i + 1]) {
+      to = new Date(argv[i + 1]);
+      to.setHours(23, 59, 59, 999);
+      i++;
+      continue;
+    }
+    if (argv[i] === '--period-3-20') {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      from = new Date(y, m, 3, 0, 0, 0, 0);
+      to = new Date(y, m + 1, 20, 23, 59, 59, 999);
       continue;
     }
     if (argv[i] === '--no-filter') noFilter = true;
     if (argv[i] === '--all') allUsers = true;
   }
-  return { days, noFilter, allUsers };
+  if (!from && !to && !explicitDays) {
+    useDbRange = true;
+  }
+  return { days, noFilter, allUsers, useDbRange, from, to };
 }
 
 function fmtTime(sec: number | null | undefined): string {
@@ -71,10 +106,36 @@ function fmtNum(v: number | null | undefined, decimals = 0): string {
 }
 
 async function run() {
-  const { days, noFilter, allUsers } = parseArgs(process.argv);
-  const endDate = new Date();
-  const startDate = new Date(endDate);
-  startDate.setDate(startDate.getDate() - days);
+  const { days: daysArg, noFilter, allUsers, useDbRange, from, to } = parseArgs(process.argv);
+  let startDate: Date;
+  let endDate: Date;
+  if (useDbRange) {
+    const agg = await prisma.shipmentTask.aggregate({
+      _min: { confirmedAt: true },
+      _max: { confirmedAt: true },
+      where: { confirmedAt: { not: null } },
+    });
+    if (agg._min.confirmedAt && agg._max.confirmedAt) {
+      startDate = new Date(agg._min.confirmedAt);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(agg._max.confirmedAt);
+      endDate.setHours(23, 59, 59, 999);
+      console.log('Период: все полные дни из БД');
+    } else {
+      endDate = new Date();
+      startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - daysArg);
+      console.log('В БД нет подтверждённых заданий — период: последние', daysArg, 'дней');
+    }
+  } else if (from && to) {
+    startDate = from;
+    endDate = to;
+  } else {
+    endDate = new Date();
+    startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - daysArg);
+  }
+  const days = Math.ceil((endDate.getTime() - startDate.getTime()) / 864e5) + 1;
 
   console.log(`Период: ${startDate.toISOString().slice(0, 10)} — ${endDate.toISOString().slice(0, 10)} (${days} дней)`);
 
@@ -84,15 +145,13 @@ async function run() {
   });
   const adminIds = new Set(adminUsers.map((u) => u.id));
 
-  // TaskStatistics за период (сборщики и проверяльщики)
+  // TaskStatistics за период: только задания, полностью завершённые (confirmedAt) в периоде.
+  // Так сборка и проверка считаются 1:1 — один и тот же набор задач.
   const statsRaw = await prisma.taskStatistics.findMany({
     where: {
       user: { role: { not: 'admin' } },
       task: {
-        OR: [
-          { completedAt: { gte: startDate, lte: endDate } },
-          { confirmedAt: { gte: startDate, lte: endDate } },
-        ],
+        confirmedAt: { gte: startDate, lte: endDate },
       },
     },
     include: {
@@ -111,49 +170,42 @@ async function run() {
 
   // Фильтрация аномальных и нерепрезентативных записей
   const excluded: { userName: string; roleType: string; warehouse: string; reason: string; positions: number; secPerPos: number; orderNum?: string }[] = [];
-  const stats = statsRaw.filter((s) => {
-    if (noFilter) return true;
+  const excludedTaskIds = new Set<string>();
+  const wouldExclude = (s: (typeof statsRaw)[0]): string | null => {
     const secPerPos =
       s.pickTimeSec != null && s.positions > 0 ? s.pickTimeSec / s.positions : null;
     const orderNum = (s.task as any)?.shipment?.number;
-
     if (s.positions < MIN_POSITIONS) {
-      excluded.push({
-        userName: (s.user as any).name,
-        roleType: s.roleType,
-        warehouse: (s.task as any)?.warehouse || 'Склад 1',
-        reason: `мало позиций (${s.positions} < ${MIN_POSITIONS})`,
-        positions: s.positions,
-        secPerPos: secPerPos ?? 0,
-        orderNum,
-      });
-      return false;
+      excluded.push({ userName: (s.user as any).name, roleType: s.roleType, warehouse: (s.task as any)?.warehouse || 'Склад 1', reason: `мало позиций (${s.positions} < ${MIN_POSITIONS})`, positions: s.positions, secPerPos: secPerPos ?? 0, orderNum });
+      return s.taskId;
     }
     if (secPerPos != null) {
       if (secPerPos < MIN_SEC_PER_POS) {
-        excluded.push({
-          userName: (s.user as any).name,
-          roleType: s.roleType,
-          warehouse: (s.task as any)?.warehouse || 'Склад 1',
-          reason: `слишком быстро (${secPerPos.toFixed(1)} сек/поз < ${MIN_SEC_PER_POS})`,
-          positions: s.positions,
-          secPerPos,
-          orderNum,
-        });
-        return false;
+        excluded.push({ userName: (s.user as any).name, roleType: s.roleType, warehouse: (s.task as any)?.warehouse || 'Склад 1', reason: `слишком быстро (${secPerPos.toFixed(1)} сек/поз < ${MIN_SEC_PER_POS})`, positions: s.positions, secPerPos, orderNum });
+        return s.taskId;
       }
       if (secPerPos > MAX_SEC_PER_POS) {
-        excluded.push({
-          userName: (s.user as any).name,
-          roleType: s.roleType,
-          warehouse: (s.task as any)?.warehouse || 'Склад 1',
-          reason: `слишком медленно, возм. брошена (${secPerPos.toFixed(1)} сек/поз > ${MAX_SEC_PER_POS})`,
-          positions: s.positions,
-          secPerPos,
-          orderNum,
-        });
-        return false;
+        excluded.push({ userName: (s.user as any).name, roleType: s.roleType, warehouse: (s.task as any)?.warehouse || 'Склад 1', reason: `слишком медленно, возм. брошена (${secPerPos.toFixed(1)} сек/поз > ${MAX_SEC_PER_POS})`, positions: s.positions, secPerPos, orderNum });
+        return s.taskId;
       }
+    }
+    return null;
+  };
+  if (!noFilter) {
+    statsRaw.forEach((s) => {
+      const taskId = wouldExclude(s);
+      if (taskId) excludedTaskIds.add(taskId);
+    });
+  }
+  const stats = statsRaw.filter((s) => {
+    if (noFilter) return true;
+    if (excludedTaskIds.has(s.taskId)) return false;
+    const secPerPos =
+      s.pickTimeSec != null && s.positions > 0 ? s.pickTimeSec / s.positions : null;
+    if (s.positions < MIN_POSITIONS) return false;
+    if (secPerPos != null) {
+      if (secPerPos < MIN_SEC_PER_POS) return false;
+      if (secPerPos > MAX_SEC_PER_POS) return false;
     }
     return true;
   });
@@ -190,11 +242,13 @@ async function run() {
       .slice(0, 10)
       .map(([uid]) => uid)
   );
-  // Объединяем: учитываем ВСЕ действия (сборку и проверку) пользователей, попавших в топ-10 по любому из видов
+  // Объединяем: учитываем ВСЕ действия (сборку и проверку) пользователей, попавших в топ-10 по любому из видов.
+  // Для 1:1 сборка/проверка: включаем ВСЕ статы по заданиям, где хотя бы один участник из топ-10.
   const top10UserIds = new Set([...top10CollectorIds, ...top10CheckerIds]);
+  const top10TaskIds = allUsers ? null : new Set(stats.filter((s) => top10UserIds.has((s.user as any).id)).map((s) => s.taskId));
   const statsTop10 = allUsers
     ? stats
-    : stats.filter((s) => top10UserIds.has((s.user as any).id));
+    : stats.filter((s) => top10TaskIds!.has(s.taskId));
   if (!allUsers) {
     console.log(
       `Топ-10: учтено ${statsTop10.length} записей (сборка+проверка по действиям для топ-10 сборщиков и топ-10 проверяльщиков)`
@@ -240,42 +294,52 @@ async function run() {
     });
   });
 
-  const collOrderIds = new Map<string, Set<string>>();
-  const checkOrderIds = new Map<string, Set<string>>();
+  // Задания с обеими записями (сборка + проверка) для 1:1
+  const collTaskIdsByWh = new Map<string, Set<string>>();
+  const checkTaskIdsByWh = new Map<string, Set<string>>();
   warehouses.forEach((w) => {
-    collOrderIds.set(w, new Set());
-    checkOrderIds.set(w, new Set());
+    collTaskIdsByWh.set(w, new Set());
+    checkTaskIdsByWh.set(w, new Set());
+  });
+  statsTop10.forEach((s) => {
+    const w = (s.task as any)?.warehouse || 'Склад 1';
+    if (s.roleType === 'collector') collTaskIdsByWh.get(w)?.add(s.taskId);
+    else checkTaskIdsByWh.get(w)?.add(s.taskId);
+  });
+  const pairedTaskIdsByWh = new Map<string, Set<string>>();
+  warehouses.forEach((w) => {
+    const coll = collTaskIdsByWh.get(w)!;
+    const check = checkTaskIdsByWh.get(w)!;
+    pairedTaskIdsByWh.set(w, new Set([...coll].filter((id) => check.has(id))));
   });
 
   statsTop10.forEach((s) => {
     const w = (s.task as any)?.warehouse || 'Склад 1';
+    if (!pairedTaskIdsByWh.get(w)?.has(s.taskId)) return;
     const agg = whAggMap.get(w) || whAggMap.get('Склад 1')!;
     const secPerPos =
       s.pickTimeSec != null && s.positions > 0 ? s.pickTimeSec / s.positions : null;
 
-    // Учёт по действию: roleType = collector (сборка) или checker/warehouse_3 (проверка)
     if (s.roleType === 'collector') {
       agg.collector.positions += s.positions;
       agg.collector.units += s.units;
       agg.collector.pickTimeSec += s.pickTimeSec || 0;
       agg.collector.tasks += 1;
       if (secPerPos != null) agg.collector.secPerPos.push(secPerPos);
-      collOrderIds.get(w)?.add(s.shipmentId);
     } else {
-      // checker, warehouse_3 и др. — всё это проверка
       agg.checker.positions += s.positions;
       agg.checker.units += s.units;
       agg.checker.pickTimeSec += s.pickTimeSec || 0;
       agg.checker.tasks += 1;
       if (secPerPos != null) agg.checker.secPerPos.push(secPerPos);
-      checkOrderIds.get(w)?.add(s.shipmentId);
     }
   });
 
   warehouses.forEach((w) => {
     const agg = whAggMap.get(w)!;
-    agg.collector.orders = collOrderIds.get(w)?.size ?? 0;
-    agg.checker.orders = checkOrderIds.get(w)?.size ?? 0;
+    const paired = pairedTaskIdsByWh.get(w)?.size ?? 0;
+    agg.collector.orders = paired;
+    agg.checker.orders = paired;
   });
 
   // ——— Агрегация по пользователям (сборка и проверка, по складам) ———
@@ -295,6 +359,7 @@ async function run() {
     checker: Map<string, UserWhStats>;
     normMetCount: number; // сколько раз эффективность >= 0.9 (норма выполнена)
     normTotalCount: number;
+    workDays: Set<string>; // уникальные даты с активностью (YYYY-MM-DD)
   };
 
   const userMap = new Map<string, UserAgg>();
@@ -309,6 +374,7 @@ async function run() {
         checker: new Map(),
         normMetCount: 0,
         normTotalCount: 0,
+        workDays: new Set(),
       });
     }
     return userMap.get(userId)!;
@@ -330,9 +396,20 @@ async function run() {
 
   statsTop10.forEach((s) => {
     const u = s.user as { id: string; name: string; role: string };
-    const w = (s.task as any)?.warehouse || 'Склад 1';
+    const task = s.task as { completedAt?: Date | null; confirmedAt?: Date | null; warehouse?: string } | undefined;
+    const w = task?.warehouse || 'Склад 1';
 
     const agg = getOrCreateUserAgg(u.id, u.name, u.role);
+
+    const dateSource =
+      (s.roleType === 'collector' ? task?.completedAt : task?.confirmedAt) ??
+      task?.completedAt ??
+      task?.confirmedAt;
+    if (dateSource) {
+      const d = new Date(dateSource);
+      const dateStr = d.toISOString().slice(0, 10);
+      if (dateStr) agg.workDays.add(dateStr);
+    }
 
     const statsMap = s.roleType === 'collector' ? agg.collector : agg.checker;
     const whStat = getOrCreateWhStats(statsMap, w);
@@ -523,6 +600,257 @@ async function run() {
     const K = K_WH_CHECK[wh] ?? 1;
     return Math.round(KPI_MAX * K * fEff(E) * gPos(pos));
   }
+
+  // ——— KPI зарплаты (₽/поз, для viewer — все вычисления здесь) ———
+  const RATE_COLL_BY_WH: Record<string, number> = { 'Склад 1': 4.5, 'Склад 2': 5.03, 'Склад 3': 3.83 };
+  const RATE_CHECK_BY_WH: Record<string, number> = { 'Склад 1': 2.63, 'Склад 2': 3.3, 'Склад 3': 1.95 };
+  const BASE_SALARY = 50000;
+  const WORKING_DAYS_MONTH = 22;
+  const fEffSalary = (E: number) => Math.min(1, Math.max(0, E));
+  const contribColl = (secPerPos: number | null, pos: number, wh: string) => {
+    if (!secPerPos || secPerPos <= 0 || pos < 1) return 0;
+    const E = NORM_COLL / secPerPos;
+    const rate = RATE_COLL_BY_WH[wh] ?? 4.5;
+    return rate * pos * fEffSalary(E) * gPos(pos);
+  };
+  const contribCheck = (secPerPos: number | null, pos: number, wh: string) => {
+    if (!secPerPos || secPerPos <= 0 || pos < 1) return 0;
+    const E = NORM_CHECK / secPerPos;
+    const rate = RATE_CHECK_BY_WH[wh] ?? 2.63;
+    return rate * pos * fEffSalary(E) * gPos(pos);
+  };
+  /** Пользователи, исключаемые из KPI, но их сборки пропорционально переносятся на других */
+  const EXCLUDED_REDISTRIBUTE_NAMES = new Set<string>(['Павел Макаров']);
+  const excludedKpiNames = new Set(
+    Array.from(userMap.values())
+      .filter((u) => u.workDays.size < 4 || EXCLUDED_REDISTRIBUTE_NAMES.has(u.userName))
+      .map((u) => u.userName)
+  );
+  const includedForKpi = Array.from(userMap.values()).filter((u) => !excludedKpiNames.has(u.userName));
+  const periodStart = startDate;
+  const periodEnd = endDate;
+  const calendarDays = Math.ceil((periodEnd.getTime() - periodStart.getTime()) / 864e5) + 1;
+  let workingDays = 0;
+  for (let d = new Date(periodStart); d <= periodEnd; d.setDate(d.getDate() + 1)) {
+    const day = d.getDay();
+    if (day !== 0 && day !== 6) workingDays++;
+  }
+  if (workingDays === 0) workingDays = Math.round(calendarDays * 5 / 7);
+  const extFactor = workingDays > 0 ? WORKING_DAYS_MONTH / workingDays : 1;
+  const avgSecByWh: Record<string, { coll: number; check: number }> = {};
+  warehouses.forEach((w) => {
+    const agg = whAggMap.get(w)!;
+    const collSec =
+      agg.collector.secPerPos.length > 0
+        ? agg.collector.secPerPos.reduce((a, b) => a + b, 0) / agg.collector.secPerPos.length
+        : 40;
+    const checkSec =
+      agg.checker.secPerPos.length > 0
+        ? agg.checker.secPerPos.reduce((a, b) => a + b, 0) / agg.checker.secPerPos.length
+        : 11;
+    avgSecByWh[w] = { coll: collSec, check: checkSec };
+  });
+  const excludedByUser = new Map<string, { userName: string; warehouse: string; roleType: string; positions: number }>();
+  excluded.forEach((e) => {
+    const key = `${e.userName || ''}|${e.warehouse || 'Склад 1'}|${e.roleType || 'collector'}`;
+    const prev = excludedByUser.get(key);
+    if (!prev) {
+      excludedByUser.set(key, {
+        userName: e.userName,
+        warehouse: e.warehouse || 'Склад 1',
+        roleType: e.roleType || 'collector',
+        positions: e.positions || 0,
+      });
+    } else {
+      prev.positions += e.positions || 0;
+    }
+  });
+  /** Позиции для пропорционального переноса: ключ wh|roleType, значение — число позиций */
+  const toRedistribute = new Map<string, number>();
+  const addToRedistribute = (wh: string, roleType: string, positions: number) => {
+    if (positions < 1) return;
+    const k = `${wh}|${roleType}`;
+    toRedistribute.set(k, (toRedistribute.get(k) || 0) + positions);
+  };
+  type UserKpiMap = {
+    role: string;
+    workDays: number;
+    collector: Record<string, { positions: number; avgSecPerPos: number; pickTimeSec: number }>;
+    checker: Record<string, { positions: number; avgSecPerPos: number; pickTimeSec: number }>;
+  };
+  const userMapForKpi = new Map<string, UserKpiMap>();
+  includedForKpi.forEach((u) => {
+    const m: UserKpiMap = {
+      role: u.role,
+      workDays: u.workDays.size,
+      collector: {},
+      checker: {},
+    };
+    u.collector.forEach((s, wh) => {
+      if (s.positions > 0) {
+        const avgSec = s.secPerPos.length > 0 ? s.secPerPos.reduce((a, b) => a + b, 0) / s.secPerPos.length : null;
+        m.collector[wh] = { positions: s.positions, avgSecPerPos: avgSec ?? 40, pickTimeSec: s.pickTimeSec || 0 };
+      }
+    });
+    u.checker.forEach((s, wh) => {
+      if (s.positions > 0) {
+        const avgSec = s.secPerPos.length > 0 ? s.secPerPos.reduce((a, b) => a + b, 0) / s.secPerPos.length : null;
+        m.checker[wh] = { positions: s.positions, avgSecPerPos: avgSec ?? 11, pickTimeSec: s.pickTimeSec || 0 };
+      }
+    });
+    userMapForKpi.set(u.userName, m);
+  });
+  excludedByUser.forEach((item) => {
+    if (!item || item.positions < 1) return;
+    if (EXCLUDED_REDISTRIBUTE_NAMES.has(item.userName) || excludedKpiNames.has(item.userName)) {
+      addToRedistribute(item.warehouse, item.roleType, item.positions);
+      return;
+    }
+    const wh = item.warehouse;
+    const totalPos = item.positions;
+    const avgSec = item.roleType === 'checker' ? avgSecByWh[wh]?.check ?? 11 : avgSecByWh[wh]?.coll ?? 40;
+    const existing = userMapForKpi.get(item.userName);
+    if (!existing) {
+      userMapForKpi.set(item.userName, {
+        role: item.roleType === 'checker' ? 'checker' : 'collector',
+        workDays: 0,
+        collector: {},
+        checker: {},
+      });
+    }
+    const map = userMapForKpi.get(item.userName)!;
+    const target = item.roleType === 'collector' ? map.collector : map.checker;
+    const prev = target[wh];
+    if (!prev) {
+      target[wh] = { positions: totalPos, avgSecPerPos: avgSec, pickTimeSec: totalPos * avgSec };
+    } else {
+      const newPos = prev.positions + totalPos;
+      const newAvg = (prev.positions * prev.avgSecPerPos + totalPos * avgSec) / newPos;
+      target[wh] = { positions: newPos, avgSecPerPos: newAvg, pickTimeSec: prev.pickTimeSec + totalPos * avgSec };
+    }
+  });
+  // Собираем основные позиции всех исключённых из KPI (Павел, workDays<4) — переносим на других, не теряем объём
+  Array.from(userMap.values())
+    .filter((u) => excludedKpiNames.has(u.userName))
+    .forEach((u) => {
+      u.collector.forEach((s, wh) => {
+        if (s.positions > 0) addToRedistribute(wh, 'collector', s.positions);
+      });
+      u.checker.forEach((s, wh) => {
+        if (s.positions > 0) addToRedistribute(wh, 'checker', s.positions);
+      });
+    });
+  // Пропорциональное распределение на других участников (аномалии и позиции исключённых — не теряем объём)
+  toRedistribute.forEach((totalToAdd, key) => {
+    const [wh, roleType] = key.split('|');
+    const avgSec = roleType === 'checker' ? avgSecByWh[wh]?.check ?? 11 : avgSecByWh[wh]?.coll ?? 40;
+    let recipients: { userName: string; positions: number }[] = [];
+    userMapForKpi.forEach((m, userName) => {
+      const target = roleType === 'collector' ? m.collector : m.checker;
+      const p = target[wh]?.positions ?? 0;
+      if (p > 0) recipients.push({ userName, positions: p });
+    });
+    let sumRecv = recipients.reduce((a, r) => a + r.positions, 0);
+    if (sumRecv === 0) {
+      recipients = [];
+      userMapForKpi.forEach((m, userName) => {
+        const target = roleType === 'collector' ? m.collector : m.checker;
+        const p = Object.values(target).reduce((a, s) => a + (s?.positions ?? 0), 0);
+        if (p > 0) recipients.push({ userName, positions: p });
+      });
+      sumRecv = recipients.reduce((a, r) => a + r.positions, 0);
+    }
+    if (sumRecv > 0) {
+      recipients.forEach((r) => {
+        const addPos = Math.round((totalToAdd * r.positions) / sumRecv);
+        if (addPos < 1) return;
+        const map = userMapForKpi.get(r.userName)!;
+        const target = roleType === 'collector' ? map.collector : map.checker;
+        const prev = target[wh];
+        if (!prev) {
+          target[wh] = { positions: addPos, avgSecPerPos: avgSec, pickTimeSec: addPos * avgSec };
+        } else {
+          const newPos = prev.positions + addPos;
+          const newAvg = (prev.positions * prev.avgSecPerPos + addPos * avgSec) / newPos;
+          target[wh] = { positions: newPos, avgSecPerPos: newAvg, pickTimeSec: prev.pickTimeSec + addPos * avgSec };
+        }
+      });
+    }
+  });
+  const salaries = Array.from(userMapForKpi.entries())
+    .map(([userName, u]) => {
+      let rawBonusColl = 0,
+        rawBonusCheck = 0;
+      let collPos = 0,
+        checkPos = 0;
+      let totalPickSec = 0;
+      const breakdown: string[] = [];
+      Object.entries(u.collector).forEach(([wh, s]) => {
+        totalPickSec += s.pickTimeSec || 0;
+        if (s.positions > 0) {
+          rawBonusColl += contribColl(s.avgSecPerPos, s.positions, wh);
+          collPos += s.positions;
+          breakdown.push(`${wh} сб: ${s.positions} поз`);
+        }
+      });
+      Object.entries(u.checker).forEach(([wh, s]) => {
+        totalPickSec += s.pickTimeSec || 0;
+        if (s.positions > 0) {
+          rawBonusCheck += contribCheck(s.avgSecPerPos, s.positions, wh);
+          checkPos += s.positions;
+          breakdown.push(`${wh} пров: ${s.positions} поз`);
+        }
+      });
+      const rawBonus = rawBonusColl + rawBonusCheck;
+      const bonus = Math.round(rawBonus);
+      const bonusMonth = Math.round(rawBonus * extFactor);
+      const kColl = rawBonus > 0 ? rawBonusColl / rawBonus : 0;
+      const kCheck = rawBonus > 0 ? rawBonusCheck / rawBonus : 0;
+      const bonusCollMonth = Math.round(bonusMonth * kColl);
+      const bonusCheckMonth = Math.round(bonusMonth * kCheck);
+      const totalPeriod = BASE_SALARY + bonus;
+      const totalMonth = BASE_SALARY + bonusMonth;
+      const totalPos = collPos + checkPos;
+      const posPerDay = workingDays > 0 ? totalPos / workingDays : 0;
+      const posMonth = totalPos * extFactor;
+      const collPosMonth = collPos * extFactor;
+      const checkPosMonth = checkPos * extFactor;
+      const costPerPosMonth = posMonth > 0 ? totalMonth / posMonth : 0;
+      const costPerPosCollMonth =
+        collPosMonth > 0 ? Math.round((bonusCollMonth / collPosMonth) * 10) / 10 : 0;
+      const costPerPosCheckMonth =
+        checkPosMonth > 0 ? Math.round((bonusCheckMonth / checkPosMonth) * 10) / 10 : 0;
+      const totalHours = totalPickSec / 3600;
+      const hoursPerDay = u.workDays > 0 ? totalHours / u.workDays : 0;
+      return {
+        userName,
+        role: u.role,
+        workDays: u.workDays,
+        totalHours: Math.round(totalHours * 10) / 10,
+        hoursPerDay: Math.round(hoursPerDay * 10) / 10,
+        collPos,
+        checkPos,
+        bonus,
+        total: totalPeriod,
+        bonusMonth,
+        totalMonth,
+        posPerDay: Math.round(posPerDay * 10) / 10,
+        posMonth: Math.round(posMonth),
+        costPerPosMonth: costPerPosMonth > 0 ? Math.round(costPerPosMonth * 10) / 10 : 0,
+        costPerPosCollMonth,
+        costPerPosCheckMonth,
+        breakdown: breakdown.join('; '),
+      };
+    })
+    .filter((s) => s.collPos > 0 || s.checkPos > 0)
+    .sort((a, b) => b.total - a.total);
+  const fotPeriod = salaries.reduce((a, s) => a + s.total, 0);
+  const fotMonth = salaries.reduce((a, s) => a + s.totalMonth, 0);
+  const baseMonth = salaries.length * BASE_SALARY;
+  const bonusMonthTotal = salaries.reduce((a, s) => a + s.bonusMonth, 0);
+  const totalPosMonth = salaries.reduce((a, s) => a + s.posMonth, 0);
+  const avgCostPerPos = totalPosMonth > 0 ? Math.round((fotMonth / totalPosMonth) * 10) / 10 : 0;
+  const totalPersonDays = workingDays * salaries.length;
 
   // 5. Сборщики по складам (с KPI по человеку)
   lines.push('## 5. Сборщики — детализация по складам');
@@ -754,6 +1082,7 @@ async function run() {
       userId: u.userId,
       userName: u.userName,
       role: u.role,
+      workDays: u.workDays.size,
       normMetCount: u.normMetCount,
       normTotalCount: u.normTotalCount,
       normMetPercent:
@@ -813,9 +1142,30 @@ async function run() {
         positionsMin: P_MIN,
         kWhCollector: K_WH_COLL,
         kWhChecker: K_WH_CHECK,
+        rateCollByWh: RATE_COLL_BY_WH,
+        rateCheckByWh: RATE_CHECK_BY_WH,
         fEff: '(E - 0.9) / 0.3, clamp 0..1',
         gPos: 'min(1, positions / 200)',
       },
+      params: {
+        workingDays,
+        calendarDays,
+        extFactor,
+        baseSalary: BASE_SALARY,
+        workingDaysMonth: WORKING_DAYS_MONTH,
+      },
+      summary: {
+        fotPeriod,
+        fotMonth,
+        baseMonth,
+        bonusMonthTotal: Math.round(bonusMonthTotal),
+        totalPersonDays,
+        avgCostPerPos,
+        avgTotal: salaries.length > 0 ? Math.round(salaries.reduce((a, s) => a + s.total, 0) / salaries.length) : 0,
+        maxTotal: salaries.length > 0 ? Math.max(...salaries.map((s) => s.total)) : 0,
+        salariesCount: salaries.length,
+      },
+      salaries,
       bestByWarehouse: warehouses.flatMap((w) => {
         const coll = [...(collByWh.get(w) || [])].sort((a, b) => b.kpi - a.kpi);
         const check = [...(checkByWh.get(w) || [])].sort((a, b) => b.kpi - a.kpi);
@@ -826,6 +1176,24 @@ async function run() {
       }),
     },
   };
+
+  let forecastData: object | null = null;
+  const excel2231 = path.join(outDir, '2231.xlsx');
+  if (fs.existsSync(excel2231)) {
+    const scriptPath = path.join(process.cwd(), 'scripts', 'forecast-seasonality.ts');
+    spawnSync('npx', ['tsx', scriptPath], { cwd: process.cwd(), stdio: 'inherit', shell: true });
+  }
+  const forecastPath = path.join(outDir, 'forecast-2026.json');
+  if (fs.existsSync(forecastPath)) {
+    try {
+      forecastData = JSON.parse(fs.readFileSync(forecastPath, 'utf8'));
+    } catch (_e) {
+      // ignore
+    }
+  }
+  if (forecastData) {
+    (jsonData as any).forecast = forecastData;
+  }
 
   const jsonPath = path.join(outDir, `analytics-two-weeks-${suffix}.json`);
   fs.writeFileSync(jsonPath, JSON.stringify(jsonData, null, 2), 'utf8');

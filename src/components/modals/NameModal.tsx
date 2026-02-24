@@ -178,17 +178,17 @@ export function NameModal({
             {name}
           </p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
           {sku && (
-            <div>
-              <div className="text-base md:text-lg text-slate-400 mb-3">Артикул</div>
-              <p className="text-xl md:text-3xl text-slate-100 font-bold font-mono whitespace-pre-wrap break-all leading-tight">
+            <div className="min-w-0">
+              <div className="text-sm md:text-base text-slate-400 mb-1 md:mb-3">Артикул</div>
+              <p className="text-base md:text-2xl lg:text-3xl text-slate-100 font-bold font-mono break-all leading-tight">
                 {sku}
               </p>
             </div>
           )}
-          <div>
-            <div className="text-base md:text-lg text-slate-400 mb-3 flex items-center justify-between">
+          <div className="min-w-0">
+            <div className="text-sm md:text-base text-slate-400 mb-1 md:mb-3 flex items-center justify-between">
               <span>Место</span>
               {lineIndex !== undefined && onUpdateLocation && (
                 <button
@@ -231,13 +231,13 @@ export function NameModal({
               <p className="text-2xl md:text-3xl text-blue-400 font-bold">{localLocation || '—'}</p>
             )}
           </div>
-          <div>
-            <div className="text-base md:text-lg text-slate-400 mb-3">Требуется</div>
-            <p className="text-2xl md:text-3xl text-slate-100 font-bold">{qty} {uom}</p>
+          <div className="min-w-0">
+            <div className="text-sm md:text-base text-slate-400 mb-1 md:mb-3">Требуется</div>
+            <p className="text-xl md:text-2xl text-slate-100 font-bold">{qty} {uom}</p>
           </div>
-          <div>
-            <div className="text-base md:text-lg text-slate-400 mb-3">Собрано</div>
-            <p className="text-2xl md:text-3xl text-slate-100 font-bold">{currentCollectedQty} {uom}</p>
+          <div className="min-w-0">
+            <div className="text-sm md:text-base text-slate-400 mb-1 md:mb-3">Собрано</div>
+            <p className="text-xl md:text-2xl text-slate-100 font-bold">{currentCollectedQty} {uom}</p>
           </div>
         </div>
 

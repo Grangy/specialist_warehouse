@@ -239,6 +239,15 @@ model TemporaryRegionPriority {
   @@map("temporary_region_priorities")
 }
 
+// Регионы, скрытые из списка выбора в админке (админ может удалить регион из «Доступные регионы»)
+model RegionExclusion {
+  id        String   @id @default(cuid())
+  region    String   @unique // Название региона, который не показывать в выборе
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("region_exclusions")
+}
+
 // Статистика по заданию (расчетные метрики)
 model TaskStatistics {
   id         String @id @default(cuid())

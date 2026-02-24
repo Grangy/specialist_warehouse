@@ -29,11 +29,13 @@ interface ShortageItem {
   sku: string;
   art?: string | null;
   name: string;
-  date: string;
+  date?: string;
   shortage_qty: number;
   shipment_number: string;
+  shipment_numbers?: string[];
   shipment_id: string;
   warehouse: string;
+  orders_count?: number;
 }
 
 type MinusSubTab = 'orders' | 'items';
@@ -98,9 +100,9 @@ export default function MinusTab() {
         'Доп. артикул 1С': item.art || '',
         'Название': item.name,
         'Склад': item.warehouse || '',
-        'Дата': item.date,
         'Не хватает, шт': item.shortage_qty,
-        'Номер заказа': item.shipment_number,
+        'Заказы': item.shipment_number,
+        'Кол-во заказов': item.orders_count ?? 1,
       }));
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Товары которых в сборке не осталось');
@@ -115,9 +117,9 @@ export default function MinusTab() {
         { width: 18 },
         { width: 40 },
         { width: 14 },
-        { width: 12 },
         { width: 14 },
-        { width: 16 },
+        { width: 30 },
+        { width: 14 },
       ];
       const fileName = `minus-items-${dateFrom}-${dateTo}.xlsx`;
       const buffer = await workbook.xlsx.writeBuffer();
@@ -385,35 +387,33 @@ export default function MinusTab() {
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Товар (артикул / название)</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Склад</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Дата</th>
                     <th className="px-4 py-3 text-center text-sm font-semibold text-slate-200 uppercase tracking-wider">Не хватает, шт</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">Номер заказа</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-200 uppercase tracking-wider">В заказах</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700/50">
                   {itemsLoading ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
+                      <td colSpan={4} className="px-4 py-12 text-center text-slate-400">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
                         Загрузка...
                       </td>
                     </tr>
                   ) : shortageItems.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
+                      <td colSpan={4} className="px-4 py-12 text-center text-slate-400">
                         Нет недостач за выбранный период
                       </td>
                     </tr>
                   ) : (
                     shortageItems.map((item, idx) => (
-                      <tr key={`${item.shipment_id}-${item.sku}-${idx}`} className="hover:bg-slate-700/50">
+                      <tr key={`${item.sku}-${item.warehouse}-${idx}`} className="hover:bg-slate-700/50">
                         <td className="px-4 py-3">
                           <div className="text-slate-200 font-medium">{item.name}</div>
                           <div className="text-slate-500 text-xs">Осн.: {item.sku}</div>
                           {item.art && <div className="text-slate-500 text-xs">1С: {item.art}</div>}
                         </td>
                         <td className="px-4 py-3 text-slate-300">{item.warehouse || '—'}</td>
-                        <td className="px-4 py-3 text-slate-300">{item.date}</td>
                         <td className="px-4 py-3 text-center">
                           <span className="inline-flex px-2 py-1 bg-red-600/20 text-red-300 rounded font-bold text-sm border border-red-500/50">
                             {item.shortage_qty}
@@ -423,9 +423,12 @@ export default function MinusTab() {
                           <button
                             type="button"
                             onClick={() => setSelectedShipmentId(item.shipment_id)}
-                            className="text-blue-400 hover:text-blue-300 underline"
+                            className="text-blue-400 hover:text-blue-300 underline text-left"
+                            title={item.shipment_number}
                           >
-                            {item.shipment_number}
+                            {item.orders_count && item.orders_count > 1
+                              ? `${item.orders_count} заказов`
+                              : item.shipment_number}
                           </button>
                         </td>
                       </tr>

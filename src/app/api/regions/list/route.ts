@@ -27,9 +27,20 @@ export async function GET(request: NextRequest) {
       distinct: ['businessRegion'],
     });
 
-    const regions = shipments
+    let regions = shipments
       .map((s) => s.businessRegion)
       .filter((r): r is string => r !== null);
+
+    // Исключаем регионы, скрытые админом из списка выбора
+    try {
+      const exclusions = await prisma.regionExclusion.findMany({
+        select: { region: true },
+      });
+      const excludedSet = new Set(exclusions.map((e) => e.region));
+      regions = regions.filter((r) => !excludedSet.has(r));
+    } catch {
+      // Таблица может не существовать в старых БД
+    }
 
     // Получаем существующие приоритеты с информацией о днях недели
     let priorities: Array<{

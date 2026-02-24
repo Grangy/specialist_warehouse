@@ -78,7 +78,21 @@ export async function POST(
       );
     }
 
-    // СТРОГОЕ обновление location в БД с проверкой результата
+    // Принудительно фиксируем в БД только если ячейка пустая. Иначе — оставляем как есть (берём с 1С).
+    const currentLocation = shipmentLine.location;
+    const isLocationEmpty = !currentLocation || (typeof currentLocation === 'string' && !currentLocation.trim());
+
+    if (!isLocationEmpty) {
+      // Ячейка уже заполнена — не перезаписываем, источник истины 1С
+      return NextResponse.json({
+        success: true,
+        message: 'Ячейка уже заполнена, значение от 1С сохранено',
+        location: currentLocation,
+        skipped: true,
+      });
+    }
+
+    // Ячейка пустая — принудительно сохраняем новое значение в БД
     const updatedLine = await prisma.shipmentLine.update({
       where: { id: shipmentLine.id },
       data: {
@@ -86,7 +100,6 @@ export async function POST(
       },
     });
 
-    // Проверяем, что обновление действительно произошло
     if (updatedLine.location !== (location || null)) {
       console.error('[update-location] Критическая ошибка: Место не обновилось', {
         expected: location || null,

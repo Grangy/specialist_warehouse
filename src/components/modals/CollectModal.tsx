@@ -805,49 +805,48 @@ export function CollectModal({
                     </tr>
                     {/* Вторая строка: 2 столбца - информация слева, кнопки справа */}
                     <tr className={rowClassName}>
-                      {/* Мобильная версия */}
+                      {/* Мобильная версия: артикул переносится, количество не перекрывается */}
                       <td colSpan={6} className="px-2 py-2 md:hidden">
-                        <div className="flex items-center justify-between gap-2">
-                          {/* Левая часть: информация */}
-                          <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-                            {isCollected ? (
-                              isZero ? (
-                                <div className="w-3.5 h-3.5 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
-                                </div>
-                              ) : (
-                                <div className="w-3.5 h-3.5 bg-green-600 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              )
-                            ) : (
-                              <div className="w-3.5 h-3.5 bg-slate-600 rounded-full flex-shrink-0"></div>
+                        <div className="flex items-start justify-between gap-2">
+                          {/* Левая часть: артикул — отдельная строка с переносом, место и количество — компактно */}
+                          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                            {/* Артикул: перенос по словам/символам, не перекрывает остальное */}
+                            {line.art && (
+                              <div 
+                                className="text-xs font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors break-all font-mono leading-tight"
+                                onClick={() => handleInfoClick(line, index)}
+                                title={line.art}
+                              >
+                                {line.art}
+                              </div>
                             )}
-                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                              {line.art && (
-                                <div 
-                                  className="text-xs font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition-colors whitespace-normal break-all flex-shrink-0 max-w-[180px] font-mono leading-tight"
-                                  onClick={() => handleInfoClick(line, index)}
-                                  title={line.art}
-                                >
-                                  {line.art}
-                                </div>
+                            {/* Место и количество в одной строке — количество всегда видно */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {isCollected ? (
+                                isZero ? (
+                                  <div className="w-3.5 h-3.5 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </div>
+                                ) : (
+                                  <div className="w-3.5 h-3.5 bg-green-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </div>
+                                )
+                              ) : (
+                                <div className="w-3.5 h-3.5 bg-slate-600 rounded-full flex-shrink-0"></div>
                               )}
                               <div 
-                                className="text-xs font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors truncate border-l-2 border-slate-600 pl-1.5 flex-shrink-0 max-w-[80px]"
+                                className="text-xs font-bold text-slate-200 cursor-pointer hover:text-blue-400 transition-colors truncate max-w-[70px] min-w-0"
                                 onClick={() => handleInfoClick(line, index)}
                                 title={line.location || '—'}
-                                style={{
-                                  fontSize: line.location && line.location.length > 12 ? '10px' : '12px',
-                                }}
                               >
                                 {line.location || '—'}
                               </div>
-                              <div className="text-base font-bold whitespace-nowrap flex-shrink-0 ml-auto">
+                              <div className="text-base font-bold whitespace-nowrap flex-shrink-0">
                                 <span className={`${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-slate-300'}`}>{state.collectedQty}</span> <span className="text-xs text-slate-400">{line.uom || 'шт'}</span>
                               </div>
                             </div>

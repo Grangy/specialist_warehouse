@@ -17,7 +17,7 @@ interface CollectorCall {
 interface SendToOfficeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (places: number) => void;
+  onConfirm: (places: number, customerName?: string) => void;
   shipment: Shipment | null;
 }
 
@@ -28,6 +28,7 @@ export function SendToOfficeModal({
   shipment 
 }: SendToOfficeModalProps) {
   const [places, setPlaces] = useState<number>(0);
+  const [customerNameInput, setCustomerNameInput] = useState<string>('');
   const [errors, setErrors] = useState<{ places?: string }>({});
   const [initialPlacesFromTasks, setInitialPlacesFromTasks] = useState<number>(0);
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
@@ -53,10 +54,6 @@ export function SendToOfficeModal({
             throw new Error('Ошибка загрузки данных о заказе');
           }
           const details = await response.json();
-          if (details.customerName) {
-            setCustomerNameFromDetails(details.customerName);
-          }
-          
           // Вычисляем сумму мест из всех заданий
           let totalPlacesFromTasks = 0;
           if (details.tasks && details.tasks.length > 0) {
@@ -85,6 +82,9 @@ export function SendToOfficeModal({
           
           setInitialPlacesFromTasks(totalPlacesFromTasks);
           setPlaces(0); // Всегда 0 — пользователь должен указать места вручную
+          const initialName = details.customerName || shipment.customer_name || (shipment as { customerName?: string }).customerName || '';
+          setCustomerNameInput(initialName);
+          if (initialName) setCustomerNameFromDetails(initialName);
           setErrors({});
         } catch (error) {
           console.error('[SendToOfficeModal] Ошибка загрузки данных о заказе:', error);
@@ -97,6 +97,8 @@ export function SendToOfficeModal({
           }
           setInitialPlacesFromTasks(totalPlacesFromTasks);
           setPlaces(0);
+          const sn = shipment.customer_name || (shipment as { customerName?: string }).customerName || '';
+          setCustomerNameInput(sn);
         } finally {
           setIsLoadingPlaces(false);
         }
@@ -138,6 +140,8 @@ export function SendToOfficeModal({
       setCollectorCalls([]);
       setTotalCollectorErrors(0);
       setCustomerNameFromDetails(null);
+      const sn = shipment.customer_name || (shipment as { customerName?: string }).customerName || '';
+      setCustomerNameInput(sn);
       fetchCollectorCalls();
     }
   }, [isOpen, shipment, fetchCollectorCalls]);
@@ -175,7 +179,7 @@ export function SendToOfficeModal({
       }
     }
 
-    onConfirm(places);
+    onConfirm(places, customerNameInput?.trim() || undefined);
   };
 
   const handleDecrease = () => {
@@ -221,8 +225,17 @@ export function SendToOfficeModal({
         {/* Информация о заказе */}
         <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-3">
           <div>
-            <span className="text-sm font-medium text-slate-400">Клиент:</span>
-            <p className="text-slate-200 mt-1">{customerName}</p>
+            <label htmlFor="customerName" className="block text-sm font-medium text-slate-400 mb-1">
+              Имя покупателя <span className="text-slate-500">(можно изменить)</span>
+            </label>
+            <input
+              id="customerName"
+              type="text"
+              value={customerNameInput}
+              onChange={(e) => setCustomerNameInput(e.target.value)}
+              placeholder="Введите имя покупателя"
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
           <div>
             <span className="text-sm font-medium text-slate-400">Регион:</span>

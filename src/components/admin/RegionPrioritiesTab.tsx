@@ -72,6 +72,19 @@ export default function RegionPrioritiesTab() {
   const [showAddTemporaryModal, setShowAddTemporaryModal] = useState(false);
   const [isAddingTemporary, setIsAddingTemporary] = useState(false);
   const [selectedRegionForTemporary, setSelectedRegionForTemporary] = useState<string | null>(null);
+  const [excludedRegions, setExcludedRegions] = useState<string[]>([]);
+
+  const loadExclusions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/regions/exclusions');
+      if (res.ok) {
+        const data = await res.json();
+        setExcludedRegions(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      setExcludedRegions([]);
+    }
+  }, []);
 
   const loadTemporaryToday = useCallback(async () => {
     try {
@@ -105,13 +118,14 @@ export default function RegionPrioritiesTab() {
       setRegionList(regionsData);
       setHasChanges(false);
       loadTemporaryToday();
+      loadExclusions();
     } catch (error) {
       console.error('Ошибка при загрузке данных:', error);
       setError('Ошибка при загрузке данных');
     } finally {
       setIsLoading(false);
     }
-  }, [loadTemporaryToday]);
+  }, [loadTemporaryToday, loadExclusions]);
 
   useEffect(() => {
     loadData();
@@ -218,6 +232,41 @@ export default function RegionPrioritiesTab() {
     const res = await fetch(`/api/regions/temporary-today?region=${encodeURIComponent(region)}`, { method: 'DELETE' });
     if (res.ok) await loadTemporaryToday();
   }, [loadTemporaryToday]);
+
+  const handleExcludeRegion = useCallback(async (region: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const res = await fetch('/api/regions/exclusions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ region }),
+      });
+      if (res.ok) {
+        await loadData();
+        setSuccess(`Регион "${region}" скрыт из списка выбора`);
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Ошибка при скрытии региона');
+      }
+    } catch (err) {
+      setError('Ошибка при скрытии региона');
+    }
+  }, [loadData]);
+
+  const handleRestoreRegion = useCallback(async (region: string) => {
+    try {
+      const res = await fetch(`/api/regions/exclusions?region=${encodeURIComponent(region)}`, { method: 'DELETE' });
+      if (res.ok) {
+        await loadData();
+        setSuccess(`Регион "${region}" возвращён в список выбора`);
+        setTimeout(() => setSuccess(''), 3000);
+      }
+    } catch {
+      setError('Ошибка при восстановлении региона');
+    }
+  }, [loadData]);
 
   // Проверяет, добавлен ли регион во все дни недели
   const isRegionInAllDays = (region: string): boolean => {
@@ -859,6 +908,7 @@ export default function RegionPrioritiesTab() {
                   <li>Каждый день недели полностью независим</li>
                   <li>Используйте кнопку &quot;Копировать&quot; для применения приоритетов одного дня на все дни</li>
                   <li>Регион остается в списке доступных, пока не добавлен во все дни</li>
+                  <li><strong className="text-slate-300">Скрыть из выбора:</strong> наведите на регион в «Доступные регионы» и нажмите кнопку удаления — регион исчезнет из списка. Восстановить можно в блоке «Скрытые регионы»</li>
                   <li><strong className="text-amber-300">Временно на сегодня:</strong> в колонке текущего дня можно добавить регион &quot;до 21:00 МСК&quot; — он участвует в приоритизации сегодня и сбросится в конце рабочего дня</li>
                 </ul>
               </div>
@@ -918,13 +968,49 @@ export default function RegionPrioritiesTab() {
           </p>
           <div className="flex flex-wrap gap-2">
             {getAvailableRegions().map((region) => (
+              <div key={region} className="relative group">
+                <button
+                  type="button"
+                  onClick={() => handleAddRegionClick(region)}
+                  className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-lg border border-purple-500/50 transition-all flex items-center gap-2 text-sm hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
+                >
+                  <Plus className="w-4 h-4" />
+                  {region}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => handleExcludeRegion(region, e)}
+                  className="absolute -top-1 -right-1 p-1 bg-red-600/80 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                  title="Скрыть регион из списка выбора"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Скрытые регионы — можно восстановить */}
+      {excludedRegions.length > 0 && (
+        <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 p-6 shadow-xl">
+          <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
+            <Trash2 className="w-5 h-5 text-slate-400" />
+            Скрытые регионы
+          </h3>
+          <p className="text-sm text-slate-400 mb-4">
+            Эти регионы скрыты из списка выбора. Нажмите «Восстановить», чтобы вернуть их.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {excludedRegions.map((region) => (
               <button
                 key={region}
-                onClick={() => handleAddRegionClick(region)}
-                className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-lg border border-purple-500/50 transition-all flex items-center gap-2 text-sm hover:scale-105 active:scale-95 shadow-md hover:shadow-lg group"
+                type="button"
+                onClick={() => handleRestoreRegion(region)}
+                className="px-4 py-2 bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 rounded-lg border border-slate-600/50 transition-all flex items-center gap-2 text-sm hover:scale-105 active:scale-95"
               >
-                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
-                {region}
+                <RefreshCw className="w-4 h-4" />
+                {region} · Восстановить
               </button>
             ))}
           </div>
