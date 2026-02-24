@@ -89,6 +89,7 @@ export async function GET(request: NextRequest) {
         status: 'processed', // Все задания подтверждены
         exportedTo1C: false, // Еще не выгружены в 1С
         deleted: false, // Исключаем удаленные заказы - они не должны отправляться в 1С
+        excludedFrom1C: false, // Исключаем заказы, помеченные "удалить из выгрузки"
       },
       include: {
         lines: {

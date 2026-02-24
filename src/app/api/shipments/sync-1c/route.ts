@@ -345,6 +345,7 @@ export async function POST(request: NextRequest) {
         exportedTo1C: false, // Еще не выгружены в 1С
         exportedTo1CAt: null, // Дополнительная проверка: время выгрузки не установлено
         deleted: false, // Исключаем удаленные заказы - они не должны отправляться в 1С
+        excludedFrom1C: false, // Исключаем заказы, помеченные "удалить из выгрузки"
       },
       include: {
         lines: {

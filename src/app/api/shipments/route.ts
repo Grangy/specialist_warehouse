@@ -738,6 +738,7 @@ export async function GET(request: NextRequest) {
           collector_visible: isVisibleToCollector,
           exported_to_1c: shipment.exportedTo1C,
           exported_to_1c_at: shipment.exportedTo1CAt?.toISOString() || null,
+          excluded_from_1c: shipment.excludedFrom1C,
         };
       });
 

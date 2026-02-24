@@ -19,7 +19,8 @@ import {
   Eye,
   CheckCircle2,
   Trash2,
-  MessageCircle
+  MessageCircle,
+  FileX
 } from 'lucide-react';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
@@ -61,6 +62,7 @@ export default function CompletedShipmentsTab({ canDelete = true, canReassign = 
     totalWeight: 0,
   });
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(null);
+  const [excludingShipmentId, setExcludingShipmentId] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string>('');
 
   const loadShipments = async () => {
@@ -249,6 +251,25 @@ export default function CompletedShipmentsTab({ canDelete = true, canReassign = 
       alert(`❌ Ошибка при удалении заказа: ${error.message || 'Неизвестная ошибка'}`);
     } finally {
       setDeletingShipmentId(null);
+    }
+  };
+
+  const handleExcludeFrom1C = async (shipmentId: string, shipmentNumber: string) => {
+    if (!window.confirm(`Исключить заказ ${shipmentNumber} из выгрузки в 1С?\n\nЗаказ останется в системе, но не будет отправляться в 1С.`)) {
+      return;
+    }
+    try {
+      setExcludingShipmentId(shipmentId);
+      const res = await fetch(`/api/shipments/${shipmentId}/exclude-from-1c`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Ошибка');
+      }
+      await loadShipments();
+    } catch (error: unknown) {
+      alert(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
+    } finally {
+      setExcludingShipmentId(null);
     }
   };
 
@@ -683,7 +704,7 @@ export default function CompletedShipmentsTab({ canDelete = true, canReassign = 
                       )}
                     </td>
                     <td className="px-4 py-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex flex-wrap items-center justify-center gap-2">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -695,6 +716,30 @@ export default function CompletedShipmentsTab({ canDelete = true, canReassign = 
                           <Eye className="w-4 h-4" />
                           <span className="hidden sm:inline">Детали</span>
                         </button>
+                        {canDelete && !shipment.excluded_from_1c && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleExcludeFrom1C(shipment.id, shipment.shipment_number || shipment.number || 'N/A');
+                            }}
+                            disabled={excludingShipmentId === shipment.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 rounded-lg text-sm font-medium border border-amber-500/50 transition-all hover:scale-105 active:scale-95 hover:shadow-lg hover:shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Удалить из выгрузки в 1С (заказ останется в системе)"
+                          >
+                            {excludingShipmentId === shipment.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <FileX className="w-4 h-4" />
+                            )}
+                            <span className="hidden sm:inline">Из выгрузки 1С</span>
+                          </button>
+                        )}
+                        {shipment.excluded_from_1c && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-700/50 text-slate-400 rounded-lg text-xs" title="Заказ исключён из выгрузки в 1С">
+                            <FileX className="w-3.5 h-3.5" />
+                            Исключён
+                          </span>
+                        )}
                         {canDelete && (
                           <button
                             onClick={(e) => {
