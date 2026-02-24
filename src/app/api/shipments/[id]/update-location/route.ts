@@ -78,21 +78,7 @@ export async function POST(
       );
     }
 
-    // Принудительно фиксируем в БД только если ячейка пустая. Иначе — оставляем как есть (берём с 1С).
-    const currentLocation = shipmentLine.location;
-    const isLocationEmpty = !currentLocation || (typeof currentLocation === 'string' && !currentLocation.trim());
-
-    if (!isLocationEmpty) {
-      // Ячейка уже заполнена — не перезаписываем, источник истины 1С
-      return NextResponse.json({
-        success: true,
-        message: 'Ячейка уже заполнена, значение от 1С сохранено',
-        location: currentLocation,
-        skipped: true,
-      });
-    }
-
-    // Ячейка пустая — принудительно сохраняем новое значение в БД
+    // Сохраняем новое значение — перезапись разрешена (изменения на этапе сборки/проверки уходят в 1С)
     const updatedLine = await prisma.shipmentLine.update({
       where: { id: shipmentLine.id },
       data: {

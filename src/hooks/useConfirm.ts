@@ -283,7 +283,6 @@ export function useConfirm(options?: UseConfirmOptions) {
       [lineIndex]: location,
     }));
 
-    // СТРОГОЕ и ПРИНУДИТЕЛЬНОЕ сохранение location в БД через API сразу (только если ячейка была пустая)
     try {
       const shipmentId = currentShipment.id;
       const response = await fetch(`/api/shipments/${shipmentId}/update-location`, {
@@ -297,27 +296,9 @@ export function useConfirm(options?: UseConfirmOptions) {
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { skipped?: boolean; location?: string | null };
-      if (response.ok && data.skipped) {
-        // Ячейка уже заполнена — значение от 1С, не перезаписываем. Откатываем оптимистичное обновление.
-        const keptLocation = data.location ?? line.location;
-        setCurrentShipment((prev) => {
-          if (!prev) return prev;
-          const newLines = [...prev.lines];
-          newLines[lineIndex] = { ...newLines[lineIndex], location: keptLocation ?? undefined };
-          return { ...prev, lines: newLines };
-        });
-        setChangedLocations((prev) => {
-          const next = { ...prev };
-          delete next[lineIndex];
-          return next;
-        });
-        showToast('Ячейка уже заполнена, значение от 1С сохранено', 'info');
-        return;
-      }
-
       if (!response.ok) {
-        const errorMsg = (data as { error?: string })?.error || `Ошибка ${response.status}`;
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        const errorMsg = data?.error || `Ошибка ${response.status}`;
         console.error(`[useConfirm] Ошибка API при сохранении места:`, { status: response.status, error: errorMsg });
         throw new Error(`Ошибка при сохранении места: ${errorMsg}`);
       }
@@ -326,7 +307,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       showError('Не удалось сохранить место');
       // Не удаляем из changedLocations, чтобы попытаться сохранить при закрытии
     }
-  }, [currentShipment, showError, showToast]);
+  }, [currentShipment, showError]);
 
   const confirmItem = useCallback((lineIndex: number) => {
     // Помечаем товар как "улетающий" и запускаем анимацию

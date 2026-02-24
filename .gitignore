@@ -107,8 +107,10 @@ reports/analytics-report.html
 
 # Документация: в репозитории только README.md, остальные .md — локально/не коммитить
 docs/*.md
+!docs/LOCATIONS_SYSTEM.md
 scripts/*.md
 SECURITY-*.md
 *.md
 !README.md
 !DEPLOY.md
+!docs/LOCATIONS_SYSTEM.md
