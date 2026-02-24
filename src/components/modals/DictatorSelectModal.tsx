@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui/Modal';
+
+const DICTATOR_REQUIRED_SOUND_URL = '/music/20031.mp3';
 
 interface User {
   id: string;
@@ -27,6 +29,7 @@ export function DictatorSelectModal({ isOpen, onSelect, onCancel, userRole, requ
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const isWarehouse3 = userRole === 'warehouse_3';
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -34,8 +37,22 @@ export function DictatorSelectModal({ isOpen, onSelect, onCancel, userRole, requ
       loadUsers();
       setSearchQuery(''); // Сбрасываем поиск при открытии
       setSelectedDictatorId(''); // Сбрасываем выбор при открытии
+      // Звук при попытке начать проверку без диктовщика
+      if (required) {
+        const audio = new Audio(DICTATOR_REQUIRED_SOUND_URL);
+        audio.volume = 0.8;
+        audio.play().catch(() => {});
+        audioRef.current = audio;
+      }
     }
-  }, [isOpen]);
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current = null;
+      }
+    };
+  }, [isOpen, required]);
 
   const loadCurrentUser = async () => {
     try {

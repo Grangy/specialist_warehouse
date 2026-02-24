@@ -33,6 +33,8 @@ export default function Home() {
   const [userInfo, setUserInfo] = useState<{ id: string; name: string; role: string } | null>(null);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [showDictatorRequiredModal, setShowDictatorRequiredModal] = useState(false);
+  /** Заказ, для которого ждём выбора диктовщика перед открытием проверки */
+  const [pendingShipmentForConfirm, setPendingShipmentForConfirm] = useState<Shipment | null>(null);
   // «Только сегодня» — для проверяльщика/админа/склад 3: показывать только заказы активных регионов на сегодня
   const [showOnlyToday, setShowOnlyToday] = useState(false);
 
@@ -280,9 +282,20 @@ export default function Home() {
           dictatorId = userInfo.id;
         }
         confirmHook.setDictatorId(dictatorId);
+        // Проверяльщик не может начать проверку без диктовщика — сначала выбираем
+        if (userRole === 'checker' && !dictatorId) {
+          setPendingShipmentForConfirm(shipment);
+          setShowDictatorRequiredModal(true);
+          return;
+        }
       } catch (error) {
         console.error('Ошибка при загрузке диктовщика из localStorage:', error);
         confirmHook.setDictatorId(userRole === 'warehouse_3' && userInfo ? userInfo.id : null);
+        if (userRole === 'checker') {
+          setPendingShipmentForConfirm(shipment);
+          setShowDictatorRequiredModal(true);
+          return;
+        }
       }
     } else {
       confirmHook.setDictatorId(null);
@@ -599,12 +612,20 @@ export default function Home() {
           }
           confirmHook.setDictatorId(dictatorId);
           setShowDictatorRequiredModal(false);
-          if (confirmHook.currentShipment) {
+          // Случай 1: открывали «Начать проверку» без диктовщика — теперь открываем модалку проверки
+          if (pendingShipmentForConfirm) {
+            confirmHook.openModal(pendingShipmentForConfirm);
+            setPendingShipmentForConfirm(null);
+          } else if (confirmHook.currentShipment) {
+            // Случай 2: нажали «Сборка» без диктовщика — открываем модалку отправки в офис
             setPendingShipmentForOffice(confirmHook.currentShipment);
             sendToOfficeModal.open();
           }
         }}
-        onCancel={() => setShowDictatorRequiredModal(false)}
+        onCancel={() => {
+          setShowDictatorRequiredModal(false);
+          setPendingShipmentForConfirm(null);
+        }}
         userRole={userRole ?? undefined}
       />
     </div>

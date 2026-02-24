@@ -5,7 +5,7 @@ import { cleanupExpiredSessions, verifyPassword, getSessionUser } from '@/lib/au
 import { splitShipmentIntoTasks } from '@/lib/shipmentTasks';
 import { detectWarehouseFromLocation } from '@/lib/warehouseDetector';
 import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
-import { normalizeRegion } from '@/lib/utils/helpers';
+import { normalizeRegion, commentHasPriorityKeywords } from '@/lib/utils/helpers';
 import { append1cLog } from '@/lib/1cLog';
 
 export const dynamic = 'force-dynamic';
@@ -276,7 +276,7 @@ export async function POST(request: NextRequest) {
         where: { shipmentId: existing.id },
       });
       const commentStr = comment || '';
-      const autoPin = commentStr.toLowerCase().includes('самовывоз');
+      const autoPin = commentHasPriorityKeywords(commentStr);
       shipment = await prisma.shipment.update({
         where: { id: existing.id },
         data: {
@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
       });
     } else {
       const commentStr = comment || '';
-      const autoPin = commentStr.toLowerCase().includes('самовывоз');
+      const autoPin = commentHasPriorityKeywords(commentStr);
       shipment = await prisma.shipment.create({
         data: {
           number,
@@ -694,12 +694,12 @@ export async function GET(request: NextRequest) {
           .map((task) => task.dictator!.name)
           .filter((name, index, self) => self.indexOf(name) === index); // Уникальные имена
         
-        // Виден сборщику: регион в приоритете ИЛИ поднят админом ИЛИ в комментарии «самовывоз»
-        const commentHasSamovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
+        // Виден сборщику: регион в приоритете ИЛИ поднят админом ИЛИ в комментарии ключевые слова
+        const commentHasPriority = commentHasPriorityKeywords(shipment.comment);
         const isVisibleToCollector = !shipment.businessRegion
           || collectorVisibleRegions.has(normalizeRegion(shipment.businessRegion))
           || !!shipment.pinnedAt
-          || commentHasSamovyvoz;
+          || commentHasPriority;
 
         // Места по складам: Склад 1, Склад 2, Склад 3 (для отображения в завершённых заказах)
         const placesByWarehouse: Record<string, number> = {};
@@ -952,12 +952,12 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // Для сборщиков: показываем заказ, если регион в приоритете сегодня ИЛИ заказ поднят админом ИЛИ в комментарии «самовывоз»
+      // Для сборщиков: показываем заказ, если регион в приоритете сегодня ИЛИ заказ поднят админом ИЛИ в комментарии ключевые слова
       if (user.role === 'collector') {
         const inRegion = !shipment.businessRegion || collectorVisibleRegions.has(normalizeRegion(shipment.businessRegion));
         const pinned = !!shipment.pinnedAt;
-        const samovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
-        if (!inRegion && !pinned && !samovyvoz) {
+        const commentHasPriority = commentHasPriorityKeywords(shipment.comment);
+        if (!inRegion && !pinned && !commentHasPriority) {
           continue;
         }
       }
@@ -1043,12 +1043,12 @@ export async function GET(request: NextRequest) {
           confirmed: taskLine.confirmed, // Флаг подтверждения (для проверки)
         }));
 
-        // Виден сборщику: регион в приоритете ИЛИ поднят админом ИЛИ в комментарии «самовывоз»
-        const commentHasSamovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
+        // Виден сборщику: регион в приоритете ИЛИ поднят админом ИЛИ в комментарии ключевые слова
+        const commentHasPriority = commentHasPriorityKeywords(shipment.comment);
         const isVisibleToCollector = !shipment.businessRegion
           || collectorVisibleRegions.has(normalizeRegion(shipment.businessRegion))
           || !!shipment.pinnedAt
-          || commentHasSamovyvoz;
+          || commentHasPriority;
 
         // Все склады, участвующие в этом заказе (для отображения в админке и warehouse_3)
         const shipmentWarehouses = [...new Set(shipment.tasks.map((t: { warehouse: string }) => t.warehouse))].filter(Boolean).sort();

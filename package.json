@@ -41,6 +41,7 @@
     "apply:art": "tsx scripts/apply-art-from-base.ts",
     "backfill:position-difficulty": "tsx scripts/backfill-position-difficulty.ts",
     "analytics:two-weeks": "tsx scripts/analytics-two-weeks.ts",
+    "test:dictator-required": "tsx scripts/test-dictator-required.ts",
     "reports:serve": "npx --yes serve reports -p 3333"
   },
   "dependencies": {

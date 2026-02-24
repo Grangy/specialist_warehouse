@@ -10,7 +10,7 @@ import { requireAuth } from '@/lib/middleware';
 import { emitShipmentEvent } from '@/lib/sseEvents';
 import { touchSync } from '@/lib/syncTouch';
 import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
-import { normalizeRegion } from '@/lib/utils/helpers';
+import { normalizeRegion, commentHasPriorityKeywords } from '@/lib/utils/helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,11 +106,11 @@ export async function POST(
     const allShipmentTasks = shipment.tasks;
     const confirmedTasksCount = allShipmentTasks.filter((t) => t.status === 'processed').length;
     const totalTasksCount = allShipmentTasks.length;
-    const commentHasSamovyvoz = (shipment.comment || '').toLowerCase().includes('самовывоз');
+    const commentHasPriority = commentHasPriorityKeywords(shipment.comment);
     const isVisibleToCollector = !shipment.businessRegion
       || collectorVisibleRegions.has(normalizeRegion(shipment.businessRegion))
       || !!shipment.pinnedAt
-      || commentHasSamovyvoz;
+      || commentHasPriority;
 
     const builtTasks: any[] = [];
     for (const task of shipment.tasks) {

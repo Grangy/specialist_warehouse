@@ -22,6 +22,18 @@ export function escapeHtml(text: string): string {
 }
 
 /**
+ * Ключевые слова в комментарии: заказ кидается вверх (pinned) и виден сборщику вне региона.
+ * Как «Самовывоз»: срочно, сейчас, сегодня — сверх приоритет.
+ */
+const PRIORITY_COMMENT_KEYWORDS = ['самовывоз', 'срочно', 'сейчас', 'сегодня'];
+
+export function commentHasPriorityKeywords(comment: string | null | undefined): boolean {
+  if (!comment) return false;
+  const lower = comment.toLowerCase();
+  return PRIORITY_COMMENT_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+/**
  * Проверка на срочный заказ
  */
 export function isUrgent(comment: string): boolean {
