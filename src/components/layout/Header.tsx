@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PackageIcon } from '@/components/icons/PackageIcon';
-import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X, Calendar } from 'lucide-react';
+import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X, Calendar, SlidersHorizontal } from 'lucide-react';
 import { getAchievementName, getAchievementEmoji } from '@/lib/ranking/achievements';
 import { DictatorSelector } from './DictatorSelector';
+import { SettingsModal } from '@/components/modals/SettingsModal';
 
 interface HeaderProps {
   newCount: number;
@@ -99,6 +100,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const [rankingStats, setRankingStats] = useState<RankingStats | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [profilePosition, setProfilePosition] = useState({ top: 80, right: 16, width: 420 });
+  const [showSettings, setShowSettings] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -599,8 +601,19 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                           </div>
                         )}
 
-                        {/* Выход — в профиле */}
-                        <div className="border-t border-slate-700/50 pt-4">
+                        {/* Настройки и Выход — в профиле */}
+                        <div className="border-t border-slate-700/50 pt-4 space-y-2">
+                          <button
+                            onClick={() => {
+                              setShowProfile(false);
+                              setShowSettings(true);
+                            }}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-slate-700/80 hover:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/50 text-slate-200 hover:text-slate-100 transition-all duration-200"
+                            title="Настройки"
+                          >
+                            <SlidersHorizontal className="w-4 h-4" />
+                            <span className="text-sm font-medium">Настройки</span>
+                          </button>
                           <button
                             onClick={handleLogout}
                             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-slate-700/80 hover:bg-red-600/80 border border-slate-600/50 hover:border-red-500/50 text-slate-200 hover:text-red-100 transition-all duration-200"
@@ -664,6 +677,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
         </div>
       </div>
     </header>
+    <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </>
   );
 }

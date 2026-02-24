@@ -132,3 +132,16 @@ export interface SwipeState {
   currentX: number;
 }
 
+// Настройки пользователя для сборщика
+export type CollectConfirmMode = 'swipe' | 'double-click';
+
+export interface UserCollectSettings {
+  collectPositionConfirm: CollectConfirmMode;
+  collectOverallConfirm: CollectConfirmMode;
+}
+
+export const DEFAULT_USER_COLLECT_SETTINGS: UserCollectSettings = {
+  collectPositionConfirm: 'swipe',
+  collectOverallConfirm: 'swipe',
+};
+

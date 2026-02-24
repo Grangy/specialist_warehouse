@@ -4,7 +4,9 @@ import { useState, useEffect, useRef, Fragment, useMemo } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
 import { SwipeConfirmButton } from '@/components/ui/SwipeConfirmButton';
+import { DoubleTapButton } from '@/components/ui/DoubleTapButton';
 import { NameModal } from '@/components/modals/NameModal';
+import { useUserSettings } from '@/contexts/UserSettingsContext';
 import { escapeHtml, truncateArt } from '@/lib/utils/helpers';
 import { SWIPE_MIN_WIDTH } from '@/lib/utils/constants';
 import type { Shipment, CollectChecklistState } from '@/types';
@@ -48,6 +50,7 @@ export function CollectModal({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [savedScrollTop, setSavedScrollTop] = useState(0);
   const [isTablet, setIsTablet] = useState(false);
+  const { settings: userSettings } = useUserSettings();
   const [showComment, setShowComment] = useState(false);
   const commentTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -331,51 +334,58 @@ export function CollectModal({
               >
                 Отмена
               </button>
-              {/* Мобильная версия - свайп */}
-              <div className="flex-1 md:hidden swipe-confirm-container" style={{ opacity: isReady() ? 1 : 0.5 }}>
-                <div
-                  id="swipe-confirm-track"
-                  className="relative w-full h-12 bg-slate-700/90 rounded-lg overflow-hidden border-2 border-slate-600/50 shadow-lg"
-                  style={{ 
-                    touchAction: 'pan-x', 
-                    cursor: isReady() ? 'grab' : 'not-allowed',
-                    // Убираем pointerEvents: 'none', чтобы обработчики всегда могли получать события
-                    // Проверка disabled будет в SwipeConfirmButton
-                  }}
-                >
-                  <div
-                    id="swipe-confirm-slider"
-                    className="absolute left-0 top-0 h-full bg-gradient-to-r from-green-600 to-green-500 flex items-center justify-center transition-none z-30 shadow-lg"
-                    style={{ width: '60px', minWidth: '60px' }}
-                  >
-                    <svg className="w-6 h-6 text-white drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <div
-                    id="swipe-confirm-text"
-                    className="absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-sm pointer-events-none z-20"
-                    style={{ left: '60px', right: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                  >
-                    <span className="text-2xl">→</span>
-                  </div>
-                </div>
-                <SwipeConfirmButton
-                  trackId="swipe-confirm-track"
-                  sliderId="swipe-confirm-slider"
-                  textId="swipe-confirm-text"
+              {/* Мобильная версия — свайп или двойной клик */}
+              {userSettings.collectOverallConfirm === 'double-click' ? (
+                <DoubleTapButton
                   onConfirm={handleConfirm}
                   disabled={!isReady()}
+                  label="Сборка"
+                  pendingLabel="Ещё раз"
+                  className="flex-1 px-8 py-4 text-base min-w-0"
                 />
-              </div>
-              {/* Десктоп версия - кнопка */}
-              <button
-                onClick={handleConfirm}
-                disabled={!isReady()}
-                className="hidden md:flex flex-1 px-8 py-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 disabled:from-slate-600 disabled:to-slate-500 disabled:cursor-not-allowed text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 disabled:hover:scale-100"
-              >
-                Сборка
-              </button>
+              ) : (
+                <>
+                  <div className="flex-1 md:hidden swipe-confirm-container" style={{ opacity: isReady() ? 1 : 0.5 }}>
+                    <div
+                      id="swipe-confirm-track"
+                      className="relative w-full h-12 bg-slate-700/90 rounded-lg overflow-hidden border-2 border-slate-600/50 shadow-lg"
+                      style={{ touchAction: 'pan-x', cursor: isReady() ? 'grab' : 'not-allowed' }}
+                    >
+                      <div
+                        id="swipe-confirm-slider"
+                        className="absolute left-0 top-0 h-full bg-gradient-to-r from-green-600 to-green-500 flex items-center justify-center transition-none z-30 shadow-lg"
+                        style={{ width: '60px', minWidth: '60px' }}
+                      >
+                        <svg className="w-6 h-6 text-white drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <div
+                        id="swipe-confirm-text"
+                        className="absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-sm pointer-events-none z-20"
+                        style={{ left: '60px', right: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        <span className="text-2xl">→</span>
+                      </div>
+                    </div>
+                    <SwipeConfirmButton
+                      trackId="swipe-confirm-track"
+                      sliderId="swipe-confirm-slider"
+                      textId="swipe-confirm-text"
+                      onConfirm={handleConfirm}
+                      disabled={!isReady()}
+                    />
+                  </div>
+                  {/* Десктоп версия - кнопка при свайп-режиме */}
+                  <button
+                    onClick={handleConfirm}
+                    disabled={!isReady()}
+                    className="hidden md:flex flex-1 px-8 py-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 disabled:from-slate-600 disabled:to-slate-500 disabled:cursor-not-allowed text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 disabled:hover:scale-100"
+                  >
+                    Сборка
+                  </button>
+                </>
+              )}
             </div>
           </div>
         }
@@ -577,12 +587,21 @@ export function CollectModal({
                           Ред.
                         </button>
                         {!isCollected && (
-                          <button
-                            onClick={() => onUpdateCollected(index, true)}
-                            className="flex-1 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold rounded transition-colors py-1"
-                          >
-                            Сборка
-                          </button>
+                          userSettings.collectPositionConfirm === 'double-click' ? (
+                            <DoubleTapButton
+                              onConfirm={() => onUpdateCollected(index, true)}
+                              label="Сборка"
+                              pendingLabel="Ещё раз"
+                              className="flex-1 py-1 text-xs"
+                            />
+                          ) : (
+                            <button
+                              onClick={() => onUpdateCollected(index, true)}
+                              className="flex-1 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold rounded transition-colors py-1"
+                            >
+                              Сборка
+                            </button>
+                          )
                         )}
                       </div>
                     )}
@@ -866,15 +885,24 @@ export function CollectModal({
                               Ред.
                             </button>
                             {!isCollected && (
-                              <SwipeButton
-                                trackId={`swipe-collect-track-${index}`}
-                                sliderId={`swipe-collect-slider-${index}`}
-                                textId={`swipe-collect-text-${index}`}
-                                onConfirm={() => onUpdateCollected(index, true)}
-                                label="→"
-                                confirmedLabel="✓ Собрано"
-                                className="flex-shrink-0"
-                              />
+                              userSettings.collectPositionConfirm === 'double-click' ? (
+                                <DoubleTapButton
+                                  onConfirm={() => onUpdateCollected(index, true)}
+                                  label="✓"
+                                  pendingLabel="Ещё"
+                                  className="flex-shrink-0 px-2 py-1 text-xs"
+                                />
+                              ) : (
+                                <SwipeButton
+                                  trackId={`swipe-collect-track-${index}`}
+                                  sliderId={`swipe-collect-slider-${index}`}
+                                  textId={`swipe-collect-text-${index}`}
+                                  onConfirm={() => onUpdateCollected(index, true)}
+                                  label="→"
+                                  confirmedLabel="✓ Собрано"
+                                  className="flex-shrink-0"
+                                />
+                              )
                             )}
                           </div>
                         </div>
@@ -927,27 +955,34 @@ export function CollectModal({
                           >
                             Ред.
                           </button>
-                          {!isCollected && (
-                            <>
-                              {/* Мобильная версия - свайп */}
-                              <SwipeButton
-                                trackId={`swipe-collect-track-${index}`}
-                                sliderId={`swipe-collect-slider-${index}`}
-                                textId={`swipe-collect-text-${index}`}
-                                onConfirm={() => onUpdateCollected(index, true)}
-                                label="→"
-                                confirmedLabel="✓ Собрано"
-                                className="flex-shrink-0 md:hidden"
-                              />
-                              {/* Десктоп версия - кнопка */}
-                              <button
-                                onClick={() => onUpdateCollected(index, true)}
-                                className="hidden md:flex px-3 py-1 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white text-[10px] font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95 flex-shrink-0"
-                              >
-                                Сборка
-                              </button>
-                            </>
-                          )}
+{!isCollected && (
+                                                            userSettings.collectPositionConfirm === 'double-click' ? (
+                                                              <DoubleTapButton
+                                                                onConfirm={() => onUpdateCollected(index, true)}
+                                                                label="Сборка"
+                                                                pendingLabel="Ещё"
+                                                                className="flex-shrink-0 px-3 py-1 text-[10px]"
+                                                              />
+                                                            ) : (
+                                                              <>
+                                                                <SwipeButton
+                                                                  trackId={`swipe-collect-track-${index}`}
+                                                                  sliderId={`swipe-collect-slider-${index}`}
+                                                                  textId={`swipe-collect-text-${index}`}
+                                                                  onConfirm={() => onUpdateCollected(index, true)}
+                                                                  label="→"
+                                                                  confirmedLabel="✓ Собрано"
+                                                                  className="flex-shrink-0 md:hidden"
+                                                                />
+                                                                <button
+                                                                  onClick={() => onUpdateCollected(index, true)}
+                                                                  className="hidden md:flex px-3 py-1 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white text-[10px] font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95 flex-shrink-0"
+                                                                >
+                                                                  Сборка
+                                                                </button>
+                                                              </>
+                                                            )
+                                                          )}
                         </div>
                       </td>
                     </tr>

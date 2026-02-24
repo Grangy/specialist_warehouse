@@ -42,8 +42,20 @@ model User {
   monthlyStats   MonthlyStats[]
   collectorCallsReceived CollectorCall[] @relation("CollectorCallsAsCollector")
   collectorCallsMade      CollectorCall[] @relation("CollectorCallsAsChecker")
+  userSettings  UserSettings?
 
   @@map("users")
+}
+
+model UserSettings {
+  id       String   @id @default(cuid())
+  userId   String   @unique @map("user_id")
+  settings String   @default("{}") // JSON: collectPositionConfirm, collectOverallConfirm
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
 }
 
 model Shipment {

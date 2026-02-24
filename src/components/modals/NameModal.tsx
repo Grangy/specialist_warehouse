@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
+import { DoubleTapButton } from '@/components/ui/DoubleTapButton';
+import { useUserSettings } from '@/contexts/UserSettingsContext';
 import type { CollectChecklistState, ConfirmChecklistState } from '@/types';
 
 interface NameModalProps {
@@ -66,6 +68,7 @@ export function NameModal({
 }: NameModalProps) {
   const [localCollectedQty, setLocalCollectedQty] = useState(collected);
   const [localIsEditing, setLocalIsEditing] = useState(false);
+  const { settings: userSettings } = useUserSettings();
   const [localLocation, setLocalLocation] = useState(location);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
 
@@ -346,27 +349,34 @@ export function NameModal({
                   {/* Кнопка подтверждения - всегда видима */}
                   <div className="flex-1 min-w-0">
                     {!isCollected ? (
-                      <>
-                        {/* Мобильная версия - свайп */}
-                        <div className="md:hidden">
-                          <SwipeButton
-                            trackId={`swipe-name-modal-track-${lineIndex}`}
-                            sliderId={`swipe-name-modal-slider-${lineIndex}`}
-                            textId={`swipe-name-modal-text-${lineIndex}`}
-                            onConfirm={handleConfirm}
-                            label="→"
-                            confirmedLabel="✓ Подтверждено"
-                            className="w-full h-full"
-                          />
-                        </div>
-                        {/* Десктоп версия - кнопка */}
-                        <button
-                          onClick={handleConfirm}
-                          className="hidden md:flex w-full h-full min-h-[52px] items-center justify-center px-6 py-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95"
-                        >
-                          {buttonLabel}
-                        </button>
-                      </>
+                      userSettings.collectPositionConfirm === 'double-click' ? (
+                        <DoubleTapButton
+                          onConfirm={handleConfirm}
+                          label={buttonLabel}
+                          pendingLabel="Ещё раз"
+                          className="w-full min-h-[52px] py-4 text-base"
+                        />
+                      ) : (
+                        <>
+                          <div className="md:hidden">
+                            <SwipeButton
+                              trackId={`swipe-name-modal-track-${lineIndex}`}
+                              sliderId={`swipe-name-modal-slider-${lineIndex}`}
+                              textId={`swipe-name-modal-text-${lineIndex}`}
+                              onConfirm={handleConfirm}
+                              label="→"
+                              confirmedLabel="✓ Подтверждено"
+                              className="w-full h-full"
+                            />
+                          </div>
+                          <button
+                            onClick={handleConfirm}
+                            className="hidden md:flex w-full h-full min-h-[52px] items-center justify-center px-6 py-4 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95"
+                          >
+                            {buttonLabel}
+                          </button>
+                        </>
+                      )
                     ) : (
                       <div className="w-full h-full min-h-[52px] flex items-center justify-center px-6 py-4 bg-gradient-to-r from-green-600/20 to-green-500/20 border-2 border-green-500/50 rounded-lg">
                         <div className="flex items-center gap-2">
