@@ -307,6 +307,8 @@ export function ShipmentCard({
             </>
           ) : !isProcessed ? (
             <>
+              {/* Проверяльщик не может собирать заказы «на руках» — только просмотр */}
+              {!(userRole === 'checker' && shipment.collector_id != null) && (
               <button
                 type="button"
                 onClick={() => onCollect(shipment)}
@@ -325,6 +327,7 @@ export function ShipmentCard({
                   </>
                 )}
               </button>
+              )}
               {userRole === 'admin' && onCollectAll && (
                 <button
                   onClick={() => onCollectAll(shipment)}

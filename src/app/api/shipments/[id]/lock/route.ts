@@ -56,6 +56,17 @@ export async function POST(
       );
     }
 
+    // Проверяльщик не может забирать заказы, которые ещё собираются (на руках)
+    if (user.role === 'checker' && task.collectorId != null && task.status === 'new') {
+      return NextResponse.json(
+        {
+          error: 'Заказ ещё собирается. Дождитесь завершения сборки.',
+          code: 'STILL_COLLECTING',
+        },
+        { status: 403 }
+      );
+    }
+
     // Проверяем существующую блокировку
     const existingLock = task.locks[0];
     if (existingLock) {
