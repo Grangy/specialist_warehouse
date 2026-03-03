@@ -17,6 +17,7 @@ interface ShipmentGridProps {
   onConfirmAll?: (shipment: Shipment) => void;
   onDeleteCollection?: (shipment: Shipment) => void;
   userRole?: 'admin' | 'collector' | 'checker' | 'warehouse_3' | null;
+  userId?: string | null;
   isCollectLocking?: boolean;
   collectLockingShipmentId?: string | null;
 }
@@ -44,6 +45,7 @@ export function ShipmentGrid({
   onConfirmAll,
   onDeleteCollection,
   userRole,
+  userId,
   isCollectLocking,
   collectLockingShipmentId,
 }: ShipmentGridProps) {
@@ -86,6 +88,7 @@ export function ShipmentGrid({
             onConfirmAll={onConfirmAll}
             onDeleteCollection={onDeleteCollection}
             userRole={userRole}
+            userId={userId}
             isCollectLocking={isCollectLocking}
             isThisCardCollectLocking={collectLockingShipmentId === shipment.id}
           />

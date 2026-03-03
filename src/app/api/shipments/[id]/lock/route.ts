@@ -56,8 +56,8 @@ export async function POST(
       );
     }
 
-    // Проверяльщик не может забирать заказы, которые ещё собираются (на руках)
-    if (user.role === 'checker' && task.collectorId != null && task.status === 'new') {
+    // Проверяльщик не может забирать чужие заказы «на руках» — только свои (которые сам начал)
+    if (user.role === 'checker' && task.collectorId != null && task.collectorId !== user.id && task.status === 'new') {
       return NextResponse.json(
         {
           error: 'Заказ ещё собирается. Дождитесь завершения сборки.',

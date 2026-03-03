@@ -26,6 +26,8 @@ interface ShipmentCardProps {
   onConfirmAll?: (shipment: Shipment) => void;
   onDeleteCollection?: (shipment: Shipment) => void;
   userRole?: 'admin' | 'collector' | 'checker' | 'warehouse_3' | null;
+  /** ID текущего пользователя (для проверки «своя сборка» у проверяльщика) */
+  userId?: string | null;
   /** Идёт запрос блокировки (любая карточка) — кнопку «Собрать» не нажимать */
   isCollectLocking?: boolean;
   /** Блокировка запрашивается именно для этой карточки — показать индикатор загрузки */
@@ -41,6 +43,7 @@ export function ShipmentCard({
   onConfirmAll,
   onDeleteCollection,
   userRole,
+  userId,
   isCollectLocking,
   isThisCardCollectLocking,
 }: ShipmentCardProps) {
@@ -307,8 +310,8 @@ export function ShipmentCard({
             </>
           ) : !isProcessed ? (
             <>
-              {/* Проверяльщик не может собирать заказы «на руках» — только просмотр */}
-              {!(userRole === 'checker' && shipment.collector_id != null) && (
+              {/* Проверяльщик не может собирать чужие заказы «на руках» — только свои (которые сам начал) */}
+              {!(userRole === 'checker' && shipment.collector_id != null && (userId == null || shipment.collector_id !== userId)) && (
               <button
                 type="button"
                 onClick={() => onCollect(shipment)}

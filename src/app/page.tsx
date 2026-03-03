@@ -419,6 +419,7 @@ export default function Home() {
             onConfirmAll={userRole === 'admin' ? handleConfirmAll : undefined}
             onDeleteCollection={userRole === 'admin' ? handleDeleteCollection : undefined}
             userRole={userRole}
+            userId={userInfo?.id ?? null}
             isCollectLocking={collectHook.isLocking}
             collectLockingShipmentId={collectHook.lockingShipmentId}
           />
