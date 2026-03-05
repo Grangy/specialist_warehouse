@@ -3,43 +3,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { calculateTaskStatistics } from './calculations';
-import { getAnimalLevel } from './levels';
-
-/**
- * Получить или создать нормы
- */
-async function getOrCreateNorm(warehouse: string | null = null) {
-  const existing = await prisma.norm.findFirst({
-    where: {
-      warehouse: warehouse,
-      isActive: true,
-    },
-    orderBy: {
-      effectiveFrom: 'desc',
-    },
-  });
-
-  if (existing) {
-    return {
-      normA: existing.normA,
-      normB: existing.normB,
-      normC: existing.normC,
-      coefficientK: existing.coefficientK,
-      coefficientM: existing.coefficientM,
-    };
-  }
-
-  // Нормы по умолчанию
-  // Изменено: единицы (units) больше не влияют на баллы, основной показатель - позиции
-  return {
-    normA: 30,        // Норматив секунд на 1 позицию (основной показатель)
-    normB: 0,         // Норматив секунд на 1 единицу (убрано, единицы не влияют)
-    normC: 120,       // Штраф за переключение склада
-    coefficientK: 0,  // Коэффициент для units (убрано, единицы не влияют на баллы)
-    coefficientM: 3.0, // Коэффициент за переключение склада
-  };
-}
+import { calculateCollectPoints, calculateCheckPoints } from './pointsRates';
 
 /**
  * Рассчитать ранг по перцентилям
@@ -188,43 +152,41 @@ export async function updateCollectorStats(taskId: string) {
       return; // Нет позиций для расчета
     }
 
-    const norm = await getOrCreateNorm(task.warehouse);
+    // Новая система: баллы только за позиции по складу (скорость не влияет)
+    const orderPoints = calculateCollectPoints(positions, task.warehouse);
 
-    // Подготавливаем данные для расчета
-    const taskData = {
-      taskId: task.id,
-      userId: task.collectorId,
-      shipmentId: task.shipmentId,
-      warehouse: task.warehouse,
-      startedAt: task.startedAt,
-      completedAt: task.completedAt,
-      positions,
-      units,
-    };
-
-    // ВАЖНО: для расчёта elapsed/gap/switches учитываем только задачи ЭТОГО сборщика в рамках заказа.
-    // Иначе gapShare «наказывает» за время, когда заказ активен, но собирает другой сборщик.
     const collectorTasksInShipment = allTasks.filter((t) => t.collectorId === task.collectorId);
     const collectorWarehousesCount = new Set(collectorTasksInShipment.map((t) => t.warehouse)).size || 1;
 
-    const shipmentData = {
-      shipmentId: task.shipmentId,
-      createdAt: task.shipment.createdAt,
-      confirmedAt: task.shipment.confirmedAt,
-      warehousesCount: collectorWarehousesCount,
-      tasks: collectorTasksInShipment.map((t) => ({
-        taskId: t.id,
-        userId: t.collectorId || '',
-        shipmentId: t.shipmentId,
-        warehouse: t.warehouse,
-        startedAt: t.startedAt,
-        completedAt: t.completedAt,
-        positions: t.lines.length,
-        units: t.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0),
-      })),
-    };
+    const taskTimeSec = task.completedAt && task.startedAt
+      ? (task.completedAt.getTime() - task.startedAt.getTime()) / 1000
+      : 0;
+    const pph = taskTimeSec > 0 ? (positions * 3600) / taskTimeSec : null;
+    const uph = taskTimeSec > 0 && units > 0 ? (units * 3600) / taskTimeSec : null;
+    const secPerPos = taskTimeSec > 0 && positions > 0 ? taskTimeSec / positions : null;
+    const secPerUnit = taskTimeSec > 0 && units > 0 ? taskTimeSec / units : null;
+    const switches = Math.max(0, collectorWarehousesCount - 1);
 
-    const stats = calculateTaskStatistics(taskData, shipmentData, norm);
+    const stats = {
+      taskTimeSec,
+      pickTimeSec: taskTimeSec > 0 ? taskTimeSec : null,
+      elapsedTimeSec: taskTimeSec,
+      gapTimeSec: 0,
+      positions,
+      units,
+      pph,
+      uph,
+      secPerPos,
+      secPerUnit,
+      unitsPerPos: positions > 0 ? units / positions : 0,
+      switches,
+      density: positions > 0 ? units / positions : 0,
+      expectedTimeSec: 0,
+      efficiency: null,
+      efficiencyClamped: null,
+      basePoints: orderPoints,
+      orderPoints,
+    };
 
     // Сохраняем TaskStatistics для сборщика
     await prisma.taskStatistics.upsert({
@@ -242,14 +204,14 @@ export async function updateCollectorStats(taskId: string) {
         pickTimeSec: stats.pickTimeSec,
         elapsedTimeSec: stats.elapsedTimeSec,
         gapTimeSec: stats.gapTimeSec,
-        positions: stats.taskTimeSec > 0 ? positions : 0,
-        units: stats.taskTimeSec > 0 ? units : 0,
+        positions: stats.positions,
+        units: stats.units,
         pph: stats.pph,
         uph: stats.uph,
         secPerPos: stats.secPerPos,
         secPerUnit: stats.secPerUnit,
         unitsPerPos: stats.unitsPerPos,
-        warehousesCount: shipmentData.warehousesCount,
+        warehousesCount: collectorWarehousesCount,
         switches: stats.switches,
         density: stats.density,
         expectedTimeSec: stats.expectedTimeSec,
@@ -257,10 +219,10 @@ export async function updateCollectorStats(taskId: string) {
         efficiencyClamped: stats.efficiencyClamped,
         basePoints: stats.basePoints,
         orderPoints: stats.orderPoints,
-        normA: norm.normA,
-        normB: norm.normB,
-        normC: norm.normC,
-        normVersion: '1.0',
+        normA: null,
+        normB: null,
+        normC: null,
+        normVersion: 'positions-only',
       },
       create: {
         taskId: task.id,
@@ -272,14 +234,14 @@ export async function updateCollectorStats(taskId: string) {
         pickTimeSec: stats.pickTimeSec,
         elapsedTimeSec: stats.elapsedTimeSec,
         gapTimeSec: stats.gapTimeSec,
-        positions: stats.taskTimeSec > 0 ? positions : 0,
-        units: stats.taskTimeSec > 0 ? units : 0,
+        positions: stats.positions,
+        units: stats.units,
         pph: stats.pph,
         uph: stats.uph,
         secPerPos: stats.secPerPos,
         secPerUnit: stats.secPerUnit,
         unitsPerPos: stats.unitsPerPos,
-        warehousesCount: shipmentData.warehousesCount,
+        warehousesCount: collectorWarehousesCount,
         switches: stats.switches,
         density: stats.density,
         expectedTimeSec: stats.expectedTimeSec,
@@ -287,10 +249,10 @@ export async function updateCollectorStats(taskId: string) {
         efficiencyClamped: stats.efficiencyClamped,
         basePoints: stats.basePoints,
         orderPoints: stats.orderPoints,
-        normA: norm.normA,
-        normB: norm.normB,
-        normC: norm.normC,
-        normVersion: '1.0',
+        normA: null,
+        normB: null,
+        normC: null,
+        normVersion: 'positions-only',
       },
     });
 
@@ -336,14 +298,6 @@ export async function updateCheckerStats(taskId: string) {
       return; // Нет данных для расчета
     }
 
-    // Начало проверки = когда подтверждена первая позиция (checkerStartedAt), иначе — завершение сборки
-    const checkerStart = task.checkerStartedAt ?? task.completedAt;
-    const checkTimeSec = (task.confirmedAt.getTime() - checkerStart.getTime()) / 1000;
-
-    if (checkTimeSec <= 0) {
-      return; // Некорректное время
-    }
-
     const positions = task.lines.length;
     const units = task.lines.reduce((sum, line) => sum + (line.confirmedQty || line.collectedQty || line.qty), 0);
 
@@ -351,41 +305,44 @@ export async function updateCheckerStats(taskId: string) {
       return; // Нет позиций для расчета
     }
 
-    const norm = await getOrCreateNorm(task.warehouse);
+    const checkerStart = task.checkerStartedAt ?? task.completedAt;
+    const checkTimeSec = (task.confirmedAt.getTime() - checkerStart.getTime()) / 1000;
 
-    // Для проверяльщика используем время проверки (начало = первая подтверждённая позиция)
-    const taskData = {
-      taskId: task.id,
-      userId: task.checkerId,
-      shipmentId: task.shipmentId,
-      warehouse: task.warehouse,
-      startedAt: checkerStart,
-      completedAt: task.confirmedAt,
+    // Новая система: баллы только за позиции (самостоятельно или с диктовщиком)
+    const { checkerPoints, dictatorPoints } = calculateCheckPoints(
+      positions,
+      task.warehouse,
+      task.dictatorId,
+      task.checkerId
+    );
+
+    const pph = checkTimeSec > 0 ? (positions * 3600) / checkTimeSec : null;
+    const uph = checkTimeSec > 0 && units > 0 ? (units * 3600) / checkTimeSec : null;
+    const secPerPos = checkTimeSec > 0 && positions > 0 ? checkTimeSec / positions : null;
+    const secPerUnit = checkTimeSec > 0 && units > 0 ? checkTimeSec / units : null;
+
+    const stats = {
+      taskTimeSec: checkTimeSec,
+      pickTimeSec: checkTimeSec > 0 ? checkTimeSec : null,
+      elapsedTimeSec: checkTimeSec,
+      gapTimeSec: 0,
       positions,
       units,
+      pph,
+      uph,
+      secPerPos,
+      secPerUnit,
+      unitsPerPos: positions > 0 ? units / positions : 0,
+      switches: 0,
+      density: positions > 0 ? units / positions : 0,
+      expectedTimeSec: 0,
+      efficiency: null,
+      efficiencyClamped: null,
+      basePoints: checkerPoints,
+      orderPoints: checkerPoints,
     };
-
-    const shipmentData = {
-      shipmentId: task.shipmentId,
-      createdAt: task.shipment.createdAt,
-      confirmedAt: task.shipment.confirmedAt,
-      warehousesCount: new Set(task.shipment.tasks.map(t => t.warehouse)).size,
-      tasks: [taskData], // Для проверяльщика считаем только его задание
-    };
-
-    const stats = calculateTaskStatistics(taskData, shipmentData, norm);
-
-    // Если указан диктовщик, делим баллы: проверяльщик получает полные баллы, диктовщик получает 0.75
-    let checkerPoints = stats.orderPoints || 0;
-    let dictatorPoints = 0;
-    
-    if (task.dictatorId && checkerPoints > 0) {
-      dictatorPoints = checkerPoints * 0.75;
-      // Проверяльщик получает полные баллы, диктовщик получает 0.75
-    }
 
     // Сохраняем TaskStatistics для проверяльщика
-    // Теперь можем создать отдельную запись с roleType = 'checker'
     await prisma.taskStatistics.upsert({
       where: {
         taskId_userId_roleType: {
@@ -401,14 +358,14 @@ export async function updateCheckerStats(taskId: string) {
         pickTimeSec: stats.pickTimeSec,
         elapsedTimeSec: stats.elapsedTimeSec,
         gapTimeSec: stats.gapTimeSec,
-        positions: positions,
-        units: units,
+        positions: stats.positions,
+        units: stats.units,
         pph: stats.pph,
         uph: stats.uph,
         secPerPos: stats.secPerPos,
         secPerUnit: stats.secPerUnit,
         unitsPerPos: stats.unitsPerPos,
-        warehousesCount: shipmentData.warehousesCount,
+        warehousesCount: 1,
         switches: stats.switches,
         density: stats.density,
         expectedTimeSec: stats.expectedTimeSec,
@@ -416,10 +373,10 @@ export async function updateCheckerStats(taskId: string) {
         efficiencyClamped: stats.efficiencyClamped,
         basePoints: stats.basePoints,
         orderPoints: stats.orderPoints,
-        normA: norm.normA,
-        normB: norm.normB,
-        normC: norm.normC,
-        normVersion: '1.0',
+        normA: null,
+        normB: null,
+        normC: null,
+        normVersion: 'positions-only',
       },
       create: {
         taskId: task.id,
@@ -431,14 +388,14 @@ export async function updateCheckerStats(taskId: string) {
         pickTimeSec: stats.pickTimeSec,
         elapsedTimeSec: stats.elapsedTimeSec,
         gapTimeSec: stats.gapTimeSec,
-        positions: positions,
-        units: units,
+        positions: stats.positions,
+        units: stats.units,
         pph: stats.pph,
         uph: stats.uph,
         secPerPos: stats.secPerPos,
         secPerUnit: stats.secPerUnit,
         unitsPerPos: stats.unitsPerPos,
-        warehousesCount: shipmentData.warehousesCount,
+        warehousesCount: 1,
         switches: stats.switches,
         density: stats.density,
         expectedTimeSec: stats.expectedTimeSec,
@@ -446,10 +403,10 @@ export async function updateCheckerStats(taskId: string) {
         efficiencyClamped: stats.efficiencyClamped,
         basePoints: stats.basePoints,
         orderPoints: stats.orderPoints,
-        normA: norm.normA,
-        normB: norm.normB,
-        normC: norm.normC,
-        normVersion: '1.0',
+        normA: null,
+        normB: null,
+        normC: null,
+        normVersion: 'positions-only',
       },
     });
 
@@ -459,8 +416,7 @@ export async function updateCheckerStats(taskId: string) {
     // Обновляем месячную статистику для проверяльщика
     await updateMonthlyStats(task.checkerId, task.confirmedAt, stats);
 
-    // Если указан диктовщик, создаем статистику для диктовщика с баллами 0.75
-    // roleType по роли пользователя: сборщик получает очки в рейтинг сборщиков, проверяльщик — в рейтинг проверяльщиков
+    // Если указан диктовщик, создаем статистику для диктовщика
     if (task.dictatorId && dictatorPoints > 0) {
       const dictatorRoleType = task.dictator?.role === 'collector' ? 'collector' : 'checker';
 
@@ -479,25 +435,25 @@ export async function updateCheckerStats(taskId: string) {
           pickTimeSec: stats.pickTimeSec,
           elapsedTimeSec: stats.elapsedTimeSec,
           gapTimeSec: stats.gapTimeSec,
-          positions: positions,
-          units: units,
+          positions: stats.positions,
+          units: stats.units,
           pph: stats.pph,
           uph: stats.uph,
           secPerPos: stats.secPerPos,
           secPerUnit: stats.secPerUnit,
           unitsPerPos: stats.unitsPerPos,
-          warehousesCount: shipmentData.warehousesCount,
+          warehousesCount: 1,
           switches: stats.switches,
           density: stats.density,
           expectedTimeSec: stats.expectedTimeSec,
           efficiency: stats.efficiency,
           efficiencyClamped: stats.efficiencyClamped,
-          basePoints: stats.basePoints,
+          basePoints: dictatorPoints,
           orderPoints: dictatorPoints,
-          normA: norm.normA,
-          normB: norm.normB,
-          normC: norm.normC,
-          normVersion: '1.0',
+          normA: null,
+          normB: null,
+          normC: null,
+          normVersion: 'positions-only',
         },
         create: {
           taskId: task.id,
@@ -509,56 +465,30 @@ export async function updateCheckerStats(taskId: string) {
           pickTimeSec: stats.pickTimeSec,
           elapsedTimeSec: stats.elapsedTimeSec,
           gapTimeSec: stats.gapTimeSec,
-          positions: positions,
-          units: units,
+          positions: stats.positions,
+          units: stats.units,
           pph: stats.pph,
           uph: stats.uph,
           secPerPos: stats.secPerPos,
           secPerUnit: stats.secPerUnit,
           unitsPerPos: stats.unitsPerPos,
-          warehousesCount: shipmentData.warehousesCount,
+          warehousesCount: 1,
           switches: stats.switches,
           density: stats.density,
           expectedTimeSec: stats.expectedTimeSec,
           efficiency: stats.efficiency,
           efficiencyClamped: stats.efficiencyClamped,
-          basePoints: stats.basePoints,
+          basePoints: dictatorPoints,
           orderPoints: dictatorPoints,
-          normA: norm.normA,
-          normB: norm.normB,
-          normC: norm.normC,
-          normVersion: '1.0',
+          normA: null,
+          normB: null,
+          normC: null,
+          normVersion: 'positions-only',
         },
       });
 
-      const createdDictatorStats = await prisma.taskStatistics.findUnique({
-        where: {
-          taskId_userId_roleType: {
-            taskId: task.id,
-            userId: task.dictatorId,
-            roleType: dictatorRoleType,
-          },
-        },
-      });
-
-      const pointsMatch =
-        createdDictatorStats?.orderPoints != null &&
-        Math.abs(createdDictatorStats.orderPoints - dictatorPoints) < 1e-6;
-      if (!createdDictatorStats || !pointsMatch) {
-        console.error(
-          `[updateCheckerStats] Ошибка: TaskStatistics для диктовщика ${task.dictatorId} не создана или имеет неправильные баллы. ` +
-          `Ожидалось: ${dictatorPoints}, получено: ${createdDictatorStats?.orderPoints ?? 'null'}`
-        );
-        // Продолжаем выполнение, но логируем ошибку
-      }
-
-      // Обновляем дневную статистику для диктовщика
-      // updateDailyStats пересчитает все статистики за день из базы данных,
-      // включая только что созданную TaskStatistics для диктовщика
       const dictatorStats = { ...stats, orderPoints: dictatorPoints };
       await updateDailyStats(task.dictatorId, task.confirmedAt, dictatorStats);
-
-      // Обновляем месячную статистику для диктовщика
       await updateMonthlyStats(task.dictatorId, task.confirmedAt, dictatorStats);
     }
 

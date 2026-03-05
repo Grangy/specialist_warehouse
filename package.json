@@ -12,6 +12,8 @@
     "recalc:today-top": "tsx scripts/recalculate-today-top-efficiency.ts",
     "stats:recalculate-all": "tsx scripts/recalculate-all-stats-without-units.ts",
     "stats:recalculate-gap": "tsx scripts/recalculate-gap-metrics.ts",
+    "stats:recalc-points": "tsx scripts/recalculate-points-positions-only.ts",
+    "stats:audit-week": "tsx scripts/audit-points-week.ts",
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",

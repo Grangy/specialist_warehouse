@@ -148,7 +148,7 @@ export default function TopPage() {
           )}
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs text-slate-500">
-              Места по баллам (учитывается скорость и объём)
+              Места по баллам (количество позиций)
             </p>
             <button
               type="button"

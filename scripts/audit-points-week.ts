@@ -1,0 +1,134 @@
+/**
+ * Аудит расчёта баллов за последние 7 дней для всех пользователей.
+ * Сравнивает TaskStatistics с ожидаемыми баллами по новой системе (только позиции).
+ *
+ * Использование: npx tsx scripts/audit-points-week.ts
+ */
+
+import { PrismaClient } from '../src/generated/prisma/client';
+import path from 'path';
+import dotenv from 'dotenv';
+import {
+  calculateCollectPoints,
+  calculateCheckPoints,
+} from '../src/lib/ranking/pointsRates';
+
+dotenv.config();
+
+const databaseUrl = process.env.DATABASE_URL;
+let finalDatabaseUrl = databaseUrl;
+if (databaseUrl?.startsWith('file:./')) {
+  const dbPath = databaseUrl.replace('file:', '');
+  finalDatabaseUrl = `file:${path.join(process.cwd(), dbPath)}`;
+}
+
+const prisma = new PrismaClient({
+  datasources: { db: { url: finalDatabaseUrl || databaseUrl } },
+}) as any;
+
+async function runAudit() {
+  console.log('\n📋 АУДИТ БАЛЛОВ ЗА НЕДЕЛЮ (система: только позиции)\n');
+
+  const weekEnd = new Date();
+  weekEnd.setHours(23, 59, 59, 999);
+  const weekStart = new Date(weekEnd);
+  weekStart.setDate(weekStart.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+
+  console.log(`   Период: ${weekStart.toISOString().split('T')[0]} — ${weekEnd.toISOString().split('T')[0]}`);
+  console.log('='.repeat(70));
+
+  const stats = await prisma.taskStatistics.findMany({
+    where: {
+      positions: { gt: 0 },
+      task: {
+        OR: [
+          { completedAt: { gte: weekStart, lte: weekEnd } },
+          { confirmedAt: { gte: weekStart, lte: weekEnd } },
+        ],
+      },
+    },
+    include: {
+      task: {
+        include: { dictator: true, checker: true, collector: true },
+      },
+    },
+  });
+
+  console.log(`\n📊 Записей TaskStatistics за неделю: ${stats.length}`);
+
+  let ok = 0;
+  let diff = 0;
+  const issues: { userId: string; statId: string; expected: number; actual: number }[] = [];
+
+  for (const s of stats) {
+    const task = s.task;
+    if (!task) continue;
+
+    const warehouse = s.warehouse || task.warehouse;
+    const positions = s.positions || 0;
+
+    let expected: number;
+    if (s.roleType === 'collector') {
+      expected = calculateCollectPoints(positions, warehouse);
+    } else {
+      const { checkerPoints, dictatorPoints } = calculateCheckPoints(
+        positions,
+        warehouse,
+        task.dictatorId,
+        task.checkerId || ''
+      );
+      const isDictator = task.dictatorId && s.userId === task.dictatorId;
+      expected = isDictator ? dictatorPoints : checkerPoints;
+    }
+
+    const actual = s.orderPoints ?? 0;
+    const delta = Math.abs(expected - actual);
+
+    if (delta < 1e-4) {
+      ok++;
+    } else {
+      diff++;
+      if (issues.length < 20) {
+        issues.push({ userId: s.userId, statId: s.id, expected, actual });
+      }
+    }
+  }
+
+  console.log(`   ✅ Совпадает: ${ok}`);
+  console.log(`   ⚠️  Расхождение: ${diff}`);
+
+  if (issues.length > 0) {
+    console.log('\n   Примеры расхождений:');
+    issues.slice(0, 10).forEach((i, idx) => {
+      console.log(`   ${idx + 1}. stat ${i.statId.substring(0, 8)}... ожидалось ${i.expected.toFixed(2)}, в БД ${i.actual.toFixed(2)}`);
+    });
+  }
+
+  const userTotals = new Map<string, { positions: number; points: number }>();
+  for (const s of stats) {
+    const cur = userTotals.get(s.userId) || { positions: 0, points: 0 };
+    cur.positions += s.positions || 0;
+    cur.points += s.orderPoints ?? 0;
+    userTotals.set(s.userId, cur);
+  }
+
+  const users = await prisma.user.findMany({ where: { id: { in: [...userTotals.keys()] } } });
+  const nameById = new Map(users.map((u) => [u.id, u.name]));
+
+  console.log('\n📈 Баллы по пользователям за неделю:');
+  const sorted = [...userTotals.entries()].sort((a, b) => b[1].points - a[1].points);
+  sorted.slice(0, 15).forEach(([userId, data], i) => {
+    const name = nameById.get(userId) || userId.substring(0, 8);
+    console.log(`   ${i + 1}. ${name}: ${data.points.toFixed(2)} баллов, ${data.positions} поз.`);
+  });
+
+  console.log('\n' + (diff === 0 ? '✅ Аудит пройден.' : '⚠️  Есть расхождения. Запустите: npm run stats:recalc-points -- --apply'));
+}
+
+runAudit()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());
