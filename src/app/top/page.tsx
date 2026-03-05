@@ -36,6 +36,12 @@ const PERIOD_LABELS: Record<Period, string> = {
   month: 'Месяц',
 };
 
+const PERIOD_HINTS: Record<Period, string> = {
+  today: 'с утра',
+  week: 'с понедельника',
+  month: 'с начала месяца',
+};
+
 export default function TopPage() {
   const [list, setList] = useState<RankingEntry[]>([]);
   const [date, setDate] = useState<string>('');
@@ -143,7 +149,7 @@ export default function TopPage() {
           {date && (
             <div className="flex items-center gap-2 text-slate-400 text-sm">
               <Calendar className="w-4 h-4" />
-              <span>{PERIOD_LABELS[period]} · {formatDate(date)}</span>
+              <span>{PERIOD_LABELS[period]} ({PERIOD_HINTS[period]}) · {formatDate(date)}</span>
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">

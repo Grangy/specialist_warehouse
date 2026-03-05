@@ -30,14 +30,12 @@ export interface StatisticsDateRange {
   endDate: Date;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
  * Возвращает границы периода для статистики в московском времени.
  * startDate/endDate — в UTC, для сравнения с completedAt/confirmedAt в БД.
- * - today: текущий день по Москве
- * - week: последние 7 дней (сегодня −7 дней .. конец сегодня)
- * - month: последние 30 дней (сегодня −30 дней .. конец сегодня)
+ * - today: текущий день с утра по Москве (00:00–23:59)
+ * - week: с начала недели (понедельник 00:00) по конец сегодня
+ * - month: с начала месяца (1-е число 00:00) по конец сегодня
  */
 export function getStatisticsDateRange(period: 'today' | 'week' | 'month'): StatisticsDateRange {
   const now = new Date();
@@ -50,17 +48,13 @@ export function getStatisticsDateRange(period: 'today' | 'week' | 'month'): Stat
   }
 
   if (period === 'week') {
-    return {
-      startDate: new Date(todayStart.getTime() - 7 * DAY_MS),
-      endDate: todayEnd,
-    };
+    const weekStart = getMoscowWeekStart();
+    return { startDate: weekStart, endDate: todayEnd };
   }
 
   if (period === 'month') {
-    return {
-      startDate: new Date(todayStart.getTime() - 30 * DAY_MS),
-      endDate: todayEnd,
-    };
+    const monthStart = startOfDayMoscowUTC(m.year, m.month, 1);
+    return { startDate: monthStart, endDate: todayEnd };
   }
 
   return { startDate: todayStart, endDate: todayEnd };

@@ -277,7 +277,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
           <div className="bg-gradient-to-br from-blue-600/20 to-blue-500/10 border border-blue-500/30 rounded-xl p-5 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
               <Package className="w-8 h-8 text-blue-400" />
-              <span className="text-xs text-slate-400">Сегодня</span>
+              <span className="text-xs text-slate-400">Сегодня (с утра)</span>
             </div>
             <div className="text-2xl font-bold text-slate-100 mb-1">{formatNumber(overview.today.tasks)}</div>
             <div className="text-sm text-slate-400">Заданий выполнено</div>
@@ -292,7 +292,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
           <div className="bg-gradient-to-br from-green-600/20 to-green-500/10 border border-green-500/30 rounded-xl p-5 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
               <Target className="w-8 h-8 text-green-400" />
-              <span className="text-xs text-slate-400">Неделя</span>
+              <span className="text-xs text-slate-400">Неделя (с понедельника)</span>
             </div>
             <div className="text-2xl font-bold text-slate-100 mb-1">{formatNumber(overview.week.positions)}</div>
             <div className="text-sm text-slate-400">Позиций собрано</div>
@@ -307,7 +307,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
           <div className="bg-gradient-to-br from-purple-600/20 to-purple-500/10 border border-purple-500/30 rounded-xl p-5 backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
               <TrendingUp className="w-8 h-8 text-purple-400" />
-              <span className="text-xs text-slate-400">Месяц</span>
+              <span className="text-xs text-slate-400">Месяц (с начала)</span>
             </div>
             <div className="text-2xl font-bold text-slate-100 mb-1">{formatNumber(overview.month.positions)}</div>
             <div className="text-sm text-slate-400">Позиций собрано</div>

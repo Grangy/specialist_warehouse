@@ -1,7 +1,7 @@
 /**
  * Публичный API: общий топ без авторизации
  * GET /api/statistics/top?period=today|week|month — объединённый рейтинг за период (Москва).
- * today = текущий день, week = последние 7 дней, month = последние 30 дней.
+ * today = день с утра, week = с понедельника, month = с начала месяца.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
