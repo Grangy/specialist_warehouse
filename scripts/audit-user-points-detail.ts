@@ -105,7 +105,9 @@ async function main() {
     const positions = s.positions || 0;
     const actual = s.orderPoints ?? 0;
 
-    const isDictator = task.dictatorId === user.id;
+    const isSelfCheck =
+      !!task.checkerId && !!task.dictatorId && task.checkerId === task.dictatorId;
+    const isDictator = task.dictatorId === user.id && !isSelfCheck;
     const isCollector = task.collectorId === user.id;
     const isChecker = task.checkerId === user.id;
 
@@ -149,7 +151,8 @@ async function main() {
         collectorRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
       } else {
         const { checkerPoints, dictatorPoints } = calculateCheckPoints(positions, wh, task.dictatorId, task.checkerId || '');
-        if (task.dictatorId === user.id) {
+        const isDictatorRole = task.dictatorId === user.id && !isSelfCheck;
+        if (isDictatorRole) {
           expected = dictatorPoints;
           const r = (CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36])[1];
           rate = `${positions} × ${r}`;

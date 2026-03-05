@@ -100,8 +100,8 @@ export async function aggregateRankings(
     ).values(),
   ];
   const collectorTaskStats = collectorMerged.filter((s) => {
-    const t = s.task as { dictatorId?: string } | undefined;
-    return !t?.dictatorId || t.dictatorId !== s.userId;
+    const t = s.task as { collectorId?: string; dictatorId?: string } | undefined;
+    return t?.collectorId === s.userId;
   });
 
   const dictatorStatsFiltered = dictatorCollectorStats.filter((s) => s.userId === (s.task as { dictatorId: string }).dictatorId);

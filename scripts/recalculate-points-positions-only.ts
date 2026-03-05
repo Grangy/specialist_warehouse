@@ -82,7 +82,8 @@ async function main() {
     if (positions === 0) continue;
 
     const warehouse = stat.warehouse || task.warehouse;
-    const isDictatorStat = task.dictatorId && stat.userId === task.dictatorId;
+    const isSelfCheck = task.checkerId && task.dictatorId && task.checkerId === task.dictatorId;
+    const isDictatorStat = task.dictatorId && stat.userId === task.dictatorId && !isSelfCheck;
 
     let newPoints: number;
     if (isDictatorStat) {

@@ -140,7 +140,10 @@ async function main() {
 
     const warehouse = s.warehouse || task.warehouse;
     const positions = s.positions || 0;
-    const isDictator = !!task.dictatorId && s.userId === task.dictatorId;
+    const isSelfCheck =
+      !!task.checkerId && !!task.dictatorId && task.checkerId === task.dictatorId;
+    const isDictator =
+      !!task.dictatorId && s.userId === task.dictatorId && !isSelfCheck;
 
     let expected: number;
     if (s.roleType === 'collector' && !isDictator) {
