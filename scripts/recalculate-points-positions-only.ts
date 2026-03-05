@@ -83,10 +83,12 @@ async function main() {
 
     const warehouse = stat.warehouse || task.warehouse;
     const isSelfCheck = task.checkerId && task.dictatorId && task.checkerId === task.dictatorId;
-    const isDictatorStat = task.dictatorId && stat.userId === task.dictatorId && !isSelfCheck;
+    const isCollector = task.collectorId === stat.userId;
+    const isDictator = task.dictatorId && stat.userId === task.dictatorId && !isSelfCheck;
+    const isChecker = task.checkerId === stat.userId;
 
     let newPoints: number;
-    if (isDictatorStat) {
+    if (stat.roleType === 'dictator') {
       const { dictatorPoints } = calculateCheckPoints(
         positions,
         warehouse,
@@ -95,15 +97,45 @@ async function main() {
       );
       newPoints = dictatorPoints;
     } else if (stat.roleType === 'collector') {
-      newPoints = calculateCollectPoints(positions, warehouse);
+      if (isCollector) {
+        newPoints = calculateCollectPoints(positions, warehouse);
+      } else if (isDictator) {
+        const { dictatorPoints } = calculateCheckPoints(
+          positions,
+          warehouse,
+          task.dictatorId,
+          task.checkerId || ''
+        );
+        newPoints = dictatorPoints;
+      } else {
+        newPoints = calculateCollectPoints(positions, warehouse);
+      }
     } else {
-      const { checkerPoints } = calculateCheckPoints(
-        positions,
-        warehouse,
-        task.dictatorId,
-        task.checkerId || ''
-      );
-      newPoints = checkerPoints;
+      if (isChecker) {
+        const { checkerPoints } = calculateCheckPoints(
+          positions,
+          warehouse,
+          task.dictatorId,
+          task.checkerId || ''
+        );
+        newPoints = checkerPoints;
+      } else if (isDictator) {
+        const { dictatorPoints } = calculateCheckPoints(
+          positions,
+          warehouse,
+          task.dictatorId,
+          task.checkerId || ''
+        );
+        newPoints = dictatorPoints;
+      } else {
+        const { checkerPoints } = calculateCheckPoints(
+          positions,
+          warehouse,
+          task.dictatorId,
+          task.checkerId || ''
+        );
+        newPoints = checkerPoints;
+      }
     }
 
     const oldPoints = stat.orderPoints ?? 0;
@@ -122,6 +154,65 @@ async function main() {
           normVersion: 'positions-only',
         },
       });
+    }
+
+    // Если сборщик = диктовщик: нужно две записи (collector + dictator). Создаём dictator если нет.
+    const isBothCollectorAndDictator =
+      task.collectorId &&
+      task.dictatorId &&
+      task.collectorId === task.dictatorId &&
+      stat.userId === task.collectorId;
+    if (isBothCollectorAndDictator && stat.roleType === 'collector') {
+      const existingDictator = allStats.find(
+        (s) =>
+          s.taskId === stat.taskId &&
+          s.userId === stat.userId &&
+          (s as { roleType?: string }).roleType === 'dictator'
+      );
+      if (!existingDictator && !DRY_RUN) {
+        const { dictatorPoints } = calculateCheckPoints(
+          positions,
+          warehouse,
+          task.dictatorId,
+          task.checkerId || ''
+        );
+        await prisma.taskStatistics.upsert({
+          where: {
+            taskId_userId_roleType: {
+              taskId: stat.taskId,
+              userId: stat.userId,
+              roleType: 'dictator',
+            },
+          },
+          update: {
+            orderPoints: dictatorPoints,
+            basePoints: dictatorPoints,
+            positions: stat.positions,
+            units: stat.units ?? 0,
+            warehouse: stat.warehouse,
+            shipmentId: stat.shipmentId,
+            normVersion: 'positions-only',
+          },
+          create: {
+            taskId: stat.taskId,
+            userId: stat.userId,
+            roleType: 'dictator',
+            shipmentId: stat.shipmentId,
+            warehouse: stat.warehouse,
+            positions: stat.positions,
+            units: stat.units ?? 0,
+            taskTimeSec: stat.taskTimeSec ?? 0,
+            orderPoints: dictatorPoints,
+            basePoints: dictatorPoints,
+            normVersion: 'positions-only',
+          },
+        });
+        updates.push({
+          id: `dictator+${stat.taskId}`,
+          oldPoints: 0,
+          newPoints: dictatorPoints,
+        });
+      }
     }
   }
 
@@ -188,8 +279,17 @@ async function main() {
           },
         },
       });
+      const dictatorStats = await prisma.taskStatistics.findMany({
+        where: {
+          userId,
+          roleType: 'dictator',
+          task: {
+            confirmedAt: { gte: dayStart, lte: dayEnd },
+          },
+        },
+      });
 
-      const filtered = [...collectorStats, ...checkerStats].filter(
+      const filtered = [...collectorStats, ...checkerStats, ...dictatorStats].filter(
         (s) => s.positions > 0 && s.orderPoints != null
       );
 

@@ -65,9 +65,11 @@ async function runAudit() {
     const positions = s.positions || 0;
     const isSelfCheck = task.checkerId && task.dictatorId && task.checkerId === task.dictatorId;
     const isDictator = task.dictatorId && s.userId === task.dictatorId && !isSelfCheck;
+    const isCollector = task.collectorId === s.userId;
+    const isChecker = task.checkerId === s.userId;
 
     let expected: number;
-    if (isDictator) {
+    if (s.roleType === 'dictator' || (s.roleType === 'collector' && isDictator) || (s.roleType === 'checker' && isDictator)) {
       const { dictatorPoints } = calculateCheckPoints(
         positions,
         warehouse,
@@ -75,7 +77,7 @@ async function runAudit() {
         task.checkerId || ''
       );
       expected = dictatorPoints;
-    } else if (s.roleType === 'collector') {
+    } else if (s.roleType === 'collector' && isCollector) {
       expected = calculateCollectPoints(positions, warehouse);
     } else {
       const { checkerPoints } = calculateCheckPoints(

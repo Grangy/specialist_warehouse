@@ -42,20 +42,28 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Баллы сборщика как диктовщика (TaskStatistics по confirmedAt, task.dictatorId = user.id)
-    const collectorDictatorStatsToday = await prisma.taskStatistics.findMany({
-      where: {
-        userId: user.id,
-        roleType: 'collector',
-        task: {
-          dictatorId: user.id,
-          confirmedAt: {
-            gte: today,
-            lte: todayEnd,
+    // Баллы диктовщика: roleType='dictator' (новые) или roleType='collector' где dictatorId=user (legacy)
+    const [dictatorStatsToday, collectorDictatorStatsToday] = await Promise.all([
+      prisma.taskStatistics.findMany({
+        where: {
+          userId: user.id,
+          roleType: 'dictator',
+          task: {
+            confirmedAt: { gte: today, lte: todayEnd },
           },
         },
-      },
-    });
+      }),
+      prisma.taskStatistics.findMany({
+        where: {
+          userId: user.id,
+          roleType: 'collector',
+          task: {
+            dictatorId: user.id,
+            confirmedAt: { gte: today, lte: todayEnd },
+          },
+        },
+      }),
+    ]);
 
     const checkerStatsToday = await prisma.taskStatistics.findMany({
       where: {
@@ -84,20 +92,28 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Баллы сборщика как диктовщика за месяц
-    const collectorDictatorStatsMonth = await prisma.taskStatistics.findMany({
-      where: {
-        userId: user.id,
-        roleType: 'collector',
-        task: {
-          dictatorId: user.id,
-          confirmedAt: {
-            gte: monthStart,
-            lte: monthEnd,
+    // Баллы диктовщика за месяц
+    const [dictatorStatsMonth, collectorDictatorStatsMonth] = await Promise.all([
+      prisma.taskStatistics.findMany({
+        where: {
+          userId: user.id,
+          roleType: 'dictator',
+          task: {
+            confirmedAt: { gte: monthStart, lte: monthEnd },
           },
         },
-      },
-    });
+      }),
+      prisma.taskStatistics.findMany({
+        where: {
+          userId: user.id,
+          roleType: 'collector',
+          task: {
+            dictatorId: user.id,
+            confirmedAt: { gte: monthStart, lte: monthEnd },
+          },
+        },
+      }),
+    ]);
 
     const checkerStatsMonth = await prisma.taskStatistics.findMany({
       where: {
@@ -121,7 +137,9 @@ export async function GET(request: NextRequest) {
 
     if (user.role === 'collector' || user.role === 'admin') {
       const filtered = collectorStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null);
-      const dictatorFiltered = collectorDictatorStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null);
+      const dictatorFiltered = [...dictatorStatsToday, ...collectorDictatorStatsToday].filter(
+        (s) => s.positions > 0 && s.orderPoints !== null
+      );
       const allCollectorToday = [...filtered, ...dictatorFiltered];
       const dictatorPointsToday = dictatorFiltered.reduce((sum, s) => sum + (s.orderPoints || 0), 0);
       if (allCollectorToday.length > 0) {

@@ -416,16 +416,14 @@ export async function updateCheckerStats(taskId: string) {
     // Обновляем месячную статистику для проверяльщика
     await updateMonthlyStats(task.checkerId, task.confirmedAt, stats);
 
-    // Если указан диктовщик, создаем статистику для диктовщика
+    // Если указан диктовщик, создаем статистику для диктовщика (отдельный roleType — не перезаписываем сборку)
     if (task.dictatorId && dictatorPoints > 0) {
-      const dictatorRoleType = task.dictator?.role === 'collector' ? 'collector' : 'checker';
-
       await prisma.taskStatistics.upsert({
         where: {
           taskId_userId_roleType: {
             taskId: task.id,
             userId: task.dictatorId,
-            roleType: dictatorRoleType,
+            roleType: 'dictator',
           },
         },
         update: {
@@ -456,10 +454,10 @@ export async function updateCheckerStats(taskId: string) {
           normVersion: 'positions-only',
         },
         create: {
-          taskId: task.id,
-          userId: task.dictatorId,
-          roleType: dictatorRoleType,
-          shipmentId: task.shipmentId,
+        taskId: task.id,
+        userId: task.dictatorId,
+        roleType: 'dictator',
+        shipmentId: task.shipmentId,
           warehouse: task.warehouse,
           taskTimeSec: stats.taskTimeSec,
           pickTimeSec: stats.pickTimeSec,
@@ -555,8 +553,21 @@ async function updateDailyStats(userId: string, date: Date, stats: any) {
     },
   });
 
+  const dictatorStats = await prisma.taskStatistics.findMany({
+    where: {
+      userId,
+      roleType: 'dictator',
+      task: {
+        confirmedAt: {
+          gte: dayStart,
+          lte: dayEnd,
+        },
+      },
+    },
+  });
+
   // Объединяем статистики
-  const filteredDayStats = [...collectorStats, ...checkerStats].filter((stat) => {
+  const filteredDayStats = [...collectorStats, ...checkerStats, ...dictatorStats].filter((stat) => {
     // Дополнительная проверка: убеждаемся, что у статистики есть валидные данные
     return stat.positions > 0 && stat.orderPoints !== null && stat.orderPoints !== undefined;
   });

@@ -64,7 +64,7 @@ export async function aggregateRankings(
     ...taskWhere,
   };
 
-  const [collectorByCompleted, collectorByConfirmed, checkerTaskStats, checkerCollectorStats, dictatorCollectorStats] = await Promise.all([
+  const [collectorByCompleted, collectorByConfirmed, checkerTaskStats, checkerCollectorStats, dictatorCollectorStats, dictatorRoleStats] = await Promise.all([
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: completedWhere },
       include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true } } },
@@ -90,6 +90,16 @@ export async function aggregateRankings(
         roleType: 'collector',
         task: { dictatorId: { not: null }, ...confirmedWhere },
       },
+      include: {
+        user: { select: { id: true, name: true, role: true } },
+        task: { select: { dictatorId: true, checkerId: true } },
+      },
+    }),
+    prisma.taskStatistics.findMany({
+      where: {
+        roleType: 'dictator',
+        task: confirmedWhere,
+      },
       include: { user: { select: { id: true, name: true, role: true } }, task: { select: { dictatorId: true } } },
     }),
   ]);
@@ -104,7 +114,15 @@ export async function aggregateRankings(
     return t?.collectorId === s.userId;
   });
 
-  const dictatorStatsFiltered = dictatorCollectorStats.filter((s) => s.userId === (s.task as { dictatorId: string }).dictatorId);
+  const dictatorStatsFiltered = [
+    ...dictatorCollectorStats.filter((s) => {
+      const t = s.task as { dictatorId?: string; checkerId?: string };
+      if (s.userId !== t.dictatorId) return false;
+      const isSelfCheck = t.checkerId && t.dictatorId && t.checkerId === t.dictatorId;
+      return !isSelfCheck; // не дублируем самопроверку
+    }),
+    ...dictatorRoleStats,
+  ];
 
   const callsWithErrors = await prisma.collectorCall.findMany({
     where: {
@@ -167,7 +185,9 @@ export async function aggregateRankings(
     agg.points += pts;
     agg.totalPickTimeSec += stat.pickTimeSec || 0;
     if (stat.efficiencyClamped != null) agg.efficiencies.push(stat.efficiencyClamped);
-    if (t.dictatorId === stat.userId) {
+    // Самопроверка (checkerId === dictatorId): только checker, не дублируем в dictator
+    const isSelfCheck = t.checkerId && t.dictatorId && t.checkerId === t.dictatorId;
+    if (t.dictatorId === stat.userId && !isSelfCheck) {
       agg.dictatorPoints += pts;
     } else {
       agg.checkerPoints += pts;

@@ -266,7 +266,7 @@ model TaskStatistics {
   id         String @id @default(cuid())
   taskId     String @map("task_id")
   userId     String @map("user_id") // ID сборщика или проверяльщика
-  roleType   String @default("collector") @map("role_type") // "collector" или "checker"
+  roleType   String @default("collector") @map("role_type") // "collector", "checker" или "dictator"
   shipmentId String @map("shipment_id")
   warehouse  String
 

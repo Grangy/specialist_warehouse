@@ -106,6 +106,41 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
     take: 100,
   });
 
+  const dictatorStats = await prisma.taskStatistics.findMany({
+    where: {
+      userId: user.id,
+      roleType: 'dictator',
+      ...(dateRange && {
+        task: {
+          confirmedAt: {
+            gte: dateRange.startDate,
+            lte: dateRange.endDate,
+          },
+        },
+      }),
+    },
+    include: {
+      task: {
+        select: {
+          id: true,
+          dictatorId: true,
+          shipment: {
+            select: {
+              id: true,
+              number: true,
+              customerName: true,
+            },
+          },
+          warehouse: true,
+          confirmedAt: true,
+          checker: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+
   const dailyStats = await prisma.dailyStats.findMany({
     where: {
       userId: user.id,
@@ -127,10 +162,15 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
   });
 
   const checkerOnlyStats = checkerStats.filter((s) => s.task?.checkerId === user.id);
-  const dictatorFromChecker = checkerStats.filter((s) => s.task?.dictatorId === user.id);
+  // Диктовка — только когда НЕ самопроверка (checkerId !== dictatorId), иначе дублируем баллы
+  const dictatorFromChecker = checkerStats.filter((s) => {
+    const t = s.task as { dictatorId?: string; checkerId?: string } | undefined;
+    if (!t?.dictatorId || t.dictatorId !== user.id) return false;
+    return !(t.checkerId && t.checkerId === t.dictatorId); // исключаем самопроверку
+  });
   const collectorOnlyStats = collectorStats.filter((s) => (s.task as { collectorId?: string })?.collectorId === user.id);
   const dictatorFromCollector = collectorStats.filter((s) => (s.task as { dictatorId?: string })?.dictatorId === user.id);
-  const dictatorOnlyStats = [...dictatorFromChecker, ...dictatorFromCollector];
+  const dictatorOnlyStats = [...dictatorStats, ...dictatorFromChecker, ...dictatorFromCollector];
 
   const checkerTotalPoints = checkerOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
   const dictatorTotalPoints = dictatorOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
