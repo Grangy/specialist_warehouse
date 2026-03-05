@@ -38,6 +38,7 @@ interface UserStatsData {
       efficiencyClamped: number | null;
       basePoints: number | null;
       orderPoints: number | null;
+      formula?: string;
       completedAt: string | null;
       confirmedAt: string | null;
       createdAt: string;
@@ -55,6 +56,7 @@ interface UserStatsData {
       checkerName: string;
       positions: number;
       orderPoints: number | null;
+      formula?: string;
       confirmedAt: string | null;
     }>;
   };
@@ -184,9 +186,9 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
     return `${minutes}м ${secs}с`;
   };
 
-  const formatPoints = (points: number | null) => {
-    if (!points) return '—';
-    return Math.round(points * 100) / 100;
+  const formatPoints = (points: number | null | undefined) => {
+    if (points == null || points === undefined) return '—';
+    return (Math.round(points * 100) / 100).toFixed(2);
   };
 
   const formatEfficiency = (eff: number | null) => {
@@ -292,6 +294,12 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                   <div className="text-xs text-slate-400 mt-1">
                     {data.collector.totalTasks} заданий | {data.collector.totalPositions} поз. | {data.collector.totalOrders} зак.
                   </div>
+                  {(data.dictator?.totalPoints ?? 0) > 0 && (
+                    <div className="text-xs text-amber-400/90 mt-1 flex items-center gap-1">
+                      <Mic className="w-3 h-3" />
+                      Диктовка: {(data.dictator?.totalPoints ?? 0).toFixed(2)} баллов
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -377,9 +385,11 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                             </div>
                             <div className="text-right">
                               <div className="text-lg font-bold text-purple-400">
-                                {formatPoints(task.orderPoints)}
+                                {formatPoints(task.orderPoints)} баллов
                               </div>
-                              <div className="text-xs text-slate-400">баллов</div>
+                              {task.formula && (
+                                <div className="text-xs text-slate-400 mt-0.5">{task.formula}</div>
+                              )}
                             </div>
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-slate-400 mt-3">
@@ -421,9 +431,11 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                           </div>
                           <div className="text-right">
                             <div className="text-lg font-bold text-amber-400">
-                              {formatPoints(task.orderPoints)}
+                              {formatPoints(task.orderPoints)} баллов
                             </div>
-                            <div className="text-xs text-slate-400">баллов</div>
+                            {task.formula && (
+                              <div className="text-xs text-slate-400 mt-0.5">{task.formula}</div>
+                            )}
                           </div>
                         </div>
                         <div className="text-xs text-slate-400">

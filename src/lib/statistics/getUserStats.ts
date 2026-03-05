@@ -5,6 +5,11 @@
 
 import { prisma } from '@/lib/prisma';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import {
+  calculateCheckPoints,
+  CHECK_SELF_POINTS_PER_POS,
+  CHECK_WITH_DICTATOR_POINTS_PER_POS,
+} from '@/lib/ranking/pointsRates';
 
 export async function getUserStats(userId: string, period?: 'today' | 'week' | 'month') {
   const dateRange = period ? getStatisticsDateRange(period) : null;
@@ -78,6 +83,8 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       task: {
         select: {
           id: true,
+          collectorId: true,
+          dictatorId: true,
           shipment: {
             select: {
               id: true,
@@ -90,6 +97,8 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
           warehouse: true,
           startedAt: true,
           completedAt: true,
+          confirmedAt: true,
+          checker: { select: { name: true } },
         },
       },
     },
@@ -118,7 +127,10 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
   });
 
   const checkerOnlyStats = checkerStats.filter((s) => s.task?.checkerId === user.id);
-  const dictatorOnlyStats = checkerStats.filter((s) => s.task?.dictatorId === user.id);
+  const dictatorFromChecker = checkerStats.filter((s) => s.task?.dictatorId === user.id);
+  const collectorOnlyStats = collectorStats.filter((s) => (s.task as { collectorId?: string })?.collectorId === user.id);
+  const dictatorFromCollector = collectorStats.filter((s) => (s.task as { dictatorId?: string })?.dictatorId === user.id);
+  const dictatorOnlyStats = [...dictatorFromChecker, ...dictatorFromCollector];
 
   const checkerTotalPoints = checkerOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
   const dictatorTotalPoints = dictatorOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
@@ -126,10 +138,10 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
   const checkerTotalUnits = checkerOnlyStats.reduce((sum, stat) => sum + stat.units, 0);
   const checkerTotalOrders = new Set(checkerOnlyStats.map((s) => s.shipmentId)).size;
 
-  const collectorTotalPoints = collectorStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
-  const collectorTotalPositions = collectorStats.reduce((sum, stat) => sum + stat.positions, 0);
-  const collectorTotalUnits = collectorStats.reduce((sum, stat) => sum + stat.units, 0);
-  const collectorTotalOrders = new Set(collectorStats.map((s) => s.shipmentId)).size;
+  const collectorTotalPoints = collectorOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
+  const collectorTotalPositions = collectorOnlyStats.reduce((sum, stat) => sum + stat.positions, 0);
+  const collectorTotalUnits = collectorOnlyStats.reduce((sum, stat) => sum + stat.units, 0);
+  const collectorTotalOrders = new Set(collectorOnlyStats.map((s) => s.shipmentId)).size;
 
   return {
     period: period ?? null,
@@ -145,48 +157,70 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       totalUnits: checkerTotalUnits,
       totalOrders: checkerTotalOrders,
       totalPoints: checkerTotalPoints,
-      tasks: checkerOnlyStats.map((stat) => ({
-        taskId: stat.taskId,
-        shipmentNumber: stat.task?.shipment?.number || 'N/A',
-        customerName: stat.task?.shipment?.customerName || 'N/A',
-        warehouse: stat.warehouse,
-        collectorName: stat.task?.collector?.name || 'не указан',
-        positions: stat.positions,
-        units: stat.units,
-        pickTimeSec: stat.pickTimeSec,
-        pph: stat.pph,
-        uph: stat.uph,
-        efficiency: stat.efficiency,
-        efficiencyClamped: stat.efficiencyClamped,
-        basePoints: stat.basePoints,
-        orderPoints: stat.orderPoints,
-        completedAt: stat.task?.completedAt?.toISOString() || null,
-        confirmedAt: stat.task?.confirmedAt?.toISOString() || null,
-        createdAt: stat.createdAt.toISOString(),
-      })),
+      tasks: checkerOnlyStats.map((stat) => {
+        const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
+        const dictId = (stat.task as { dictatorId?: string })?.dictatorId;
+        const checkId = (stat.task as { checkerId?: string })?.checkerId || '';
+        const { checkerPoints } = calculateCheckPoints(stat.positions, wh, dictId, checkId);
+        const pts = (stat.orderPoints != null && stat.orderPoints > 0) ? stat.orderPoints : checkerPoints;
+        let formula = '';
+        const r = !dictId || dictId === checkId
+          ? (CHECK_SELF_POINTS_PER_POS[wh] ?? 0.78)
+          : (CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36])[0];
+        formula = `${stat.positions} × ${r} = ${checkerPoints.toFixed(2)}`;
+        return {
+          taskId: stat.taskId,
+          shipmentNumber: stat.task?.shipment?.number || 'N/A',
+          customerName: stat.task?.shipment?.customerName || 'N/A',
+          warehouse: stat.warehouse,
+          collectorName: stat.task?.collector?.name || 'не указан',
+          positions: stat.positions,
+          units: stat.units,
+          pickTimeSec: stat.pickTimeSec,
+          pph: stat.pph,
+          uph: stat.uph,
+          efficiency: stat.efficiency,
+          efficiencyClamped: stat.efficiencyClamped,
+          basePoints: pts,
+          orderPoints: pts,
+          formula,
+          completedAt: stat.task?.completedAt?.toISOString() || null,
+          confirmedAt: stat.task?.confirmedAt?.toISOString() || null,
+          createdAt: stat.createdAt.toISOString(),
+        };
+      }),
     },
     dictator: {
       totalPoints: dictatorTotalPoints,
       totalTasks: dictatorOnlyStats.length,
       totalPositions: dictatorOnlyStats.reduce((s, x) => s + x.positions, 0),
-      tasks: dictatorOnlyStats.map((stat) => ({
-        taskId: stat.taskId,
-        shipmentNumber: stat.task?.shipment?.number || 'N/A',
-        customerName: stat.task?.shipment?.customerName || 'N/A',
-        warehouse: stat.warehouse,
-        checkerName: (stat.task as { checker?: { name: string } })?.checker?.name ?? '—',
-        positions: stat.positions,
-        orderPoints: stat.orderPoints,
-        confirmedAt: stat.task?.confirmedAt?.toISOString() || null,
-      })),
+      tasks: dictatorOnlyStats.map((stat) => {
+        const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
+        const pair = CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36];
+        const rate = pair[1];
+        const calculatedPts = stat.positions * rate;
+        const pts = (stat.orderPoints != null && stat.orderPoints > 0) ? stat.orderPoints : calculatedPts;
+        const formula = `${stat.positions} × ${rate} = ${calculatedPts.toFixed(2)}`;
+        return {
+          taskId: stat.taskId,
+          shipmentNumber: stat.task?.shipment?.number || 'N/A',
+          customerName: stat.task?.shipment?.customerName || 'N/A',
+          warehouse: stat.warehouse,
+          checkerName: (stat.task as { checker?: { name: string } })?.checker?.name ?? '—',
+          positions: stat.positions,
+          orderPoints: pts,
+          formula,
+          confirmedAt: stat.task?.confirmedAt?.toISOString() || null,
+        };
+      }),
     },
     collector: {
-      totalTasks: collectorStats.length,
+      totalTasks: collectorOnlyStats.length,
       totalPositions: collectorTotalPositions,
       totalUnits: collectorTotalUnits,
       totalOrders: collectorTotalOrders,
       totalPoints: collectorTotalPoints,
-      tasks: collectorStats.map((stat) => ({
+      tasks: collectorOnlyStats.map((stat) => ({
         taskId: stat.taskId,
         shipmentNumber: stat.task?.shipment?.number || 'N/A',
         customerName: stat.task?.shipment?.customerName || 'N/A',
