@@ -1,7 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Package, TrendingUp, Clock, Award, CheckCircle, User, Calendar, BarChart3, AlertCircle } from 'lucide-react';
+import { X, Package, TrendingUp, Clock, Award, CheckCircle, User, Calendar, BarChart3, AlertCircle, Mic } from 'lucide-react';
+
+const PERIOD_LABELS: Record<'today' | 'week' | 'month', string> = {
+  today: 'День (с утра)',
+  week: 'Неделя (с понедельника)',
+  month: 'Месяц (с начала)',
+};
 
 interface UserStatsData {
   user: {
@@ -10,6 +16,7 @@ interface UserStatsData {
     login: string;
     role: string;
   };
+  period: 'today' | 'week' | 'month' | null;
   checker: {
     totalTasks: number;
     totalPositions: number;
@@ -34,6 +41,21 @@ interface UserStatsData {
       completedAt: string | null;
       confirmedAt: string | null;
       createdAt: string;
+    }>;
+  };
+  dictator?: {
+    totalPoints: number;
+    totalTasks: number;
+    totalPositions: number;
+    tasks: Array<{
+      taskId: string;
+      shipmentNumber: string;
+      customerName: string;
+      warehouse: string;
+      checkerName: string;
+      positions: number;
+      orderPoints: number | null;
+      confirmedAt: string | null;
     }>;
   };
   collector: {
@@ -98,7 +120,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
   const [data, setData] = useState<UserStatsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'checker' | 'collector' | 'daily' | 'monthly'>('checker');
+  const [activeTab, setActiveTab] = useState<'checker' | 'dictator' | 'collector' | 'daily' | 'monthly'>('checker');
   const usePublicApiRef = useRef(usePublicApi);
   usePublicApiRef.current = usePublicApi;
 
@@ -195,11 +217,12 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                 {data ? `Статистика: ${data.user.name}` : userName}
               </h2>
               <p className="text-sm text-slate-400">
-                Детальная информация о баллах и заданиях
-                {period && (
-                  <span className="ml-1 text-amber-400/90">
-                    · {period === 'today' ? 'за день' : period === 'week' ? 'за неделю' : 'за месяц'}
+                {period ? (
+                  <span className="text-amber-400/90 font-medium">
+                    За период: {PERIOD_LABELS[period]}
                   </span>
+                ) : (
+                  'Детальная информация о баллах и заданиях'
                 )}
               </p>
             </div>
@@ -237,7 +260,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
           {data && (
             <div className="space-y-6">
               {/* Общая статистика */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-purple-600/20 to-purple-500/10 rounded-lg p-4 border border-purple-500/30">
                   <div className="text-sm text-slate-400 mb-1 flex items-center gap-2">
                     <CheckCircle className="w-4 h-4" />
@@ -248,6 +271,18 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                     {data.checker.totalTasks} заданий | {data.checker.totalPositions} поз. | {data.checker.totalOrders} зак.
                   </div>
                 </div>
+                {(data.dictator?.totalPoints ?? 0) > 0 && (
+                  <div className="bg-gradient-to-br from-amber-600/20 to-amber-500/10 rounded-lg p-4 border border-amber-500/30">
+                    <div className="text-sm text-slate-400 mb-1 flex items-center gap-2">
+                      <Mic className="w-4 h-4" />
+                      Как диктовщик
+                    </div>
+                    <div className="text-2xl font-bold text-slate-100">{(data.dictator?.totalPoints ?? 0).toFixed(2)}</div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {data.dictator?.totalTasks ?? 0} заданий | {data.dictator?.totalPositions ?? 0} поз.
+                    </div>
+                  </div>
+                )}
                 <div className="bg-gradient-to-br from-blue-600/20 to-blue-500/10 rounded-lg p-4 border border-blue-500/30">
                   <div className="text-sm text-slate-400 mb-1 flex items-center gap-2">
                     <Package className="w-4 h-4" />
@@ -272,6 +307,18 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                 >
                   Проверки ({data.checker.tasks.length})
                 </button>
+                {(data.dictator?.totalTasks ?? 0) > 0 && (
+                  <button
+                    onClick={() => setActiveTab('dictator')}
+                    className={`flex-1 px-4 py-2 rounded-md font-medium transition-all ${
+                      activeTab === 'dictator'
+                        ? 'bg-amber-600 text-white shadow-lg'
+                        : 'text-slate-300 hover:bg-slate-700/50'
+                    }`}
+                  >
+                    Диктовка ({data.dictator?.totalTasks ?? 0})
+                  </button>
+                )}
                 <button
                   onClick={() => setActiveTab('collector')}
                   className={`flex-1 px-4 py-2 rounded-md font-medium transition-all ${
@@ -351,6 +398,40 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {activeTab === 'dictator' && data.dictator && data.dictator.tasks.length > 0 && (
+                <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
+                  <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
+                    <Mic className="w-5 h-5 text-amber-400" />
+                    Задания как диктовщик
+                  </h3>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {data.dictator.tasks.map((task) => (
+                      <div key={task.taskId} className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/30">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="font-semibold text-slate-100">
+                              {task.shipmentNumber} — {task.customerName}
+                            </div>
+                            <div className="text-xs text-slate-400 mt-1">
+                              Склад: {task.warehouse} | Проверяльщик: {task.checkerName}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-amber-400">
+                              {formatPoints(task.orderPoints)}
+                            </div>
+                            <div className="text-xs text-slate-400">баллов</div>
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          📦 {task.positions} поз. · Подтверждено: {formatDateTime(task.confirmedAt)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

@@ -38,6 +38,8 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       task: {
         select: {
           id: true,
+          checkerId: true,
+          dictatorId: true,
           shipment: {
             select: {
               id: true,
@@ -50,9 +52,8 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
           warehouse: true,
           completedAt: true,
           confirmedAt: true,
-          collector: {
-            select: { name: true },
-          },
+          collector: { select: { name: true } },
+          checker: { select: { name: true } },
         },
       },
     },
@@ -116,10 +117,14 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
     take: 12,
   });
 
-  const checkerTotalPoints = checkerStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
-  const checkerTotalPositions = checkerStats.reduce((sum, stat) => sum + stat.positions, 0);
-  const checkerTotalUnits = checkerStats.reduce((sum, stat) => sum + stat.units, 0);
-  const checkerTotalOrders = new Set(checkerStats.map((s) => s.shipmentId)).size;
+  const checkerOnlyStats = checkerStats.filter((s) => s.task?.checkerId === user.id);
+  const dictatorOnlyStats = checkerStats.filter((s) => s.task?.dictatorId === user.id);
+
+  const checkerTotalPoints = checkerOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
+  const dictatorTotalPoints = dictatorOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
+  const checkerTotalPositions = checkerOnlyStats.reduce((sum, stat) => sum + stat.positions, 0);
+  const checkerTotalUnits = checkerOnlyStats.reduce((sum, stat) => sum + stat.units, 0);
+  const checkerTotalOrders = new Set(checkerOnlyStats.map((s) => s.shipmentId)).size;
 
   const collectorTotalPoints = collectorStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
   const collectorTotalPositions = collectorStats.reduce((sum, stat) => sum + stat.positions, 0);
@@ -135,12 +140,12 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       role: user.role,
     },
     checker: {
-      totalTasks: checkerStats.length,
+      totalTasks: checkerOnlyStats.length,
       totalPositions: checkerTotalPositions,
       totalUnits: checkerTotalUnits,
       totalOrders: checkerTotalOrders,
       totalPoints: checkerTotalPoints,
-      tasks: checkerStats.map((stat) => ({
+      tasks: checkerOnlyStats.map((stat) => ({
         taskId: stat.taskId,
         shipmentNumber: stat.task?.shipment?.number || 'N/A',
         customerName: stat.task?.shipment?.customerName || 'N/A',
@@ -158,6 +163,21 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
         completedAt: stat.task?.completedAt?.toISOString() || null,
         confirmedAt: stat.task?.confirmedAt?.toISOString() || null,
         createdAt: stat.createdAt.toISOString(),
+      })),
+    },
+    dictator: {
+      totalPoints: dictatorTotalPoints,
+      totalTasks: dictatorOnlyStats.length,
+      totalPositions: dictatorOnlyStats.reduce((s, x) => s + x.positions, 0),
+      tasks: dictatorOnlyStats.map((stat) => ({
+        taskId: stat.taskId,
+        shipmentNumber: stat.task?.shipment?.number || 'N/A',
+        customerName: stat.task?.shipment?.customerName || 'N/A',
+        warehouse: stat.warehouse,
+        checkerName: (stat.task as { checker?: { name: string } })?.checker?.name ?? '—',
+        positions: stat.positions,
+        orderPoints: stat.orderPoints,
+        confirmedAt: stat.task?.confirmedAt?.toISOString() || null,
       })),
     },
     collector: {
