@@ -159,7 +159,7 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       totalPoints: checkerTotalPoints,
       tasks: checkerOnlyStats.map((stat) => {
         const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
-        const dictId = (stat.task as { dictatorId?: string })?.dictatorId;
+        const dictId = (stat.task as { dictatorId?: string })?.dictatorId ?? null;
         const checkId = (stat.task as { checkerId?: string })?.checkerId || '';
         const { checkerPoints } = calculateCheckPoints(stat.positions, wh, dictId, checkId);
         const pts = (stat.orderPoints != null && stat.orderPoints > 0) ? stat.orderPoints : checkerPoints;
