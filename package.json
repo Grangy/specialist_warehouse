@@ -48,7 +48,8 @@
     "analytics:two-weeks": "tsx scripts/analytics-two-weeks.ts",
     "test:exclude-from-1c": "tsx scripts/verify-exclude-from-1c.ts",
     "test:dictator-required": "tsx scripts/test-dictator-required.ts",
-    "reports:serve": "npx --yes serve reports -p 3333"
+    "reports:serve": "npx --yes serve reports -p 3333",
+    "deploy:remote": "./scripts/deploy-remote.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

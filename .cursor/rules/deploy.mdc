@@ -1,0 +1,17 @@
+---
+description: Деплой — всегда git push + deploy-remote.sh на сервер
+alwaysApply: true
+---
+
+# Деплой
+
+Когда пользователь просит выгрузить в git, задеплоить или обновить сервер:
+
+1. Выполни `git add -A && git commit -m "..." && git push` (если есть изменения)
+2. Запусти `./scripts/deploy-remote.sh` — скрипт подключится к 77.222.52.31 и выполнит: git pull, миграции, build, pm2 restart (без npm install)
+
+Ключ SSH: `~/.ssh/shared_server_key`
+
+Переменные (при необходимости):
+- `DEPLOY_PATH` — путь к проекту на сервере (по умолчанию ~/sklad_spec)
+- `SERVER_USER` — пользователь SSH (по умолчанию root)
