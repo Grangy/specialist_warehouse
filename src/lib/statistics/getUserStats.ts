@@ -7,6 +7,8 @@ import { prisma } from '@/lib/prisma';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 import {
   calculateCheckPoints,
+  calculateCollectPoints,
+  COLLECT_POINTS_PER_POS,
   CHECK_SELF_POINTS_PER_POS,
   CHECK_WITH_DICTATOR_POINTS_PER_POS,
 } from '@/lib/ranking/pointsRates';
@@ -260,24 +262,32 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       totalUnits: collectorTotalUnits,
       totalOrders: collectorTotalOrders,
       totalPoints: collectorTotalPoints,
-      tasks: collectorOnlyStats.map((stat) => ({
-        taskId: stat.taskId,
-        shipmentNumber: stat.task?.shipment?.number || 'N/A',
-        customerName: stat.task?.shipment?.customerName || 'N/A',
-        warehouse: stat.warehouse,
-        positions: stat.positions,
-        units: stat.units,
-        pickTimeSec: stat.pickTimeSec,
-        pph: stat.pph,
-        uph: stat.uph,
-        efficiency: stat.efficiency,
-        efficiencyClamped: stat.efficiencyClamped,
-        basePoints: stat.basePoints,
-        orderPoints: stat.orderPoints,
-        startedAt: stat.task?.startedAt?.toISOString() || null,
-        completedAt: stat.task?.completedAt?.toISOString() || null,
-        createdAt: stat.createdAt.toISOString(),
-      })),
+      tasks: collectorOnlyStats.map((stat) => {
+        const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
+        const positions = stat.positions || 0;
+        const pts = stat.orderPoints ?? calculateCollectPoints(positions, wh);
+        const rate = COLLECT_POINTS_PER_POS[wh] ?? 1;
+        const formula = `${positions} × ${rate} = ${(positions * rate).toFixed(2)}`;
+        return {
+          taskId: stat.taskId,
+          shipmentNumber: stat.task?.shipment?.number || 'N/A',
+          customerName: stat.task?.shipment?.customerName || 'N/A',
+          warehouse: stat.warehouse,
+          positions,
+          units: stat.units,
+          pickTimeSec: stat.pickTimeSec,
+          pph: stat.pph,
+          uph: stat.uph,
+          efficiency: stat.efficiency,
+          efficiencyClamped: stat.efficiencyClamped,
+          basePoints: pts,
+          orderPoints: pts,
+          formula,
+          startedAt: stat.task?.startedAt?.toISOString() || null,
+          completedAt: stat.task?.completedAt?.toISOString() || null,
+          createdAt: stat.createdAt.toISOString(),
+        };
+      }),
     },
     dailyStats: dailyStats.map((stat) => ({
       date: stat.date.toISOString().split('T')[0],

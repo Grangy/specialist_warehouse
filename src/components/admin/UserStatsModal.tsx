@@ -80,6 +80,7 @@ interface UserStatsData {
       efficiencyClamped: number | null;
       basePoints: number | null;
       orderPoints: number | null;
+      formula?: string;
       startedAt: string | null;
       completedAt: string | null;
       createdAt: string;
@@ -475,10 +476,13 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                               </div>
                               <div className="text-xs text-slate-400">{task.warehouse}</div>
                             </div>
-                            <div className="shrink-0">
+                            <div className="flex flex-col items-start sm:items-end shrink-0">
                               <div className="text-base sm:text-lg font-bold text-blue-400">
                                 {formatPoints(task.orderPoints)} баллов
                               </div>
+                              {task.formula && (
+                                <div className="text-xs text-slate-400">{task.formula}</div>
+                              )}
                             </div>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-xs text-slate-400">
