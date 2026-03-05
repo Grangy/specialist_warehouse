@@ -12,6 +12,7 @@ import {
   CHECK_SELF_POINTS_PER_POS,
   CHECK_WITH_DICTATOR_POINTS_PER_POS,
 } from '@/lib/ranking/pointsRates';
+import { getPointsRates } from '@/lib/ranking/getPointsRates';
 
 export async function getUserStats(userId: string, period?: 'today' | 'week' | 'month') {
   const dateRange = period ? getStatisticsDateRange(period) : null;
@@ -163,6 +164,7 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
     take: 12,
   });
 
+  const rates = await getPointsRates();
   const checkerOnlyStats = checkerStats.filter((s) => s.task?.checkerId === user.id);
   // Диктовка — только когда НЕ самопроверка (checkerId !== dictatorId), иначе дублируем баллы
   const dictatorFromChecker = checkerStats.filter((s) => {
@@ -199,11 +201,17 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       totalUnits: checkerTotalUnits,
       totalOrders: checkerTotalOrders,
       totalPoints: checkerTotalPoints,
-      tasks: checkerOnlyStats.map((stat) => {
+      tasks:       checkerOnlyStats.map((stat) => {
         const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
         const dictId = (stat.task as { dictatorId?: string })?.dictatorId ?? null;
         const checkId = (stat.task as { checkerId?: string })?.checkerId || '';
-        const { checkerPoints } = calculateCheckPoints(stat.positions, wh, dictId, checkId);
+        const { checkerPoints } = calculateCheckPoints(
+          stat.positions,
+          wh,
+          dictId,
+          checkId,
+          { checkSelf: rates.checkSelf, checkWithDictator: rates.checkWithDictator }
+        );
         const pts = (stat.orderPoints != null && stat.orderPoints > 0) ? stat.orderPoints : checkerPoints;
         let formula = '';
         const r = !dictId || dictId === checkId
@@ -238,7 +246,7 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       totalPositions: dictatorOnlyStats.reduce((s, x) => s + x.positions, 0),
       tasks: dictatorOnlyStats.map((stat) => {
         const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
-        const pair = CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36];
+        const pair = rates.checkWithDictator[wh] ?? CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36];
         const rate = pair[1];
         const calculatedPts = stat.positions * rate;
         const pts = (stat.orderPoints != null && stat.orderPoints > 0) ? stat.orderPoints : calculatedPts;
@@ -262,11 +270,11 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       totalUnits: collectorTotalUnits,
       totalOrders: collectorTotalOrders,
       totalPoints: collectorTotalPoints,
-      tasks: collectorOnlyStats.map((stat) => {
+      tasks:       collectorOnlyStats.map((stat) => {
         const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
         const positions = stat.positions || 0;
-        const pts = stat.orderPoints ?? calculateCollectPoints(positions, wh);
-        const rate = COLLECT_POINTS_PER_POS[wh] ?? 1;
+        const pts = stat.orderPoints ?? calculateCollectPoints(positions, wh, rates.collect);
+        const rate = rates.collect[wh] ?? COLLECT_POINTS_PER_POS[wh] ?? 1;
         const formula = `${positions} × ${rate} = ${(positions * rate).toFixed(2)}`;
         return {
           taskId: stat.taskId,

@@ -12,10 +12,8 @@ import dotenv from 'dotenv';
 import {
   calculateCollectPoints,
   calculateCheckPoints,
-  CHECK_WITH_DICTATOR_POINTS_PER_POS,
-  CHECK_SELF_POINTS_PER_POS,
-  COLLECT_POINTS_PER_POS,
 } from '../src/lib/ranking/pointsRates';
+import { getPointsRates } from '../src/lib/ranking/getPointsRates';
 import { getStatisticsDateRange } from '../src/lib/utils/moscowDate';
 
 dotenv.config();
@@ -47,13 +45,15 @@ async function main() {
     process.exit(1);
   }
 
+  const rates = await getPointsRates(prisma);
+  const overrides = { checkSelf: rates.checkSelf, checkWithDictator: rates.checkWithDictator };
+
   console.log(`\n📋 АУДИТ БАЛЛОВ: ${user.name} (${user.role})\n`);
   console.log(`Период (${periodLabel}): ${startDate.toISOString().split('T')[0]} — ${endDate.toISOString().split('T')[0]}\n`);
-  console.log('Формулы:');
-  console.log('  Сборка: Склад 1 = 1×поз, Склад 2/3 = 2×поз');
-  console.log('  Диктовка: Склад 1 = 0.36×поз, Склад 2/3 = 0.61×поз');
-  console.log('  Проверка с диктовщиком: проверяльщик 0.39/0.67, диктовщик 0.36/0.61');
-  console.log('  Проверка сама: 0.78/1.34');
+  console.log('Коэффициенты (из Настроек):');
+  console.log('  Сборка:', JSON.stringify(rates.collect));
+  console.log('  Проверка сама:', JSON.stringify(rates.checkSelf));
+  console.log('  Проверка с диктовщиком [проверяльщик, диктовщик]:', JSON.stringify(rates.checkWithDictator));
   console.log('='.repeat(80));
 
   const stats = await prisma.taskStatistics.findMany({
@@ -116,51 +116,51 @@ async function main() {
     let type: Row['type'];
 
     if (isDictator) {
-      const pair = CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36];
+      const pair = rates.checkWithDictator[wh] ?? [0.39, 0.36];
       const r = pair[1];
       expected = positions * r;
       rate = `${positions} × ${r}`;
       type = 'диктовка';
       dictatorRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
     } else if (isChecker) {
-      const { checkerPoints } = calculateCheckPoints(positions, wh, task.dictatorId, task.checkerId || '');
+      const { checkerPoints } = calculateCheckPoints(positions, wh, task.dictatorId, task.checkerId || '', overrides);
       expected = checkerPoints;
       const isSelf = !task.dictatorId || task.dictatorId === task.checkerId;
       if (isSelf) {
-        const r = CHECK_SELF_POINTS_PER_POS[wh] ?? 0.78;
+        const r = rates.checkSelf[wh] ?? 0.78;
         rate = `${positions} × ${r} (сам)`;
       } else {
-        const pair = CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36];
+        const pair = rates.checkWithDictator[wh] ?? [0.39, 0.36];
         rate = `${positions} × ${pair[0]} (с диктовщ.)`;
       }
       type = 'проверка';
       checkerRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
     } else if (isCollector) {
-      expected = calculateCollectPoints(positions, wh);
-      const r = COLLECT_POINTS_PER_POS[wh] ?? 1;
+      expected = calculateCollectPoints(positions, wh, rates.collect);
+      const r = rates.collect[wh] ?? 1;
       rate = `${positions} × ${r}`;
       type = 'сборка';
       collectorRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
     } else {
       // Fallback: roleType
       if (s.roleType === 'collector') {
-        expected = calculateCollectPoints(positions, wh);
-        const r = COLLECT_POINTS_PER_POS[wh] ?? 1;
+        expected = calculateCollectPoints(positions, wh, rates.collect);
+        const r = rates.collect[wh] ?? 1;
         rate = `${positions} × ${r}`;
         type = 'сборка';
         collectorRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
       } else {
-        const { checkerPoints, dictatorPoints } = calculateCheckPoints(positions, wh, task.dictatorId, task.checkerId || '');
+        const { checkerPoints, dictatorPoints } = calculateCheckPoints(positions, wh, task.dictatorId, task.checkerId || '', overrides);
         const isDictatorRole = task.dictatorId === user.id && !isSelfCheck;
         if (isDictatorRole) {
           expected = dictatorPoints;
-          const r = (CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36])[1];
+          const r = (rates.checkWithDictator[wh] ?? [0.39, 0.36])[1];
           rate = `${positions} × ${r}`;
           type = 'диктовка';
           dictatorRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
         } else {
           expected = checkerPoints;
-          const pair = CHECK_WITH_DICTATOR_POINTS_PER_POS[wh];
+          const pair = rates.checkWithDictator[wh];
           rate = pair ? `${positions} × ${pair[0]}` : `${positions} × 0.78`;
           type = 'проверка';
           checkerRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });

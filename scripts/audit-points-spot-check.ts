@@ -15,10 +15,9 @@ import dotenv from 'dotenv';
 import {
   calculateCollectPoints,
   calculateCheckPoints,
-  CHECK_WITH_DICTATOR_POINTS_PER_POS,
-  CHECK_SELF_POINTS_PER_POS,
-  COLLECT_POINTS_PER_POS,
 } from '../src/lib/ranking/pointsRates';
+import type { PointsRatesConfig } from '../src/lib/ranking/getPointsRates';
+import { getPointsRates } from '../src/lib/ranking/getPointsRates';
 import { getStatisticsDateRange } from '../src/lib/utils/moscowDate';
 
 dotenv.config();
@@ -38,39 +37,42 @@ function formulaDesc(
   roleType: string,
   positions: number,
   warehouse: string | null,
-  isDictator: boolean
+  isDictator: boolean,
+  rates: PointsRatesConfig
 ): string {
   const w = warehouse || 'Склад 1';
   if (roleType === 'collector') {
-    const r = COLLECT_POINTS_PER_POS[w] ?? 1;
+    const r = rates.collect[w] ?? 1;
     return `${positions} × ${r} = ${(positions * r).toFixed(2)}`;
   }
   if (isDictator) {
-    const pair = CHECK_WITH_DICTATOR_POINTS_PER_POS[w] ?? [0.39, 0.36];
+    const pair = rates.checkWithDictator[w] ?? [0.39, 0.36];
     const r = pair[1];
     return `диктовка: ${positions} × ${r} = ${(positions * r).toFixed(2)}`;
   }
   // checker
-  const pair = CHECK_WITH_DICTATOR_POINTS_PER_POS[w];
+  const pair = rates.checkWithDictator[w];
   if (pair) {
     const r = pair[0];
     return `проверка: ${positions} × ${r} = ${(positions * r).toFixed(2)}`;
   }
-  const r = CHECK_SELF_POINTS_PER_POS[w] ?? 0.78;
+  const r = rates.checkSelf[w] ?? 0.78;
   return `проверка (сам): ${positions} × ${r} = ${(positions * r).toFixed(2)}`;
 }
 
 async function main() {
+  const rates = await getPointsRates(prisma);
+  const overrides = { checkSelf: rates.checkSelf, checkWithDictator: rates.checkWithDictator };
+
   const useLast7 = process.argv.includes('--7');
   const useMonth = process.argv.includes('--month');
   const useLast30 = process.argv.includes('--30');
   const periodLabel = useMonth ? 'месяц' : useLast30 ? '30 дней' : useLast7 ? '7 дней' : 'неделю';
   console.log(`\n📋 ВЫБОРОЧНАЯ ПРОВЕРКА БАЛЛОВ ЗА ${periodLabel.toUpperCase()}\n`);
-  console.log('Формулы:');
-  console.log('  Сборка: Склад 1 = 1×поз, Склад 2/3 = 2×поз');
-  console.log('  Проверка сама: Склад 1 = 0.78×поз, Склад 2/3 = 1.34×поз');
-  console.log('  Проверка с диктовщиком Склад 1: проверяльщик 0.39×поз, диктовщик 0.36×поз');
-  console.log('  Проверка с диктовщиком Склад 2/3: проверяльщик 0.67×поз, диктовщик 0.61×поз');
+  console.log('Коэффициенты (из Настроек):');
+  console.log('  Сборка:', JSON.stringify(rates.collect));
+  console.log('  Проверка сама:', JSON.stringify(rates.checkSelf));
+  console.log('  Проверка с диктовщиком [проверяльщик, диктовщик]:', JSON.stringify(rates.checkWithDictator));
   console.log('='.repeat(70));
 
   let startDate: Date;
@@ -147,20 +149,21 @@ async function main() {
 
     let expected: number;
     if (s.roleType === 'collector' && !isDictator) {
-      expected = calculateCollectPoints(positions, warehouse);
+      expected = calculateCollectPoints(positions, warehouse, rates.collect);
       collectorStats.push(s);
     } else if (s.roleType === 'checker' || isDictator) {
       const { checkerPoints, dictatorPoints } = calculateCheckPoints(
         positions,
         warehouse,
         task.dictatorId,
-        task.checkerId || ''
+        task.checkerId || '',
+        overrides
       );
       expected = isDictator ? dictatorPoints : checkerPoints;
       if (isDictator) dictatorStats.push(s);
       else checkerStats.push(s);
     } else {
-      expected = calculateCollectPoints(positions, warehouse);
+      expected = calculateCollectPoints(positions, warehouse, rates.collect);
       collectorStats.push(s);
     }
 
@@ -203,13 +206,14 @@ async function main() {
           s.positions,
           wh,
           task.dictatorId,
-          task.checkerId || ''
+          task.checkerId || '',
+          overrides
         );
         const actual = s.orderPoints ?? 0;
         const match = Math.abs(dictatorPoints - actual) < 1e-4;
         if (match) userOk++;
         else userDiff++;
-        const rate = (CHECK_WITH_DICTATOR_POINTS_PER_POS[wh ?? 'Склад 1'] ?? [0.39, 0.36])[1];
+        const rate = (rates.checkWithDictator[wh ?? 'Склад 1'] ?? [0.39, 0.36])[1];
         console.log(
           `  ${task.shipment?.number || '?'} | ${s.positions} поз × ${rate} = ${dictatorPoints.toFixed(2)} | в БД: ${actual.toFixed(2)} ${match ? '✅' : '❌'}`
         );
@@ -226,17 +230,17 @@ async function main() {
     for (const s of sample) {
       const task = s.task!;
       const name = nameById.get(s.userId) || s.userId.substring(0, 8);
-      const isSelf = !task.dictatorId || task.dictatorId === task.checkerId;
       const { checkerPoints } = calculateCheckPoints(
         s.positions,
         s.warehouse || task.warehouse,
         task.dictatorId,
-        task.checkerId || ''
+        task.checkerId || '',
+        overrides
       );
       const actual = s.orderPoints ?? 0;
       const match = Math.abs(checkerPoints - actual) < 1e-4;
       console.log(
-        `  ${name} | ${task.shipment?.number || '?'} | ${formulaDesc('checker', s.positions, s.warehouse || task.warehouse, false)} | в БД: ${actual.toFixed(2)} ${match ? '✅' : '❌'}`
+        `  ${name} | ${task.shipment?.number || '?'} | ${formulaDesc('checker', s.positions, s.warehouse || task.warehouse, false, rates)} | в БД: ${actual.toFixed(2)} ${match ? '✅' : '❌'}`
       );
     }
     console.log('');
@@ -249,11 +253,11 @@ async function main() {
     for (const s of sample) {
       const task = s.task!;
       const name = nameById.get(s.userId) || s.userId.substring(0, 8);
-      const expected = calculateCollectPoints(s.positions, s.warehouse || task.warehouse);
+      const expected = calculateCollectPoints(s.positions, s.warehouse || task.warehouse, rates.collect);
       const actual = s.orderPoints ?? 0;
       const match = Math.abs(expected - actual) < 1e-4;
       console.log(
-        `  ${name} | ${task.shipment?.number || '?'} | ${formulaDesc('collector', s.positions, s.warehouse || task.warehouse, false)} | в БД: ${actual.toFixed(2)} ${match ? '✅' : '❌'}`
+        `  ${name} | ${task.shipment?.number || '?'} | ${formulaDesc('collector', s.positions, s.warehouse || task.warehouse, false, rates)} | в БД: ${actual.toFixed(2)} ${match ? '✅' : '❌'}`
       );
     }
     console.log('');
@@ -287,10 +291,11 @@ async function main() {
         s.positions,
         wh,
         task.dictatorId,
-        '' // checkerId не нужен для dictator
+        '',
+        overrides
       );
       const actual = s.orderPoints ?? 0;
-      const rate = (CHECK_WITH_DICTATOR_POINTS_PER_POS[wh ?? 'Склад 1'] ?? [0.39, 0.36])[1];
+      const rate = (rates.checkWithDictator[wh ?? 'Склад 1'] ?? [0.39, 0.36])[1];
       const match = Math.abs(dictatorPoints - actual) < 1e-4;
       console.log(
         `  ${s.user?.name || '?'} | ${task.shipment?.number} | ${s.positions} поз × ${rate} = ${dictatorPoints.toFixed(2)} | в БД: ${actual.toFixed(2)} ${match ? '✅' : '❌'}`

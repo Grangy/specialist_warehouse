@@ -144,6 +144,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
   const [showPointsHelp, setShowPointsHelp] = useState(false);
   const [showErrorsBreakdown, setShowErrorsBreakdown] = useState(false);
   const [expandedErrorRow, setExpandedErrorRow] = useState<number | null>(null);
+  const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState('');
 
@@ -364,17 +365,36 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
         </label>
       </div>
 
-      {/* Блок топ ошибающихся (как в /top) */}
+      {/* Блок топ ошибающихся (изначально свёрнут, клик — раскрыть) */}
       {(totalCollectorErrors > 0 || totalCheckerErrors > 0 || topErrorsMerged.length > 0) && (
         <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3">
-          <div className="flex items-center justify-between gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => setTopErrorsExpanded((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-500/50 rounded text-left"
+          >
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <span className="text-xs font-semibold text-slate-300">Топ ошибающихся</span>
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="text-xs font-semibold text-slate-300">
+                Топ ошибающихся
+                {!topErrorsExpanded && (
+                  <span className="ml-1.5 text-slate-500 font-normal">
+                    ({totalCollectorErrors + totalCheckerErrors})
+                  </span>
+                )}
+              </span>
             </div>
+            <span className="text-slate-500 text-xs">
+              {topErrorsExpanded ? '▼' : '▶'}
+            </span>
+          </button>
+          {topErrorsExpanded && (
+            <>
+          <div className="flex items-center justify-between gap-2 mt-3 mb-2">
+            <div />
             <button
               type="button"
-              onClick={() => setShowErrorsBreakdown((v) => !v)}
+              onClick={(e) => { e.stopPropagation(); setShowErrorsBreakdown((v) => !v); }}
               className="inline-flex items-center gap-1.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-500/50 rounded"
             >
               <span
@@ -453,6 +473,8 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
               Ошибки за проверку
             </span>
           </div>
+            </>
+          )}
         </div>
       )}
 

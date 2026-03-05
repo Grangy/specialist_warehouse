@@ -1,12 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, Save, Loader2 } from 'lucide-react';
+import { Settings, Save, Loader2, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
+import {
+  COLLECT_POINTS_PER_POS,
+  CHECK_SELF_POINTS_PER_POS,
+  CHECK_WITH_DICTATOR_POINTS_PER_POS,
+} from '@/lib/ranking/pointsRates';
+
+const WAREHOUSES = ['Склад 1', 'Склад 2', 'Склад 3'] as const;
 
 export default function SettingsTab() {
   const [collectorSeesOnlyFirstOrder, setCollectorSeesOnlyFirstOrder] = useState(false);
   const [skipCompletedShipments, setSkipCompletedShipments] = useState(false);
+  const [pointsRates, setPointsRates] = useState({
+    collect: { ...COLLECT_POINTS_PER_POS },
+    checkSelf: { ...CHECK_SELF_POINTS_PER_POS },
+    checkWithDictator: { ...CHECK_WITH_DICTATOR_POINTS_PER_POS } as Record<string, [number, number]>,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { showToast, showError, showSuccess } = useToast();
@@ -57,6 +69,14 @@ export default function SettingsTab() {
         setSkipCompletedShipments(
           data.settings.skip_completed_shipments === true
         );
+        if (data.settings.points_rates && typeof data.settings.points_rates === 'object') {
+          const pr = data.settings.points_rates;
+          setPointsRates({
+            collect: { ...COLLECT_POINTS_PER_POS, ...pr.collect },
+            checkSelf: { ...CHECK_SELF_POINTS_PER_POS, ...pr.checkSelf },
+            checkWithDictator: { ...CHECK_WITH_DICTATOR_POINTS_PER_POS, ...pr.checkWithDictator },
+          });
+        }
       }
     } catch (error: any) {
       // Игнорируем ошибки сети и HTTP 0, если это не критично
@@ -84,13 +104,11 @@ export default function SettingsTab() {
     try {
       setIsSaving(true);
       
-      // Сохраняем обе настройки
+      // Сохраняем настройки
       const promises = [
         fetch('/api/settings', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             key: 'collector_sees_only_first_order',
             value: collectorSeesOnlyFirstOrder,
@@ -98,12 +116,18 @@ export default function SettingsTab() {
         }),
         fetch('/api/settings', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             key: 'skip_completed_shipments',
             value: skipCompletedShipments,
+          }),
+        }),
+        fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: 'points_rates',
+            value: pointsRates,
           }),
         }),
       ];
@@ -177,6 +201,98 @@ export default function SettingsTab() {
                   ? 'Включено: сборщики видят только первый доступный заказ'
                   : 'Выключено: сборщики видят все доступные заказы'}
               </p>
+            </div>
+          </div>
+
+          {/* Коэффициенты баллов */}
+          <div className="border-t border-slate-700/50 pt-6">
+            <h3 className="text-lg font-semibold text-slate-100 mb-2 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-amber-400" />
+              Баллы за позицию
+            </h3>
+            <p className="text-sm text-slate-400 mb-4">
+              Коэффициенты для расчёта баллов (позиции × коэффициент). После изменения запустите пересчёт: <code className="text-xs bg-slate-800 px-1 rounded">npm run stats:recalc-points -- --apply</code>
+            </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {WAREHOUSES.map((wh) => (
+                <div key={wh} className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50 space-y-3">
+                  <div className="font-medium text-slate-200 text-sm">{wh}</div>
+                  <div>
+                    <label className="text-xs text-slate-500">Сборка</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={pointsRates.collect[wh] ?? ''}
+                      onChange={(e) =>
+                        setPointsRates((p) => ({
+                          ...p,
+                          collect: { ...p.collect, [wh]: parseFloat(e.target.value) || 0 },
+                        }))
+                      }
+                      className="mt-1 w-full rounded border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Проверка самостоятельно</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={pointsRates.checkSelf[wh] ?? ''}
+                      onChange={(e) =>
+                        setPointsRates((p) => ({
+                          ...p,
+                          checkSelf: { ...p.checkSelf, [wh]: parseFloat(e.target.value) || 0 },
+                        }))
+                      }
+                      className="mt-1 w-full rounded border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">С диктовщиком: проверяльщик / диктовщик</label>
+                    <div className="mt-1 flex gap-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.39"
+                        value={pointsRates.checkWithDictator[wh]?.[0] ?? ''}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          setPointsRates((p) => ({
+                            ...p,
+                            checkWithDictator: {
+                              ...p.checkWithDictator,
+                              [wh]: [v, p.checkWithDictator[wh]?.[1] ?? 0.36],
+                            },
+                          }));
+                        }}
+                        className="flex-1 rounded border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                      <span className="text-slate-500 self-center">/</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.36"
+                        value={pointsRates.checkWithDictator[wh]?.[1] ?? ''}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          setPointsRates((p) => ({
+                            ...p,
+                            checkWithDictator: {
+                              ...p.checkWithDictator,
+                              [wh]: [p.checkWithDictator[wh]?.[0] ?? 0.39, v],
+                            },
+                          }));
+                        }}
+                        className="flex-1 rounded border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

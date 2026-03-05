@@ -4,6 +4,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { calculateCollectPoints, calculateCheckPoints } from './pointsRates';
+import { getPointsRates } from './getPointsRates';
 
 /**
  * Рассчитать ранг по перцентилям
@@ -152,8 +153,8 @@ export async function updateCollectorStats(taskId: string) {
       return; // Нет позиций для расчета
     }
 
-    // Новая система: баллы только за позиции по складу (скорость не влияет)
-    const orderPoints = calculateCollectPoints(positions, task.warehouse);
+    const rates = await getPointsRates();
+    const orderPoints = calculateCollectPoints(positions, task.warehouse, rates.collect);
 
     const collectorTasksInShipment = allTasks.filter((t) => t.collectorId === task.collectorId);
     const collectorWarehousesCount = new Set(collectorTasksInShipment.map((t) => t.warehouse)).size || 1;
@@ -308,12 +309,13 @@ export async function updateCheckerStats(taskId: string) {
     const checkerStart = task.checkerStartedAt ?? task.completedAt;
     const checkTimeSec = (task.confirmedAt.getTime() - checkerStart.getTime()) / 1000;
 
-    // Новая система: баллы только за позиции (самостоятельно или с диктовщиком)
+    const rates = await getPointsRates();
     const { checkerPoints, dictatorPoints } = calculateCheckPoints(
       positions,
       task.warehouse,
       task.dictatorId,
-      task.checkerId
+      task.checkerId,
+      { checkSelf: rates.checkSelf, checkWithDictator: rates.checkWithDictator }
     );
 
     const pph = checkTimeSec > 0 ? (positions * 3600) / checkTimeSec : null;

@@ -14,6 +14,7 @@ import {
   calculateCollectPoints,
   calculateCheckPoints,
 } from '../src/lib/ranking/pointsRates';
+import { getPointsRates } from '../src/lib/ranking/getPointsRates';
 import { getStatisticsDateRange } from '../src/lib/utils/moscowDate';
 
 dotenv.config();
@@ -32,6 +33,9 @@ const prisma = new PrismaClient({
 const AUDIT_ALL = process.argv.includes('--all');
 
 async function runAudit() {
+  const rates = await getPointsRates(prisma);
+  const overrides = { checkSelf: rates.checkSelf, checkWithDictator: rates.checkWithDictator };
+
   console.log(
     `\n📋 АУДИТ БАЛЛОВ ${AUDIT_ALL ? 'ПО ВСЕМ ЗАПИСЯМ' : 'ЗА НЕДЕЛЮ'} (система: только позиции)\n`
   );
@@ -87,17 +91,19 @@ async function runAudit() {
         positions,
         warehouse,
         task.dictatorId,
-        task.checkerId || ''
+        task.checkerId || '',
+        overrides
       );
       expected = dictatorPoints;
     } else if (s.roleType === 'collector' && isCollector) {
-      expected = calculateCollectPoints(positions, warehouse);
+      expected = calculateCollectPoints(positions, warehouse, rates.collect);
     } else {
       const { checkerPoints } = calculateCheckPoints(
         positions,
         warehouse,
         task.dictatorId,
-        task.checkerId || ''
+        task.checkerId || '',
+        overrides
       );
       expected = checkerPoints;
     }

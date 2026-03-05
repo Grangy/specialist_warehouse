@@ -17,6 +17,7 @@ import {
   calculateCollectPoints,
   calculateCheckPoints,
 } from '../src/lib/ranking/pointsRates';
+import { getPointsRates } from '../src/lib/ranking/getPointsRates';
 
 dotenv.config();
 
@@ -46,12 +47,17 @@ function calculateRankByPercentiles(value: number, allValues: number[]): number 
 }
 
 async function main() {
+  const rates = await getPointsRates(prisma);
+  const overrides = {
+    checkSelf: rates.checkSelf,
+    checkWithDictator: rates.checkWithDictator,
+  };
+
   console.log(DRY_RUN ? '\n🔍 DRY-RUN (без записи). Добавьте --apply для применения.\n' : '\n✏️  РЕЖИМ ПРИМЕНЕНИЯ\n');
-  console.log('📋 Новая система баллов (только позиции):');
-  console.log('   Сборка: Склад 1 = 1, Склад 2/3 = 2 балла за позицию');
-  console.log('   Проверка самостоятельно: Склад 1 = 0.78, Склад 2/3 = 1.34');
-  console.log('   Проверка с диктовщиком Склад 1: проверяльщик 0.39, диктовщик 0.36');
-  console.log('   Проверка с диктовщиком Склад 2/3: проверяльщик 0.67, диктовщик 0.61');
+  console.log('📋 Баллы (коэффициенты из Настроек):');
+  console.log('   Сборка:', JSON.stringify(rates.collect));
+  console.log('   Проверка самостоятельно:', JSON.stringify(rates.checkSelf));
+  console.log('   Проверка с диктовщиком [проверяльщик, диктовщик]:', JSON.stringify(rates.checkWithDictator));
   console.log('='.repeat(70));
 
   let allStats = await prisma.taskStatistics.findMany({
@@ -121,22 +127,24 @@ async function main() {
         positions,
         warehouse,
         task.dictatorId,
-        task.checkerId || ''
+        task.checkerId || '',
+        overrides
       );
       newPoints = dictatorPoints;
     } else if (stat.roleType === 'collector') {
       if (isCollector) {
-        newPoints = calculateCollectPoints(positions, warehouse);
+        newPoints = calculateCollectPoints(positions, warehouse, rates.collect);
       } else if (isDictator) {
         const { dictatorPoints } = calculateCheckPoints(
           positions,
           warehouse,
           task.dictatorId,
-          task.checkerId || ''
+          task.checkerId || '',
+          overrides
         );
         newPoints = dictatorPoints;
       } else {
-        newPoints = calculateCollectPoints(positions, warehouse);
+        newPoints = calculateCollectPoints(positions, warehouse, rates.collect);
       }
     } else {
       if (isChecker) {
@@ -144,7 +152,8 @@ async function main() {
           positions,
           warehouse,
           task.dictatorId,
-          task.checkerId || ''
+          task.checkerId || '',
+          overrides
         );
         newPoints = checkerPoints;
       } else if (isDictator) {
@@ -152,7 +161,8 @@ async function main() {
           positions,
           warehouse,
           task.dictatorId,
-          task.checkerId || ''
+          task.checkerId || '',
+          overrides
         );
         newPoints = dictatorPoints;
       } else {
@@ -160,7 +170,8 @@ async function main() {
           positions,
           warehouse,
           task.dictatorId,
-          task.checkerId || ''
+          task.checkerId || '',
+          overrides
         );
         newPoints = checkerPoints;
       }
@@ -202,7 +213,8 @@ async function main() {
           positions,
           warehouse,
           task.dictatorId,
-          task.checkerId || ''
+          task.checkerId || '',
+          overrides
         );
         await prisma.taskStatistics.upsert({
           where: {

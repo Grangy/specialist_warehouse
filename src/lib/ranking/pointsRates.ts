@@ -45,9 +45,20 @@ function getRate<T>(rates: Record<string, T>, warehouse: string | null): T | und
   return rates[w] ?? rates['Склад 1'];
 }
 
+export interface PointsRatesOverrides {
+  collect?: Record<string, number>;
+  checkSelf?: Record<string, number>;
+  checkWithDictator?: Record<string, [number, number]>;
+}
+
 /** Баллы за сборку: positions × rate */
-export function calculateCollectPoints(positions: number, warehouse: string | null): number {
-  const rate = getRate(COLLECT_POINTS_PER_POS, warehouse) ?? 1;
+export function calculateCollectPoints(
+  positions: number,
+  warehouse: string | null,
+  overrides?: PointsRatesOverrides['collect']
+): number {
+  const rates = overrides ?? COLLECT_POINTS_PER_POS;
+  const rate = getRate(rates, warehouse) ?? 1;
   return positions * rate;
 }
 
@@ -56,16 +67,19 @@ export function calculateCheckPoints(
   positions: number,
   warehouse: string | null,
   dictatorId: string | null,
-  checkerId: string
+  checkerId: string,
+  overrides?: { checkSelf?: Record<string, number>; checkWithDictator?: Record<string, [number, number]> }
 ): { checkerPoints: number; dictatorPoints: number } {
   const isSelf = !dictatorId || dictatorId === checkerId;
 
   if (isSelf) {
-    const rate = getRate(CHECK_SELF_POINTS_PER_POS, warehouse) ?? 0.78;
+    const rates = overrides?.checkSelf ?? CHECK_SELF_POINTS_PER_POS;
+    const rate = getRate(rates, warehouse) ?? 0.78;
     return { checkerPoints: positions * rate, dictatorPoints: 0 };
   }
 
-  const pair = getRate(CHECK_WITH_DICTATOR_POINTS_PER_POS, warehouse) ?? [0.39, 0.36];
+  const rates = overrides?.checkWithDictator ?? CHECK_WITH_DICTATOR_POINTS_PER_POS;
+  const pair = getRate(rates, warehouse) ?? [0.39, 0.36];
   return {
     checkerPoints: positions * pair[0],
     dictatorPoints: positions * pair[1],
