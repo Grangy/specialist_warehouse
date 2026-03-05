@@ -63,19 +63,27 @@ async function runAudit() {
 
     const warehouse = s.warehouse || task.warehouse;
     const positions = s.positions || 0;
+    const isDictator = task.dictatorId && s.userId === task.dictatorId;
 
     let expected: number;
-    if (s.roleType === 'collector') {
-      expected = calculateCollectPoints(positions, warehouse);
-    } else {
-      const { checkerPoints, dictatorPoints } = calculateCheckPoints(
+    if (isDictator) {
+      const { dictatorPoints } = calculateCheckPoints(
         positions,
         warehouse,
         task.dictatorId,
         task.checkerId || ''
       );
-      const isDictator = task.dictatorId && s.userId === task.dictatorId;
-      expected = isDictator ? dictatorPoints : checkerPoints;
+      expected = dictatorPoints;
+    } else if (s.roleType === 'collector') {
+      expected = calculateCollectPoints(positions, warehouse);
+    } else {
+      const { checkerPoints } = calculateCheckPoints(
+        positions,
+        warehouse,
+        task.dictatorId,
+        task.checkerId || ''
+      );
+      expected = checkerPoints;
     }
 
     const actual = s.orderPoints ?? 0;
