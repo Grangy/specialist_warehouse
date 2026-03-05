@@ -348,6 +348,17 @@ async function main() {
   console.log('🚀 Начинаем расчет реальной статистики из завершенных сборок...\n');
 
   try {
+    const positionsOnlyCount = await prisma.taskStatistics.count({
+      where: { normVersion: 'positions-only' },
+    });
+    if (positionsOnlyCount > 0) {
+      console.error('\n❌ ОШИБКА: В БД используется система баллов "только позиции" (normVersion: positions-only).');
+      console.error(`   Затронуто записей: ${positionsOnlyCount}.`);
+      console.error('   Этот скрипт использует устаревшую формулу и перезапишет баллы неверно.');
+      console.error('   Для пересчёта баллов используйте: npm run stats:recalc-points -- --apply\n');
+      process.exit(1);
+    }
+
     // Шаг 1: Удаляем всю существующую статистику
     console.log('📊 Шаг 1: Удаление существующей статистики...');
     const deletedAchievements = await prisma.dailyAchievement.deleteMany({});

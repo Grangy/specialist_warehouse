@@ -12,6 +12,7 @@ import {
   calculateCollectPoints,
   calculateCheckPoints,
 } from '../src/lib/ranking/pointsRates';
+import { getStatisticsDateRange } from '../src/lib/utils/moscowDate';
 
 dotenv.config();
 
@@ -29,13 +30,8 @@ const prisma = new PrismaClient({
 async function runAudit() {
   console.log('\n📋 АУДИТ БАЛЛОВ ЗА НЕДЕЛЮ (система: только позиции)\n');
 
-  const weekEnd = new Date();
-  weekEnd.setHours(23, 59, 59, 999);
-  const weekStart = new Date(weekEnd);
-  weekStart.setDate(weekStart.getDate() - 6);
-  weekStart.setHours(0, 0, 0, 0);
-
-  console.log(`   Период: ${weekStart.toISOString().split('T')[0]} — ${weekEnd.toISOString().split('T')[0]}`);
+  const { startDate: weekStart, endDate: weekEnd } = getStatisticsDateRange('week');
+  console.log(`   Период (с понедельника): ${weekStart.toISOString().split('T')[0]} — ${weekEnd.toISOString().split('T')[0]}`);
   console.log('='.repeat(70));
 
   const stats = await prisma.taskStatistics.findMany({

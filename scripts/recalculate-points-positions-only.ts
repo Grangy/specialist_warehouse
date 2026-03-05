@@ -1,8 +1,13 @@
 /**
- * Пересчёт всех баллов по новой системе: только позиции × коэффициент.
- * Dry-run по умолчанию (--apply для записи в БД).
+ * Канонический скрипт пересчёта баллов. Использует ТОЛЬКО формулы из pointsRates.ts.
  *
- * Использование: npx tsx scripts/recalculate-points-positions-only.ts [--apply]
+ * Формулы:
+ *   Сборка: Склад 1 = 1×поз, Склад 2/3 = 2×поз
+ *   Проверка сама: 0.78 / 1.34
+ *   Проверка с диктовщиком: проверяльщик 0.39/0.67, диктовщик 0.36/0.61
+ *
+ * Dry-run по умолчанию (--apply для записи).
+ * Использование: npm run stats:recalc-points [-- --apply]
  */
 
 import { PrismaClient } from '../src/generated/prisma/client';
@@ -77,20 +82,27 @@ async function main() {
     if (positions === 0) continue;
 
     const warehouse = stat.warehouse || task.warehouse;
+    const isDictatorStat = task.dictatorId && stat.userId === task.dictatorId;
 
     let newPoints: number;
-
-    if (stat.roleType === 'collector') {
-      newPoints = calculateCollectPoints(positions, warehouse);
-    } else {
-      const { checkerPoints, dictatorPoints } = calculateCheckPoints(
+    if (isDictatorStat) {
+      const { dictatorPoints } = calculateCheckPoints(
         positions,
         warehouse,
         task.dictatorId,
         task.checkerId || ''
       );
-      const isDictatorStat = task.dictatorId && stat.userId === task.dictatorId;
-      newPoints = isDictatorStat ? dictatorPoints : checkerPoints;
+      newPoints = dictatorPoints;
+    } else if (stat.roleType === 'collector') {
+      newPoints = calculateCollectPoints(positions, warehouse);
+    } else {
+      const { checkerPoints } = calculateCheckPoints(
+        positions,
+        warehouse,
+        task.dictatorId,
+        task.checkerId || ''
+      );
+      newPoints = checkerPoints;
     }
 
     const oldPoints = stat.orderPoints ?? 0;

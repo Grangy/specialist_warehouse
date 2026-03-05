@@ -17,6 +17,14 @@
 
 ---
 
+## Источник формул
+
+**Единственный источник:** `src/lib/ranking/pointsRates.ts`. Все расчёты (updateStats, recalc, aggregateRankings) используют его.
+
+⚠️ Не используйте `stats:calculate` и `stats:recalculate-all` — они применяют устаревшую формулу и перезапишут баллы неверно. Эти скрипты откажутся запускаться при наличии `normVersion: positions-only`.
+
+---
+
 ## Инструкция для production
 
 ### 1. Резервное копирование (обязательно)
@@ -82,7 +90,11 @@ npm run stats:audit-week
 |---------|----------|
 | `npm run stats:recalc-points` | Dry-run пересчёта (без записи) |
 | `npm run stats:recalc-points -- --apply` | Применить пересчёт в БД |
-| `npm run stats:audit-week` | Аудит баллов за 7 дней |
+| `npm run stats:audit-week` | Аудит баллов за неделю с понедельника |
+| `npm run stats:audit-spot-check` | Выборочная проверка (диктовка/проверка/сборка) |
+| `npm run stats:audit-user-points -- "Имя"` | Детальный аудит по пользователю |
+
+**Опции audit-spot-check:** `--7` (последние 7 дней), `--month`, `--30`.
 
 ---
 

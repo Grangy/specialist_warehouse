@@ -168,6 +168,7 @@ export function calculateOrderPoints(
   const basePoints = positions + norm.coefficientK * units + norm.coefficientM * switches;
 
   // order_points = base_points * eff_clamped
+  // ⚠️ Устарело для TaskStatistics: с 2026-02-02 баллы считаются в pointsRates.ts (только позиции).
   const orderPoints = basePoints * efficiencyClamped;
 
   return { basePoints, orderPoints };

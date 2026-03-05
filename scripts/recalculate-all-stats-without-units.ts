@@ -1,10 +1,12 @@
 /**
- * Скрипт для пересчета всех статистик с новой формулой (без учета единиц)
- * 
- * Изменения:
- * - coefficientK = 0 (единицы не влияют на basePoints)
- * - normB = 0 (единицы не влияют на expectedTime)
- * 
+ * Скрипт для пересчета статистик (устаревшая формула).
+ *
+ * ⚠️ НЕ ИСПОЛЬЗУЙТЕ для баллов (orderPoints)! С 2026-02-02 система «только позиции».
+ * Для пересчёта баллов: npm run stats:recalc-points -- --apply
+ *
+ * Изменения (legacy):
+ * - coefficientK = 0, normB = 0
+ *
  * Использование: npm run stats:recalculate-all
  */
 
@@ -33,6 +35,17 @@ const prisma = new PrismaClient({
 }) as any;
 
 async function recalculateAllStats() {
+  const positionsOnlyCount = await prisma.taskStatistics.count({
+    where: { normVersion: 'positions-only' },
+  });
+  if (positionsOnlyCount > 0) {
+    console.error('\n❌ ОШИБКА: В БД уже используется система баллов "только позиции" (normVersion: positions-only).');
+    console.error(`   Затронуто записей: ${positionsOnlyCount}.`);
+    console.error('   Этот скрипт использует устаревшую формулу и перезапишет баллы неверно.');
+    console.error('   Для пересчёта баллов используйте: npm run stats:recalc-points -- --apply\n');
+    process.exit(1);
+  }
+
   console.log('🔄 ПЕРЕСЧЕТ ВСЕХ СТАТИСТИК С НОВОЙ ФОРМУЛОЙ (БЕЗ УЧЕТА ЕДИНИЦ)');
   console.log('='.repeat(100));
   console.log('\n📋 Новая формула:');
