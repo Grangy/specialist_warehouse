@@ -16,6 +16,8 @@ interface RankingEntry {
   units: number;
   orders: number;
   points: number;
+  collectorPoints?: number;
+  checkerPoints?: number;
   dictatorPoints?: number;
   errors?: number;
   checkerErrors?: number;
@@ -398,10 +400,14 @@ export default function TopPage() {
                         {formatPoints(user.points)}
                       </div>
                       <div className="text-xs text-slate-400">баллов</div>
+                      {(user.collectorPoints ?? 0) > 0 && (
+                        <div className="text-xs text-blue-400/90 mt-0.5">сборка {formatPoints(user.collectorPoints ?? 0)}</div>
+                      )}
+                      {(user.checkerPoints ?? 0) > 0 && (
+                        <div className="text-xs text-purple-400/90">проверка {formatPoints(user.checkerPoints ?? 0)}</div>
+                      )}
                       {(user.dictatorPoints ?? 0) > 0 && (
-                        <div className="text-xs text-amber-400/90 mt-0.5" title="Баллы за диктовку">
-                          из них {formatPoints(user.dictatorPoints ?? 0)} — диктовщик
-                        </div>
+                        <div className="text-xs text-amber-400/90">диктовка {formatPoints(user.dictatorPoints ?? 0)}</div>
                       )}
                       {user.pph != null && (
                         <div className="text-xs text-slate-500 mt-0.5">

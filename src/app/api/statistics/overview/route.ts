@@ -1,135 +1,15 @@
 /**
- * API endpoint для получения общей статистики склада
- * Агрегация по task_statistics в московских границах периодов — совпадает с рейтингами.
+ * API endpoint для получения общей статистики склада.
+ * Использует aggregateRankings — те же данные, что в топе и рейтингах.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 
 export const dynamic = 'force-dynamic';
-
-type PeriodAgg = {
-  positions: number;
-  units: number;
-  orders: number;
-  points: number;
-  activeUsers: number;
-  tasks: number;
-  errors: number;
-};
-
-async function aggregatePeriod(
-  startDate: Date,
-  endDate: Date,
-  adminUserIds: string[],
-  warehouseFilter?: string
-): Promise<PeriodAgg> {
-  const taskCompletedWhere = {
-    completedAt: { gte: startDate, lte: endDate },
-    ...(warehouseFilter && { warehouse: warehouseFilter }),
-  };
-  const taskConfirmedWhere = {
-    confirmedAt: { gte: startDate, lte: endDate },
-    ...(warehouseFilter && { warehouse: warehouseFilter }),
-  };
-  const byCompleted = await prisma.taskStatistics.findMany({
-    where: {
-      roleType: 'collector',
-      userId: { notIn: adminUserIds },
-      task: taskCompletedWhere,
-    },
-    select: {
-      taskId: true,
-      positions: true,
-      units: true,
-      shipmentId: true,
-      orderPoints: true,
-      userId: true,
-    },
-  });
-  const byConfirmed = await prisma.taskStatistics.findMany({
-    where: {
-      roleType: 'collector',
-      userId: { notIn: adminUserIds },
-      task: taskConfirmedWhere,
-    },
-    select: {
-      taskId: true,
-      positions: true,
-      units: true,
-      shipmentId: true,
-      orderPoints: true,
-      userId: true,
-    },
-  });
-  const checkerStats = await prisma.taskStatistics.findMany({
-    where: {
-      roleType: 'checker',
-      userId: { notIn: adminUserIds },
-      task: taskConfirmedWhere,
-    },
-    select: {
-      taskId: true,
-      shipmentId: true,
-      orderPoints: true,
-      userId: true,
-    },
-  });
-
-  const collectorByTask = new Map<
-    string,
-    { positions: number; units: number; shipmentId: string; orderPoints: number; userId: string }
-  >();
-  for (const s of [...byCompleted, ...byConfirmed]) {
-    const existing = collectorByTask.get(s.taskId);
-    if (!existing) {
-      collectorByTask.set(s.taskId, {
-        positions: s.positions,
-        units: s.units,
-        shipmentId: s.shipmentId,
-        orderPoints: s.orderPoints ?? 0,
-        userId: s.userId,
-      });
-    }
-  }
-
-  const positions = [...collectorByTask.values()].reduce((sum, s) => sum + s.positions, 0);
-  const units = [...collectorByTask.values()].reduce((sum, s) => sum + s.units, 0);
-  const orders = new Set([...collectorByTask.values()].map(s => s.shipmentId)).size;
-  const collectorPoints = [...collectorByTask.values()].reduce((sum, s) => sum + s.orderPoints, 0);
-  const checkerPoints = checkerStats.reduce((sum, s) => sum + (s.orderPoints ?? 0), 0);
-  const points = collectorPoints + checkerPoints;
-  const activeUsers = new Set([
-    ...[...collectorByTask.values()].map(s => s.userId),
-    ...checkerStats.map(s => s.userId),
-  ]).size;
-
-  const tasks = await prisma.shipmentTask.count({
-    where: {
-      status: 'processed',
-      ...(warehouseFilter && { warehouse: warehouseFilter }),
-      OR: [
-        { completedAt: { gte: startDate, lte: endDate } },
-        { confirmedAt: { gte: startDate, lte: endDate } },
-      ],
-    },
-  });
-
-  const errorsResult = await prisma.collectorCall.aggregate({
-    where: {
-      status: 'done',
-      confirmedAt: { gte: startDate, lte: endDate },
-      errorCount: { gt: 0 },
-      ...(warehouseFilter && { task: { warehouse: warehouseFilter } }),
-    },
-    _sum: { errorCount: true },
-  });
-  const errors = errorsResult._sum.errorCount ?? 0;
-
-  return { positions, units, orders, points, activeUsers, tasks, errors };
-}
 
 /**
  * GET /api/statistics/overview
@@ -144,24 +24,66 @@ export async function GET(request: NextRequest) {
     const { user } = authResult;
     const warehouseFilter = user.role === 'warehouse_3' ? 'Склад 3' : undefined;
 
-    const adminUsers = await prisma.user.findMany({
-      where: { role: 'admin' },
-      select: { id: true },
-    });
-    const adminUserIds = adminUsers.map(u => u.id);
-
-    const todayRange = getStatisticsDateRange('today');
-    const weekRange = getStatisticsDateRange('week');
-    const monthRange = getStatisticsDateRange('month');
-
-    const [today, week, month] = await Promise.all([
-      aggregatePeriod(todayRange.startDate, todayRange.endDate, adminUserIds, warehouseFilter),
-      aggregatePeriod(weekRange.startDate, weekRange.endDate, adminUserIds, warehouseFilter),
-      aggregatePeriod(monthRange.startDate, monthRange.endDate, adminUserIds, warehouseFilter),
+    const [todayData, weekData, monthData] = await Promise.all([
+      aggregateRankings('today', warehouseFilter),
+      aggregateRankings('week', warehouseFilter),
+      aggregateRankings('month', warehouseFilter),
     ]);
 
+    function toOverview(
+      r: typeof todayData.allRankings,
+      errCol: Map<string, number>,
+      errChk: Map<string, number>,
+      totalOrders: number
+    ) {
+      return {
+        positions: r.reduce((s, e) => s + e.positions, 0),
+        units: r.reduce((s, e) => s + e.units, 0),
+        orders: totalOrders,
+        points: r.reduce((s, e) => s + e.points, 0),
+        activeUsers: r.filter((e) => e.points > 0).length,
+        errors:
+          [...errCol.values()].reduce((a, b) => a + b, 0) +
+          [...errChk.values()].reduce((a, b) => a + b, 0),
+      };
+    }
+
+    const today = toOverview(
+      todayData.allRankings,
+      todayData.errorsByCollector,
+      todayData.errorsByChecker,
+      todayData.totalUniqueOrders
+    );
+    const week = toOverview(
+      weekData.allRankings,
+      weekData.errorsByCollector,
+      weekData.errorsByChecker,
+      weekData.totalUniqueOrders
+    );
+    const month = toOverview(
+      monthData.allRankings,
+      monthData.errorsByCollector,
+      monthData.errorsByChecker,
+      monthData.totalUniqueOrders
+    );
+
+    const { startDate: todayStart, endDate: todayEnd } = getStatisticsDateRange('today');
+    const tasksToday = await prisma.shipmentTask.count({
+      where: {
+        status: 'processed',
+        ...(warehouseFilter && { warehouse: warehouseFilter }),
+        OR: [
+          { completedAt: { gte: todayStart, lte: todayEnd } },
+          { confirmedAt: { gte: todayStart, lte: todayEnd } },
+        ],
+      },
+    });
+
     const totalTasks = await prisma.shipmentTask.count({
-      where: { status: 'processed' },
+      where: {
+        status: 'processed',
+        ...(warehouseFilter && { warehouse: warehouseFilter }),
+      },
     });
     const totalUsers = await prisma.user.count({
       where: { role: { in: ['collector', 'checker'] } },
@@ -169,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       today: {
-        tasks: today.tasks,
+        tasks: tasksToday,
         positions: today.positions,
         units: today.units,
         orders: today.orders,
