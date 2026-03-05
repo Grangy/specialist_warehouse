@@ -1,8 +1,10 @@
 /**
- * Аудит расчёта баллов за последние 7 дней для всех пользователей.
+ * Аудит расчёта баллов.
  * Сравнивает TaskStatistics с ожидаемыми баллами по новой системе (только позиции).
  *
- * Использование: npx tsx scripts/audit-points-week.ts
+ * Использование:
+ *   npx tsx scripts/audit-points-week.ts           — за неделю
+ *   npx tsx scripts/audit-points-week.ts --all     — по всем записям
  */
 
 import { PrismaClient } from '../src/generated/prisma/client';
@@ -27,15 +29,21 @@ const prisma = new PrismaClient({
   datasources: { db: { url: finalDatabaseUrl || databaseUrl } },
 }) as any;
 
+const AUDIT_ALL = process.argv.includes('--all');
+
 async function runAudit() {
-  console.log('\n📋 АУДИТ БАЛЛОВ ЗА НЕДЕЛЮ (система: только позиции)\n');
+  console.log(
+    `\n📋 АУДИТ БАЛЛОВ ${AUDIT_ALL ? 'ПО ВСЕМ ЗАПИСЯМ' : 'ЗА НЕДЕЛЮ'} (система: только позиции)\n`
+  );
 
-  const { startDate: weekStart, endDate: weekEnd } = getStatisticsDateRange('week');
-  console.log(`   Период (с понедельника): ${weekStart.toISOString().split('T')[0]} — ${weekEnd.toISOString().split('T')[0]}`);
-  console.log('='.repeat(70));
-
-  const stats = await prisma.taskStatistics.findMany({
-    where: {
+  let whereClause: object;
+  if (AUDIT_ALL) {
+    whereClause = { positions: { gt: 0 } };
+    console.log('   Период: все записи TaskStatistics');
+  } else {
+    const { startDate: weekStart, endDate: weekEnd } = getStatisticsDateRange('week');
+    console.log(`   Период (с понедельника): ${weekStart.toISOString().split('T')[0]} — ${weekEnd.toISOString().split('T')[0]}`);
+    whereClause = {
       positions: { gt: 0 },
       task: {
         OR: [
@@ -43,7 +51,12 @@ async function runAudit() {
           { confirmedAt: { gte: weekStart, lte: weekEnd } },
         ],
       },
-    },
+    };
+  }
+  console.log('='.repeat(70));
+
+  const stats = await prisma.taskStatistics.findMany({
+    where: whereClause,
     include: {
       task: {
         include: { dictator: true, checker: true, collector: true },
@@ -51,7 +64,7 @@ async function runAudit() {
     },
   });
 
-  console.log(`\n📊 Записей TaskStatistics за неделю: ${stats.length}`);
+  console.log(`\n📊 Записей TaskStatistics: ${stats.length}`);
 
   let ok = 0;
   let diff = 0;
@@ -123,7 +136,7 @@ async function runAudit() {
   const users = await prisma.user.findMany({ where: { id: { in: [...userTotals.keys()] } } });
   const nameById = new Map(users.map((u) => [u.id, u.name]));
 
-  console.log('\n📈 Баллы по пользователям за неделю:');
+  console.log(`\n📈 Баллы по пользователям${AUDIT_ALL ? ' (все)' : ' за неделю'}:`);
   const sorted = [...userTotals.entries()].sort((a, b) => b[1].points - a[1].points);
   sorted.slice(0, 15).forEach(([userId, data], i) => {
     const name = nameById.get(userId) || userId.substring(0, 8);

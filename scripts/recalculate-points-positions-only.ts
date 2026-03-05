@@ -54,7 +54,7 @@ async function main() {
   console.log('   Проверка с диктовщиком Склад 2/3: проверяльщик 0.67, диктовщик 0.61');
   console.log('='.repeat(70));
 
-  const allStats = await prisma.taskStatistics.findMany({
+  let allStats = await prisma.taskStatistics.findMany({
     include: {
       task: {
         include: {
@@ -67,6 +67,34 @@ async function main() {
   });
 
   console.log(`\n📊 Найдено TaskStatistics: ${allStats.length}`);
+
+  // Шаг 1: Удаляем дубликаты при самопроверке (checkerId === dictatorId)
+  // Нельзя давать И проверку (1.34) И диктовку (0.61) — только проверку
+  const toDeleteSelfCheckDictator: string[] = [];
+  const tasksProcessed = new Set<string>();
+  for (const stat of allStats) {
+    const task = stat.task;
+    if (!task) continue;
+    const isSelfCheck = task.checkerId && task.dictatorId && task.checkerId === task.dictatorId;
+    if (!isSelfCheck) continue;
+    if (stat.userId !== task.dictatorId) continue;
+    if (stat.roleType === 'checker') continue; // Оставляем только checker
+    const key = `${stat.taskId}:${stat.userId}:${stat.roleType}`;
+    if (tasksProcessed.has(key)) continue;
+    tasksProcessed.add(key);
+    toDeleteSelfCheckDictator.push(stat.id);
+  }
+  if (toDeleteSelfCheckDictator.length > 0) {
+    console.log(`   🗑️  Удаление дубликатов самопроверки (диктовка при checker=dictator): ${toDeleteSelfCheckDictator.length}`);
+    if (!DRY_RUN) {
+      for (const id of toDeleteSelfCheckDictator) {
+        await prisma.taskStatistics.delete({ where: { id } });
+      }
+      allStats = await prisma.taskStatistics.findMany({
+        include: { task: { include: { collector: true, checker: true, dictator: true } } },
+      });
+    }
+  }
 
   const updates: { id: string; oldPoints: number; newPoints: number }[] = [];
   let errorCount = 0;
@@ -226,7 +254,7 @@ async function main() {
     });
   }
 
-  if (!DRY_RUN && updates.length > 0) {
+  if (!DRY_RUN && (updates.length > 0 || toDeleteSelfCheckDictator.length > 0)) {
     console.log('\n📅 Пересчёт DailyStats и MonthlyStats...');
 
     const uniqueUserDates = new Set<string>();

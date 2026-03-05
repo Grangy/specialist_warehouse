@@ -14,6 +14,7 @@
     "stats:recalculate-gap": "tsx scripts/recalculate-gap-metrics.ts",
     "stats:recalc-points": "tsx scripts/recalculate-points-positions-only.ts",
     "stats:audit-week": "tsx scripts/audit-points-week.ts",
+    "stats:audit-all": "tsx scripts/audit-points-week.ts --all",
     "stats:audit-spot-check": "tsx scripts/audit-points-spot-check.ts",
     "stats:audit-user-points": "tsx scripts/audit-user-points-detail.ts",
     "dev": "next dev",
