@@ -12,8 +12,7 @@ export interface SessionUser {
   role: UserRole;
 }
 
-// Уменьшена длительность сессии для безопасности: с 7 дней до 24 часов
-const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 часа
+const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 дней (должно совпадать с cookie maxAge в login)
 
 // Кэш сессии в памяти (TTL 60 сек) — снижает нагрузку на БД при частых запросах (поллинг)
 const SESSION_CACHE_TTL_MS = 60 * 1000;

@@ -4,13 +4,14 @@ import { requireAuth } from '@/lib/middleware';
 
 export const dynamic = 'force-dynamic';
 
-/** Может остановить: admin, Дмитрий Палыч, или сам работник */
+import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
+
 async function canStop(
   user: { id: string; role: string; name: string },
   session: { userId: string }
 ): Promise<boolean> {
   if (session.userId === user.id) return true;
-  return user.role === 'admin' || user.name.includes('Дмитрий Палыч');
+  return canAccessExtraWorkByUser(user);
 }
 
 export async function POST(request: NextRequest) {

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 
 export const dynamic = 'force-dynamic';
 
-/** Может отменить обед: admin, Дмитрий Палыч, или сам работник */
 async function canCancel(
   user: { id: string; role: string; name: string },
   session: { userId: string }
 ): Promise<boolean> {
   if (session.userId === user.id) return true;
-  return user.role === 'admin' || user.name.includes('Дмитрий Палыч');
+  return canAccessExtraWorkByUser(user);
 }
 
 export async function POST(request: NextRequest) {

@@ -5,10 +5,7 @@ import { getLunchScheduledForMoscow } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
-/** Может назначать: admin или Дмитрий Палыч */
-async function canAssign(user: { role: string; name: string }): Promise<boolean> {
-  return user.role === 'admin' || user.name.includes('Дмитрий Палыч');
-}
+import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,8 +13,8 @@ export async function POST(request: NextRequest) {
     if (authResult instanceof NextResponse) return authResult;
     const { user } = authResult;
 
-    if (!canAssign(user)) {
-      return NextResponse.json({ error: 'Только администратор или Дмитрий Палыч может назначить' }, { status: 403 });
+    if (!canAccessExtraWorkByUser(user)) {
+      return NextResponse.json({ error: 'Только администратор, J-SkaR или Дмитрий Палыч может назначить' }, { status: 403 });
     }
 
     const body = await request.json();

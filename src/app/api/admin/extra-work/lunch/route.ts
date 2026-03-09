@@ -7,13 +7,14 @@ export const dynamic = 'force-dynamic';
 
 const LUNCH_DURATION_MS = 60 * 60 * 1000; // 1 час
 
-/** Может поставить обед: admin, Дмитрий Палыч (в обед), или сам работник */
+import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
+
 async function canLunch(
   user: { id: string; role: string; name: string },
   session: { userId: string }
 ): Promise<boolean> {
   if (session.userId === user.id) return true;
-  return user.role === 'admin' || user.name.includes('Дмитрий Палыч');
+  return canAccessExtraWorkByUser(user);
 }
 
 export async function POST(request: NextRequest) {

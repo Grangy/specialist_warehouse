@@ -50,6 +50,7 @@
     "test:exclude-from-1c": "tsx scripts/verify-exclude-from-1c.ts",
     "test:dictator-required": "tsx scripts/test-dictator-required.ts",
     "test:extra-work-points": "tsx scripts/test-extra-work-points.ts",
+    "test:extra-work-access": "tsx scripts/test-extra-work-access.ts",
     "reports:serve": "npx --yes serve reports -p 3333",
     "deploy:remote": "./scripts/deploy-remote.sh"
   },

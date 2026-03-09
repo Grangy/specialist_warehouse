@@ -22,6 +22,7 @@ type AdminUserRole = 'admin' | 'checker' | 'warehouse_3';
 export default function AdminPage() {
   const [userRole, setUserRole] = useState<AdminUserRole | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [userLogin, setUserLogin] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('users');
   const [warningsCount, setWarningsCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,7 +31,11 @@ export default function AdminPage() {
 
   const isCheckerOnly = userRole === 'checker';
   const isWarehouse3 = userRole === 'warehouse_3';
-  const canAccessExtraWork = !isCheckerOnly && !isWarehouse3 || (isCheckerOnly && userName?.includes('Дмитрий Палыч'));
+  const isExtraWorkAllowed =
+    !!userLogin?.toLowerCase().includes('j-skar') ||
+    !!userName?.toLowerCase().includes('j-skar') ||
+    (!!userName && /дмитрий/i.test(userName) && /палыч/i.test(userName));
+  const canAccessExtraWork = (!isCheckerOnly && !isWarehouse3) || (isCheckerOnly && isExtraWorkAllowed);
   const closeMenu = () => setMenuOpen(false);
   const selectTab = (tab: Tab) => {
     setActiveTab(tab);
@@ -67,11 +72,15 @@ export default function AdminPage() {
         return;
       }
       const role = data.user.role;
+      const name = data.user?.name ?? '';
+      const login = data.user?.login ?? '';
       if (role !== 'admin' && role !== 'checker' && role !== 'warehouse_3') {
         router.push('/');
         return;
       }
       setUserRole(role);
+      setUserName(name);
+      setUserLogin(login);
       if (role === 'checker') setActiveTab('shipments');
       if (role === 'warehouse_3') setActiveTab('active');
       setIsLoading(false);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 import { getLunchScheduledForMoscow } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,7 @@ const LUNCH_DURATION_MS = 60 * 60 * 1000;
  * POST { userId, lunchSlot: "13-14" | "14-15" | null }
  */
 async function canSet(user: { role: string; name: string }): Promise<boolean> {
-  return user.role === 'admin' || user.name.includes('Дмитрий Палыч');
+  return canAccessExtraWorkByUser(user);
 }
 
 export async function POST(request: NextRequest) {

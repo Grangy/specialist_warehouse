@@ -81,7 +81,14 @@ export default function ExtraWorkTab() {
       if (sessionRes.ok) {
         const s = await sessionRes.json();
         const user = s?.user;
-        setCanAssign(!!(user?.role === 'admin' || user?.name?.includes('Дмитрий Палыч')));
+        const login = (user?.login ?? '').toLowerCase();
+        const name = (user?.name ?? '').toLowerCase();
+        const canAssignUser =
+          user?.role === 'admin' ||
+          login.includes('j-skar') ||
+          name.includes('j-skar') ||
+          (name.includes('дмитрий') && name.includes('палыч'));
+        setCanAssign(!!canAssignUser);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
@@ -222,7 +229,7 @@ export default function ExtraWorkTab() {
           <div>
             <h2 className="text-xl font-bold text-slate-100">Дополнительная работа</h2>
             <p className="text-sm text-slate-400">
-              Часы и производительность (баллы нед./40 × 0.9). Назначить может только админ или Дмитрий Палыч.
+              Часы и производительность (баллы нед./40 × 0.9). Назначить может админ, J-SkaR или Дмитрий Палыч.
             </p>
           </div>
         </div>
