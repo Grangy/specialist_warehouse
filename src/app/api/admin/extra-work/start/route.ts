@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       durationMinutes: durationMinutes ?? null,
     };
 
-    if (lunchSlot) {
+    if (lunchSlot && (lunchSlot === '13-14' || lunchSlot === '14-15')) {
       const scheduledFor = getLunchScheduledForMoscow(lunchSlot);
       if (now.getTime() < scheduledFor.getTime()) {
         createData = {
