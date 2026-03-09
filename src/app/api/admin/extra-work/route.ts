@@ -19,11 +19,20 @@ export interface ExtraWorkEntry {
   lunchSlot: string | null;
 }
 
+/** Доступ к доп. работе: admin или Дмитрий Палыч */
+function canAccessExtraWork(user: { role: string; name: string }): boolean {
+  return user.role === 'admin' || user.name.includes('Дмитрий Палыч');
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['admin']);
+    const authResult = await requireAuth(request, ['admin', 'checker']);
     if (authResult instanceof NextResponse) {
       return authResult;
+    }
+    const { user } = authResult;
+    if (!canAccessExtraWork(user)) {
+      return NextResponse.json({ error: 'Недостаточно прав доступа' }, { status: 403 });
     }
 
     const { startDate, endDate } = getStatisticsDateRange('week');

@@ -21,6 +21,7 @@ type AdminUserRole = 'admin' | 'checker' | 'warehouse_3';
 
 export default function AdminPage() {
   const [userRole, setUserRole] = useState<AdminUserRole | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('users');
   const [warningsCount, setWarningsCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,6 +30,7 @@ export default function AdminPage() {
 
   const isCheckerOnly = userRole === 'checker';
   const isWarehouse3 = userRole === 'warehouse_3';
+  const canAccessExtraWork = !isCheckerOnly && !isWarehouse3 || (isCheckerOnly && userName?.includes('Дмитрий Палыч'));
   const closeMenu = () => setMenuOpen(false);
   const selectTab = (tab: Tab) => {
     setActiveTab(tab);
@@ -270,8 +272,7 @@ export default function AdminPage() {
             <Trophy className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Статистика</span>
           </button>
-          {!isCheckerOnly && !isWarehouse3 && (
-          <>
+          {canAccessExtraWork && (
           <button
             onClick={() => selectTab('extraWork')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
@@ -283,6 +284,8 @@ export default function AdminPage() {
             <Briefcase className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Дополнительная работа</span>
           </button>
+          )}
+          {!isCheckerOnly && !isWarehouse3 && (
           <button
             onClick={() => selectTab('regions')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
@@ -294,7 +297,6 @@ export default function AdminPage() {
             <MapPin className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Приоритеты регионов</span>
           </button>
-          </>
           )}
           <button
             onClick={() => selectTab('minus')}
