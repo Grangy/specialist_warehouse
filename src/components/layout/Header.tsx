@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PackageIcon } from '@/components/icons/PackageIcon';
-import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X, Calendar, SlidersHorizontal } from 'lucide-react';
+import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X, Calendar, SlidersHorizontal, Briefcase } from 'lucide-react';
 import { getAchievementName, getAchievementEmoji } from '@/lib/ranking/achievements';
 import { DictatorSelector } from './DictatorSelector';
+import { useExtraWork } from '@/contexts/ExtraWorkContext';
 import { SettingsModal } from '@/components/modals/SettingsModal';
 
 interface HeaderProps {
@@ -95,6 +96,7 @@ interface RankingStats {
 }
 
 export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = false, onToggleShowOnlyToday }: HeaderProps) {
+  const { session: extraWorkSession, setPopupOpen } = useExtraWork();
   const [user, setUser] = useState<User | null>(null);
   const [isHidden, setIsHidden] = useState(false);
   const [rankingStats, setRankingStats] = useState<RankingStats | null>(null);
@@ -271,6 +273,18 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
         
         {/* Счетчики и кнопки - компактно и красиво */}
         <div className="flex items-center gap-2 md:gap-2.5 flex-wrap w-full md:w-auto justify-between md:justify-end">
+          {/* Доп. работа — жёлтый бейдж в хедере, клик раскрывает баннер */}
+          {extraWorkSession && (
+            <button
+              type="button"
+              onClick={() => setPopupOpen(true)}
+              className="flex items-center gap-1.5 bg-amber-500/60 border border-amber-400/50 rounded-md px-2 py-1 hover:bg-amber-500/70 transition-colors"
+              title="Дополнительная работа — подробности"
+            >
+              <Briefcase className="w-3.5 h-3.5 text-white" />
+              <span className="text-[10px] md:text-xs text-white font-medium">Доп. работа</span>
+            </button>
+          )}
           {/* Счетчики - компактные бейджи с одинаковыми отступами */}
           <div className="flex items-center gap-1.5 md:gap-2">
             <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700/50 rounded-md px-2 py-1 hover:bg-slate-800/80 transition-colors">
@@ -413,6 +427,25 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                                   </div>
                                 ) : null;
                               })()}
+                              {(() => {
+                                const ep = (rankingStats.daily as { extraWorkPoints?: number } | undefined)?.extraWorkPoints;
+                                return ep != null && ep > 0 ? (
+                                  <div className="py-1">
+                                    <div className="flex items-center justify-between text-amber-500/90">
+                                      <div className="flex items-center gap-2 text-slate-400">
+                                        <Briefcase className="w-3.5 h-3.5 flex-shrink-0" />
+                                        <span className="text-[10px]">Доп.работа:</span>
+                                      </div>
+                                      <span className="text-amber-500 font-semibold text-sm">
+                                        {Math.round(ep * 10) / 10} баллов
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 mt-0.5 pl-5" title="Среднее баллов за 5 рабочих дней ÷ 40 × 0,9 за час, считается по минутам">
+                                      (ср.5 дней ÷ 40) × 0,9 / час
+                                    </div>
+                                  </div>
+                                ) : null;
+                              })()}
                               {rankingStats.daily.levelEmoji && rankingStats.daily.levelName && (
                                 <div className="flex items-center justify-between py-1 bg-yellow-400/10 rounded px-2 py-1.5">
                                   <div className="flex items-center gap-2 text-slate-300">
@@ -510,6 +543,25 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                                     <span className="text-amber-400 font-semibold text-sm">
                                       {Math.round(mp)} баллов
                                     </span>
+                                  </div>
+                                ) : null;
+                              })()}
+                              {(() => {
+                                const em = (rankingStats.monthly as { extraWorkPoints?: number } | undefined)?.extraWorkPoints;
+                                return em != null && em > 0 ? (
+                                  <div className="py-1">
+                                    <div className="flex items-center justify-between text-amber-500/90">
+                                      <div className="flex items-center gap-2 text-slate-400">
+                                        <Briefcase className="w-3.5 h-3.5 flex-shrink-0" />
+                                        <span className="text-[10px]">Доп.работа:</span>
+                                      </div>
+                                      <span className="text-amber-500 font-semibold text-sm">
+                                        {Math.round(em * 10) / 10} баллов
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 mt-0.5 pl-5" title="Среднее баллов за 5 рабочих дней ÷ 40 × 0,9 за час, считается по минутам">
+                                      (ср.5 дней ÷ 40) × 0,9 / час
+                                    </div>
                                   </div>
                                 ) : null;
                               })()}

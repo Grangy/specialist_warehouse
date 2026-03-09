@@ -40,6 +40,14 @@ export const CHECK_WITH_DICTATOR_POINTS_PER_POS: Record<string, [number, number]
   'Склад 3': [0.67, 0.61],
 };
 
+/** Баллы за 1 час доп. работы (завершённые сессии) */
+export const EXTRA_WORK_POINTS_PER_HOUR = 5;
+
+/** Баллы за доп. работу: elapsedSec / 3600 × EXTRA_WORK_POINTS_PER_HOUR */
+export function calculateExtraWorkPoints(elapsedSec: number): number {
+  return (elapsedSec / 3600) * EXTRA_WORK_POINTS_PER_HOUR;
+}
+
 function getRate<T>(rates: Record<string, T>, warehouse: string | null): T | undefined {
   const w = warehouse || 'Склад 1';
   return rates[w] ?? rates['Склад 1'];

@@ -43,8 +43,37 @@ model User {
   collectorCallsReceived CollectorCall[] @relation("CollectorCallsAsCollector")
   collectorCallsMade      CollectorCall[] @relation("CollectorCallsAsChecker")
   userSettings  UserSettings?
+  extraWorkSessionsAsWorker ExtraWorkSession[] @relation("ExtraWorkSessionWorker")
+  extraWorkSessionsAsAssigner ExtraWorkSession[] @relation("ExtraWorkSessionAssigner")
 
   @@map("users")
+}
+
+// Дополнительная работа: сессия таймера с обедом
+model ExtraWorkSession {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")   // Кладовщик
+  assignedById String  @map("assigned_by_id") // Кто назначил (админ или Дмитрий Палыч)
+  startedAt   DateTime @default(now()) @map("started_at")
+  stoppedAt   DateTime? @map("stopped_at")   // Окончательная остановка
+  status      String   @default("running") // running | lunch | stopped
+  warehouse   String?  @map("warehouse")   // Склад 1, Склад 2, Склад 3
+  comment     String?  @map("comment")    // Задание: что сделать
+  completionType String @default("manual") @map("completion_type") // manual = кнопка Готово; timer = только по времени
+  durationMinutes Int?  @map("duration_minutes") // для timer обязательно; для manual опционально
+  lunchSlot   String?  @map("lunch_slot")    // "13-14" | "14-15"
+  lunchScheduledFor DateTime? @map("lunch_scheduled_for") // Когда обед начнётся (13:00 или 14:00 МСК)
+  lunchStartedAt DateTime? @map("lunch_started_at")
+  lunchEndsAt   DateTime? @map("lunch_ends_at")   // Когда обед заканчивается (автовозобновление)
+  postLunchStartedAt DateTime? @map("post_lunch_started_at") // Когда возобновили после обеда (для корректного подсчёта)
+  elapsedSecBeforeLunch Float @default(0) @map("elapsed_sec_before_lunch") // Секунды до обеда
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user       User @relation("ExtraWorkSessionWorker", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy User @relation("ExtraWorkSessionAssigner", fields: [assignedById], references: [id], onDelete: Cascade)
+
+  @@map("extra_work_sessions")
 }
 
 model UserSettings {

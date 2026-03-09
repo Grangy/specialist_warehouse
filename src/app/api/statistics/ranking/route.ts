@@ -55,16 +55,22 @@ export async function GET(request: NextRequest) {
       .filter((e) => e.dictatorPoints > 0)
       .sort((a, b) => b.dictatorPoints - a.dictatorPoints)
       .map((e) => ({ ...e, points: e.dictatorPoints }));
+    // Прочие: есть баллы (напр. доп.работа), но нет сборки/проверки/диктовки (админ и др.)
+    const others = [...allRankings]
+      .filter((e) => e.points > 0 && e.collectorPoints === 0 && e.checkerPoints === 0 && e.dictatorPoints === 0)
+      .sort((a, b) => b.points - a.points);
 
     assignRanks(collectors, (e) => e.collectorPoints);
     assignRanks(checkers, (e) => e.checkerPoints);
     assignRanks(dictators, (e) => e.dictatorPoints);
+    assignRanks(others, (e) => e.points);
 
     return NextResponse.json({
       period,
       collectors,
       checkers,
       dictators,
+      others,
       all: allRankings,
     });
   } catch (error: unknown) {

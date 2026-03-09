@@ -19,6 +19,7 @@ interface RankingEntry {
   collectorPoints?: number;
   checkerPoints?: number;
   dictatorPoints?: number;
+  extraWorkPoints?: number;
   errors?: number;
   checkerErrors?: number;
   rank: number | null;
@@ -430,6 +431,9 @@ export default function TopPage() {
                       )}
                       {(user.dictatorPoints ?? 0) > 0 && (
                         <div className="text-xs text-amber-400/90">диктовка {formatPoints(user.dictatorPoints ?? 0)}</div>
+                      )}
+                      {(user.extraWorkPoints ?? 0) > 0 && (
+                        <div className="text-xs text-amber-500/90">доп.работа {formatPoints(user.extraWorkPoints ?? 0)}</div>
                       )}
                       {user.pph != null && (
                         <div className="text-xs text-slate-500 mt-0.5">

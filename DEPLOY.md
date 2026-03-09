@@ -1,134 +1,94 @@
-# 🚀 Инструкция по деплою
+# Инструкция по деплою
 
-## Быстрый деплой (автоматический)
-
-На сервере в каталоге проекта выполните:
+## Быстрый деплой (рекомендуется)
 
 ```bash
 ./deploy.sh
 ```
 
-Скрипт:
-1. Создаст бэкап БД → `backups/dev.db.backup.YYYYMMDD_HHMMSS`
-2. Остановит приложение (PM2)
-3. Обновит код из Git (`git pull origin main`)
-4. Установит зависимости (`npm install`)
-5. Применит миграции (`npx prisma migrate deploy`)
-6. Регенерирует Prisma Client
-7. Соберёт проект (`npm run build`)
-8. Перезапустит приложение (PM2)
+Скрипт выполняет: бэкап БД → остановку приложения → `git pull` → `npm install` → **миграции** → `prisma generate` → `npm run build` → перезапуск PM2.
 
 ---
 
 ## Ручной деплой
 
-Если нужно выполнить шаги по отдельности:
+### 1. Бэкап базы данных
 
 ```bash
-# 1. Остановить приложение
-pm2 stop sklad-spec
+mkdir -p backups
+cp prisma/dev.db backups/dev.db.backup.$(date +%Y%m%d_%H%M%S)
+```
 
-# 2. Обновить код
+### 2. Обновление кода
+
+```bash
 git fetch origin
-git checkout main
 git pull origin main
+```
 
-# 3. Установить зависимости
+### 3. Зависимости
+
+```bash
 npm install
+```
 
-# 4. Применить миграции (обязательно!)
+### 4. Миграции (обязательно)
+
+```bash
 npx prisma migrate deploy
+```
 
-# 5. Регенерировать Prisma Client
+Применяет все неприменённые миграции из `prisma/migrations/`.
+
+> ⚠️ **Важно:** Если есть изменения в `schema.prisma`, сначала `migrate deploy`, затем `prisma generate`. Порядок в `deploy.sh` — правильный.
+
+### 5. Регенерация Prisma Client
+
+```bash
 npx prisma generate
+```
 
-# 6. Собрать проект
+### 6. Сборка
+
+```bash
 npm run build
+```
 
-# 7. Запустить приложение
+### 7. Перезапуск
+
+```bash
 pm2 restart sklad-spec
-```
-
----
-
-## Миграции базы данных
-
-### Применение миграций на продакшене
-
-```bash
-npx prisma migrate deploy
-```
-
-Эта команда:
-- Применяет все неприменённые миграции из `prisma/migrations/`
-- Использует `DATABASE_URL` из `.env`
-- Безопасна для продакшена (не создаёт новые миграции)
-
-### Проверка статуса миграций
-
-```bash
-npx prisma migrate status
-```
-
-Покажет:
-- Какие миграции применены
-- Какие ожидают применения
-
-### Создание новой миграции (только в разработке)
-
-```bash
-npx prisma migrate dev --name add_some_feature
-```
-
-⚠️ **Не используйте на продакшене** — эта команда может изменить схему. Создавайте миграции локально, коммитьте в Git, затем на сервере применяйте через `migrate deploy`.
-
----
-
-## Переменные окружения
-
-Скопируйте `.env.example` в `.env` и заполните:
-
-```bash
-cp .env.example .env
-```
-
-Минимально необходимые переменные:
-
-```env
-DATABASE_URL="file:./prisma/dev.db"
-```
-
-Для PWA через HTTP (локальная сеть):
-
-```env
-NEXT_PUBLIC_DISABLE_SECURE_COOKIE=true
-```
-
----
-
-## PM2
-
-Запуск приложения:
-
-```bash
+# или при первом запуске:
 pm2 start npm --name "sklad-spec" -- start
 ```
 
-Перезапуск после деплоя:
+---
+
+## Миграции в этом релизе
+
+| Миграция | Описание |
+|----------|----------|
+| `20260203160000_add_extra_work_sessions` | Таблица `extra_work_sessions` |
+| `20260203170000_add_extra_work_fields` | Поля warehouse, comment, duration_minutes, lunch_scheduled_for |
+| `20260203180000_add_completion_type` | completion_type (manual/timer) |
+| `20260209120000_add_post_lunch_started_at` | post_lunch_started_at — корректный учёт времени после обеда |
+
+---
+
+## Проверка после деплоя
 
 ```bash
-pm2 restart sklad-spec
+pm2 status
+pm2 logs sklad-spec --lines 50
 ```
 
-Просмотр логов:
+Проверить работу доп. работы: Админка → вкладка «Доп. работа».
 
-```bash
-pm2 logs sklad-spec
-```
+---
 
-Сохранить текущий список процессов для автозапуска при перезагрузке сервера:
+## Откат миграции
 
-```bash
-pm2 save
-pm2 startup
-```
+SQLite не поддерживает `migrate reset` с сохранением данных. Для отката:
+
+1. Восстановить БД из бэкапа: `cp backups/dev.db.backup.XXXXXXXX prisma/dev.db`
+2. Пометить миграцию как откатанную: `npx prisma migrate resolve --rolled-back 20260209120000_add_post_lunch_started_at`

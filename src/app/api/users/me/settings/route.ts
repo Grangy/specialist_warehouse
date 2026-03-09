@@ -73,17 +73,24 @@ export async function POST(request: NextRequest) {
     const existing = await prisma.userSettings.findUnique({
       where: { userId: user.id },
     });
+    const merged: Record<string, unknown> = { ...settings };
+    if (existing?.settings) {
+      try {
+        const parsed = JSON.parse(existing.settings) as Record<string, unknown>;
+        if (parsed.extraWorkLunchSlot !== undefined) merged.extraWorkLunchSlot = parsed.extraWorkLunchSlot;
+      } catch {
+        // ignore
+      }
+    }
+    const finalSettings = JSON.stringify(merged);
     if (existing) {
       await prisma.userSettings.update({
         where: { userId: user.id },
-        data: { settings: JSON.stringify(settings) },
+        data: { settings: finalSettings },
       });
     } else {
       await prisma.userSettings.create({
-        data: {
-          userId: user.id,
-          settings: JSON.stringify(settings),
-        },
+        data: { userId: user.id, settings: finalSettings },
       });
     }
 

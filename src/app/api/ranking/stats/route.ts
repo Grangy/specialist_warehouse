@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { getAnimalLevel } from '@/lib/ranking/levels';
+import {
+  computeExtraWorkPointsForSessions,
+  computeExtraWorkPointsMap,
+} from '@/lib/ranking/extraWorkPoints';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,6 +132,44 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Баллы за доп. работу за сегодня и за месяц (для текущего пользователя)
+    const [extraWorkToday, extraWorkMonth] = await Promise.all([
+      prisma.extraWorkSession.findMany({
+        where: {
+          userId: user.id,
+          status: 'stopped',
+          stoppedAt: { gte: today, lte: todayEnd },
+        },
+        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true },
+      }),
+      prisma.extraWorkSession.findMany({
+        where: {
+          userId: user.id,
+          status: 'stopped',
+          stoppedAt: { gte: monthStart, lte: monthEnd },
+        },
+        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true },
+      }),
+    ]);
+    // Баллы за доп. работу всех пользователей за сегодня и месяц (для рангов)
+    const [allExtraWorkToday, allExtraWorkMonth] = await Promise.all([
+      prisma.extraWorkSession.findMany({
+        where: { status: 'stopped', stoppedAt: { gte: today, lte: todayEnd } },
+        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true },
+      }),
+      prisma.extraWorkSession.findMany({
+        where: { status: 'stopped', stoppedAt: { gte: monthStart, lte: monthEnd } },
+        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true },
+      }),
+    ]);
+
+    const [dailyExtraWorkPoints, monthlyExtraWorkPoints, extraWorkTodayMap, extraWorkMonthMap] = await Promise.all([
+      computeExtraWorkPointsForSessions(prisma, extraWorkToday),
+      computeExtraWorkPointsForSessions(prisma, extraWorkMonth),
+      computeExtraWorkPointsMap(prisma, allExtraWorkToday),
+      computeExtraWorkPointsMap(prisma, allExtraWorkMonth),
+    ]);
+
     // Рассчитываем статистику за сегодня (только для роли пользователя)
     let dailyCollector = null;
     let dailyChecker = null;
@@ -153,8 +195,9 @@ export async function GET(request: NextRequest) {
         const uph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
 
         dailyCollector = {
-          points: totalPoints,
+          points: totalPoints + dailyExtraWorkPoints,
           dictatorPoints: dictatorPointsToday,
+          extraWorkPoints: dailyExtraWorkPoints,
           positions: totalPositions,
           units: totalUnits,
           orders: totalOrders,
@@ -185,7 +228,8 @@ export async function GET(request: NextRequest) {
         const uph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
 
         dailyChecker = {
-          points: totalPoints,
+          points: totalPoints + dailyExtraWorkPoints,
+          extraWorkPoints: dailyExtraWorkPoints,
           positions: totalPositions,
           units: totalUnits,
           orders: totalOrders,
@@ -218,8 +262,9 @@ export async function GET(request: NextRequest) {
         const uph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
 
         monthlyCollector = {
-          points: totalPoints,
+          points: totalPoints + monthlyExtraWorkPoints,
           dictatorPoints: dictatorPointsMonth,
+          extraWorkPoints: monthlyExtraWorkPoints,
           positions: totalPositions,
           units: totalUnits,
           orders: totalOrders,
@@ -250,7 +295,8 @@ export async function GET(request: NextRequest) {
         const uph = totalPickTimeSec > 0 ? (totalUnits * 3600) / totalPickTimeSec : null;
 
         monthlyChecker = {
-          points: totalPoints,
+          points: totalPoints + monthlyExtraWorkPoints,
+          extraWorkPoints: monthlyExtraWorkPoints,
           positions: totalPositions,
           units: totalUnits,
           orders: totalOrders,
@@ -332,6 +378,10 @@ export async function GET(request: NextRequest) {
         collectorMapToday.set(stat.userId, current + stat.orderPoints);
       }
     }
+    for (const [uid, pts] of extraWorkTodayMap) {
+      const cur = collectorMapToday.get(uid) || 0;
+      collectorMapToday.set(uid, cur + pts);
+    }
     const collectorPointsToday = Array.from(collectorMapToday.values()).filter(p => p > 0);
     // Рассчитываем ранг для сборщика (если пользователь сборщик или админ с данными сборщика)
     if (collectorPointsToday.length > 0 && dailyCollector && (user.role === 'collector' || user.role === 'admin')) {
@@ -374,6 +424,10 @@ export async function GET(request: NextRequest) {
         const current = checkerMapToday.get(stat.userId) || 0;
         checkerMapToday.set(stat.userId, current + stat.orderPoints);
       }
+    }
+    for (const [uid, pts] of extraWorkTodayMap) {
+      const cur = checkerMapToday.get(uid) || 0;
+      checkerMapToday.set(uid, cur + pts);
     }
     const checkerPointsToday = Array.from(checkerMapToday.values()).filter(p => p > 0);
     // Рассчитываем ранг для проверяльщика (если пользователь проверяльщик)
@@ -494,6 +548,10 @@ export async function GET(request: NextRequest) {
         collectorMapMonth.set(stat.userId, current + stat.orderPoints);
       }
     }
+    for (const [uid, pts] of extraWorkMonthMap) {
+      const cur = collectorMapMonth.get(uid) || 0;
+      collectorMapMonth.set(uid, cur + pts);
+    }
     const collectorPointsMonth = Array.from(collectorMapMonth.values()).filter(p => p > 0);
     // Рассчитываем ранг для сборщика (если пользователь сборщик или админ с данными сборщика)
     if (collectorPointsMonth.length > 0 && monthlyCollector && (user.role === 'collector' || user.role === 'admin')) {
@@ -537,6 +595,10 @@ export async function GET(request: NextRequest) {
         checkerMapMonth.set(stat.userId, current + stat.orderPoints);
       }
     }
+    for (const [uid, pts] of extraWorkMonthMap) {
+      const cur = checkerMapMonth.get(uid) || 0;
+      checkerMapMonth.set(uid, cur + pts);
+    }
     const checkerPointsMonth = Array.from(checkerMapMonth.values()).filter(p => p > 0);
     // Рассчитываем ранг для проверяльщика (если пользователь проверяльщик)
     // Для админа показываем ранг сборщика по умолчанию (если есть данные сборщика)
@@ -573,6 +635,7 @@ export async function GET(request: NextRequest) {
         ? {
             points: dailyData.points,
             dictatorPoints: (dailyData as { dictatorPoints?: number }).dictatorPoints ?? 0,
+            extraWorkPoints: (dailyData as { extraWorkPoints?: number }).extraWorkPoints ?? 0,
             rank: dailyRank,
             levelName: dailyLevel?.name || null,
             levelEmoji: dailyLevel?.emoji || null,
@@ -594,6 +657,7 @@ export async function GET(request: NextRequest) {
         ? {
             points: monthlyData.points,
             dictatorPoints: (monthlyData as { dictatorPoints?: number }).dictatorPoints ?? 0,
+            extraWorkPoints: (monthlyData as { extraWorkPoints?: number }).extraWorkPoints ?? 0,
             rank: monthlyRank,
             levelName: monthlyLevel?.name || null,
             levelEmoji: monthlyLevel?.emoji || null,

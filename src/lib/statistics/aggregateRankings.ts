@@ -5,6 +5,10 @@
 
 import { prisma } from '@/lib/prisma';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import {
+  getExtraWorkRatePerHour,
+  calculateExtraWorkPointsFromRate,
+} from '@/lib/ranking/extraWorkPoints';
 
 export interface RankingEntry {
   userId: string;
@@ -17,6 +21,7 @@ export interface RankingEntry {
   collectorPoints: number;
   checkerPoints: number;
   dictatorPoints: number;
+  extraWorkPoints: number;
   errors: number;
   checkerErrors: number;
   rank: number | null;
@@ -24,6 +29,8 @@ export interface RankingEntry {
   pph: number | null;
   uph: number | null;
   efficiency: number | null;
+  /** Отработанные часы (сборка+проверка+диктовка) */
+  workHours: number;
 }
 
 type UserAgg = {
@@ -37,6 +44,7 @@ type UserAgg = {
   collectorPoints: number;
   checkerPoints: number;
   dictatorPoints: number;
+  extraWorkPoints: number;
   totalPickTimeSec: number;
   efficiencies: number[];
 };
@@ -156,11 +164,29 @@ export async function aggregateRankings(
         collectorPoints: 0,
         checkerPoints: 0,
         dictatorPoints: 0,
+        extraWorkPoints: 0,
         totalPickTimeSec: 0,
         efficiencies: [],
       });
     }
     return allMap.get(user.id)!;
+  }
+
+  // Баллы за доп. работу: ставка = (ср.баллов за 5 раб.дней / 40) × 0.9 за час
+  const extraWorkSessions = await prisma.extraWorkSession.findMany({
+    where: {
+      status: 'stopped',
+      stoppedAt: { gte: startDate, lte: endDate },
+    },
+    select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, user: { select: { id: true, name: true, role: true } } },
+  });
+  for (const sess of extraWorkSessions) {
+    const beforeDate = sess.stoppedAt ?? new Date();
+    const rate = await getExtraWorkRatePerHour(prisma, sess.userId, beforeDate);
+    const pts = calculateExtraWorkPointsFromRate(sess.elapsedSecBeforeLunch, rate);
+    const agg = ensureAgg(sess.user);
+    agg.extraWorkPoints += pts;
+    agg.points += pts;
   }
 
   for (const stat of collectorTaskStats) {
@@ -231,6 +257,7 @@ export async function aggregateRankings(
       collectorPoints: agg.collectorPoints,
       checkerPoints: agg.checkerPoints,
       dictatorPoints: agg.dictatorPoints,
+      extraWorkPoints: agg.extraWorkPoints,
       errors: errorsByCollector.get(agg.userId) ?? 0,
       checkerErrors: errorsByChecker.get(agg.userId) ?? 0,
       rank: null,
@@ -238,6 +265,7 @@ export async function aggregateRankings(
       pph: agg.totalPickTimeSec > 0 ? (agg.positions * 3600) / agg.totalPickTimeSec : null,
       uph: agg.totalPickTimeSec > 0 ? (agg.units * 3600) / agg.totalPickTimeSec : null,
       efficiency: agg.efficiencies.length > 0 ? agg.efficiencies.reduce((a, b) => a + b, 0) / agg.efficiencies.length : null,
+      workHours: Math.round((agg.totalPickTimeSec / 3600) * 100) / 100,
     });
   }
 

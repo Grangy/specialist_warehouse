@@ -18,6 +18,17 @@ export async function POST(
     }
     const { user } = authResult;
 
+    // Блокировка при доп.работе (таймер)
+    const activeExtraWork = await prisma.extraWorkSession.findFirst({
+      where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+    });
+    if (activeExtraWork) {
+      return NextResponse.json(
+        { error: 'Дополнительная работа активна. Остановите таймер.' },
+        { status: 403 }
+      );
+    }
+
     // Подтверждать могут админ, проверяльщик и склад 3
     if (user.role !== 'admin' && user.role !== 'checker' && user.role !== 'warehouse_3') {
       return NextResponse.json(

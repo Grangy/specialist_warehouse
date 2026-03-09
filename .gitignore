@@ -113,4 +113,7 @@ SECURITY-*.md
 !README.md
 !DEPLOY.md
 !POINTS-MIGRATION.md
+
+# Деплой (содержит настройки/пути)
+scripts/deploy-remote.sh
 !docs/LOCATIONS_SYSTEM.md

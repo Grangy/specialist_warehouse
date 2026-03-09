@@ -1,10 +1,14 @@
 import type { Metadata, Viewport } from 'next';
 import { ToastProvider } from '@/contexts/ToastContext';
+import { ExtraWorkProvider } from '@/contexts/ExtraWorkContext';
 import { ShipmentsPollingProvider } from '@/contexts/ShipmentsPollingContext';
 import { UserSettingsProvider } from '@/contexts/UserSettingsContext';
 import { ToastContainer } from '@/components/ui/ToastContainer';
 import { PWARegister } from '@/components/PWARegister';
 import { Diagnostics } from '@/components/Diagnostics';
+import { ExtraWorkBanner } from '@/components/ExtraWorkBanner';
+import { ExtraWorkPopup } from '@/components/ExtraWorkPopup';
+import { ExtraWorkLayout } from '@/components/ExtraWorkLayout';
 import '@/styles/globals.css';
 
 export const metadata: Metadata = {
@@ -45,12 +49,18 @@ export default function RootLayout({
         <PWARegister />
         <Diagnostics />
         <ToastProvider>
-          <ShipmentsPollingProvider>
-            <UserSettingsProvider>
-              {children}
-              <ToastContainer />
-            </UserSettingsProvider>
-          </ShipmentsPollingProvider>
+          <ExtraWorkProvider>
+            <ExtraWorkLayout>
+              <ShipmentsPollingProvider>
+                <UserSettingsProvider>
+                  {children}
+                  <ExtraWorkPopup />
+                  <ExtraWorkBanner />
+                  <ToastContainer />
+                </UserSettingsProvider>
+              </ShipmentsPollingProvider>
+            </ExtraWorkLayout>
+          </ExtraWorkProvider>
         </ToastProvider>
       </body>
     </html>

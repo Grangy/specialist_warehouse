@@ -1,0 +1,69 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/middleware';
+
+export const dynamic = 'force-dynamic';
+
+/** Может отменить обед: admin, Дмитрий Палыч, или сам работник */
+async function canCancel(
+  user: { id: string; role: string; name: string },
+  session: { userId: string }
+): Promise<boolean> {
+  if (session.userId === user.id) return true;
+  return user.role === 'admin' || user.name.includes('Дмитрий Палыч');
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const authResult = await requireAuth(request);
+    if (authResult instanceof NextResponse) return authResult;
+    const { user } = authResult;
+
+    const body = await request.json();
+    const { sessionId } = body as { sessionId?: string };
+    if (!sessionId) {
+      return NextResponse.json({ error: 'sessionId обязателен' }, { status: 400 });
+    }
+
+    const session = await prisma.extraWorkSession.findUnique({
+      where: { id: sessionId },
+    });
+    if (!session || session.stoppedAt) {
+      return NextResponse.json({ error: 'Сессия не найдена или остановлена' }, { status: 400 });
+    }
+
+    if (!canCancel(user, session)) {
+      return NextResponse.json({ error: 'Нет прав отменить обед' }, { status: 403 });
+    }
+
+    if (session.status === 'lunch_scheduled') {
+      await prisma.extraWorkSession.update({
+        where: { id: sessionId },
+        data: {
+          status: 'running',
+          lunchSlot: null,
+          lunchScheduledFor: null,
+        },
+      });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (session.status === 'lunch') {
+      await prisma.extraWorkSession.update({
+        where: { id: sessionId },
+        data: {
+          status: 'running',
+          lunchStartedAt: null,
+          lunchEndsAt: null,
+          lunchScheduledFor: null,
+        },
+      });
+      return NextResponse.json({ ok: true });
+    }
+
+    return NextResponse.json({ error: 'Нет запланированного или активного обеда' }, { status: 400 });
+  } catch (e) {
+    console.error('[extra-work/cancel-lunch]', e);
+    return NextResponse.json({ error: 'Ошибка' }, { status: 500 });
+  }
+}

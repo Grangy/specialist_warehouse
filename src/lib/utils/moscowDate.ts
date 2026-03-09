@@ -112,7 +112,47 @@ export function getMoscowHour(utcNow: Date = new Date()): number {
   return moscowTime.getUTCHours();
 }
 
+/** Время начала обеда по Москве в UTC: 13:00 или 14:00 МСК сегодня. */
+export function getLunchScheduledForMoscow(slot: '13-14' | '14-15'): Date {
+  const now = new Date();
+  const m = getMoscowDateParts(now);
+  const startOfDay = startOfDayMoscowUTC(m.year, m.month, m.date);
+  const hour = slot === '13-14' ? 13 : 14;
+  return new Date(startOfDay.getTime() + hour * 60 * 60 * 1000);
+}
+
 /** Временные регионы действуют до 21:00 МСК. После 21:00 «сегодня» для них закончилось. */
 export function isBeforeEndOfWorkingDay(utcNow: Date = new Date()): boolean {
   return getMoscowHour(utcNow) < 21;
+}
+
+/**
+ * Последние 5 рабочих дней (пн–пт) ДО указанной даты по Москве.
+ * Возвращает [startDate, endDate] для каждого дня в UTC.
+ */
+export function getLast5WorkingDaysMoscow(beforeDate: Date): Array<{ start: Date; end: Date }> {
+  const m = getMoscowDateParts(beforeDate);
+  const result: Array<{ start: Date; end: Date }> = [];
+  let year = m.year;
+  let month = m.month;
+  let date = m.date;
+  let count = 0;
+  while (count < 5) {
+    date--;
+    if (date < 1) {
+      const prev = new Date(Date.UTC(year, month, 0));
+      date = prev.getUTCDate();
+      month = prev.getUTCMonth();
+      year = prev.getUTCFullYear();
+    }
+    const d = new Date(Date.UTC(year, month, date));
+    const dow = d.getUTCDay();
+    if (dow >= 1 && dow <= 5) {
+      const start = startOfDayMoscowUTC(year, month, date);
+      const end = endOfDayMoscowUTC(year, month, date);
+      result.push({ start, end });
+      count++;
+    }
+  }
+  return result;
 }

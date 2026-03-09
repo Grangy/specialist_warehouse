@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Package, Home, Settings, LogOut, TrendingUp, MapPin, Trophy, AlertTriangle, AlertCircle, Menu, X, Layers } from 'lucide-react';
+import { Users, Package, Home, Settings, LogOut, TrendingUp, MapPin, Trophy, AlertTriangle, AlertCircle, Menu, X, Layers, Briefcase } from 'lucide-react';
 import UsersTab from '@/components/admin/UsersTab';
 import CompletedShipmentsTab from '@/components/admin/CompletedShipmentsTab';
 import ActiveShipmentsTab from '@/components/admin/ActiveShipmentsTab';
@@ -14,7 +14,8 @@ import MinusTab from '@/components/admin/MinusTab';
 import WarningsTab from '@/components/admin/WarningsTab';
 import PositionsTab from '@/components/admin/PositionsTab';
 import CollectorErrorsTab from '@/components/admin/CollectorErrorsTab';
-type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'errors' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus' | 'positions';
+import ExtraWorkTab from '@/components/admin/ExtraWorkTab';
+type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'errors' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus' | 'positions' | 'extraWork';
 
 type AdminUserRole = 'admin' | 'checker' | 'warehouse_3';
 
@@ -270,6 +271,18 @@ export default function AdminPage() {
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Статистика</span>
           </button>
           {!isCheckerOnly && !isWarehouse3 && (
+          <>
+          <button
+            onClick={() => selectTab('extraWork')}
+            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+              activeTab === 'extraWork'
+                ? 'bg-gradient-to-r from-teal-600 to-teal-500 text-white shadow-lg shadow-teal-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <Briefcase className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
+            <span className="font-medium text-sm md:text-base whitespace-nowrap">Дополнительная работа</span>
+          </button>
           <button
             onClick={() => selectTab('regions')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
@@ -281,6 +294,7 @@ export default function AdminPage() {
             <MapPin className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
             <span className="font-medium text-sm md:text-base whitespace-nowrap">Приоритеты регионов</span>
           </button>
+          </>
           )}
           <button
             onClick={() => selectTab('minus')}
@@ -324,6 +338,7 @@ export default function AdminPage() {
           {activeTab === 'regions' && <RegionPrioritiesTab />}
           {activeTab === 'minus' && <MinusTab />}
           {activeTab === 'positions' && <PositionsTab warehouseScope={isWarehouse3 ? 'Склад 3' : undefined} />}
+          {activeTab === 'extraWork' && <ExtraWorkTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
       </main>

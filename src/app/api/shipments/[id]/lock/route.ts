@@ -34,6 +34,17 @@ export async function POST(
       // body optional
     }
 
+    // Блокировка при доп.работе (таймер идёт): пользователь не может брать сборку
+    const activeExtraWork = await prisma.extraWorkSession.findFirst({
+      where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+    });
+    if (activeExtraWork) {
+      return NextResponse.json(
+        { error: 'Дополнительная работа активна. Остановите таймер, чтобы взять заказ.', code: 'EXTRA_WORK_ACTIVE' },
+        { status: 403 }
+      );
+    }
+
     const task = await prisma.shipmentTask.findUnique({
       where: { id },
       include: { locks: true },

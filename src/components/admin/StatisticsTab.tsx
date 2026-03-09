@@ -14,6 +14,8 @@ import {
   RefreshCw,
   AlertTriangle,
   Calendar,
+  Clock,
+  Briefcase,
 } from 'lucide-react';
 import { PointsHelpModal } from '@/components/PointsHelpModal';
 
@@ -28,6 +30,7 @@ interface RankingEntry {
   collectorPoints?: number;
   checkerPoints?: number;
   dictatorPoints?: number;
+  extraWorkPoints?: number;
   errors?: number;
   checkerErrors?: number;
   rank: number | null;
@@ -39,6 +42,7 @@ interface RankingEntry {
   pph: number | null;
   uph: number | null;
   efficiency: number | null;
+  workHours?: number;
 }
 
 interface OverviewData {
@@ -75,6 +79,14 @@ interface OverviewData {
 
 import UserStatsModal from './UserStatsModal';
 
+function formatHours(h: number): string {
+  if (h < 0.01) return '0 ч';
+  if (h < 1) return `${Math.round(h * 60)} мин`;
+  const hrs = Math.floor(h);
+  const mins = Math.round((h - hrs) * 60);
+  return mins > 0 ? `${hrs} ч ${mins} мин` : `${hrs} ч`;
+}
+
 function RankingBlock({
   title,
   icon,
@@ -110,9 +122,15 @@ function RankingBlock({
                 <span className="font-medium text-slate-200 truncate">{user.userName}</span>
                 <span className="text-sm font-bold text-slate-100 flex-shrink-0 ml-2">{formatPoints(user.points)}</span>
               </div>
-              <div className="flex gap-3 mt-0.5 text-xs text-slate-500">
+              <div className="flex gap-3 mt-0.5 text-xs text-slate-500 flex-wrap">
                 <span>📦 {user.positions}</span>
                 <span>📋 {user.orders}</span>
+                {(user.workHours ?? 0) > 0 && (
+                  <span className="text-teal-400/90" title="Отработанные часы">
+                    <Clock className="w-3 h-3 inline mr-0.5" />
+                    {formatHours(user.workHours ?? 0)}
+                  </span>
+                )}
                 {(user.errors ?? 0) > 0 && <span className="text-amber-400/90">⚠ {user.errors}</span>}
                 {(user.checkerErrors ?? 0) > 0 && <span className="text-purple-400/90">⚠ {user.checkerErrors}</span>}
               </div>
@@ -135,6 +153,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
   const [collectors, setCollectors] = useState<RankingEntry[]>([]);
   const [checkers, setCheckers] = useState<RankingEntry[]>([]);
   const [dictators, setDictators] = useState<RankingEntry[]>([]);
+  const [others, setOthers] = useState<RankingEntry[]>([]);
   const [allRankings, setAllRankings] = useState<RankingEntry[]>([]);
   const [topErrorsMerged, setTopErrorsMerged] = useState<{ userId: string; userName: string; errors: number; checkerErrors: number; total: number }[]>([]);
   const [totalCollectorErrors, setTotalCollectorErrors] = useState(0);
@@ -165,6 +184,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
         setCollectors(rankingData.collectors || []);
         setCheckers(rankingData.checkers || []);
         setDictators(rankingData.dictators || []);
+        setOthers(rankingData.others || []);
       }
 
       if (topRes.ok) {
@@ -480,11 +500,12 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
 
       {/* Рейтинг: разделённый по ролям или общий */}
       {splitByRole ? (
-        /* Разделение по ролям: сборщики, проверяльщики, диктовщики */
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        /* Разделение по ролям: сборщики, проверяльщики, диктовщики, прочие (доп.работа и др.) */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <RankingBlock title="Сборщики" icon={<Users className="w-6 h-6 text-blue-400" />} list={collectors} onSelect={(id, name) => { setSelectedUserId(id); setSelectedUserName(name); }} formatPoints={formatPoints} formatPPH={formatPPH} />
           <RankingBlock title="Проверяльщики" icon={<CheckCircle className="w-6 h-6 text-green-400" />} list={checkers} onSelect={(id, name) => { setSelectedUserId(id); setSelectedUserName(name); }} formatPoints={formatPoints} formatPPH={formatPPH} />
           <RankingBlock title="Диктовщики" icon={<Mic className="w-6 h-6 text-cyan-400" />} list={dictators} onSelect={(id, name) => { setSelectedUserId(id); setSelectedUserName(name); }} formatPoints={formatPoints} formatPPH={formatPPH} />
+          <RankingBlock title="Прочие" icon={<Briefcase className="w-6 h-6 text-amber-400" />} list={others} onSelect={(id, name) => { setSelectedUserId(id); setSelectedUserName(name); }} formatPoints={formatPoints} formatPPH={formatPPH} />
         </div>
       ) : allRankings.length > 0 ? (
         /* Общий топ (как /top) */
@@ -532,10 +553,16 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-4 mt-1 text-xs text-slate-400">
+                      <div className="flex items-center gap-4 mt-1 text-xs text-slate-400 flex-wrap">
                         <span>📦 {user.positions} поз.</span>
                         <span>📊 {user.units} ед.</span>
                         <span>📋 {user.orders} зак.</span>
+                        {(user.workHours ?? 0) > 0 && (
+                          <span className="text-teal-400/90" title="Отработанные часы">
+                            <Clock className="w-3 h-3 inline mr-0.5" />
+                            {formatHours(user.workHours ?? 0)}
+                          </span>
+                        )}
                         {(user.errors ?? 0) > 0 && (
                           <span className="text-amber-400/90" title="Ошибки за сборку">⚠ {user.errors} ош. сб.</span>
                         )}
@@ -556,6 +583,9 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                     )}
                     {(user.dictatorPoints ?? 0) > 0 && (
                       <div className="text-xs text-amber-400/90">диктовка {formatPoints(user.dictatorPoints ?? 0)}</div>
+                    )}
+                    {(user.extraWorkPoints ?? 0) > 0 && (
+                      <div className="text-xs text-amber-500/90">доп.работа {formatPoints(user.extraWorkPoints ?? 0)}</div>
                     )}
                     {user.pph != null && (
                       <div className="text-xs text-slate-500 mt-1">{formatPPH(user.pph)} PPH</div>
