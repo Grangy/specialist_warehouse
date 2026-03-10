@@ -39,11 +39,12 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date();
-    let totalElapsedSec = session.elapsedSecBeforeLunch;
+    let totalElapsedSec = session.elapsedSecBeforeLunch ?? 0;
     if (session.status === 'running' || session.status === 'lunch_scheduled') {
       // После resume от обеда: postLunchStartedAt — начало пост-обеденного сегмента (не включаем обед в учёт)
       const segStart = (session as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? session.startedAt;
-      totalElapsedSec += (now.getTime() - new Date(segStart).getTime()) / 1000;
+      const addSec = (now.getTime() - new Date(segStart).getTime()) / 1000;
+      totalElapsedSec += Math.max(0, addSec); // защита от segStart в будущем
     } else if (session.status === 'lunch' && session.lunchStartedAt) {
       totalElapsedSec += (session.lunchStartedAt.getTime() - session.startedAt.getTime()) / 1000;
     }

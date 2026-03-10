@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
     const { startDate, endDate } = getStatisticsDateRange('week');
 
-    const [stoppedSessions, weekRankings, activeSessionsRaw, allUserSettings, allWorkers, listConfigSetting] = await Promise.all([
+    const [stoppedSessions, weekRankings, activeSessionsRaw, allUserSettings, allWorkers, listConfigSetting, manualAdjustmentsSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
         where: {
           status: 'stopped',
@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
         select: { id: true, name: true },
       }),
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_list_config' } }),
+      prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
     ]);
 
     // Строгая проверка: снимаем «Обед»/«Обед запланирован», если НЕ время обеда по Москве (13:00–14:59)
@@ -134,8 +135,17 @@ export async function GET(request: NextRequest) {
     for (const sess of activeSessions) {
       let currentElapsedSec = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
       if (sess.status === 'running') {
-        const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
-        const addSec = (now.getTime() - segStart.getTime()) / 1000;
+        let segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
+        let addSec = (now.getTime() - segStart.getTime()) / 1000;
+        // Если postLunchStartedAt в будущем (разница часов сервера/клиента) — исправляем в БД
+        if (addSec < 0) {
+          await prisma.extraWorkSession.update({
+            where: { id: sess.id },
+            data: { postLunchStartedAt: now },
+          });
+          segStart = now;
+          addSec = 0;
+        }
         currentElapsedSec += Math.max(0, addSec);
       }
       const hours = currentElapsedSec / 3600;
@@ -152,6 +162,19 @@ export async function GET(request: NextRequest) {
       const activePts = Math.max(0, calculateExtraWorkPointsFromRate(currentElapsedSec, rate, dayCoef));
       const prevPts = Math.max(0, extraWorkPointsByUser.get(sess.userId) ?? 0);
       extraWorkPointsByUser.set(sess.userId, prevPts + activePts);
+    }
+
+    // Ручные корректировки баллов (начисление/снятие)
+    const manualAdjustments: Record<string, number> = (() => {
+      try {
+        return manualAdjustmentsSetting?.value ? (JSON.parse(manualAdjustmentsSetting.value) as Record<string, number>) : {};
+      } catch {
+        return {};
+      }
+    })();
+    for (const [uid, delta] of Object.entries(manualAdjustments)) {
+      const v = extraWorkPointsByUser.get(uid) ?? 0;
+      extraWorkPointsByUser.set(uid, Math.max(0, v + delta));
     }
 
     const allUserIds = new Set<string>();
