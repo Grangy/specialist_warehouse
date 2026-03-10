@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/middleware';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 import { getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
+import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,8 +15,12 @@ export interface ExtraWorkEntry {
   extraWorkHours: number;
   /** Баллы за доп. работу (завершённые сессии) */
   extraWorkPoints: number;
-  /** Производительность: (баллы за 5 раб.дней/40)*0.9 — ставка за час */
+  /** Производительность базовая: (баллы за 5 раб.дней/40)*0.9 — ставка за час */
   productivity: number;
+  /** Производительность сегодня = productivity × weekdayCoefficient (учитывает загрузку склада) */
+  productivityToday: number;
+  /** Коэффициент дня (по загрузке прошлой недели). Пик=1.0 */
+  weekdayCoefficient: number;
   /** Обед пользователя (настройка раз навсегда) */
   lunchSlot: string | null;
 }
@@ -100,6 +105,10 @@ export async function GET(request: NextRequest) {
 
     const productivityByUser = new Map<string, number>();
     const now = new Date();
+    const todayCoeff = await getWeekdayCoefficientForDate(prisma, now);
+    const weekdayCoefficients = await getWeekdayWorkloadCoefficients(prisma);
+    const coeffPeriod = getWeekdayCoefficientsPeriod();
+
     await Promise.all(
       [...allUserIds].map(async (userId) => {
         const rate = await getExtraWorkRatePerHour(prisma, userId, now);
@@ -113,10 +122,13 @@ export async function GET(request: NextRequest) {
       .map((u) => {
         const extraWorkPoints = extraWorkPointsByUser.get(u.userId) ?? 0;
         const productivity = productivityByUser.get(u.userId) ?? 0;
+        const productivityToday = Math.round(productivity * todayCoeff * 100) / 100;
         const entry: ExtraWorkEntry & { activeSession?: object } = {
           ...u,
           extraWorkPoints,
           productivity,
+          productivityToday,
+          weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(u.userId) ?? null,
         };
         const sess = sessionsByUser.get(u.userId);
@@ -141,12 +153,15 @@ export async function GET(request: NextRequest) {
     for (const sess of activeSessions) {
       if (!seenIds.has(sess.userId)) {
         seenIds.add(sess.userId);
+        const prod = productivityByUser.get(sess.userId) ?? 0;
         resultWithActive.push({
           userId: sess.userId,
           userName: sess.user.name,
           extraWorkHours: 0,
           extraWorkPoints: extraWorkPointsByUser.get(sess.userId) ?? 0,
-          productivity: productivityByUser.get(sess.userId) ?? 0,
+          productivity: prod,
+          productivityToday: Math.round(prod * todayCoeff * 100) / 100,
+          weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(sess.userId) ?? null,
           activeSession: {
             id: sess.id,
@@ -164,12 +179,15 @@ export async function GET(request: NextRequest) {
     for (const w of allWorkers) {
       if (!seenIds.has(w.id)) {
         seenIds.add(w.id);
+        const prod = productivityByUser.get(w.id) ?? 0;
         resultWithActive.push({
           userId: w.id,
           userName: w.name,
           extraWorkHours: 0,
           extraWorkPoints: extraWorkPointsByUser.get(w.id) ?? 0,
-          productivity: productivityByUser.get(w.id) ?? 0,
+          productivity: prod,
+          productivityToday: Math.round(prod * todayCoeff * 100) / 100,
+          weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(w.id) ?? null,
         });
       }
@@ -183,7 +201,14 @@ export async function GET(request: NextRequest) {
       return a.extraWorkHours - b.extraWorkHours;
     });
 
-    return NextResponse.json({ entries: resultWithActive, hiddenUserIds: [...hiddenUserIds], activeSessions: activeSessions.map((s) => ({ id: s.id, userId: s.userId, userName: s.user.name, status: s.status, startedAt: s.startedAt, lunchSlot: s.lunchSlot, lunchScheduledFor: s.lunchScheduledFor, lunchEndsAt: s.lunchEndsAt })) });
+    return NextResponse.json({
+      entries: resultWithActive,
+      hiddenUserIds: [...hiddenUserIds],
+      activeSessions: activeSessions.map((s) => ({ id: s.id, userId: s.userId, userName: s.user.name, status: s.status, startedAt: s.startedAt, lunchSlot: s.lunchSlot, lunchScheduledFor: s.lunchScheduledFor, lunchEndsAt: s.lunchEndsAt })),
+      weekdayCoefficients: weekdayCoefficients,
+      coeffPeriodStart: coeffPeriod.start.toISOString().slice(0, 10),
+      coeffPeriodEnd: coeffPeriod.end.toISOString().slice(0, 10),
+    });
   } catch (e) {
     console.error('[extra-work]', e);
     return NextResponse.json(

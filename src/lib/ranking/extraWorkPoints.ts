@@ -5,6 +5,7 @@
  */
 
 import { getLast5WorkingDaysMoscow } from '@/lib/utils/moscowDate';
+import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 import type { prisma } from '@/lib/prisma';
 
 type PrismaLike = typeof prisma;
@@ -70,15 +71,20 @@ export async function getExtraWorkRatePerHour(
 }
 
 /**
- * Баллы за доп. работу: elapsedSec × ставка (в час).
- * Работает по минутам: elapsedSec может быть любым.
+ * Баллы за доп. работу: elapsedSec × ставка (в час) × коэффициент дня.
+ * dayCoefficient: 1.0 = пик (вторник), <1 = менее загруженные дни (пн, пт).
  */
-export function calculateExtraWorkPointsFromRate(elapsedSec: number, ratePerHour: number): number {
-  return (elapsedSec / 3600) * ratePerHour;
+export function calculateExtraWorkPointsFromRate(
+  elapsedSec: number,
+  ratePerHour: number,
+  dayCoefficient = 1
+): number {
+  return (elapsedSec / 3600) * ratePerHour * dayCoefficient;
 }
 
 /**
  * Вычислить баллы за список сессий (для одного пользователя).
+ * Учитывает коэффициент дня недели: вторник (пик) = 1.0, пн/пт ниже.
  */
 export async function computeExtraWorkPointsForSessions(
   prisma: PrismaLike,
@@ -86,9 +92,14 @@ export async function computeExtraWorkPointsForSessions(
 ): Promise<number> {
   if (sessions.length === 0) return 0;
   const userId = sessions[0].userId;
-  const beforeDate = sessions[0].stoppedAt ?? new Date();
-  const rate = await getExtraWorkRatePerHour(prisma, userId, beforeDate);
-  return sessions.reduce((sum, s) => sum + calculateExtraWorkPointsFromRate(s.elapsedSecBeforeLunch, rate), 0);
+  let total = 0;
+  for (const s of sessions) {
+    const beforeDate = s.stoppedAt ?? new Date();
+    const rate = await getExtraWorkRatePerHour(prisma, userId, beforeDate);
+    const dayCoef = await getWeekdayCoefficientForDate(prisma, beforeDate);
+    total += calculateExtraWorkPointsFromRate(s.elapsedSecBeforeLunch, rate, dayCoef);
+  }
+  return total;
 }
 
 /** Сессия доп. работы для расчёта баллов */

@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { Briefcase, RefreshCw, Clock, Play, Square, Utensils, EyeOff, Eye } from 'lucide-react';
+import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ActiveSession {
   id: string;
@@ -30,6 +30,8 @@ interface ExtraWorkEntry {
   extraWorkHours: number;
   extraWorkPoints: number;
   productivity: number;
+  productivityToday?: number;
+  weekdayCoefficient?: number;
   lunchSlot: string | null;
   activeSession?: {
     id: string;
@@ -51,7 +53,8 @@ function formatHours(h: number): string {
   return mins > 0 ? `${hrs} ч ${mins} мин` : `${hrs} ч`;
 }
 
-const MIN_HOURS = 3;
+/** Минимум для диаграммы: 1 минута доп. работы */
+const MIN_HOURS_CHART = 1 / 60;
 
 export default function ExtraWorkTab() {
   const [data, setData] = useState<ExtraWorkEntry[]>([]);
@@ -59,7 +62,7 @@ export default function ExtraWorkTab() {
   const [canAssign, setCanAssign] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hideLessThan3, setHideLessThan3] = useState(true);
+  const [hiddenSectionOpen, setHiddenSectionOpen] = useState(false);
   const [assigningUserId, setAssigningUserId] = useState<string | null>(null);
   const [stoppingSessionId, setStoppingSessionId] = useState<string | null>(null);
   const [cancelingLunchId, setCancelingLunchId] = useState<string | null>(null);
@@ -67,6 +70,8 @@ export default function ExtraWorkTab() {
   const [savingLunchUserId, setSavingLunchUserId] = useState<string | null>(null);
   const [hiddenUserIds, setHiddenUserIds] = useState<Set<string>>(new Set());
   const [togglingHiddenUserId, setTogglingHiddenUserId] = useState<string | null>(null);
+  const [coeffPeriod, setCoeffPeriod] = useState<{ start: string; end: string } | null>(null);
+  const [todayCoeff, setTodayCoeff] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -81,6 +86,11 @@ export default function ExtraWorkTab() {
       setData(json.entries ?? json);
       setActiveSessions(json.activeSessions ?? []);
       setHiddenUserIds(new Set(json.hiddenUserIds ?? []));
+      if (json.coeffPeriodStart && json.coeffPeriodEnd) {
+        setCoeffPeriod({ start: json.coeffPeriodStart, end: json.coeffPeriodEnd });
+      }
+      const first = json.entries?.[0];
+      setTodayCoeff(first?.weekdayCoefficient ?? null);
       if (sessionRes.ok) {
         const s = await sessionRes.json();
         const user = s?.user;
@@ -203,11 +213,11 @@ export default function ExtraWorkTab() {
     }
   };
 
-  const filteredData = hideLessThan3
-    ? data.filter((d) => d.extraWorkHours >= MIN_HOURS)
-    : data;
-
-  const chartData = filteredData.map((d) => ({
+  const visibleData = data.filter((d) => !hiddenUserIds.has(d.userId));
+  const hiddenData = data.filter((d) => hiddenUserIds.has(d.userId));
+  const chartData = data
+    .filter((d) => !hiddenUserIds.has(d.userId) && d.extraWorkHours >= MIN_HOURS_CHART)
+    .map((d) => ({
     name: d.userName,
     'Доп. работа': Math.round(d.extraWorkHours * 100) / 100,
   }));
@@ -252,20 +262,16 @@ export default function ExtraWorkTab() {
           <div>
             <h2 className="text-xl font-bold text-slate-100">Дополнительная работа</h2>
             <p className="text-sm text-slate-400">
-              Часы и производительность (баллы нед./40 × 0.9). Назначить может админ, J-SkaR или Дмитрий Палыч.
+              Произв. = (баллы за 5 раб.дней / 40) × 0.9 × коэф.дня. Коэф. по загрузке склада за прошлую неделю (пн–вс).
             </p>
+            {todayCoeff != null && coeffPeriod && (
+              <p className="text-xs text-amber-400/90 mt-1">
+                Сегодня коэф. ×{todayCoeff.toFixed(2)} (данные за {coeffPeriod.start} — {coeffPeriod.end})
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={hideLessThan3}
-              onChange={(e) => setHideLessThan3(e.target.checked)}
-              className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500/50"
-            />
-            <span className="text-sm text-slate-300">Скрыть &lt; {MIN_HOURS} ч доп. работы</span>
-          </label>
           <button type="button" onClick={load} className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-2 transition-colors">
             <RefreshCw className="w-4 h-4" />
             Обновить
@@ -277,9 +283,7 @@ export default function ExtraWorkTab() {
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
             <h3 className="text-lg font-bold text-slate-100 mb-4">Часы доп. работы за неделю</h3>
         {chartData.length === 0 ? (
-          <p className="text-slate-400 py-8">
-            {hideLessThan3 ? `Нет сотрудников с ≥ ${MIN_HOURS} ч доп. работы.` : 'Нет данных.'}
-          </p>
+          <p className="text-slate-400 py-8">Нет сотрудников с &gt; 1 мин доп. работы за неделю.</p>
         ) : (
           <div className="h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -313,7 +317,7 @@ export default function ExtraWorkTab() {
             <thead>
               <tr className="text-left text-slate-400 border-b border-slate-700">
                 <th className="py-2 pr-4">Сотрудник</th>
-                <th className="py-2 pr-4">Произв.</th>
+                <th className="py-2 pr-4" title="Балл/час сегодня = база × коэф.дня по загрузке прошлой недели">Произв.</th>
                 <th className="py-2 pr-4">Часы доп. работы</th>
                 <th className="py-2 pr-4">Доп.баллы</th>
                 <th className="py-2 pr-4" title="Настраивается раз навсегда, применяется ко всем сессиям">Обед</th>
@@ -322,13 +326,18 @@ export default function ExtraWorkTab() {
               </tr>
             </thead>
             <tbody>
-              {data.map((d) => {
+              {visibleData.map((d) => {
                 const sess = d.activeSession ?? activeSessions.find((s) => s.userId === d.userId);
                 const isActive = !!sess && sess.status !== 'stopped';
                 return (
                   <tr key={d.userId} className="border-b border-slate-700/50">
                     <td className="py-3 pr-4 font-medium text-slate-200">{d.userName}</td>
-                    <td className="py-3 pr-4 text-slate-300">{d.productivity.toFixed(2)}</td>
+                    <td className="py-3 pr-4 text-slate-300" title={d.productivityToday != null ? `${d.productivity.toFixed(2)} × ${d.weekdayCoefficient?.toFixed(2) ?? 1} = ${d.productivityToday.toFixed(2)} балл/час сегодня` : undefined}>
+                      {(d.productivityToday ?? d.productivity).toFixed(2)}
+                      {d.weekdayCoefficient != null && d.weekdayCoefficient !== 1 && (
+                        <span className="text-slate-500 text-xs ml-1">×{d.weekdayCoefficient.toFixed(2)}</span>
+                      )}
+                    </td>
                     <td className="py-3 pr-4 text-slate-300">{formatHours(d.extraWorkHours)}</td>
                     <td className="py-3 pr-4 text-amber-400">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
                     <td className="py-3 pr-4">
@@ -416,6 +425,121 @@ export default function ExtraWorkTab() {
                   </tr>
                 );
               })}
+              {hiddenData.length > 0 && (
+                <>
+                  <tr>
+                    <td colSpan={7} className="py-0">
+                      <button
+                        type="button"
+                        onClick={() => setHiddenSectionOpen((v) => !v)}
+                        className="w-full py-3 text-left flex items-center gap-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700/30 transition-colors rounded-b-lg"
+                      >
+                        {hiddenSectionOpen ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
+                        <span className="font-medium">Скрытые</span>
+                        <span className="text-slate-500">({hiddenData.length})</span>
+                      </button>
+                    </td>
+                  </tr>
+                  {hiddenSectionOpen &&
+                    hiddenData.map((d) => {
+                      const sess = d.activeSession ?? activeSessions.find((s) => s.userId === d.userId);
+                      const isActive = !!sess && sess.status !== 'stopped';
+                      return (
+                        <tr key={d.userId} className="border-b border-slate-700/50 bg-slate-800/30">
+                          <td className="py-3 pr-4 font-medium text-slate-400">{d.userName}</td>
+                          <td className="py-3 pr-4 text-slate-500">
+                            {(d.productivityToday ?? d.productivity).toFixed(2)}
+                            {d.weekdayCoefficient != null && d.weekdayCoefficient !== 1 && (
+                              <span className="text-slate-600 text-xs ml-1">×{d.weekdayCoefficient.toFixed(2)}</span>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4 text-slate-500">{formatHours(d.extraWorkHours)}</td>
+                          <td className="py-3 pr-4 text-amber-500/80">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
+                          <td className="py-3 pr-4">
+                            {canAssign ? (
+                              <select
+                                value={d.lunchSlot ?? ''}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  handleSetUserLunch(d.userId, v === '' ? null : v);
+                                }}
+                                disabled={savingLunchUserId === d.userId}
+                                className="px-2 py-1 rounded bg-slate-700 border border-slate-600 text-slate-300 text-xs focus:ring-1 focus:ring-amber-500/50 disabled:opacity-50"
+                              >
+                                <option value="">—</option>
+                                <option value="13-14">13–14</option>
+                                <option value="14-15">14–15</option>
+                              </select>
+                            ) : (
+                              <span className="text-slate-600">{d.lunchSlot ? (d.lunchSlot === '13-14' ? '13–14' : '14–15') : '—'}</span>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4">
+                            {isActive ? (
+                              <span className={`px-2 py-0.5 rounded text-xs ${sess?.status === 'lunch' ? 'bg-amber-500/30 text-amber-400' : sess?.status === 'lunch_scheduled' ? 'bg-amber-500/20 text-amber-300' : 'bg-teal-500/30 text-teal-400'}`}>
+                                {sess?.status === 'lunch' ? 'Обед' : sess?.status === 'lunch_scheduled' ? 'Обед запланирован' : 'Работает'}
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className="py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleHidden(d.userId)}
+                                disabled={!!togglingHiddenUserId}
+                                title="Показать в списке"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-300 disabled:opacity-50"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                Показать
+                              </button>
+                              {canAssign && !isActive && (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAssignModal({ userId: d.userId, userName: d.userName })}
+                                  disabled={!!assigningUserId}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-medium disabled:opacity-50"
+                                >
+                                  <Play className="w-3.5 h-3.5" />
+                                  Назначить
+                                </button>
+                              )}
+                              {isActive && sess && (
+                                <>
+                                  {(sess.status === 'lunch' || sess.status === 'lunch_scheduled') && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCancelLunch(sess.id)}
+                                      disabled={!!cancelingLunchId}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-white text-xs disabled:opacity-50"
+                                    >
+                                      Отменить обед
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStop(sess.id)}
+                                    disabled={!!stoppingSessionId}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-500 text-white text-xs disabled:opacity-50"
+                                  >
+                                    <Square className="w-3.5 h-3.5" />
+                                    Стоп
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </>
+              )}
             </tbody>
           </table>
         </div>

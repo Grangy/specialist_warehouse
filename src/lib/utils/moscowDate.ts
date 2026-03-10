@@ -70,6 +70,16 @@ export function getMoscowTodayStart(): Date {
 }
 
 /**
+ * Период предыдущей недели (пн–вс) по Москве.
+ */
+export function getPreviousWeekRange(): StatisticsDateRange {
+  const thisWeekStart = getMoscowWeekStart();
+  const prevWeekStart = new Date(thisWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const prevWeekEnd = new Date(thisWeekStart.getTime() - 1);
+  return { startDate: prevWeekStart, endDate: prevWeekEnd };
+}
+
+/**
  * Для overview: начало недели по Москве (понедельник).
  */
 export function getMoscowWeekStart(): Date {

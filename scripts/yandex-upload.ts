@@ -41,6 +41,33 @@ export function isTokenValid(tokenData: TokenData): boolean {
   return tokenData.expires_at > Date.now() + 5 * 60 * 1000;
 }
 
+/** Ответ GET /v1/disk/ — квота и системные папки */
+export interface YandexDiskInfo {
+  total_space: number; // байты
+  used_space: number;
+  trash_size: number;
+  system_folders?: { applications?: string; downloads?: string };
+}
+
+/**
+ * Получает лимиты и использование Яндекс.Диска.
+ * Требует scope cloud_api:disk.info.
+ */
+export async function getYandexDiskInfo(token: string): Promise<YandexDiskInfo | null> {
+  try {
+    const res = await fetch(`${YANDEX_API}/`, { headers: { Authorization: `OAuth ${token}` } });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('  [Yandex] Ошибка запроса лимитов:', res.status, text);
+      return null;
+    }
+    return (await res.json()) as YandexDiskInfo;
+  } catch (e) {
+    console.error('  [Yandex] Ошибка запроса лимитов:', e);
+    return null;
+  }
+}
+
 /**
  * Создаёт папку на Яндекс.Диске. 409 = уже существует.
  */
@@ -62,6 +89,9 @@ export async function ensureYandexFolder(token: string, folderPath: string): Pro
     return false;
   }
 }
+
+/** Таймаут загрузки: 10 минут (для ~30 MB по медленному каналу) */
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
  * Загружает один файл на Яндекс.Диск.
@@ -89,11 +119,15 @@ export async function uploadFileToYandex(
     }
     const { href } = (await getUrlRes.json()) as { href: string };
     const body = fs.readFileSync(localFilePath);
+    const controller = new AbortController();
+    const to = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
     const putRes = await fetch(href, {
       method: 'PUT',
       body,
       headers: { 'Content-Type': 'application/octet-stream' },
+      signal: controller.signal,
     });
+    clearTimeout(to);
     if (!putRes.ok) {
       const text = await putRes.text();
       console.error('  [Yandex] Ошибка загрузки файла:', putRes.status, text);
@@ -101,7 +135,12 @@ export async function uploadFileToYandex(
     }
     return true;
   } catch (e) {
-    console.error('  [Yandex] Ошибка загрузки:', e);
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('abort')) {
+      console.error('  [Yandex] Таймаут загрузки (', UPLOAD_TIMEOUT_MS / 60000, 'мин)');
+    } else {
+      console.error('  [Yandex] Ошибка загрузки:', e);
+    }
     return false;
   }
 }
@@ -117,6 +156,7 @@ export async function uploadBackupToYandex(
 ): Promise<boolean> {
   const tokenData = loadToken(projectRoot);
   if (!tokenData) {
+    console.warn('  [Yandex] token.json не найден или нечитаем — загрузка пропущена');
     return false;
   }
   if (!isTokenValid(tokenData)) {

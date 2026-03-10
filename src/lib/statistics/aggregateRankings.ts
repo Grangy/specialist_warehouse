@@ -9,6 +9,7 @@ import {
   getExtraWorkRatePerHour,
   calculateExtraWorkPointsFromRate,
 } from '@/lib/ranking/extraWorkPoints';
+import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 
 export interface RankingEntry {
   userId: string;
@@ -183,7 +184,8 @@ export async function aggregateRankings(
   for (const sess of extraWorkSessions) {
     const beforeDate = sess.stoppedAt ?? new Date();
     const rate = await getExtraWorkRatePerHour(prisma, sess.userId, beforeDate);
-    const pts = calculateExtraWorkPointsFromRate(sess.elapsedSecBeforeLunch, rate);
+    const dayCoef = await getWeekdayCoefficientForDate(prisma, beforeDate);
+    const pts = calculateExtraWorkPointsFromRate(sess.elapsedSecBeforeLunch, rate, dayCoef);
     const agg = ensureAgg(sess.user);
     agg.extraWorkPoints += pts;
     agg.points += pts;
