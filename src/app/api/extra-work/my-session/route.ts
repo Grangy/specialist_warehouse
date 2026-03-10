@@ -11,10 +11,30 @@ export async function GET(request: NextRequest) {
     if (authResult instanceof NextResponse) return authResult;
     const { user } = authResult;
 
-    const session = await prisma.extraWorkSession.findFirst({
+    let session = await prisma.extraWorkSession.findFirst({
       where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
       orderBy: { startedAt: 'desc' },
     });
+
+    // Автовозобновление после обеда, если время lunchEndsAt уже прошло (на сервере)
+    if (session?.status === 'lunch' && session.lunchEndsAt) {
+      const now = new Date();
+      if (now.getTime() >= session.lunchEndsAt.getTime()) {
+        await prisma.extraWorkSession.update({
+          where: { id: session.id },
+          data: {
+            status: 'running',
+            postLunchStartedAt: session.lunchEndsAt,
+            lunchStartedAt: null,
+            lunchEndsAt: null,
+          },
+        });
+        session = await prisma.extraWorkSession.findFirst({
+          where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+          orderBy: { startedAt: 'desc' },
+        });
+      }
+    }
 
     return NextResponse.json(session ?? null);
   } catch (e) {
