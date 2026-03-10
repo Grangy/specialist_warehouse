@@ -98,6 +98,18 @@ npm run recalc:extra-work
 npm run audit:extra-work-productivity [имя]
 ```
 
+### Аудит нагрузки на БД и сервер (5–10 мин)
+
+Для оптимизации — снять показания нагрузки:
+
+```bash
+npm run audit:db-load
+# или 10 минут:
+npm run audit:db-load -- --duration=600
+```
+
+Выводит: loadavg, память, размер БД, время типичных запросов (poll, shipments, aggregate). По итогу даёт рекомендации по оптимизации.
+
 ---
 
 ## Откат миграции
