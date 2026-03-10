@@ -75,6 +75,7 @@ async function main() {
 
   // Шаг 1: Удаляем дубликаты при самопроверке (checkerId === dictatorId)
   // Нельзя давать И проверку (1.34) И диктовку (0.61) — только проверку
+  // Удаляем ТОЛЬКО dictator (диктовка), НЕ collector (сборка)!
   const toDeleteSelfCheckDictator: string[] = [];
   const tasksProcessed = new Set<string>();
   for (const stat of allStats) {
@@ -82,8 +83,8 @@ async function main() {
     if (!task) continue;
     const isSelfCheck = task.checkerId && task.dictatorId && task.checkerId === task.dictatorId;
     if (!isSelfCheck) continue;
+    if (stat.roleType !== 'dictator') continue; // Только dictator дубликаты, НЕ collector!
     if (stat.userId !== task.dictatorId) continue;
-    if (stat.roleType === 'checker') continue; // Оставляем только checker
     const key = `${stat.taskId}:${stat.userId}:${stat.roleType}`;
     if (tasksProcessed.has(key)) continue;
     tasksProcessed.add(key);
