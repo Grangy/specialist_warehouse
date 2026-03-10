@@ -3,7 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 import { getStatisticsDateRange, isLunchTimeMoscow } from '@/lib/utils/moscowDate';
-import { getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
+import {
+  getExtraWorkRatePerHour,
+  calculateExtraWorkPointsFromRate,
+} from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 
 export const dynamic = 'force-dynamic';
@@ -127,13 +130,35 @@ export async function GET(request: NextRequest) {
       if (r.extraWorkPoints > 0) extraWorkPointsByUser.set(r.userId, r.extraWorkPoints);
     }
 
+    const now = new Date();
+    for (const sess of activeSessions) {
+      let currentElapsedSec = sess.elapsedSecBeforeLunch ?? 0;
+      if (sess.status === 'running') {
+        const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
+        currentElapsedSec += (now.getTime() - segStart.getTime()) / 1000;
+      }
+      const hours = currentElapsedSec / 3600;
+      if (!extraWorkHoursByUser.has(sess.userId)) {
+        extraWorkHoursByUser.set(sess.userId, {
+          userId: sess.userId,
+          userName: sess.user?.name ?? sess.userId.slice(0, 8),
+          extraWorkHours: 0,
+        });
+      }
+      extraWorkHoursByUser.get(sess.userId)!.extraWorkHours += hours;
+      const rate = await getExtraWorkRatePerHour(prisma, sess.userId, now);
+      const dayCoef = await getWeekdayCoefficientForDate(prisma, now);
+      const activePts = calculateExtraWorkPointsFromRate(currentElapsedSec, rate, dayCoef);
+      const prevPts = extraWorkPointsByUser.get(sess.userId) ?? 0;
+      extraWorkPointsByUser.set(sess.userId, prevPts + activePts);
+    }
+
     const allUserIds = new Set<string>();
     for (const u of extraWorkHoursByUser.values()) allUserIds.add(u.userId);
     for (const s of activeSessions) allUserIds.add(s.userId);
     for (const w of allWorkers) allUserIds.add(w.id);
 
     const productivityByUser = new Map<string, number>();
-    const now = new Date();
     const todayCoeff = await getWeekdayCoefficientForDate(prisma, now);
     const weekdayCoefficients = await getWeekdayWorkloadCoefficients(prisma);
     const coeffPeriod = getWeekdayCoefficientsPeriod();

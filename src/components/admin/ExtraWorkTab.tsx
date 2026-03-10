@@ -116,6 +116,8 @@ export default function ExtraWorkTab() {
 
   useEffect(() => {
     load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
   }, [load]);
 
   const handleAssign = async (
