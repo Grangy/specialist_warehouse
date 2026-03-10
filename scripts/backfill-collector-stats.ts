@@ -12,6 +12,7 @@
  *   npx tsx scripts/backfill-collector-stats.ts           # dry-run, все задания за всё время
  *   npx tsx scripts/backfill-collector-stats.ts --apply  # записать, все задания за всё время
  *   npx tsx scripts/backfill-collector-stats.ts --today --apply  # только за сегодня
+ *   npx tsx scripts/backfill-collector-stats.ts --limit 5 --apply  # первые 5 заданий (тест)
  *
  * Пересчёт за всё время (после изменения логики или дозаполнения):
  *   1. npx tsx scripts/backfill-collector-stats.ts --apply
@@ -37,6 +38,11 @@ const prisma = new PrismaClient({
 
 const TODAY_ONLY = process.argv.includes('--today');
 const DRY_RUN = !process.argv.includes('--apply');
+const limitIdx = process.argv.indexOf('--limit');
+const LIMIT_N =
+  limitIdx >= 0 && process.argv[limitIdx + 1]
+    ? parseInt(process.argv[limitIdx + 1], 10)
+    : null;
 
 async function main() {
   console.log('\n📦 Backfill collector TaskStatistics');
@@ -79,9 +85,13 @@ async function main() {
     existingCollectorStats.map((s) => `${s.taskId}:${s.userId}`)
   );
 
-  const toBackfill = tasks.filter(
+  let toBackfill = tasks.filter(
     (t) => t.collectorId && !existingKeys.has(`${t.id}:${t.collectorId}`)
   );
+  if (LIMIT_N != null && LIMIT_N > 0) {
+    toBackfill = toBackfill.slice(0, LIMIT_N);
+    console.log(`Ограничение: первые ${LIMIT_N} заданий`);
+  }
 
   console.log(`Заданий с collectorId и completedAt: ${tasks.length}`);
   console.log(`Без записи TaskStatistics (collector): ${toBackfill.length}`);
@@ -98,15 +108,20 @@ async function main() {
   }
 
   if (!DRY_RUN && toBackfill.length > 0) {
-    console.log('\nВызов updateCollectorStats...');
+    console.log('\nВызов updateCollectorStats... (каждое задание ~2–5 сек)');
     let ok = 0;
     let err = 0;
-    for (const t of toBackfill) {
+    const total = toBackfill.length;
+    for (let i = 0; i < total; i++) {
+      const t = toBackfill[i];
       try {
+        process.stdout.write(`  [${i + 1}/${total}] ${t.shipment?.number ?? t.shipmentId} · ${t.collectorName}... `);
         await updateCollectorStats(t.id);
+        console.log('ok');
         ok++;
       } catch (e) {
-        console.error(`  ❌ ${t.id}:`, e instanceof Error ? e.message : e);
+        console.log('❌');
+        console.error(`    ${e instanceof Error ? e.message : String(e)}`);
         err++;
       }
     }
