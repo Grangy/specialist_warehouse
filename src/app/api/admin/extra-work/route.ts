@@ -132,10 +132,11 @@ export async function GET(request: NextRequest) {
 
     const now = new Date();
     for (const sess of activeSessions) {
-      let currentElapsedSec = sess.elapsedSecBeforeLunch ?? 0;
+      let currentElapsedSec = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
       if (sess.status === 'running') {
         const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
-        currentElapsedSec += (now.getTime() - segStart.getTime()) / 1000;
+        const addSec = (now.getTime() - segStart.getTime()) / 1000;
+        currentElapsedSec += Math.max(0, addSec);
       }
       const hours = currentElapsedSec / 3600;
       if (!extraWorkHoursByUser.has(sess.userId)) {
@@ -148,8 +149,8 @@ export async function GET(request: NextRequest) {
       extraWorkHoursByUser.get(sess.userId)!.extraWorkHours += hours;
       const rate = await getExtraWorkRatePerHour(prisma, sess.userId, now);
       const dayCoef = await getWeekdayCoefficientForDate(prisma, now);
-      const activePts = calculateExtraWorkPointsFromRate(currentElapsedSec, rate, dayCoef);
-      const prevPts = extraWorkPointsByUser.get(sess.userId) ?? 0;
+      const activePts = Math.max(0, calculateExtraWorkPointsFromRate(currentElapsedSec, rate, dayCoef));
+      const prevPts = Math.max(0, extraWorkPointsByUser.get(sess.userId) ?? 0);
       extraWorkPointsByUser.set(sess.userId, prevPts + activePts);
     }
 
@@ -174,7 +175,7 @@ export async function GET(request: NextRequest) {
 
     const result: (ExtraWorkEntry & { activeSession?: object })[] = [...extraWorkHoursByUser.values()]
       .map((u) => {
-        const extraWorkPoints = extraWorkPointsByUser.get(u.userId) ?? 0;
+        const extraWorkPoints = Math.max(0, extraWorkPointsByUser.get(u.userId) ?? 0);
         const productivity = productivityByUser.get(u.userId) ?? 0;
         const productivityToday = Math.round(productivity * todayCoeff * 100) / 100;
         const entry: ExtraWorkEntry & { activeSession?: object } = {
@@ -212,7 +213,7 @@ export async function GET(request: NextRequest) {
           userId: sess.userId,
           userName: sess.user.name,
           extraWorkHours: 0,
-          extraWorkPoints: extraWorkPointsByUser.get(sess.userId) ?? 0,
+          extraWorkPoints: Math.max(0, extraWorkPointsByUser.get(sess.userId) ?? 0),
           productivity: prod,
           productivityToday: Math.round(prod * todayCoeff * 100) / 100,
           weekdayCoefficient: todayCoeff,

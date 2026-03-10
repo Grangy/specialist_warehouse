@@ -41,6 +41,7 @@
     "audit:extra-work": "tsx scripts/audit-extra-work-sessions.ts",
     "audit:extra-work-productivity": "tsx scripts/audit-extra-work-productivity.ts",
     "audit:extra-work-lunch": "tsx scripts/audit-extra-work-lunch.ts",
+    "audit:extra-work-negative": "tsx scripts/audit-extra-work-negative.ts",
     "audit:vitaly": "tsx scripts/audit-vitaly-extra-work.ts",
     "report:workload-weekday": "tsx scripts/report-workload-by-weekday.ts",
     "recalc:extra-work": "tsx scripts/recalculate-extra-work-verify.ts",

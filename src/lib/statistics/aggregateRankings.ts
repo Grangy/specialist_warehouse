@@ -185,7 +185,8 @@ export async function aggregateRankings(
     const beforeDate = sess.stoppedAt ?? new Date();
     const rate = await getExtraWorkRatePerHour(prisma, sess.userId, beforeDate);
     const dayCoef = await getWeekdayCoefficientForDate(prisma, beforeDate);
-    const pts = calculateExtraWorkPointsFromRate(sess.elapsedSecBeforeLunch, rate, dayCoef);
+    const elapsedSec = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
+    const pts = Math.max(0, calculateExtraWorkPointsFromRate(elapsedSec, rate, dayCoef));
     const agg = ensureAgg(sess.user);
     agg.extraWorkPoints += pts;
     agg.points += pts;
