@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
-import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 
 export const dynamic = 'force-dynamic';
 
 const ADJUST_PASSWORD = '22170313';
 
-/** POST — ручное начисление/снятие баллов за доп. работу. Требует пароль. */
+/** POST — ручное начисление/снятие баллов за доп. работу. Только admin. Требует пароль. */
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request, ['admin', 'checker']);
+    const authResult = await requireAuth(request, ['admin']);
     if (authResult instanceof NextResponse) return authResult;
-    const { user } = authResult;
-    if (!canAccessExtraWorkByUser(user)) {
-      return NextResponse.json({ error: 'Недостаточно прав' }, { status: 403 });
-    }
     const body = await request.json();
     const { userId, points, password } = body as { userId?: string; points?: number; password?: string };
     if (!userId || typeof points !== 'number') {

@@ -217,10 +217,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
       .then((r) => r.json())
       .then((s) => {
         const user = s?.user;
-        if (user) {
-          const ok = user.role === 'admin' || user.role === 'checker';
-          setCanAdjustPoints(!!ok);
-        }
+        setCanAdjustPoints(user?.role === 'admin');
       })
       .catch(() => {});
   }, []);
