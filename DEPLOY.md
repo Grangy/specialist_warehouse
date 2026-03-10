@@ -104,11 +104,17 @@ npm run audit:extra-work-productivity [имя]
 
 ```bash
 npm run audit:db-load
-# или 10 минут:
+# 10 минут:
 npm run audit:db-load -- --duration=600
+# Подробный вывод (каждый сэмпл + временной ряд + SQLite PRAGMA):
+npm run audit:db-load -- --verbose
+# Экспорт в JSON для анализа:
+npm run audit:db-load -- --export=audit.json
+# Чаще сэмплы (каждые 5 сек):
+npm run audit:db-load -- --interval=5000
 ```
 
-Выводит: loadavg, память, размер БД, время типичных запросов (poll, shipments, aggregate). По итогу даёт рекомендации по оптимизации.
+Выводит: loadavg, память, размер БД, время типичных запросов. По итогу — рекомендации.
 
 ---
 

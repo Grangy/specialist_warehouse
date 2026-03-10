@@ -5,15 +5,16 @@
  *
  * Запуск на сервере деплоя:
  *   npm run audit:db-load
- *   npm run audit:db-load -- --duration=600    # 10 минут
- *   npx tsx scripts/audit-db-load.ts --duration=300
+ *   npm run audit:db-load -- --duration=600           # 10 минут
+ *   npm run audit:db-load -- --verbose                # подробный вывод
+ *   npm run audit:db-load -- --export=audit.json       # экспорт в JSON
+ *   npm run audit:db-load -- --interval=5000           # сэмпл каждые 5 сек
  *
  * Снимает:
  *   - Нагрузка CPU (loadavg)
  *   - Память (система + процесс Node)
  *   - Размер БД, PRAGMA статистика SQLite
- *   - Время выполнения типичных запросов (poll, shipments, aggregate)
- *   - Количество и суммарное время всех Prisma-запросов
+ *   - Время выполнения типичных запросов
  */
 
 import { PrismaClient } from '../src/generated/prisma/client';
@@ -25,7 +26,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const DEFAULT_DURATION_SEC = 300; // 5 минут
-const SAMPLE_INTERVAL_MS = 10000; // сэмпл каждые 10 сек
+const DEFAULT_INTERVAL_MS = 10000; // сэмпл каждые 10 сек
 
 const databaseUrl = process.env.DATABASE_URL;
 let finalDatabaseUrl = databaseUrl;
@@ -37,6 +38,11 @@ if (databaseUrl?.startsWith('file:./')) {
 const args = process.argv.slice(2);
 const durationArg = args.find((a) => a.startsWith('--duration='));
 const durationSec = durationArg ? parseInt(durationArg.split('=')[1] || '300', 10) : DEFAULT_DURATION_SEC;
+const intervalArg = args.find((a) => a.startsWith('--interval='));
+const sampleIntervalMs = intervalArg ? parseInt(intervalArg.split('=')[1] || '10000', 10) : DEFAULT_INTERVAL_MS;
+const verbose = args.includes('--verbose') || args.includes('-v');
+const exportArg = args.find((a) => a.startsWith('--export='));
+const exportPath = exportArg ? exportArg.split('=')[1] : null;
 
 interface Sample {
   ts: number;
@@ -48,6 +54,10 @@ interface Sample {
   dbSizeBytes: number;
   dbPageCount: number;
   dbPageSize: number;
+  dbFreelistCount?: number;
+  dbCacheSize?: number;
+  dbJournalMode?: string;
+  queryDurations?: Record<string, number>;
 }
 
 interface QueryMetric {
@@ -69,37 +79,53 @@ async function getDbPath(): Promise<string | null> {
   return path.join(process.cwd(), p);
 }
 
-async function getDbStats(): Promise<{ sizeBytes: number; pageCount: number; pageSize: number }> {
+interface DbStatsDetailed {
+  sizeBytes: number;
+  pageCount: number;
+  pageSize: number;
+  freelistCount?: number;
+  cacheSize?: number;
+  journalMode?: string;
+}
+
+async function getDbStats(detailed = false): Promise<DbStatsDetailed> {
   const dbPath = await getDbPath();
   if (!dbPath || !fs.existsSync(dbPath)) {
     return { sizeBytes: 0, pageCount: 0, pageSize: 0 };
   }
   const stat = fs.statSync(dbPath);
   const prisma = (globalThis as any).__auditPrisma as PrismaClient;
-  const [pageCount, pageSize] = await Promise.all([
+  const [pageCount, pageSize, freelist, cacheSize, journalMode] = await Promise.all([
     prisma.$queryRawUnsafe<[{ page_count: number }]>('PRAGMA page_count').then((r) => r[0]?.page_count ?? 0),
     prisma.$queryRawUnsafe<[{ page_size: number }]>('PRAGMA page_size').then((r) => r[0]?.page_size ?? 0),
+    detailed ? prisma.$queryRawUnsafe<[{ freelist_count: number }]>('PRAGMA freelist_count').then((r) => r[0]?.freelist_count ?? -1) : Promise.resolve(-1),
+    detailed ? prisma.$queryRawUnsafe<[{ cache_size: number }]>('PRAGMA cache_size').then((r) => (r[0] as { cache_size?: number })?.cache_size ?? -1) : Promise.resolve(-1),
+    detailed ? prisma.$queryRawUnsafe<[{ journal_mode: string }]>('PRAGMA journal_mode').then((r) => r[0]?.journal_mode ?? '') : Promise.resolve(''),
   ]);
-  return { sizeBytes: stat.size, pageCount, pageSize };
+  const result: DbStatsDetailed = { sizeBytes: stat.size, pageCount, pageSize };
+  if (detailed && freelist >= 0) result.freelistCount = freelist;
+  if (detailed && typeof cacheSize === 'number' && cacheSize !== -1) result.cacheSize = cacheSize;
+  if (detailed && journalMode) result.journalMode = journalMode;
+  return result;
 }
 
-async function runSampleQueries(prisma: PrismaClient): Promise<void> {
-  const queries = [
-    { name: 'poll check', fn: () => Promise.all([
-      prisma.shipment.findFirst({ where: {}, select: { id: true } }),
-      prisma.shipmentTask.findFirst({ where: {}, select: { id: true } }),
-      prisma.syncTouch.findUnique({ where: { id: 1 }, select: { touchedAt: true } }),
-    ]) },
-    { name: 'shipments count', fn: () => prisma.shipment.count({ where: { deleted: false } }) },
-    { name: 'users list', fn: () => prisma.user.findMany({ select: { id: true, name: true, role: true } }) },
-    { name: 'region priorities', fn: () => prisma.regionPriority.findMany() },
-    { name: 'task stats agg', fn: () => prisma.taskStatistics.aggregate({ _sum: { orderPoints: true } }) },
-  ];
+const SAMPLE_QUERIES = [
+  { name: 'poll check', fn: (p: PrismaClient) => Promise.all([
+    p.shipment.findFirst({ where: {}, select: { id: true } }),
+    p.shipmentTask.findFirst({ where: {}, select: { id: true } }),
+    p.syncTouch.findUnique({ where: { id: 1 }, select: { touchedAt: true } }),
+  ]) },
+  { name: 'shipments count', fn: (p: PrismaClient) => p.shipment.count({ where: { deleted: false } }) },
+  { name: 'users list', fn: (p: PrismaClient) => p.user.findMany({ select: { id: true, name: true, role: true } }) },
+  { name: 'region priorities', fn: (p: PrismaClient) => p.regionPriority.findMany() },
+  { name: 'task stats agg', fn: (p: PrismaClient) => p.taskStatistics.aggregate({ _sum: { orderPoints: true } }) },
+];
 
-  for (const q of queries) {
+async function runSampleQueries(prisma: PrismaClient, capturePerQuery?: Record<string, number>): Promise<void> {
+  for (const q of SAMPLE_QUERIES) {
     const start = Date.now();
     try {
-      await q.fn();
+      await q.fn(prisma);
     } catch (e) {
       console.error(`  Ошибка ${q.name}:`, e);
     }
@@ -107,17 +133,18 @@ async function runSampleQueries(prisma: PrismaClient): Promise<void> {
     queryMetrics.push({ query: q.name, durationMs, ts: Date.now() });
     queryCount++;
     totalQueryTimeMs += durationMs;
+    if (capturePerQuery) capturePerQuery[q.name] = durationMs;
   }
 }
 
-async function collectSample(prisma: PrismaClient): Promise<Sample> {
+async function collectSample(prisma: PrismaClient, detailed: boolean): Promise<Sample> {
   const loadavg = os.loadavg();
   const memFree = os.freemem();
   const memTotal = os.totalmem();
   const memUsage = process.memoryUsage();
-  const dbStats = await getDbStats();
+  const dbStats = await getDbStats(detailed);
 
-  return {
+  const sample: Sample = {
     ts: Date.now(),
     loadavg: [...loadavg],
     memFree,
@@ -128,6 +155,10 @@ async function collectSample(prisma: PrismaClient): Promise<Sample> {
     dbPageCount: dbStats.pageCount,
     dbPageSize: dbStats.pageSize,
   };
+  if (dbStats.freelistCount !== undefined) sample.dbFreelistCount = dbStats.freelistCount;
+  if (dbStats.cacheSize !== undefined) sample.dbCacheSize = dbStats.cacheSize;
+  if (dbStats.journalMode) sample.dbJournalMode = dbStats.journalMode;
+  return sample;
 }
 
 function percentile(arr: number[], p: number): number {
@@ -147,8 +178,10 @@ async function main() {
   console.log('\n' + '='.repeat(70));
   console.log('Аудит нагрузки на БД и сервер');
   console.log('='.repeat(70));
-  console.log(`Длительность: ${durationSec} сек (интервал сэмплов: ${SAMPLE_INTERVAL_MS} мс)`);
+  console.log(`Длительность: ${durationSec} сек (интервал сэмплов: ${sampleIntervalMs} мс)`);
   console.log(`БД: ${finalDatabaseUrl || 'не задана'}`);
+  if (verbose) console.log('Режим: подробный (--verbose)');
+  if (exportPath) console.log(`Экспорт: ${exportPath}`);
   console.log('');
 
   const prisma = new PrismaClient({
@@ -164,13 +197,22 @@ async function main() {
 
   while (Date.now() - startTime < durationSec * 1000) {
     const now = Date.now();
-    if (now - lastSampleTime >= SAMPLE_INTERVAL_MS || samples.length === 0) {
+    if (now - lastSampleTime >= sampleIntervalMs || samples.length === 0) {
       lastSampleTime = now;
-      const sample = await collectSample(prisma);
+      const sample = await collectSample(prisma, verbose);
+      const queryDurations: Record<string, number> = {};
+      await runSampleQueries(prisma, queryDurations);
+      sample.queryDurations = queryDurations;
       samples.push(sample);
-      await runSampleQueries(prisma);
+
       const elapsed = ((now - startTime) / 1000).toFixed(0);
-      process.stdout.write(`\r  Эл. ${elapsed}s | load ${sample.loadavg[0].toFixed(2)} | RSS ${formatBytes(sample.processRss)} | БД ${formatBytes(sample.dbSizeBytes)}   `);
+      if (verbose) {
+        const qStr = Object.entries(queryDurations).map(([n, d]) => `${n}=${d}ms`).join(' ');
+        console.log(`  [${elapsed}s] load=${sample.loadavg[0].toFixed(2)} ${sample.loadavg[1].toFixed(2)} ${sample.loadavg[2].toFixed(2)} | mem=${((sample.memFree / sample.memTotal) * 100).toFixed(1)}% | RSS=${formatBytes(sample.processRss)} | БД=${formatBytes(sample.dbSizeBytes)} | ${qStr}`);
+        if (sample.dbFreelistCount !== undefined) console.log(`      SQLite: freelist=${sample.dbFreelistCount} cache=${sample.dbCacheSize ?? '-'} journal=${sample.dbJournalMode ?? '-'}`);
+      } else {
+        process.stdout.write(`\r  Эл. ${elapsed}s | load ${sample.loadavg[0].toFixed(2)} | RSS ${formatBytes(sample.processRss)} | БД ${formatBytes(sample.dbSizeBytes)}   `);
+      }
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
@@ -202,6 +244,23 @@ async function main() {
     console.log('\n--- БД (SQLite) ---');
     console.log(`Размер файла:     ${formatBytes(last.dbSizeBytes)}`);
     console.log(`Страниц:         ${last.dbPageCount} × ${last.dbPageSize} B`);
+    if (last.dbFreelistCount !== undefined) {
+      console.log(`Freelist:        ${last.dbFreelistCount} страниц`);
+      if (last.dbCacheSize !== undefined) console.log(`Cache size:      ${last.dbCacheSize} (страниц, отриц. = KB)`);
+      console.log(`Journal mode:    ${last.dbJournalMode ?? '-'}`);
+    }
+  }
+
+  if (verbose && samples.length > 0) {
+    console.log('\n--- ВРЕМЕННОЙ РЯД (все сэмплы) ---');
+    const sep = ' | ';
+    const h = ['#', 'load 1m', 'mem%', 'RSS', 'heap', 'БД'].join(sep);
+    console.log('  ' + h);
+    console.log('  ' + '-'.repeat(h.length));
+    samples.forEach((s, i) => {
+      const memPct = ((s.memFree / s.memTotal) * 100).toFixed(1);
+      console.log(`  ${String(i + 1).padStart(2)}${sep}${s.loadavg[0].toFixed(2).padStart(6)}${sep}${memPct.padStart(5)}%${sep}${formatBytes(s.processRss).padStart(8)}${sep}${formatBytes(s.processHeapUsed).padStart(8)}${sep}${formatBytes(s.dbSizeBytes)}`);
+    });
   }
 
   if (queryMetrics.length > 0) {
@@ -222,12 +281,37 @@ async function main() {
     }
   }
 
+  if (exportPath) {
+    const payload = {
+      meta: { durationSec, sampleIntervalMs, timestamp: new Date().toISOString() },
+      system: { cpus: os.cpus().length },
+      samples,
+      queryMetrics,
+      queryStats: (() => {
+        const byQuery = new Map<string, number[]>();
+        for (const q of queryMetrics) {
+          const list = byQuery.get(q.query) ?? [];
+          list.push(q.durationMs);
+          byQuery.set(q.query, list);
+        }
+        return Object.fromEntries([...byQuery.entries()].map(([k, v]) => [k, { avg: v.reduce((a, b) => a + b, 0) / v.length, min: Math.min(...v), max: Math.max(...v), p95: percentile(v, 95), n: v.length }]));
+      })(),
+    };
+    const replacer = (_key: string, val: unknown) => (typeof val === 'bigint' ? Number(val) : val);
+    fs.writeFileSync(exportPath, JSON.stringify(payload, replacer, 2), 'utf-8');
+    console.log(`\nЭкспорт сохранён: ${exportPath}`);
+  }
+
   console.log('\n' + '='.repeat(70));
   console.log('Рекомендации:');
   console.log('- Высокий loadavg — проверить другие процессы на сервере');
   console.log('- Рост RSS — утечка памяти, перезапуск по расписанию');
   console.log('- Медленные запросы — добавить индексы, оптимизировать include');
   console.log('- Большой размер БД — VACUUM, архивация старых данных');
+  console.log('');
+  console.log('Подробный вывод:  --verbose или -v');
+  console.log('Экспорт в JSON:  --export=audit.json');
+  console.log('Интервал сэмплов: --interval=5000  (мс)');
   console.log('');
 }
 
