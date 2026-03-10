@@ -12,7 +12,11 @@ interface SwipeButtonProps {
   trackId: string;
   sliderId: string;
   textId: string;
+  /** Компактный режим: в 2 раза уже (для проверки в минималистичном режиме) */
+  compact?: boolean;
 }
+
+const COMPACT_MIN_WIDTH = 25;
 
 export function SwipeButton({
   onConfirm,
@@ -23,7 +27,9 @@ export function SwipeButton({
   trackId,
   sliderId,
   textId,
+  compact = false,
 }: SwipeButtonProps) {
+  const minSliderWidth = compact ? COMPACT_MIN_WIDTH : SWIPE_MIN_WIDTH;
   const [isConfirmed, setIsConfirmed] = useState(false);
   const isDraggingRef = useRef(false);
   const handlersRef = useRef<{
@@ -64,13 +70,14 @@ export function SwipeButton({
 
     const updateSlider = () => {
       const trackWidth = track.offsetWidth;
-      const maxWidth = trackWidth - SWIPE_MIN_WIDTH;
+      const minW = compact ? COMPACT_MIN_WIDTH : SWIPE_MIN_WIDTH;
+      const maxWidth = trackWidth - minW;
       const deltaX = currentX - startX;
-      const newWidth = Math.min(Math.max(SWIPE_MIN_WIDTH + deltaX, SWIPE_MIN_WIDTH), trackWidth);
+      const newWidth = Math.min(Math.max(minW + deltaX, minW), trackWidth);
 
       slider.style.width = `${newWidth}px`;
 
-      const percentage = maxWidth > 0 ? (newWidth - SWIPE_MIN_WIDTH) / maxWidth : 0;
+      const percentage = maxWidth > 0 ? (newWidth - minW) / maxWidth : 0;
 
       if (newWidth < trackWidth) {
         text.style.left = `${newWidth}px`;
@@ -135,8 +142,9 @@ export function SwipeButton({
       track.parentElement?.classList.remove('swiping-collect');
 
       if (!hasConfirmed) {
-        slider.style.width = `${SWIPE_MIN_WIDTH}px`;
-        text.style.left = `${SWIPE_MIN_WIDTH}px`;
+        const minW = compact ? COMPACT_MIN_WIDTH : SWIPE_MIN_WIDTH;
+        slider.style.width = `${minW}px`;
+        text.style.left = `${minW}px`;
         startX = 0;
         currentX = 0;
       }
@@ -179,13 +187,16 @@ export function SwipeButton({
       document.removeEventListener('mousemove', mouseMoveHandler);
       document.removeEventListener('mouseup', mouseUpHandler);
     };
-  }, [disabled, isConfirmed, trackId, sliderId, textId, label, confirmedLabel, onConfirm]);
+  }, [disabled, isConfirmed, trackId, sliderId, textId, label, confirmedLabel, onConfirm, compact]);
 
   return (
-    <div className={`relative overflow-hidden rounded-lg ${className}`} style={{ minWidth: '120px' }}>
+    <div
+      className={`relative overflow-hidden rounded-lg ${className}`}
+      style={{ minWidth: compact ? '60px' : '120px', maxWidth: compact ? '60px' : undefined }}
+    >
       <div
         id={trackId}
-        className="swipe-collect-track relative w-full h-[52px] bg-slate-700/90 rounded-lg overflow-hidden border-2 border-slate-600/50 shadow-lg"
+        className={`swipe-collect-track relative w-full bg-slate-700/90 rounded-lg overflow-hidden border-2 border-slate-600/50 shadow-lg ${compact ? 'h-[26px]' : 'h-[52px]'}`}
         style={{ 
           touchAction: 'pan-x', 
           cursor: disabled ? 'not-allowed' : 'grab', 
@@ -201,18 +212,18 @@ export function SwipeButton({
         <div
           id={sliderId}
           className="swipe-collect-slider absolute left-0 top-0 h-full bg-gradient-to-r from-green-600 to-green-500 flex items-center justify-center transition-none z-20 shadow-lg"
-          style={{ width: `${SWIPE_MIN_WIDTH}px`, minWidth: `${SWIPE_MIN_WIDTH}px` }}
+          style={{ width: `${minSliderWidth}px`, minWidth: `${minSliderWidth}px` }}
         >
-          <svg className="w-6 h-6 text-white drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+          <svg className={`${compact ? 'w-4 h-4' : 'w-6 h-6'} text-white drop-shadow-lg`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
         <div
           id={textId}
-          className="swipe-collect-text absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-sm pointer-events-none z-10 px-4"
-          style={{ left: `${SWIPE_MIN_WIDTH}px` }}
+          className={`swipe-collect-text absolute inset-0 flex items-center justify-center text-slate-200 font-bold pointer-events-none z-10 ${compact ? 'px-1 text-lg' : 'px-4 text-sm'}`}
+          style={{ left: `${minSliderWidth}px` }}
         >
-          <span className="text-2xl">→</span>
+          <span className={compact ? 'text-lg' : 'text-2xl'}>→</span>
         </div>
       </div>
     </div>

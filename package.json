@@ -37,6 +37,8 @@
     "audit:dictator": "tsx scripts/audit-dictator-points.ts",
     "audit:top-ranking": "tsx scripts/audit-top-ranking.ts",
     "audit:extra-work": "tsx scripts/audit-extra-work-sessions.ts",
+    "audit:extra-work-productivity": "tsx scripts/audit-extra-work-productivity.ts",
+    "recalc:extra-work": "tsx scripts/recalculate-extra-work-verify.ts",
     "audit:art": "tsx scripts/audit-art-in-db.ts",
     "audit:db": "tsx scripts/audit-db-what-happened.ts",
     "audit:export-1c": "tsx scripts/audit-export-1c.ts",

@@ -11,6 +11,7 @@ interface UseCollectOptions {
 }
 
 const HEARTBEAT_INTERVAL = 5000; // 5 секунд
+const HEARTBEAT_FAILURES_TO_EXIT = 4; // 4 сбоя подряд (~20 сек без связи) → выход с ошибкой
 
 export function useCollect(options?: UseCollectOptions) {
   const { onClose } = options || {};
@@ -25,26 +26,41 @@ export function useCollect(options?: UseCollectOptions) {
   const { showToast, showError, showSuccess } = useToast();
   const polling = useShipmentsPolling();
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatFailuresRef = useRef(0);
+  const onConnectionLostRef = useRef<(() => void) | null>(null);
+  const connectionLostCallbackRef = useRef<(() => void) | null>(null);
 
   // Функция для запуска heartbeat
-  const startHeartbeat = useCallback((shipmentId: string) => {
-    // Останавливаем предыдущий интервал, если он есть
+  const startHeartbeat = useCallback((shipmentId: string, onConnectionLost?: () => void) => {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
     }
+    heartbeatFailuresRef.current = 0;
+    onConnectionLostRef.current = onConnectionLost ?? null;
 
-    // Отправляем первый heartbeat сразу
-    shipmentsApi.heartbeat(shipmentId).catch((error) => {
-      console.error('[useCollect] Ошибка при отправке heartbeat:', error);
-    });
+    const doHeartbeat = () => {
+      shipmentsApi
+        .heartbeat(shipmentId)
+        .then(() => {
+          heartbeatFailuresRef.current = 0;
+        })
+        .catch((error) => {
+          console.error('[useCollect] Ошибка heartbeat:', error);
+          heartbeatFailuresRef.current += 1;
+          if (heartbeatFailuresRef.current >= HEARTBEAT_FAILURES_TO_EXIT) {
+            if (heartbeatIntervalRef.current) {
+              clearInterval(heartbeatIntervalRef.current);
+              heartbeatIntervalRef.current = null;
+            }
+            onConnectionLostRef.current?.();
+            onConnectionLostRef.current = null;
+          }
+        });
+    };
 
-    // Устанавливаем интервал для периодической отправки heartbeat
-    heartbeatIntervalRef.current = setInterval(() => {
-      shipmentsApi.heartbeat(shipmentId).catch((error) => {
-        console.error('[useCollect] Ошибка при отправке heartbeat:', error);
-      });
-    }, HEARTBEAT_INTERVAL);
+    doHeartbeat();
+    heartbeatIntervalRef.current = setInterval(doHeartbeat, HEARTBEAT_INTERVAL);
   }, []);
 
   // Функция для остановки heartbeat
@@ -54,6 +70,65 @@ export function useCollect(options?: UseCollectOptions) {
       heartbeatIntervalRef.current = null;
     }
   }, []);
+
+  const closeModal = useCallback(async () => {
+    stopHeartbeat();
+
+    if (currentShipment && Object.keys(changedLocations).length > 0) {
+      try {
+        const savePromises = Object.entries(changedLocations).map(async ([lineIndexStr, location]) => {
+          const lineIndex = parseInt(lineIndexStr, 10);
+          const line = currentShipment.lines[lineIndex];
+          if (line) {
+            try {
+              const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sku: line.sku, location: location || null }),
+              });
+              if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, { status: response.status, error: errorText });
+              }
+            } catch (error) {
+              console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, error);
+            }
+          }
+        });
+        await Promise.all(savePromises);
+      } catch (error) {
+        console.error('[useCollect] Ошибка при сохранении измененных мест:', error);
+      }
+    }
+
+    if (lockedShipmentId) {
+      try {
+        await shipmentsApi.unlock(lockedShipmentId);
+      } catch (error: unknown) {
+        const msg = error != null && typeof error === 'object' && 'message' in error ? String((error as { message?: unknown }).message) : error instanceof Error ? error.message : '';
+        if (msg && msg !== 'Network error') {
+          console.error('Ошибка разблокировки:', msg);
+        }
+      } finally {
+        setLockedShipmentId(null);
+        polling?.triggerRefetch();
+      }
+    }
+    setCurrentShipment(null);
+    setChecklistState({});
+    setEditState({});
+    setRemovingItems(new Set());
+    setChangedLocations({});
+    connectionLostCallbackRef.current = null;
+
+    if (onClose) {
+      try {
+        await onClose();
+      } catch (error) {
+        console.error('Ошибка при обновлении данных после закрытия:', error);
+      }
+    }
+  }, [lockedShipmentId, onClose, stopHeartbeat, currentShipment, changedLocations, polling]);
 
   const openModal = useCallback(async (shipment: Shipment, options?: { confirmTakeOver?: boolean }) => {
     // Предотвращаем множественные открытия и повторные клики во время ожидания блокировки
@@ -149,8 +224,13 @@ export function useCollect(options?: UseCollectOptions) {
       // Устанавливаем currentShipment последним, чтобы isOpen стал true
       setCurrentShipment(actualShipment);
       
-      // Запускаем heartbeat для отслеживания активности
-      startHeartbeat(actualShipment.id);
+      // Запускаем heartbeat; при длительной потере связи — выход с ошибкой
+      const onLost = () => {
+        showError('Потеряно соединение с сервером');
+        closeModal();
+      };
+      connectionLostCallbackRef.current = onLost;
+      startHeartbeat(actualShipment.id, onLost);
     } catch (error: any) {
       console.error('[useCollect] Ошибка блокировки заказа:', error);
       const errorMessage = error?.message || 'Не удалось заблокировать заказ';
@@ -159,81 +239,7 @@ export function useCollect(options?: UseCollectOptions) {
       setIsLocking(false);
       setLockingShipmentId(null);
     }
-  }, [currentShipment, isLocking, showError, startHeartbeat]);
-
-  const closeModal = useCallback(async () => {
-    // Останавливаем heartbeat
-    stopHeartbeat();
-    
-    // ПРИНУДИТЕЛЬНО сохраняем все измененные места перед закрытием
-    if (currentShipment && Object.keys(changedLocations).length > 0) {
-      try {
-        const savePromises = Object.entries(changedLocations).map(async ([lineIndexStr, location]) => {
-          const lineIndex = parseInt(lineIndexStr, 10);
-          const line = currentShipment.lines[lineIndex];
-          if (line) {
-            try {
-              const response = await fetch(`/api/shipments/${currentShipment.id}/update-location`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  sku: line.sku,
-                  location: location || null,
-                }),
-              });
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, {
-                  status: response.status,
-                  error: errorText,
-                });
-              }
-            } catch (error) {
-              console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, error);
-            }
-          }
-        });
-        await Promise.all(savePromises);
-      } catch (error) {
-        console.error('[useCollect] Ошибка при сохранении измененных мест:', error);
-      }
-    }
-    
-    if (lockedShipmentId) {
-      try {
-        await shipmentsApi.unlock(lockedShipmentId);
-      } catch (error: unknown) {
-        const msg =
-          error != null && typeof error === 'object' && 'message' in error
-            ? String((error as { message?: unknown }).message)
-            : error instanceof Error
-              ? error.message
-              : '';
-        if (msg && msg !== 'Network error') {
-          console.error('Ошибка разблокировки:', msg);
-        }
-      } finally {
-        setLockedShipmentId(null);
-        polling?.triggerRefetch();
-      }
-    }
-    setCurrentShipment(null);
-    setChecklistState({});
-    setEditState({});
-    setRemovingItems(new Set());
-    setChangedLocations({}); // Очищаем список измененных мест
-    
-    // Обновляем данные на фронтенде после закрытия модального окна
-    if (onClose) {
-      try {
-        await onClose();
-      } catch (error) {
-        console.error('Ошибка при обновлении данных после закрытия:', error);
-      }
-    }
-  }, [lockedShipmentId, onClose, stopHeartbeat, currentShipment, changedLocations, polling]);
+  }, [currentShipment, isLocking, showError, startHeartbeat, closeModal]);
 
   const updateCollected = useCallback(async (lineIndex: number, collected: boolean) => {
     if (collected) {
@@ -682,7 +688,7 @@ export function useCollect(options?: UseCollectOptions) {
       } else if (lockedShipmentId && currentShipment) {
         // Вкладка снова видима - возобновляем heartbeat
         console.log('[useCollect] Вкладка снова видима, возобновляем heartbeat');
-        startHeartbeat(lockedShipmentId);
+        startHeartbeat(lockedShipmentId, connectionLostCallbackRef.current ?? undefined);
       }
     };
 

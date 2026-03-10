@@ -42,11 +42,14 @@ npx prisma generate
 echo "🏗️  Собираем проект..."
 npm run build
 
-# 8. Перезапуск приложения
+# 8. (Опционально) Проверка производительности доп. работы
+# npm run recalc:extra-work
+
+# 9. Перезапуск приложения
 echo "🔄 Перезапускаем приложение..."
 pm2 restart sklad-spec || pm2 start npm --name "sklad-spec" -- start
 
-# 9. Проверка статуса
+# 10. Проверка статуса
 echo "✅ Деплой завершен!"
 echo ""
 echo "📊 Статус приложения:"

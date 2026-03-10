@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import { getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ export interface ExtraWorkEntry {
   extraWorkHours: number;
   /** Баллы за доп. работу (завершённые сессии) */
   extraWorkPoints: number;
-  /** Производительность: (баллы_недели/40)*0.9 */
+  /** Производительность: (баллы за 5 раб.дней/40)*0.9 — ставка за час */
   productivity: number;
   /** Обед пользователя (настройка раз навсегда) */
   lunchSlot: string | null;
@@ -78,20 +79,31 @@ export async function GET(request: NextRequest) {
       extraWorkHoursByUser.get(s.userId)!.extraWorkHours += hours;
     }
 
-    const pointsByUser = new Map<string, number>();
     const extraWorkPointsByUser = new Map<string, number>();
     for (const r of weekRankings.allRankings) {
-      pointsByUser.set(r.userId, r.points);
       if (r.extraWorkPoints > 0) extraWorkPointsByUser.set(r.userId, r.extraWorkPoints);
     }
+
+    const allUserIds = new Set<string>();
+    for (const u of extraWorkHoursByUser.values()) allUserIds.add(u.userId);
+    for (const s of activeSessions) allUserIds.add(s.userId);
+    for (const w of allWorkers) allUserIds.add(w.id);
+
+    const productivityByUser = new Map<string, number>();
+    const now = new Date();
+    await Promise.all(
+      [...allUserIds].map(async (userId) => {
+        const rate = await getExtraWorkRatePerHour(prisma, userId, now);
+        productivityByUser.set(userId, Math.round(rate * 100) / 100);
+      })
+    );
 
     const sessionsByUser = new Map(activeSessions.map((s) => [s.userId, s]));
 
     const result: (ExtraWorkEntry & { activeSession?: object })[] = [...extraWorkHoursByUser.values()]
       .map((u) => {
-        const weekPoints = pointsByUser.get(u.userId) ?? 0;
         const extraWorkPoints = extraWorkPointsByUser.get(u.userId) ?? 0;
-        const productivity = Math.round((weekPoints / 40) * 0.9 * 100) / 100;
+        const productivity = productivityByUser.get(u.userId) ?? 0;
         const entry: ExtraWorkEntry & { activeSession?: object } = {
           ...u,
           extraWorkPoints,
@@ -125,7 +137,7 @@ export async function GET(request: NextRequest) {
           userName: sess.user.name,
           extraWorkHours: 0,
           extraWorkPoints: extraWorkPointsByUser.get(sess.userId) ?? 0,
-          productivity: Math.round(((pointsByUser.get(sess.userId) ?? 0) / 40) * 0.9 * 100) / 100,
+          productivity: productivityByUser.get(sess.userId) ?? 0,
           lunchSlot: lunchSlotByUser.get(sess.userId) ?? null,
           activeSession: {
             id: sess.id,
@@ -148,7 +160,7 @@ export async function GET(request: NextRequest) {
           userName: w.name,
           extraWorkHours: 0,
           extraWorkPoints: extraWorkPointsByUser.get(w.id) ?? 0,
-          productivity: Math.round(((pointsByUser.get(w.id) ?? 0) / 40) * 0.9 * 100) / 100,
+          productivity: productivityByUser.get(w.id) ?? 0,
           lunchSlot: lunchSlotByUser.get(w.id) ?? null,
         });
       }

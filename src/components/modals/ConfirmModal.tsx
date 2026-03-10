@@ -563,9 +563,8 @@ export function ConfirmModal({
                             )}
                           </div>
                         </div>
-                        {/* Действия - очень узкие кнопки */}
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {/* Количество рядом с кнопкой Р - увеличенный шрифт */}
+                        {/* Действия - узкие кнопки (в 2 раза уже для свайп/дабл-клик) */}
+                        <div className="flex items-center gap-0.5 flex-shrink-0">
                           <span className={`text-[12px] md:text-[13px] font-bold whitespace-nowrap ${state.collectedQty === line.qty ? 'text-green-400' : state.collectedQty > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
                             {state.collectedQty} {line.uom || 'шт'}
                           </span>
@@ -573,7 +572,7 @@ export function ConfirmModal({
                           {hasShortage && !isZero && <span className="text-yellow-500 text-[9px]">⚠</span>}
                           <button
                             onClick={() => onStartEditQty(index)}
-                            className="px-1 py-0.5 bg-blue-600/90 hover:bg-blue-500 text-white text-[8px] font-semibold rounded transition-all"
+                            className="px-0.5 py-0.5 min-w-[20px] bg-blue-600/90 hover:bg-blue-500 text-white text-[7px] font-semibold rounded transition-all"
                             title="Редактировать"
                           >
                             Р
@@ -584,7 +583,7 @@ export function ConfirmModal({
                                 onConfirm={() => onConfirmItem(index)}
                                 label="✓"
                                 pendingLabel="Ещё"
-                                className="flex-shrink-0 px-1 py-0.5 text-[8px] min-w-0"
+                                className="flex-shrink-0 px-0.5 py-0.5 min-w-[28px] text-[7px] rounded"
                               />
                             ) : (
                               <SwipeButton
@@ -595,6 +594,7 @@ export function ConfirmModal({
                                 label="→"
                                 confirmedLabel="✓"
                                 className="flex-shrink-0"
+                                compact
                               />
                             )
                           )}
