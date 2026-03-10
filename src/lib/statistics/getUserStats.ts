@@ -227,7 +227,9 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
     const t = s.task as { dictatorId?: string; checkerId?: string } | undefined;
     return t?.dictatorId === user.id && t?.checkerId === t.dictatorId;
   });
-  const collectorOnlyStats = collectorStats.filter((s) => (s.task as { collectorId?: string })?.collectorId === user.id);
+  // collectorStats уже отфильтрованы по userId=user.id и roleType='collector' — все записи относятся к этому пользователю как сборщику.
+  // Доп. фильтр task.collectorId исключал записи при null/несовпадении.
+  const collectorOnlyStats = collectorStats;
   const dictatorFromCollector = collectorStats.filter((s) => (s.task as { dictatorId?: string })?.dictatorId === user.id);
   const dictatorOnlyStats = [...dictatorStats, ...dictatorFromChecker, ...dictatorFromCollector, ...dictatorSelfCheck];
 

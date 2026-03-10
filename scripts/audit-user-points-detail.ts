@@ -3,6 +3,7 @@
  * Расписывает каждую запись: откуда баллы, формула, ожидаемое vs факт.
  *
  * Использование: npx tsx scripts/audit-user-points-detail.ts "Игорь"
+ *               npx tsx scripts/audit-user-points-detail.ts "Игорь" --today
  *               npx tsx scripts/audit-user-points-detail.ts "Игорь" --month
  */
 
@@ -30,10 +31,11 @@ const prisma = new PrismaClient({
 async function main() {
   const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
   const userName = args[0] || 'Alexandr';
+  const useToday = process.argv.includes('--today');
   const useMonth = process.argv.includes('--month');
-
-  const { startDate, endDate } = useMonth ? getStatisticsDateRange('month') : getStatisticsDateRange('week');
-  const periodLabel = useMonth ? 'месяц' : 'неделя';
+  const period: 'today' | 'week' | 'month' = useToday ? 'today' : useMonth ? 'month' : 'week';
+  const { startDate, endDate } = getStatisticsDateRange(period);
+  const periodLabel = period === 'today' ? 'день' : period === 'month' ? 'месяц' : 'неделя';
 
   const user = await prisma.user.findFirst({
     where: { name: { contains: userName } },

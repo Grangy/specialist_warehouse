@@ -532,12 +532,12 @@ export default function TopPage() {
                               <span className="text-slate-300 font-medium">= {(expandedStats.collector.totalPoints + expandedStats.checker.totalPoints + (expandedStats.dictator?.totalPoints ?? 0) + (expandedStats.extraWorkPoints ?? 0)).toFixed(2)} баллов</span>
                             </div>
 
-                            {expandedStats.collector.tasks.length > 0 && (
-                              <div>
-                                <div className="flex items-center gap-1.5 text-blue-400/90 font-medium mb-1.5">
-                                  <Package className="w-3.5 h-3.5" />
-                                  Сборка
-                                </div>
+                            <div>
+                              <div className="flex items-center gap-1.5 text-blue-400/90 font-medium mb-1.5">
+                                <Package className="w-3.5 h-3.5" />
+                                Сборка ({expandedStats.collector.totalTasks} зак.)
+                              </div>
+                              {expandedStats.collector.tasks.length > 0 ? (
                                 <div className="space-y-1 max-h-32 overflow-y-auto">
                                   {expandedStats.collector.tasks.slice(0, 15).map((t, i) => (
                                     <div key={i} className="flex justify-between gap-2 text-xs text-slate-400">
@@ -550,8 +550,10 @@ export default function TopPage() {
                                     <div className="text-xs text-slate-500">...и ещё {expandedStats.collector.tasks.length - 15}</div>
                                   )}
                                 </div>
-                              </div>
-                            )}
+                              ) : (
+                                <div className="text-xs text-slate-500 py-1">Нет заданий как сборщик</div>
+                              )}
+                            </div>
 
                             {expandedStats.checker.tasks.length > 0 && (
                               <div>
