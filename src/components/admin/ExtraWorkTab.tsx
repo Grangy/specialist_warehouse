@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight, History, Plus, Minus } from 'lucide-react';
+import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight, History } from 'lucide-react';
 import ExtraWorkHistoryTab from './ExtraWorkHistoryTab';
 
 interface ActiveSession {
@@ -71,8 +71,6 @@ export default function ExtraWorkTab() {
   const [stoppingSessionId, setStoppingSessionId] = useState<string | null>(null);
   const [cancelingLunchId, setCancelingLunchId] = useState<string | null>(null);
   const [showAssignModal, setShowAssignModal] = useState<{ userId: string; userName: string } | null>(null);
-  const [showAdjustModal, setShowAdjustModal] = useState<{ userId: string; userName: string; add?: boolean } | null>(null);
-  const [adjustingPoints, setAdjustingPoints] = useState(false);
   const [savingLunchUserId, setSavingLunchUserId] = useState<string | null>(null);
   const [hiddenUserIds, setHiddenUserIds] = useState<Set<string>>(new Set());
   const [togglingHiddenUserId, setTogglingHiddenUserId] = useState<string | null>(null);
@@ -218,25 +216,6 @@ export default function ExtraWorkTab() {
       alert(e instanceof Error ? e.message : 'Ошибка');
     } finally {
       setSavingLunchUserId(null);
-    }
-  };
-
-  const handleAdjustPoints = async (userId: string, points: number, password: string) => {
-    setAdjustingPoints(true);
-    try {
-      const res = await fetch('/api/admin/extra-work/adjust-points', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, points, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка');
-      setShowAdjustModal(null);
-      await load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Ошибка');
-    } finally {
-      setAdjustingPoints(false);
     }
   };
 
@@ -396,29 +375,7 @@ export default function ExtraWorkTab() {
                       )}
                     </td>
                     <td className="py-3 pr-4 text-slate-300">{formatHours(d.extraWorkHours)}</td>
-                    <td className="py-3 pr-4">
-                      <span className="text-amber-400">{(d.extraWorkPoints ?? 0).toFixed(1)}</span>
-                      {canAssign && (
-                        <span className="ml-2 inline-flex gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => setShowAdjustModal({ userId: d.userId, userName: d.userName, add: true })}
-                            title="Добавить баллы"
-                            className="p-1 rounded bg-teal-600/60 hover:bg-teal-500 text-white"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowAdjustModal({ userId: d.userId, userName: d.userName, add: false })}
-                            title="Снять баллы"
-                            className="p-1 rounded bg-red-600/60 hover:bg-red-500 text-white"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                        </span>
-                      )}
-                    </td>
+                    <td className="py-3 pr-4 text-amber-400">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
                     <td className="py-3 pr-4">
                       {canAssign ? (
                         <select
@@ -537,29 +494,7 @@ export default function ExtraWorkTab() {
                             )}
                           </td>
                           <td className="py-3 pr-4 text-slate-500">{formatHours(d.extraWorkHours)}</td>
-                          <td className="py-3 pr-4">
-                            <span className="text-amber-500/80">{(d.extraWorkPoints ?? 0).toFixed(1)}</span>
-                            {canAssign && (
-                              <span className="ml-2 inline-flex gap-0.5">
-                                <button
-                                  type="button"
-                                  onClick={() => setShowAdjustModal({ userId: d.userId, userName: d.userName, add: true })}
-                                  title="Добавить баллы"
-                                  className="p-1 rounded bg-teal-600/60 hover:bg-teal-500 text-white"
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowAdjustModal({ userId: d.userId, userName: d.userName, add: false })}
-                                  title="Снять баллы"
-                                  className="p-1 rounded bg-red-600/60 hover:bg-red-500 text-white"
-                                >
-                                  <Minus className="w-3 h-3" />
-                                </button>
-                              </span>
-                            )}
-                          </td>
+                          <td className="py-3 pr-4 text-amber-500/80">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
                           <td className="py-3 pr-4">
                             {canAssign ? (
                               <select
@@ -661,16 +596,6 @@ export default function ExtraWorkTab() {
         />
       )}
 
-      {/* Модалка «Начислить/снять баллы» */}
-      {showAdjustModal && (
-        <AdjustPointsModal
-          userName={showAdjustModal.userName}
-          add={showAdjustModal.add ?? true}
-          onClose={() => setShowAdjustModal(null)}
-          onConfirm={(points, password) => handleAdjustPoints(showAdjustModal.userId, points, password)}
-          isSubmitting={adjustingPoints}
-        />
-      )}
     </div>
   );
 }
@@ -681,79 +606,6 @@ const COMPLETION_TYPES = [
   { value: 'manual' as const, label: 'С кнопкой «Готово» (пользователь завершает)' },
   { value: 'timer' as const, label: 'Только по времени (автозавершение)' },
 ];
-
-function AdjustPointsModal({
-  userName,
-  add,
-  onClose,
-  onConfirm,
-  isSubmitting,
-}: {
-  userName: string;
-  add: boolean;
-  onClose: () => void;
-  onConfirm: (points: number, password: string) => void;
-  isSubmitting: boolean;
-}) {
-  const [pointsInput, setPointsInput] = useState('1');
-  const [password, setPassword] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const raw = parseFloat(pointsInput.replace(',', '.'));
-    if (!Number.isFinite(raw) || raw === 0) {
-      alert('Введите ненулевое число баллов');
-      return;
-    }
-    if (!password.trim()) {
-      alert('Введите пароль');
-      return;
-    }
-    const pts = add ? Math.abs(raw) : -Math.abs(raw);
-    onConfirm(pts, password);
-  };
-
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
-      <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 max-w-sm w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold text-slate-100 mb-1">{add ? 'Добавить баллы' : 'Снять баллы'}</h3>
-        <p className="text-sm text-slate-400 mb-4">{userName}</p>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Баллы</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder={add ? 'Например: 5' : 'Например: 3'}
-              value={pointsInput}
-              onChange={(e) => setPointsInput(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-slate-700 border border-slate-600 text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500"
-            />
-            <p className="text-xs text-slate-500 mt-1">Положительное — добавить, отрицательное — снять</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Пароль</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Пароль для подтверждения"
-              className="w-full px-3 py-2 rounded-lg bg-slate-700 border border-slate-600 text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500"
-            />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-200">
-              Отмена
-            </button>
-            <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-              {isSubmitting ? '...' : add ? 'Добавить' : 'Снять'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 function AssignExtraWorkModal({
   userName,

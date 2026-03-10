@@ -73,7 +73,7 @@ export async function aggregateRankings(
     ...taskWhere,
   };
 
-  const [collectorByCompleted, collectorByConfirmed, checkerTaskStats, checkerCollectorStats, dictatorCollectorStats, dictatorRoleStats] = await Promise.all([
+  const [collectorByCompleted, collectorByConfirmed, checkerTaskStats, checkerCollectorStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, activeSessions, manualAdjustmentsSetting] = await Promise.all([
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: completedWhere },
       include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true } } },
@@ -111,6 +111,18 @@ export async function aggregateRankings(
       },
       include: { user: { select: { id: true, name: true, role: true } }, task: { select: { dictatorId: true } } },
     }),
+    prisma.extraWorkSession.findMany({
+      where: {
+        status: 'stopped',
+        stoppedAt: { gte: startDate, lte: endDate },
+      },
+      select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, user: { select: { id: true, name: true, role: true } } },
+    }),
+    prisma.extraWorkSession.findMany({
+      where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+      include: { user: { select: { id: true, name: true, role: true } } },
+    }),
+    prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
   ]);
 
   const collectorMerged = [
@@ -173,14 +185,7 @@ export async function aggregateRankings(
     return allMap.get(user.id)!;
   }
 
-  // Баллы за доп. работу: ставка = (ср.баллов за 5 раб.дней / 40) × 0.9 за час
-  const extraWorkSessions = await prisma.extraWorkSession.findMany({
-    where: {
-      status: 'stopped',
-      stoppedAt: { gte: startDate, lte: endDate },
-    },
-    select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, user: { select: { id: true, name: true, role: true } } },
-  });
+  // Баллы за доп. работу: остановленные сессии
   for (const sess of extraWorkSessions) {
     const beforeDate = sess.stoppedAt ?? new Date();
     const rate = await getExtraWorkRatePerHour(prisma, sess.userId, beforeDate);
@@ -190,6 +195,47 @@ export async function aggregateRankings(
     const agg = ensureAgg(sess.user);
     agg.extraWorkPoints += pts;
     agg.points += pts;
+  }
+
+  // Активные сессии (real-time)
+  const now = new Date();
+  for (const sess of activeSessions) {
+    let currentElapsedSec = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
+    if (sess.status === 'running') {
+      const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
+      const addSec = Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
+      currentElapsedSec += addSec;
+    }
+    const rate = await getExtraWorkRatePerHour(prisma, sess.userId, now);
+    const dayCoef = await getWeekdayCoefficientForDate(prisma, now);
+    const activePts = Math.max(0, calculateExtraWorkPointsFromRate(currentElapsedSec, rate, dayCoef));
+    const agg = ensureAgg(sess.user);
+    agg.extraWorkPoints += activePts;
+    agg.points += activePts;
+  }
+
+  // Ручные корректировки
+  const manualAdjustments: Record<string, number> = (() => {
+    try {
+      return manualAdjustmentsSetting?.value ? (JSON.parse(manualAdjustmentsSetting.value) as Record<string, number>) : {};
+    } catch {
+      return {};
+    }
+  })();
+  const missingUserIds = Object.keys(manualAdjustments).filter((uid) => !allMap.has(uid));
+  if (missingUserIds.length > 0) {
+    const missingUsers = await prisma.user.findMany({
+      where: { id: { in: missingUserIds } },
+      select: { id: true, name: true, role: true },
+    });
+    for (const u of missingUsers) ensureAgg(u);
+  }
+  for (const [uid, delta] of Object.entries(manualAdjustments)) {
+    const agg = allMap.get(uid);
+    if (agg) {
+      agg.extraWorkPoints = Math.max(0, agg.extraWorkPoints + delta);
+      agg.points = Math.max(0, agg.points + delta);
+    }
   }
 
   for (const stat of collectorTaskStats) {

@@ -166,6 +166,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState('');
+  const [canAdjustPoints, setCanAdjustPoints] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -210,6 +211,19 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
+
+  useEffect(() => {
+    fetch('/api/auth/session', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((s) => {
+        const user = s?.user;
+        if (user) {
+          const ok = user.role === 'admin' || user.role === 'checker';
+          setCanAdjustPoints(!!ok);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Автоматическое обновление рейтинга "сегодня" каждые 30 секунд
   useEffect(() => {
@@ -608,6 +622,8 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
         userId={selectedUserId}
         userName={selectedUserName}
         period={period}
+        canAdjustPoints={canAdjustPoints}
+        onAdjustSuccess={loadData}
         onClose={() => {
           setSelectedUserId(null);
           setSelectedUserName('');

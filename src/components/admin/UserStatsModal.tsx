@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Package, Clock, CheckCircle, User, Calendar, BarChart3, AlertCircle, Mic } from 'lucide-react';
+import { X, Package, Clock, CheckCircle, User, Calendar, BarChart3, AlertCircle, Mic, Briefcase, Plus, Minus } from 'lucide-react';
 
 const PERIOD_LABELS: Record<'today' | 'week' | 'month', string> = {
   today: 'День (с утра)',
@@ -10,6 +10,7 @@ const PERIOD_LABELS: Record<'today' | 'week' | 'month', string> = {
 };
 
 interface UserStatsData {
+  extraWorkPoints?: number;
   user: {
     id: string;
     name: string;
@@ -116,14 +117,20 @@ interface UserStatsModalProps {
   period?: 'today' | 'week' | 'month';
   /** Использовать публичный API (без авторизации, с rate limit) — для страницы /top */
   usePublicApi?: boolean;
+  /** Может редактировать доп.баллы (админ/checker) */
+  canAdjustPoints?: boolean;
+  /** Колбэк после успешного изменения баллов (перезагрузка данных) */
+  onAdjustSuccess?: () => void;
   onClose: () => void;
 }
 
-export default function UserStatsModal({ userId, userName, period, usePublicApi = false, onClose }: UserStatsModalProps) {
+export default function UserStatsModal({ userId, userName, period, usePublicApi = false, canAdjustPoints = false, onAdjustSuccess, onClose }: UserStatsModalProps) {
   const [data, setData] = useState<UserStatsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'checker' | 'dictator' | 'collector' | 'daily' | 'monthly'>('checker');
+  const [showAdjustModal, setShowAdjustModal] = useState<{ add: boolean } | null>(null);
+  const [adjustingPoints, setAdjustingPoints] = useState(false);
   const usePublicApiRef = useRef(usePublicApi);
   usePublicApiRef.current = usePublicApi;
 
@@ -242,6 +249,34 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
           </button>
         </div>
 
+        {showAdjustModal && userId && (
+          <AdjustPointsModal
+            userName={userName}
+            add={showAdjustModal.add}
+            onClose={() => setShowAdjustModal(null)}
+            onConfirm={async (points, password) => {
+              setAdjustingPoints(true);
+              try {
+                const res = await fetch('/api/admin/extra-work/adjust-points', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId, points, password }),
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d.error || 'Ошибка');
+                setShowAdjustModal(null);
+                onAdjustSuccess?.();
+                loadData();
+              } catch (e) {
+                alert(e instanceof Error ? e.message : 'Ошибка');
+              } finally {
+                setAdjustingPoints(false);
+              }
+            }}
+            isSubmitting={adjustingPoints}
+          />
+        )}
+
         {/* Контент — скролл по зоне вкладок */}
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6" style={{ 
@@ -307,6 +342,37 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                     </div>
                   )}
                 </div>
+                {(period && ((data.extraWorkPoints ?? 0) > 0 || canAdjustPoints)) && (
+                  <div className="bg-gradient-to-br from-amber-600/20 to-amber-500/10 rounded-lg p-3 sm:p-4 border border-amber-500/30">
+                    <div className="text-xs sm:text-sm text-slate-400 mb-0.5 sm:mb-1 flex items-center gap-1">
+                      <Briefcase className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                      <span className="truncate">Доп.работа</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-lg sm:text-2xl font-bold text-slate-100">{(data.extraWorkPoints ?? 0).toFixed(2)}</div>
+                      {canAdjustPoints && userId && (
+                        <span className="inline-flex gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setShowAdjustModal({ add: true })}
+                            title="Добавить баллы"
+                            className="p-1 rounded bg-teal-600/60 hover:bg-teal-500 text-white"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowAdjustModal({ add: false })}
+                            title="Снять баллы"
+                            className="p-1 rounded bg-red-600/60 hover:bg-red-500 text-white"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Вкладки — горизонтальный скролл на мобиле */}
@@ -625,6 +691,78 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
           )}
         </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AdjustPointsModal({
+  userName,
+  add,
+  onClose,
+  onConfirm,
+  isSubmitting,
+}: {
+  userName: string;
+  add: boolean;
+  onClose: () => void;
+  onConfirm: (points: number, password: string) => void;
+  isSubmitting: boolean;
+}) {
+  const [pointsInput, setPointsInput] = useState('1');
+  const [password, setPassword] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const raw = parseFloat(pointsInput.replace(',', '.'));
+    if (!Number.isFinite(raw) || raw === 0) {
+      alert('Введите ненулевое число баллов');
+      return;
+    }
+    if (!password.trim()) {
+      alert('Введите пароль');
+      return;
+    }
+    const pts = add ? Math.abs(raw) : -Math.abs(raw);
+    onConfirm(pts, password);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+      <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 max-w-sm w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-bold text-slate-100 mb-1">{add ? 'Добавить баллы' : 'Снять баллы'}</h3>
+        <p className="text-sm text-slate-400 mb-4">{userName}</p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Баллы</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder={add ? 'Например: 5' : 'Например: 3'}
+              value={pointsInput}
+              onChange={(e) => setPointsInput(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-slate-700 border border-slate-600 text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Пароль</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Пароль для подтверждения"
+              className="w-full px-3 py-2 rounded-lg bg-slate-700 border border-slate-600 text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500"
+            />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-200">
+              Отмена
+            </button>
+            <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-medium disabled:opacity-50">
+              {isSubmitting ? '...' : add ? 'Добавить' : 'Снять'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

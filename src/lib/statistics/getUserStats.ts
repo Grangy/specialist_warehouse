@@ -13,6 +13,11 @@ import {
   CHECK_WITH_DICTATOR_POINTS_PER_POS,
 } from '@/lib/ranking/pointsRates';
 import { getPointsRates } from '@/lib/ranking/getPointsRates';
+import {
+  getExtraWorkRatePerHour,
+  calculateExtraWorkPointsFromRate,
+} from '@/lib/ranking/extraWorkPoints';
+import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 
 export async function getUserStats(userId: string, period?: 'today' | 'week' | 'month') {
   const dateRange = period ? getStatisticsDateRange(period) : null;
@@ -164,6 +169,51 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
     take: 12,
   });
 
+  // Баллы за доп. работу за период
+  let extraWorkPoints = 0;
+  if (dateRange) {
+    const [stoppedSessions, activeSessions, manualSetting] = await Promise.all([
+      prisma.extraWorkSession.findMany({
+        where: {
+          userId: user.id,
+          status: 'stopped',
+          stoppedAt: { gte: dateRange.startDate, lte: dateRange.endDate },
+        },
+        select: { elapsedSecBeforeLunch: true, stoppedAt: true },
+      }),
+      prisma.extraWorkSession.findMany({
+        where: {
+          userId: user.id,
+          status: { in: ['running', 'lunch', 'lunch_scheduled'] },
+          stoppedAt: null,
+        },
+      }),
+      prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
+    ]);
+    for (const s of stoppedSessions) {
+      const rate = await getExtraWorkRatePerHour(prisma, user.id, s.stoppedAt ?? new Date());
+      const dayCoef = await getWeekdayCoefficientForDate(prisma, s.stoppedAt ?? new Date());
+      extraWorkPoints += Math.max(0, calculateExtraWorkPointsFromRate(s.elapsedSecBeforeLunch ?? 0, rate, dayCoef));
+    }
+    const now = new Date();
+    for (const sess of activeSessions) {
+      let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
+      if (sess.status === 'running') {
+        const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
+        elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
+      }
+      const rate = await getExtraWorkRatePerHour(prisma, user.id, now);
+      const dayCoef = await getWeekdayCoefficientForDate(prisma, now);
+      extraWorkPoints += Math.max(0, calculateExtraWorkPointsFromRate(elapsed, rate, dayCoef));
+    }
+    try {
+      const adj = manualSetting?.value ? (JSON.parse(manualSetting.value) as Record<string, number>) : {};
+      extraWorkPoints = Math.max(0, extraWorkPoints + (adj[user.id] ?? 0));
+    } catch {
+      // ignore
+    }
+  }
+
   const rates = await getPointsRates();
   const checkerOnlyStats = checkerStats.filter((s) => s.task?.checkerId === user.id);
   // Диктовка — только когда НЕ самопроверка (checkerId !== dictatorId), иначе дублируем баллы
@@ -189,6 +239,7 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
 
   return {
     period: period ?? null,
+    extraWorkPoints,
     user: {
       id: user.id,
       name: user.name,

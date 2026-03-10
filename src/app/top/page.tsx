@@ -61,6 +61,7 @@ export default function TopPage() {
   const [showErrorsBreakdown, setShowErrorsBreakdown] = useState(false);
   const [expandedErrorRow, setExpandedErrorRow] = useState<number | null>(null);
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
+  const [canAdjustPoints, setCanAdjustPoints] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -91,7 +92,19 @@ export default function TopPage() {
 
   useEffect(() => {
     load();
+    const id = setInterval(load, 45000); // Обновление каждые 45 сек (доп.баллы, активные сессии)
+    return () => clearInterval(id);
   }, [load]);
+
+  useEffect(() => {
+    fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json())
+      .then((s) => {
+        const user = s?.user;
+        setCanAdjustPoints(!!(user && (user.role === 'admin' || user.role === 'checker')));
+      })
+      .catch(() => {});
+  }, []);
 
   const formatPoints = (p: number) => Math.round(p * 100) / 100;
   const formatPPH = (pph: number | null) =>
@@ -458,7 +471,9 @@ export default function TopPage() {
           userId={selectedUserId}
           userName={selectedUserName}
           period={period}
-          usePublicApi={true}
+          usePublicApi={!canAdjustPoints}
+          canAdjustPoints={canAdjustPoints}
+          onAdjustSuccess={load}
           onClose={() => {
             setSelectedUserId(null);
             setSelectedUserName('');
