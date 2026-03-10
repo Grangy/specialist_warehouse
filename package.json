@@ -19,6 +19,7 @@
     "stats:audit-all": "tsx scripts/audit-points-week.ts --all",
     "stats:audit-spot-check": "tsx scripts/audit-points-spot-check.ts",
     "stats:audit-user-points": "tsx scripts/audit-user-points-detail.ts",
+    "audit:igor-ernes": "tsx scripts/audit-igor-ernes-collector.ts",
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
