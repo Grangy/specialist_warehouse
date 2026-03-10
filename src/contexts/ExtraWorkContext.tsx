@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useToastContext } from '@/contexts/ToastContext';
 
+const EXTRA_WORK_SOUND_URL = '/music/you-will-work.wav';
+
 export interface ExtraWorkSession {
   id: string;
   status: string;
@@ -47,6 +49,13 @@ export function ExtraWorkProvider({ children }: { children: React.ReactNode }) {
           if (isNewSession && startedRecently) {
             setPopupOpen(true);
             showToast('Дополнительная работа начата', 'success', 4500);
+            try {
+              const audio = new Audio(EXTRA_WORK_SOUND_URL);
+              audio.volume = 1;
+              audio.play().catch(() => {});
+            } catch {
+              // ignore sound errors
+            }
           }
         } else {
           setSession(null);

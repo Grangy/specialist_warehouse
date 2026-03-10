@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     const { startDate, endDate } = getStatisticsDateRange('week');
 
-    const [stoppedSessions, weekRankings, activeSessions, allUserSettings, allWorkers] = await Promise.all([
+    const [stoppedSessions, weekRankings, activeSessions, allUserSettings, allWorkers, listConfigSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
         where: {
           status: 'stopped',
@@ -53,7 +53,16 @@ export async function GET(request: NextRequest) {
         where: { role: { in: ['collector', 'checker', 'admin'] } },
         select: { id: true, name: true },
       }),
+      prisma.systemSettings.findUnique({ where: { key: 'extra_work_list_config' } }),
     ]);
+
+    const hiddenUserIds = new Set<string>();
+    try {
+      const config = listConfigSetting?.value ? (JSON.parse(listConfigSetting.value) as { hiddenUserIds?: string[] }) : {};
+      if (Array.isArray(config.hiddenUserIds)) config.hiddenUserIds.forEach((id: string) => hiddenUserIds.add(id));
+    } catch {
+      // ignore
+    }
 
     const lunchSlotByUser = new Map<string, string | null>();
     for (const us of allUserSettings) {
@@ -125,7 +134,7 @@ export async function GET(request: NextRequest) {
         }
         return entry;
       })
-      .sort((a, b) => b.extraWorkHours - a.extraWorkHours);
+      .sort((a, b) => a.extraWorkHours - b.extraWorkHours); // по времени доп.работы: меньше → больше
 
     const resultWithActive = [...result];
     const seenIds = new Set(resultWithActive.map((r) => r.userId));
@@ -166,7 +175,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ entries: resultWithActive, activeSessions: activeSessions.map((s) => ({ id: s.id, userId: s.userId, userName: s.user.name, status: s.status, startedAt: s.startedAt, lunchSlot: s.lunchSlot, lunchScheduledFor: s.lunchScheduledFor, lunchEndsAt: s.lunchEndsAt })) });
+    // Скрытые пользователи — внизу; среди видимых и среди скрытых — сортировка по часам (меньше → больше)
+    resultWithActive.sort((a, b) => {
+      const aHidden = hiddenUserIds.has(a.userId);
+      const bHidden = hiddenUserIds.has(b.userId);
+      if (aHidden !== bHidden) return aHidden ? 1 : -1;
+      return a.extraWorkHours - b.extraWorkHours;
+    });
+
+    return NextResponse.json({ entries: resultWithActive, hiddenUserIds: [...hiddenUserIds], activeSessions: activeSessions.map((s) => ({ id: s.id, userId: s.userId, userName: s.user.name, status: s.status, startedAt: s.startedAt, lunchSlot: s.lunchSlot, lunchScheduledFor: s.lunchScheduledFor, lunchEndsAt: s.lunchEndsAt })) });
   } catch (e) {
     console.error('[extra-work]', e);
     return NextResponse.json(

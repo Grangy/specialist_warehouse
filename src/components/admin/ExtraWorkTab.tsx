@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { Briefcase, RefreshCw, Clock, Play, Square, Utensils } from 'lucide-react';
+import { Briefcase, RefreshCw, Clock, Play, Square, Utensils, EyeOff, Eye } from 'lucide-react';
 
 interface ActiveSession {
   id: string;
@@ -65,6 +65,8 @@ export default function ExtraWorkTab() {
   const [cancelingLunchId, setCancelingLunchId] = useState<string | null>(null);
   const [showAssignModal, setShowAssignModal] = useState<{ userId: string; userName: string } | null>(null);
   const [savingLunchUserId, setSavingLunchUserId] = useState<string | null>(null);
+  const [hiddenUserIds, setHiddenUserIds] = useState<Set<string>>(new Set());
+  const [togglingHiddenUserId, setTogglingHiddenUserId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -78,6 +80,7 @@ export default function ExtraWorkTab() {
       const json = await res.json();
       setData(json.entries ?? json);
       setActiveSessions(json.activeSessions ?? []);
+      setHiddenUserIds(new Set(json.hiddenUserIds ?? []));
       if (sessionRes.ok) {
         const s = await sessionRes.json();
         const user = s?.user;
@@ -159,6 +162,26 @@ export default function ExtraWorkTab() {
       alert(e instanceof Error ? e.message : 'Ошибка');
     } finally {
       setCancelingLunchId(null);
+    }
+  };
+
+  const handleToggleHidden = async (userId: string) => {
+    const currentlyHidden = hiddenUserIds.has(userId);
+    setTogglingHiddenUserId(userId);
+    try {
+      const res = await fetch('/api/admin/extra-work/list-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, hidden: !currentlyHidden }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка');
+      setHiddenUserIds(new Set(data.hiddenUserIds ?? []));
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Ошибка');
+    } finally {
+      setTogglingHiddenUserId(null);
     }
   };
 
@@ -338,6 +361,22 @@ export default function ExtraWorkTab() {
                     </td>
                     <td className="py-3">
                       <div className="flex flex-wrap gap-2">
+                        {canAssign && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleHidden(d.userId)}
+                            disabled={!!togglingHiddenUserId}
+                            title={hiddenUserIds.has(d.userId) ? 'Показать в списке' : 'Скрыть (вниз)'}
+                            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 ${
+                              hiddenUserIds.has(d.userId)
+                                ? 'bg-slate-600 hover:bg-slate-500 text-slate-300'
+                                : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                            }`}
+                          >
+                            {hiddenUserIds.has(d.userId) ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            {hiddenUserIds.has(d.userId) ? 'Показать' : 'Скрыть'}
+                          </button>
+                        )}
                         {canAssign && !isActive && (
                           <button
                             type="button"
