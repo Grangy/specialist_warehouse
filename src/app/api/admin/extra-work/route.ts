@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
-import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import { getStatisticsDateRange, isLunchTimeMoscow } from '@/lib/utils/moscowDate';
 import { getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 
@@ -61,18 +61,27 @@ export async function GET(request: NextRequest) {
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_list_config' } }),
     ]);
 
-    // Автовозобновление после обеда: если lunchEndsAt прошло — убираем обед в админке
+    // Строгая проверка: снимаем «Обед»/«Обед запланирован», если НЕ время обеда по Москве (13:00–14:59)
     const nowCheck = new Date();
+    const notLunchTime = !isLunchTimeMoscow(nowCheck);
     for (const sess of activeSessionsRaw) {
-      if (sess.status === 'lunch' && sess.lunchEndsAt && nowCheck.getTime() >= sess.lunchEndsAt.getTime()) {
+      if (sess.status === 'lunch') {
+        const lunchEndsPassed = sess.lunchEndsAt && nowCheck.getTime() >= sess.lunchEndsAt.getTime();
+        if (lunchEndsPassed || notLunchTime) {
+          await prisma.extraWorkSession.update({
+            where: { id: sess.id },
+            data: {
+              status: 'running',
+              postLunchStartedAt: sess.lunchEndsAt ?? nowCheck,
+              lunchStartedAt: null,
+              lunchEndsAt: null,
+            },
+          });
+        }
+      } else if (sess.status === 'lunch_scheduled' && notLunchTime) {
         await prisma.extraWorkSession.update({
           where: { id: sess.id },
-          data: {
-            status: 'running',
-            postLunchStartedAt: sess.lunchEndsAt,
-            lunchStartedAt: null,
-            lunchEndsAt: null,
-          },
+          data: { status: 'running', lunchSlot: null, lunchScheduledFor: null },
         });
       }
     }

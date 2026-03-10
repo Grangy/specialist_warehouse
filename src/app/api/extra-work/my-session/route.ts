@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { isLunchTimeMoscow } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,15 +17,17 @@ export async function GET(request: NextRequest) {
       orderBy: { startedAt: 'desc' },
     });
 
-    // Автовозобновление после обеда, если время lunchEndsAt уже прошло (на сервере)
-    if (session?.status === 'lunch' && session.lunchEndsAt) {
-      const now = new Date();
-      if (now.getTime() >= session.lunchEndsAt.getTime()) {
+    // Строгая проверка: снимаем «Обед»/«Обед запланирован», если не время обеда по Москве (13:00–14:59)
+    const now = new Date();
+    const notLunchTime = !isLunchTimeMoscow(now);
+    if (session?.status === 'lunch') {
+      const lunchEndsPassed = session.lunchEndsAt && now.getTime() >= session.lunchEndsAt.getTime();
+      if (lunchEndsPassed || notLunchTime) {
         await prisma.extraWorkSession.update({
           where: { id: session.id },
           data: {
             status: 'running',
-            postLunchStartedAt: session.lunchEndsAt,
+            postLunchStartedAt: session.lunchEndsAt ?? now,
             lunchStartedAt: null,
             lunchEndsAt: null,
           },
@@ -34,6 +37,15 @@ export async function GET(request: NextRequest) {
           orderBy: { startedAt: 'desc' },
         });
       }
+    } else if (session?.status === 'lunch_scheduled' && notLunchTime) {
+      await prisma.extraWorkSession.update({
+        where: { id: session.id },
+        data: { status: 'running', lunchSlot: null, lunchScheduledFor: null },
+      });
+      session = await prisma.extraWorkSession.findFirst({
+        where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+        orderBy: { startedAt: 'desc' },
+      });
     }
 
     return NextResponse.json(session ?? null);

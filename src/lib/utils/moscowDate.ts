@@ -122,6 +122,12 @@ export function getMoscowHour(utcNow: Date = new Date()): number {
   return moscowTime.getUTCHours();
 }
 
+/** Сейчас время обеда по Москве? 13–14 или 14–15 = да. Остальное = нет. */
+export function isLunchTimeMoscow(utcNow: Date = new Date()): boolean {
+  const h = getMoscowHour(utcNow);
+  return h >= 13 && h < 15;
+}
+
 /** Время начала обеда по Москве в UTC: 13:00 или 14:00 МСК сегодня. */
 export function getLunchScheduledForMoscow(slot: '13-14' | '14-15'): Date {
   const now = new Date();
