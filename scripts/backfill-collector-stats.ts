@@ -116,9 +116,6 @@ async function main() {
   if (FROM_DATE && !TODAY_ONLY) {
     console.log(`Период: с ${FROM_DATE.toISOString().split('T')[0]}`);
   }
-  if (!DRY_RUN) {
-    console.log(`Параллельно: ${WORKERS} потоков`);
-  }
   if (LIMIT_N != null && LIMIT_N > 0) {
     toBackfill = toBackfill.slice(0, LIMIT_N);
     console.log(`Ограничение: первые ${LIMIT_N} заданий`);
@@ -139,7 +136,7 @@ async function main() {
   }
 
   if (!DRY_RUN && toBackfill.length > 0) {
-    console.log(`\nВызов updateCollectorStats (${WORKERS} потоков)...`);
+    console.log(`\nВызов updateCollectorStats (параллельно ${WORKERS})...`);
     const total = toBackfill.length;
     const results = { ok: 0, err: 0 };
 
