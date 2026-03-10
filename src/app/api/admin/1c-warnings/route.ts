@@ -7,11 +7,12 @@ export const dynamic = 'force-dynamic';
 /**
  * GET /api/admin/1c-warnings
  *
- * Заказы, которые были отданы 1С в ответе на запрос (ready-for-export),
- * но 1С не вернул их как успешно принятые (sync-1c с success: true).
- * Условие: status=processed, deleted=false, lastSentTo1CAt != null, exportedTo1C=false.
+ * 1) Заказы, которые были отданы 1С в ответе на запрос (ready-for-export),
+ *    но 1С не вернул их как успешно принятые (sync-1c с success: true).
+ * 2) Подвисшие заказы: status=new/pending_confirmation, deleted=false, tasks=0.
+ *    Не отображаются на фронте (API пропускает shipments без tasks).
  *
- * Ответ: { count, shipments } — для счётчика в меню и списка во вкладке «Предупреждения».
+ * Ответ: { count, shipments, stuckCount, stuckShipments }.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -83,7 +84,42 @@ export async function GET(request: NextRequest) {
       last_sent_to_1c_at: s.lastSentTo1CAt?.toISOString() ?? null,
     }));
 
-    return NextResponse.json({ count: shipments.length, shipments });
+    // Подвисшие заказы: new/pending_confirmation, deleted=false, без заданий (tasks=0)
+    const stuckRaw = await prisma.shipment.findMany({
+      where: {
+        status: { in: ['new', 'pending_confirmation'] },
+        deleted: false,
+        tasks: { none: {} },
+      },
+      select: {
+        id: true,
+        number: true,
+        customerName: true,
+        status: true,
+        createdAt: true,
+        _count: { select: { lines: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const stuckShipments = stuckRaw.map((s) => ({
+      id: s.id,
+      number: s.number,
+      customer_name: s.customerName,
+      status: s.status,
+      created_at: s.createdAt.toISOString(),
+      lines_count: s._count.lines,
+      can_resurrect: s._count.lines > 0,
+    }));
+
+    const totalCount = shipments.length + stuckShipments.length;
+
+    return NextResponse.json({
+      count: totalCount,
+      shipments,
+      stuckCount: stuckShipments.length,
+      stuckShipments,
+    });
   } catch (error: unknown) {
     console.error('[API admin/1c-warnings]', error);
     return NextResponse.json(

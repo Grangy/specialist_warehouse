@@ -10,9 +10,22 @@ import {
   Calendar,
   MapPin,
   Check,
+  AlertTriangle,
+  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
+
+interface StuckShipment {
+  id: string;
+  number: string;
+  customer_name: string;
+  status: string;
+  created_at: string;
+  lines_count: number;
+  can_resurrect: boolean;
+}
 
 interface WarningsTabProps {
   onWarningsChange?: (count: number) => void;
@@ -20,11 +33,14 @@ interface WarningsTabProps {
 
 export default function WarningsTab({ onWarningsChange }: WarningsTabProps) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [stuckShipments, setStuckShipments] = useState<StuckShipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [resurrectingId, setResurrectingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -34,6 +50,7 @@ export default function WarningsTab({ onWarningsChange }: WarningsTabProps) {
       if (!res.ok) throw new Error('Ошибка загрузки предупреждений 1С');
       const data = await res.json();
       setShipments(data.shipments ?? []);
+      setStuckShipments(data.stuckShipments ?? []);
       onWarningsChange?.(data.count ?? 0);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Ошибка загрузки');
@@ -77,6 +94,39 @@ export default function WarningsTab({ onWarningsChange }: WarningsTabProps) {
     }
   };
 
+  const handleResurrect = async (id: string) => {
+    try {
+      setResurrectingId(id);
+      setError('');
+      const res = await fetch(`/api/admin/shipments/${id}/resurrect`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка');
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Ошибка воскрешения');
+    } finally {
+      setResurrectingId(null);
+    }
+  };
+
+  const handleDeleteStuck = async (id: string) => {
+    if (!confirm('Удалить заказ из БД безвозвратно?')) return;
+    try {
+      setDeletingId(id);
+      setError('');
+      const res = await fetch(`/api/shipments/${id}/delete-permanent`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Ошибка');
+      }
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Ошибка удаления');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -98,7 +148,7 @@ export default function WarningsTab({ onWarningsChange }: WarningsTabProps) {
           <div>
             <h2 className="text-2xl font-bold text-slate-100">Предупреждения 1С</h2>
             <p className="text-sm text-slate-400">
-              Заказы, которые были отданы в 1С при выгрузке, но 1С не вернул их как успешно принятые
+              Подвисшие заказы (без заданий) и заказы, отданные в 1С, но не подтверждённые
             </p>
           </div>
         </div>
@@ -111,7 +161,78 @@ export default function WarningsTab({ onWarningsChange }: WarningsTabProps) {
         </div>
       )}
 
+      {/* Подвисшие заказы: есть в БД, но без заданий — не отображаются на фронте */}
+      {stuckShipments.length > 0 && (
+        <div className="bg-orange-900/30 border-2 border-orange-500/50 rounded-xl overflow-hidden shadow-xl">
+          <div className="px-4 py-3 bg-orange-900/50 border-b border-orange-500/30 flex items-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-orange-400" />
+            <div>
+              <h3 className="font-bold text-orange-100">Подвисшие заказы</h3>
+              <p className="text-sm text-orange-200/80">
+                Заказы без заданий — не отображаются в сборке. Можно воскресить или удалить.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-900/80">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Номер</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Клиент</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Позиций</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-slate-300">Действия</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/50">
+                {stuckShipments.map((s) => (
+                  <tr key={s.id} className="hover:bg-slate-800/50">
+                    <td className="px-4 py-3 font-medium text-slate-200">{s.number}</td>
+                    <td className="px-4 py-3 text-slate-300">{s.customer_name}</td>
+                    <td className="px-4 py-3 text-slate-400">{s.lines_count}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        {s.can_resurrect && (
+                          <button
+                            type="button"
+                            onClick={() => handleResurrect(s.id)}
+                            disabled={!!resurrectingId}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600/20 hover:bg-green-600/30 text-green-300 rounded-lg text-sm font-medium border border-green-500/50 disabled:opacity-50"
+                            title="Создать задания — заказ появится в сборке"
+                          >
+                            {resurrectingId === s.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="w-4 h-4" />
+                            )}
+                            Воскресить
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteStuck(s.id)}
+                          disabled={!!deletingId}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-sm font-medium border border-red-500/50 disabled:opacity-50"
+                          title="Удалить из БД"
+                        >
+                          {deletingId === s.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                          Удалить
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border-2 border-slate-700/50 p-4 shadow-xl">
+        <h3 className="text-lg font-semibold text-slate-200 mb-3">Заказы без подтверждения от 1С</h3>
         <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input
