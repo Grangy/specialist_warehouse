@@ -130,9 +130,11 @@ export async function updateCollectorStats(taskId: string) {
       },
     });
 
-    if (!task || !task.collectorId || !task.completedAt || !task.startedAt) {
+    if (!task || !task.collectorId || !task.completedAt) {
       return; // Нет данных для расчета
     }
+    const effectiveStartedAt = task.startedAt ?? task.createdAt;
+    if (!effectiveStartedAt) return;
 
     // Получаем все задания заказа для правильного расчета
     const allTasks = await prisma.shipmentTask.findMany({
@@ -159,8 +161,8 @@ export async function updateCollectorStats(taskId: string) {
     const collectorTasksInShipment = allTasks.filter((t) => t.collectorId === task.collectorId);
     const collectorWarehousesCount = new Set(collectorTasksInShipment.map((t) => t.warehouse)).size || 1;
 
-    const taskTimeSec = task.completedAt && task.startedAt
-      ? (task.completedAt.getTime() - task.startedAt.getTime()) / 1000
+    const taskTimeSec = task.completedAt && effectiveStartedAt
+      ? (task.completedAt.getTime() - effectiveStartedAt.getTime()) / 1000
       : 0;
     const pph = taskTimeSec > 0 ? (positions * 3600) / taskTimeSec : null;
     const uph = taskTimeSec > 0 && units > 0 ? (units * 3600) / taskTimeSec : null;

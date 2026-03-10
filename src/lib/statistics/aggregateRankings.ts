@@ -122,9 +122,11 @@ export async function aggregateRankings(
       [...collectorByCompleted, ...collectorByConfirmed].map((s) => [s.id, s])
     ).values(),
   ];
+  // Учитываем сборку, когда collectorId совпадает с userId, а также при collectorId=null
+  // (при самопроверке проверяльщика collectorId мог не сохраниться, но TaskStatistics есть)
   const collectorTaskStats = collectorMerged.filter((s) => {
     const t = s.task as { collectorId?: string; dictatorId?: string } | undefined;
-    return t?.collectorId === s.userId;
+    return t?.collectorId === s.userId || t?.collectorId == null;
   });
 
   const dictatorStatsFiltered = [
