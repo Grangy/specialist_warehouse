@@ -729,7 +729,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
         </div>
       </div>
     </header>
-    <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+    <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} userRole={user?.role} />
     </>
   );
 }

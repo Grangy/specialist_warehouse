@@ -24,6 +24,7 @@ export function ExtraWorkPopup() {
     };
     const id = setInterval(check, 3000);
     return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for polling logic
   }, [session?.id, session?.status, session?.lunchScheduledFor]);
 
   // Автовозобновление после обеда
@@ -41,6 +42,7 @@ export function ExtraWorkPopup() {
     };
     const id = setInterval(check, 5000);
     return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for polling logic
   }, [session?.id, session?.status, session?.lunchEndsAt]);
 
   // Автостоп по длительности (для типа timer и manual с duration)
@@ -58,6 +60,7 @@ export function ExtraWorkPopup() {
     };
     const id = setInterval(check, 10000);
     return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for polling logic
   }, [session?.id, session?.status, session?.startedAt, session?.durationMinutes]);
 
   // Таймер
@@ -71,6 +74,7 @@ export function ExtraWorkPopup() {
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for timer logic
   }, [session?.id, session?.status, session?.startedAt, session?.elapsedSecBeforeLunch, resumedAt]);
 
   if (!session || !popupOpen) return null;

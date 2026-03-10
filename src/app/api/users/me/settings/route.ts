@@ -6,6 +6,8 @@ import type { UserCollectSettings } from '@/types';
 const DEFAULT: UserCollectSettings = {
   collectPositionConfirm: 'swipe',
   collectOverallConfirm: 'swipe',
+  adminShowCollectionButtons: false,
+  confirmPositionConfirm: 'swipe',
 };
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +24,7 @@ export async function GET() {
       where: { userId: user.id },
     });
 
-    let settings: UserCollectSettings = DEFAULT;
+    let settings: UserCollectSettings = { ...DEFAULT };
     if (row?.settings) {
       try {
         const parsed = JSON.parse(row.settings) as Partial<UserCollectSettings>;
@@ -33,6 +35,10 @@ export async function GET() {
           collectOverallConfirm: ['swipe', 'double-click'].includes(parsed.collectOverallConfirm as string)
             ? (parsed.collectOverallConfirm as UserCollectSettings['collectOverallConfirm'])
             : DEFAULT.collectOverallConfirm,
+          adminShowCollectionButtons: user.role === 'admin' ? parsed.adminShowCollectionButtons === true : undefined,
+          confirmPositionConfirm: ['swipe', 'double-click'].includes(parsed.confirmPositionConfirm as string)
+            ? (parsed.confirmPositionConfirm as UserCollectSettings['confirmPositionConfirm'])
+            : DEFAULT.confirmPositionConfirm,
         };
       } catch {
         // ignore invalid JSON
@@ -60,6 +66,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const collectPositionConfirm = body.collectPositionConfirm;
     const collectOverallConfirm = body.collectOverallConfirm;
+    const adminShowCollectionButtons = user.role === 'admin' && body.adminShowCollectionButtons === true;
+    const confirmPositionConfirm = body.confirmPositionConfirm;
 
     const settings: UserCollectSettings = {
       collectPositionConfirm: ['swipe', 'double-click'].includes(collectPositionConfirm)
@@ -68,6 +76,10 @@ export async function POST(request: NextRequest) {
       collectOverallConfirm: ['swipe', 'double-click'].includes(collectOverallConfirm)
         ? collectOverallConfirm
         : DEFAULT.collectOverallConfirm,
+      adminShowCollectionButtons: user.role === 'admin' ? adminShowCollectionButtons : undefined,
+      confirmPositionConfirm: ['swipe', 'double-click'].includes(confirmPositionConfirm)
+        ? confirmPositionConfirm
+        : DEFAULT.confirmPositionConfirm,
     };
 
     const existing = await prisma.userSettings.findUnique({
@@ -78,6 +90,9 @@ export async function POST(request: NextRequest) {
       try {
         const parsed = JSON.parse(existing.settings) as Record<string, unknown>;
         if (parsed.extraWorkLunchSlot !== undefined) merged.extraWorkLunchSlot = parsed.extraWorkLunchSlot;
+        if (user.role !== 'admin' && parsed.adminShowCollectionButtons !== undefined) {
+          merged.adminShowCollectionButtons = parsed.adminShowCollectionButtons;
+        }
       } catch {
         // ignore
       }

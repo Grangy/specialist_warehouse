@@ -10,6 +10,7 @@ import { X } from 'lucide-react';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  userRole?: string | null;
 }
 
 const MODE_LABELS: Record<CollectConfirmMode, string> = {
@@ -17,7 +18,7 @@ const MODE_LABELS: Record<CollectConfirmMode, string> = {
   'double-click': 'Двойной клик',
 };
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, userRole }: SettingsModalProps) {
   const { settings, updateSettings } = useUserSettings();
   const [showDeletePhoto, setShowDeletePhoto] = useState(false);
   const [randomPhotoUrl, setRandomPhotoUrl] = useState<string | null>(null);
@@ -41,8 +42,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     updateSettings({ collectOverallConfirm: value });
   };
 
+  const isCheckerRole = userRole === 'checker' || userRole === 'warehouse_3' || userRole === 'admin';
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Настройки сборки">
+    <Modal isOpen={isOpen} onClose={onClose} title="Настройки">
       <div className="space-y-6">
         <div>
           <h3 className="text-sm font-semibold text-slate-200 mb-3">Подтверждение каждой позиции</h3>
@@ -66,6 +69,60 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             ))}
           </div>
         </div>
+
+        {isCheckerRole && (
+        <div className="border-t border-slate-700/50 pt-4">
+          <h3 className="text-sm font-semibold text-slate-200 mb-3">Подтверждение при проверке</h3>
+          <p className="text-xs text-slate-400 mb-3">
+            Как подтверждать позицию при проверке заказа: свайпом или двойным кликом. Доступно в обычном и компактном режиме.
+          </p>
+          <div className="flex gap-2">
+            {(['swipe', 'double-click'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => updateSettings({ confirmPositionConfirm: mode })}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  (settings.confirmPositionConfirm ?? 'swipe') === mode
+                    ? 'bg-green-600/90 text-white'
+                    : 'bg-slate-700/80 text-slate-300 hover:bg-slate-600/80'
+                }`}
+              >
+                {MODE_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        </div>
+        )}
+
+        {userRole === 'admin' && (
+        <div className="border-t border-slate-700/50 pt-4">
+          <h3 className="text-sm font-semibold text-slate-200 mb-3">Кнопки администратора</h3>
+          <p className="text-xs text-slate-400 mb-3">
+            Показывать на карточках заказов кнопки «Собрать всё», «Подтвердить всё» и «Удалить сборку». Перед действием будет запрос подтверждения.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => updateSettings({ adminShowCollectionButtons: true })}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                settings.adminShowCollectionButtons ? 'bg-green-600/90 text-white' : 'bg-slate-700/80 text-slate-300 hover:bg-slate-600/80'
+              }`}
+            >
+              Включено
+            </button>
+            <button
+              type="button"
+              onClick={() => updateSettings({ adminShowCollectionButtons: false })}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                !settings.adminShowCollectionButtons ? 'bg-green-600/90 text-white' : 'bg-slate-700/80 text-slate-300 hover:bg-slate-600/80'
+              }`}
+            >
+              Выключено
+            </button>
+          </div>
+        </div>
+        )}
 
         <div>
           <h3 className="text-sm font-semibold text-slate-200 mb-3">Подтверждение всей сборки</h3>

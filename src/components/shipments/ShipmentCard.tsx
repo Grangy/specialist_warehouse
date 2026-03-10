@@ -345,11 +345,7 @@ export function ShipmentCard({
               )}
               {userRole === 'admin' && onDeleteCollection && shipment.status === 'new' && (
                 <button
-                  onClick={() => {
-                    if (confirm('Вы уверены, что хотите удалить сборку? Весь прогресс будет сброшен.')) {
-                      onDeleteCollection(shipment);
-                    }
-                  }}
+                  onClick={() => onDeleteCollection(shipment)}
                   className="flex-1 min-w-[120px] sm:min-w-0 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-semibold py-2 px-2 sm:px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
                   title="Удалить сборку (сбросить прогресс)"
                 >

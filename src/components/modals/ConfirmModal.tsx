@@ -3,7 +3,9 @@
 import { useState, Fragment, useMemo, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SwipeButton } from '@/components/ui/SwipeButton';
+import { DoubleTapButton } from '@/components/ui/DoubleTapButton';
 import { NameModal } from '@/components/modals/NameModal';
+import { useUserSettings } from '@/contexts/UserSettingsContext';
 import { useToast } from '@/hooks/useToast';
 import { truncateArt } from '@/lib/utils/helpers';
 import type { Shipment, ConfirmChecklistState } from '@/types';
@@ -51,6 +53,8 @@ export function ConfirmModal({
   getWarnings,
 }: ConfirmModalProps) {
   const { showSuccess, showError } = useToast();
+  const { settings } = useUserSettings();
+  const confirmMode = settings.confirmPositionConfirm ?? 'swipe';
   const [sosCalledForLine, setSosCalledForLine] = useState<Set<number>>(new Set());
   const [selectedLine, setSelectedLine] = useState<{
     index: number;
@@ -76,9 +80,6 @@ export function ConfirmModal({
   // Состояние для отображения предупреждения о несобранных товарах
   const [showZeroItemsWarning, setShowZeroItemsWarning] = useState(true);
 
-  // Состояние для отслеживания первого клика по кнопке подтверждения в компактном режиме
-  const [pendingConfirmIndex, setPendingConfirmIndex] = useState<number | null>(null);
-  const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showComment, setShowComment] = useState(false);
   const commentTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -213,37 +214,6 @@ export function ConfirmModal({
       setSosCalledForLine(new Set());
     }
   }, [isOpen, currentShipment?.id]);
-
-  // Очистка таймера подтверждения при размонтировании
-  useEffect(() => {
-    return () => {
-      if (confirmTimeoutRef.current) {
-        clearTimeout(confirmTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Обработчик двойного клика для подтверждения в компактном режиме
-  const handleCompactConfirmClick = (index: number) => {
-    if (pendingConfirmIndex === index) {
-      // Второй клик - подтверждаем
-      if (confirmTimeoutRef.current) {
-        clearTimeout(confirmTimeoutRef.current);
-      }
-      setPendingConfirmIndex(null);
-      onConfirmItem(index);
-    } else {
-      // Первый клик - устанавливаем состояние ожидания
-      if (confirmTimeoutRef.current) {
-        clearTimeout(confirmTimeoutRef.current);
-      }
-      setPendingConfirmIndex(index);
-      // Сбрасываем состояние через 1 секунду, если не было второго клика
-      confirmTimeoutRef.current = setTimeout(() => {
-        setPendingConfirmIndex(null);
-      }, 1000);
-    }
-  };
 
   if (!currentShipment || !isOpen) return null;
 
@@ -609,17 +579,24 @@ export function ConfirmModal({
                             Р
                           </button>
                           {!isConfirmed && (
-                            <button
-                              onClick={() => handleCompactConfirmClick(index)}
-                              className={`px-1 py-0.5 text-white text-[8px] font-semibold rounded transition-all ${
-                                pendingConfirmIndex === index
-                                  ? 'bg-yellow-600/90 hover:bg-yellow-500 animate-pulse'
-                                  : 'bg-green-600/90 hover:bg-green-500'
-                              }`}
-                              title={pendingConfirmIndex === index ? 'Нажмите еще раз для подтверждения' : 'Подтвердить (2 клика)'}
-                            >
-                              {pendingConfirmIndex === index ? '✓' : '✓'}
-                            </button>
+                            confirmMode === 'double-click' ? (
+                              <DoubleTapButton
+                                onConfirm={() => onConfirmItem(index)}
+                                label="✓"
+                                pendingLabel="Ещё"
+                                className="flex-shrink-0 px-1 py-0.5 text-[8px] min-w-0"
+                              />
+                            ) : (
+                              <SwipeButton
+                                trackId={`swipe-confirm-compact-track-${index}`}
+                                sliderId={`swipe-confirm-compact-slider-${index}`}
+                                textId={`swipe-confirm-compact-text-${index}`}
+                                onConfirm={() => onConfirmItem(index)}
+                                label="→"
+                                confirmedLabel="✓"
+                                className="flex-shrink-0"
+                              />
+                            )
                           )}
                         </div>
                       </div>
@@ -917,25 +894,32 @@ export function ConfirmModal({
                                 Ред.
                               </button>
                               {!isConfirmed && (
-                                <>
-                                  {/* Мобильная версия - свайп */}
-                                  <SwipeButton
-                                    trackId={`swipe-confirm-item-track-${index}`}
-                                    sliderId={`swipe-confirm-item-slider-${index}`}
-                                    textId={`swipe-confirm-item-text-${index}`}
+                                confirmMode === 'double-click' ? (
+                                  <DoubleTapButton
                                     onConfirm={() => onConfirmItem(index)}
-                                    label="→"
-                                    confirmedLabel="✓ Подтверждено"
-                                    className="flex-shrink-0 md:hidden"
+                                    label="Подтв."
+                                    pendingLabel="Ещё раз"
+                                    className="flex-shrink-0 px-3 py-1.5 text-xs"
                                   />
-                                  {/* Десктоп версия - кнопка */}
-                                  <button
-                                    onClick={() => onConfirmItem(index)}
-                                    className="hidden md:flex px-4 py-1.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white text-xs font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
-                                  >
-                                    Подтв.
-                                  </button>
-                                </>
+                                ) : (
+                                  <>
+                                    <SwipeButton
+                                      trackId={`swipe-confirm-item-m-track-${index}`}
+                                      sliderId={`swipe-confirm-item-m-slider-${index}`}
+                                      textId={`swipe-confirm-item-m-text-${index}`}
+                                      onConfirm={() => onConfirmItem(index)}
+                                      label="→"
+                                      confirmedLabel="✓ Подтверждено"
+                                      className="flex-shrink-0 md:hidden"
+                                    />
+                                    <button
+                                      onClick={() => onConfirmItem(index)}
+                                      className="hidden md:flex px-4 py-1.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white text-xs font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+                                    >
+                                      Подтв.
+                                    </button>
+                                  </>
+                                )
                               )}
                             </div>
                           </div>
@@ -1001,25 +985,32 @@ export function ConfirmModal({
                               Ред.
                             </button>
                             {!isConfirmed && (
-                              <>
-                                {/* Мобильная версия - свайп */}
-                                <SwipeButton
-                                  trackId={`swipe-confirm-item-track-${index}`}
-                                  sliderId={`swipe-confirm-item-slider-${index}`}
-                                  textId={`swipe-confirm-item-text-${index}`}
+                              confirmMode === 'double-click' ? (
+                                <DoubleTapButton
                                   onConfirm={() => onConfirmItem(index)}
-                                  label="→"
-                                  confirmedLabel="✓ Подтверждено"
-                                  className="flex-shrink-0 md:hidden"
+                                  label="Подтв."
+                                  pendingLabel="Ещё"
+                                  className="flex-shrink-0 px-3 py-1 text-[10px]"
                                 />
-                                {/* Десктоп версия - кнопка */}
-                                <button
-                                  onClick={() => onConfirmItem(index)}
-                                  className="hidden md:flex px-4 py-1.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white text-xs font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
-                                >
-                                  Подтв.
-                                </button>
-                              </>
+                              ) : (
+                                <>
+                                  <SwipeButton
+                                    trackId={`swipe-confirm-item-d-track-${index}`}
+                                    sliderId={`swipe-confirm-item-d-slider-${index}`}
+                                    textId={`swipe-confirm-item-d-text-${index}`}
+                                    onConfirm={() => onConfirmItem(index)}
+                                    label="→"
+                                    confirmedLabel="✓ Подтверждено"
+                                    className="flex-shrink-0 md:hidden"
+                                  />
+                                  <button
+                                    onClick={() => onConfirmItem(index)}
+                                    className="hidden md:flex px-4 py-1.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white text-xs font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+                                  >
+                                    Подтв.
+                                  </button>
+                                </>
+                              )
                             )}
                           </div>
                         </td>
@@ -1072,6 +1063,7 @@ export function ConfirmModal({
         showSosButton={Boolean(currentShipment.collector_id ?? currentShipment.collector_name)}
         collectorName={currentShipment.collector_name}
         sosCalled={sosCalledForLine.has(selectedLine.index)}
+        mode="confirm"
         onSosClick={async () => {
           try {
             const res = await fetch('/api/checker/call-collector', {

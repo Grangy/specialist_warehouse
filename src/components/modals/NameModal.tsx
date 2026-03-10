@@ -37,6 +37,8 @@ interface NameModalProps {
   sosCalled?: boolean;
   collectorName?: string;
   onSosClick?: () => void | Promise<void>;
+  /** Режим: collect — настройки сборщика, confirm — настройки проверяльщика */
+  mode?: 'collect' | 'confirm';
 }
 
 export function NameModal({ 
@@ -65,6 +67,7 @@ export function NameModal({
   sosCalled = false,
   collectorName,
   onSosClick,
+  mode = 'collect',
 }: NameModalProps) {
   const [localCollectedQty, setLocalCollectedQty] = useState(collected);
   const [localIsEditing, setLocalIsEditing] = useState(false);
@@ -349,7 +352,7 @@ export function NameModal({
                   {/* Кнопка подтверждения - всегда видима */}
                   <div className="flex-1 min-w-0">
                     {!isCollected ? (
-                      userSettings.collectPositionConfirm === 'double-click' ? (
+                      (mode === 'confirm' ? userSettings.confirmPositionConfirm : userSettings.collectPositionConfirm) === 'double-click' ? (
                         <DoubleTapButton
                           onConfirm={handleConfirm}
                           label={buttonLabel}

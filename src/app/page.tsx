@@ -17,12 +17,14 @@ import { WarehouseSelectModal } from '@/components/modals/WarehouseSelectModal';
 import { CollectionCompletedModal } from '@/components/modals/CollectionCompletedModal';
 import { AdminMessagePopup } from '@/components/AdminMessagePopup';
 import { DictatorSelectModal } from '@/components/modals/DictatorSelectModal';
+import { AdminActionConfirmModal } from '@/components/modals/AdminActionConfirmModal';
 import { useShipments } from '@/hooks/useShipments';
 import { useCollect } from '@/hooks/useCollect';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useModal } from '@/hooks/useModal';
 import { useToast } from '@/hooks/useToast';
 import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
+import { useUserSettings } from '@/contexts/UserSettingsContext';
 import type { Shipment } from '@/types';
 
 const ROLES_WITH_ADMIN_MESSAGES = ['collector', 'checker', 'warehouse_3'] as const;
@@ -37,6 +39,14 @@ export default function Home() {
   const [pendingShipmentForConfirm, setPendingShipmentForConfirm] = useState<Shipment | null>(null);
   // «Только сегодня» — для проверяльщика/админа/склад 3: показывать только заказы активных регионов на сегодня
   const [showOnlyToday, setShowOnlyToday] = useState(false);
+  const { settings } = useUserSettings();
+  const showAdminButtons = userInfo?.role === 'admin' && settings.adminShowCollectionButtons === true;
+
+  // Подтверждение действий администратора
+  const [pendingAdminAction, setPendingAdminAction] = useState<{
+    type: 'collectAll' | 'confirmAll' | 'deleteCollection';
+    shipment: Shipment;
+  } | null>(null);
 
   useEffect(() => {
     // Проверяем авторизацию
@@ -304,23 +314,11 @@ export default function Home() {
   };
 
   const handleCollectAll = async (shipment: Shipment) => {
-    try {
-      await collectHook.collectAll(shipment);
-      await refreshShipments();
-    } catch (error) {
-      console.error('Ошибка при автоматической сборке всех позиций:', error);
-    }
+    setPendingAdminAction({ type: 'collectAll', shipment });
   };
 
   const handleConfirmAll = async (shipment: Shipment) => {
-    try {
-      // Показываем модальное окно для ввода комментария и количества мест
-      setPendingShipmentForOffice(shipment);
-      sendToOfficeModal.open();
-    } catch (error: any) {
-      console.error('[Page] Ошибка при открытии модального окна отправки:', error);
-      showError('Ошибка при открытии модального окна отправки');
-    }
+    setPendingAdminAction({ type: 'confirmAll', shipment });
   };
 
   const handleDetails = (shipment: Shipment) => {
@@ -374,22 +372,39 @@ export default function Home() {
   };
 
   const handleDeleteCollection = async (shipment: Shipment) => {
-    try {
-      const response = await fetch(`/api/shipments/${shipment.id}/reset-progress`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'delete' }),
-      });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Ошибка при удалении сборки');
-      }
-      await refreshShipments();
-    } catch (error: any) {
-      console.error('Ошибка при удалении сборки:', error);
-      alert(error.message || 'Ошибка при удалении сборки');
-    }
+    setPendingAdminAction({ type: 'deleteCollection', shipment });
   };
+
+  const executeAdminAction = useCallback(
+    async (action: { type: 'collectAll' | 'confirmAll' | 'deleteCollection'; shipment: Shipment } | null) => {
+      if (!action) return;
+      const { type, shipment } = action;
+      setPendingAdminAction(null);
+      try {
+        if (type === 'collectAll') {
+          await collectHook.collectAll(shipment);
+        } else if (type === 'confirmAll') {
+          setPendingShipmentForOffice(shipment);
+          sendToOfficeModal.open();
+        } else if (type === 'deleteCollection') {
+          const response = await fetch(`/api/shipments/${shipment.id}/reset-progress`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'delete' }),
+          });
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Ошибка при удалении сборки');
+          }
+        }
+        await refreshShipments();
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Ошибка';
+        showError(msg);
+      }
+    },
+    [collectHook, refreshShipments, sendToOfficeModal, showError]
+  );
 
   if (isCheckingAuth) {
     return (
@@ -415,9 +430,9 @@ export default function Home() {
             onCollect={handleCollect}
             onConfirm={handleConfirm}
             onDetails={handleDetails}
-            onCollectAll={userRole === 'admin' ? handleCollectAll : undefined}
-            onConfirmAll={userRole === 'admin' ? handleConfirmAll : undefined}
-            onDeleteCollection={userRole === 'admin' ? handleDeleteCollection : undefined}
+            onCollectAll={showAdminButtons ? handleCollectAll : undefined}
+            onConfirmAll={showAdminButtons ? handleConfirmAll : undefined}
+            onDeleteCollection={showAdminButtons ? handleDeleteCollection : undefined}
             userRole={userRole}
             userId={userInfo?.id ?? null}
             isCollectLocking={collectHook.isLocking}
@@ -426,6 +441,13 @@ export default function Home() {
         )}
       </main>
 
+      <AdminActionConfirmModal
+        isOpen={!!pendingAdminAction}
+        onClose={() => setPendingAdminAction(null)}
+        onConfirm={() => executeAdminAction(pendingAdminAction)}
+        actionType={pendingAdminAction?.type ?? null}
+        shipment={pendingAdminAction?.shipment ?? null}
+      />
       <CollectModal
         currentShipment={collectHook.currentShipment}
         checklistState={collectHook.checklistState}

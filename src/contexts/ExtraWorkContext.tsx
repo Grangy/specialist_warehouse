@@ -59,8 +59,8 @@ export function ExtraWorkProvider({ children }: { children: React.ReactNode }) {
   }, [showToast]);
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, 5000);
+    queueMicrotask(() => load());
+    const id = setInterval(() => load(), 5000);
     return () => clearInterval(id);
   }, [load]);
 

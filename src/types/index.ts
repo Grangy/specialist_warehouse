@@ -138,10 +138,15 @@ export type CollectConfirmMode = 'swipe' | 'double-click';
 export interface UserCollectSettings {
   collectPositionConfirm: CollectConfirmMode;
   collectOverallConfirm: CollectConfirmMode;
+  /** Только для admin: показывать кнопки «Собрать всё», «Подтвердить всё», «Удалить сборку» на карточках */
+  adminShowCollectionButtons?: boolean;
+  /** Для checker/warehouse_3/admin: подтверждение позиции при проверке — свайп или двойной клик */
+  confirmPositionConfirm?: CollectConfirmMode;
 }
 
 export const DEFAULT_USER_COLLECT_SETTINGS: UserCollectSettings = {
   collectPositionConfirm: 'swipe',
   collectOverallConfirm: 'swipe',
+  confirmPositionConfirm: 'swipe',
 };
 

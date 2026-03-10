@@ -6,6 +6,7 @@ import type { UserCollectSettings } from '@/types';
 const DEFAULT: UserCollectSettings = {
   collectPositionConfirm: 'swipe',
   collectOverallConfirm: 'swipe',
+  confirmPositionConfirm: 'swipe',
 };
 
 interface UserSettingsContextValue {
@@ -34,6 +35,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         const next = {
           collectPositionConfirm: data.collectPositionConfirm ?? DEFAULT.collectPositionConfirm,
           collectOverallConfirm: data.collectOverallConfirm ?? DEFAULT.collectOverallConfirm,
+          adminShowCollectionButtons: data.adminShowCollectionButtons === true,
+          confirmPositionConfirm: data.confirmPositionConfirm ?? DEFAULT.confirmPositionConfirm,
         };
         setSettings(next);
         settingsRef.current = next;
@@ -69,6 +72,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
           const server = {
             collectPositionConfirm: data.collectPositionConfirm ?? DEFAULT.collectPositionConfirm,
             collectOverallConfirm: data.collectOverallConfirm ?? DEFAULT.collectOverallConfirm,
+            adminShowCollectionButtons: data.adminShowCollectionButtons === true,
+            confirmPositionConfirm: data.confirmPositionConfirm ?? DEFAULT.confirmPositionConfirm,
           };
           setSettings(server);
           settingsRef.current = server;
