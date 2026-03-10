@@ -56,4 +56,8 @@ pm2 status
 echo ""
 echo "📝 Последние логи:"
 pm2 logs sklad-spec --lines 20 --nostream
+echo ""
+echo "💡 Автозавершение доп.работы в 18:00 МСК: добавьте в crontab (15:00 UTC = 18:00 МСК):"
+echo "   0 15 * * * cd /var/www/specialist_warehouse && ./scripts/cron-auto-stop-extra-work.sh"
+echo "   Требуется CRON_SECRET в .env"
 
