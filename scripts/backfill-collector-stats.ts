@@ -5,8 +5,8 @@
  * существующие записи. Если updateCollectorStats не сработал при завершении сборки
  * (ошибка, startedAt=null и т.д.), сборки Игоря/Эрнеса и др. не отображаются.
  *
- * Решение: находим задания с collectorId и completedAt, для которых нет записи
- * TaskStatistics (roleType='collector'), и вызываем updateCollectorStats.
+ * Решение: находим задания с collectorId, а также самопроверки (checkerId=dictatorId)
+ * без collectorId, для которых нет TaskStatistics, и вызываем updateCollectorStats.
  *
  * Использование:
  *   npx tsx scripts/backfill-collector-stats.ts           # dry-run, все задания за всё время
@@ -77,42 +77,90 @@ async function main() {
   const todayEnd = new Date(todayStart);
   todayEnd.setHours(23, 59, 59, 999);
 
-  const tasks = await prisma.shipmentTask.findMany({
-    where: {
-      collectorId: { not: null },
-      completedAt: { not: null },
-      status: { in: ['pending_confirmation', 'processed'] },
-      ...(TODAY_ONLY && {
-        completedAt: { gte: todayStart, lte: todayEnd },
-      }),
-      ...(FROM_DATE && !TODAY_ONLY && {
-        completedAt: { gte: FROM_DATE },
-      }),
-    },
-    select: {
-      id: true,
-      shipmentId: true,
-      shipment: { select: { number: true } },
-      collectorId: true,
-      collectorName: true,
-      completedAt: true,
-    },
-  });
+  const baseWhere = {
+    completedAt: { not: null },
+    status: { in: ['pending_confirmation', 'processed'] as const },
+    ...(TODAY_ONLY && { completedAt: { gte: todayStart, lte: todayEnd } }),
+    ...(FROM_DATE && !TODAY_ONLY && { completedAt: { gte: FROM_DATE } }),
+  };
+
+  const [tasksWithCollector, tasksSelfCheckNoCollector] = await Promise.all([
+    prisma.shipmentTask.findMany({
+      where: { ...baseWhere, collectorId: { not: null } },
+      select: {
+        id: true,
+        shipmentId: true,
+        shipment: { select: { number: true } },
+        collectorId: true,
+        collectorName: true,
+        completedAt: true,
+      },
+    }),
+    prisma.shipmentTask.findMany({
+      where: {
+        ...baseWhere,
+        collectorId: null,
+        checkerId: { not: null },
+        dictatorId: { not: null },
+        status: 'processed',
+      },
+      select: {
+        id: true,
+        shipmentId: true,
+        shipment: { select: { number: true } },
+        checkerId: true,
+        checkerName: true,
+        dictatorId: true,
+        checker: { select: { name: true } },
+        completedAt: true,
+      },
+    }),
+  ]);
+
+  const selfCheckTasks = tasksSelfCheckNoCollector.filter(
+    (t) => t.checkerId && t.dictatorId === t.checkerId
+  );
+  const allTaskIds = [...tasksWithCollector.map((t) => t.id), ...selfCheckTasks.map((t) => t.id)];
 
   const existingCollectorStats = await prisma.taskStatistics.findMany({
-    where: {
-      roleType: 'collector',
-      taskId: { in: tasks.map((t) => t.id) },
-    },
+    where: { roleType: 'collector', taskId: { in: allTaskIds } },
     select: { taskId: true, userId: true },
   });
   const existingKeys = new Set(
     existingCollectorStats.map((s) => `${s.taskId}:${s.userId}`)
   );
 
-  let toBackfill = tasks.filter(
-    (t) => t.collectorId && !existingKeys.has(`${t.id}:${t.collectorId}`)
-  );
+  type BackfillItem = {
+    id: string;
+    shipmentId: string;
+    shipment?: { number: string } | null;
+    collectorId: string;
+    collectorName: string;
+    needSetCollector?: boolean;
+  };
+
+  const fromWithCollector: BackfillItem[] = tasksWithCollector
+    .filter((t) => t.collectorId && !existingKeys.has(`${t.id}:${t.collectorId}`))
+    .map((t) => ({
+      id: t.id,
+      shipmentId: t.shipmentId,
+      shipment: t.shipment,
+      collectorId: t.collectorId!,
+      collectorName: t.collectorName ?? '—',
+    }));
+
+  const fromSelfCheck: BackfillItem[] = selfCheckTasks
+    .filter((t) => t.checkerId && !existingKeys.has(`${t.id}:${t.checkerId}`))
+    .map((t) => ({
+      id: t.id,
+      shipmentId: t.shipmentId,
+      shipment: t.shipment,
+      collectorId: t.checkerId!,
+      collectorName: t.checkerName ?? t.checker?.name ?? '—',
+      needSetCollector: true,
+    }));
+
+  let toBackfill: BackfillItem[] = [...fromWithCollector, ...fromSelfCheck];
   if (FROM_DATE && !TODAY_ONLY) {
     console.log(`Период: с ${FROM_DATE.toISOString().split('T')[0]}`);
   }
@@ -121,7 +169,10 @@ async function main() {
     console.log(`Ограничение: первые ${LIMIT_N} заданий`);
   }
 
-  console.log(`Заданий с collectorId и completedAt: ${tasks.length}`);
+  console.log(`Заданий с collectorId: ${tasksWithCollector.length}`);
+  if (fromSelfCheck.length > 0) {
+    console.log(`Самопроверок без collectorId (checker=dictator): ${fromSelfCheck.length}`);
+  }
   console.log(`Без записи TaskStatistics (collector): ${toBackfill.length}`);
 
   if (toBackfill.length === 0) {
@@ -145,6 +196,12 @@ async function main() {
       await Promise.allSettled(
         chunk.map(async (t) => {
           try {
+            if (t.needSetCollector) {
+              await prisma.shipmentTask.update({
+                where: { id: t.id },
+                data: { collectorId: t.collectorId, collectorName: t.collectorName },
+              });
+            }
             await updateCollectorStats(t.id);
             results.ok++;
           } catch (e) {
