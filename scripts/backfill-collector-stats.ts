@@ -14,6 +14,7 @@
  *   npx tsx scripts/backfill-collector-stats.ts --today --apply  # только за сегодня
  *   npx tsx scripts/backfill-collector-stats.ts --from 2025-03-01 --apply  # с 1 марта
  *   npx tsx scripts/backfill-collector-stats.ts --limit 5 --apply  # первые 5 заданий (тест)
+ *   npx tsx scripts/backfill-collector-stats.ts --workers 8 --apply  # 8 параллельных потоков (по умолчанию 6)
  *
  * Пересчёт за всё время (после изменения логики или дозаполнения):
  *   1. npx tsx scripts/backfill-collector-stats.ts --apply
@@ -44,6 +45,11 @@ const LIMIT_N =
   limitIdx >= 0 && process.argv[limitIdx + 1]
     ? parseInt(process.argv[limitIdx + 1], 10)
     : null;
+const workersIdx = process.argv.indexOf('--workers');
+const WORKERS =
+  workersIdx >= 0 && process.argv[workersIdx + 1]
+    ? Math.max(1, Math.min(20, parseInt(process.argv[workersIdx + 1], 10)))
+    : 6;
 const fromIdx = process.argv.indexOf('--from');
 const FROM_DATE =
   fromIdx >= 0 && process.argv[fromIdx + 1]
@@ -110,6 +116,9 @@ async function main() {
   if (FROM_DATE && !TODAY_ONLY) {
     console.log(`Период: с ${FROM_DATE.toISOString().split('T')[0]}`);
   }
+  if (!DRY_RUN) {
+    console.log(`Параллельно: ${WORKERS} потоков`);
+  }
   if (LIMIT_N != null && LIMIT_N > 0) {
     toBackfill = toBackfill.slice(0, LIMIT_N);
     console.log(`Ограничение: первые ${LIMIT_N} заданий`);
@@ -130,24 +139,29 @@ async function main() {
   }
 
   if (!DRY_RUN && toBackfill.length > 0) {
-    console.log('\nВызов updateCollectorStats... (каждое задание ~2–5 сек)');
-    let ok = 0;
-    let err = 0;
+    console.log(`\nВызов updateCollectorStats (${WORKERS} потоков)...`);
     const total = toBackfill.length;
-    for (let i = 0; i < total; i++) {
-      const t = toBackfill[i];
-      try {
-        process.stdout.write(`  [${i + 1}/${total}] ${t.shipment?.number ?? t.shipmentId} · ${t.collectorName}... `);
-        await updateCollectorStats(t.id);
-        console.log('ok');
-        ok++;
-      } catch (e) {
-        console.log('❌');
-        console.error(`    ${e instanceof Error ? e.message : String(e)}`);
-        err++;
-      }
+    const results = { ok: 0, err: 0 };
+
+    for (let i = 0; i < toBackfill.length; i += WORKERS) {
+      const chunk = toBackfill.slice(i, i + WORKERS);
+      await Promise.allSettled(
+        chunk.map(async (t) => {
+          try {
+            await updateCollectorStats(t.id);
+            results.ok++;
+          } catch (e) {
+            results.err++;
+            const idx = toBackfill.indexOf(t) + 1;
+            console.error(`  ❌ [${idx}] ${t.shipment?.number ?? t.shipmentId}:`, e instanceof Error ? e.message : String(e));
+          }
+        })
+      );
+      const done = Math.min(i + WORKERS, total);
+      process.stdout.write(`\r  Прогресс: ${done}/${total} (ok: ${results.ok}, err: ${results.err})    `);
     }
-    console.log(`\n✅ Создано/обновлено: ${ok}${err > 0 ? `, ошибок: ${err}` : ''}`);
+    console.log(`\r  Прогресс: ${total}/${total} (ok: ${results.ok}, err: ${results.err})    `);
+    console.log(`\n✅ Создано/обновлено: ${results.ok}${results.err > 0 ? `, ошибок: ${results.err}` : ''}`);
   }
 }
 
