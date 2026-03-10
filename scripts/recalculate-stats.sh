@@ -6,9 +6,22 @@
 #   ./scripts/recalculate-stats.sh --apply  — применить перерасчёт в БД
 #
 # После изменения коэффициентов в Настройках запускайте с --apply.
+# Требуется DATABASE_URL в .env или в окружении.
 
 set -e
 cd "$(dirname "$0")/.."
+
+# Загружаем .env (для cron/systemd, где переменные окружения могут быть не заданы)
+if [[ -f .env ]]; then
+  set -a
+  source .env
+  set +a
+fi
+
+if [[ -z "$DATABASE_URL" ]]; then
+  echo "❌ DATABASE_URL не задан. Создайте .env с DATABASE_URL=file:./prisma/dev.db"
+  exit 1
+fi
 
 echo "📊 Перерасчёт статистики"
 echo "========================"

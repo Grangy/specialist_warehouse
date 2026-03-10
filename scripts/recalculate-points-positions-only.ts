@@ -10,6 +10,7 @@
  * Использование: npm run stats:recalc-points [-- --apply]
  */
 
+import 'dotenv/config';
 import { PrismaClient } from '../src/generated/prisma/client';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -18,8 +19,6 @@ import {
   calculateCheckPoints,
 } from '../src/lib/ranking/pointsRates';
 import { getPointsRates } from '../src/lib/ranking/getPointsRates';
-
-dotenv.config();
 
 const databaseUrl = process.env.DATABASE_URL;
 let finalDatabaseUrl = databaseUrl;
