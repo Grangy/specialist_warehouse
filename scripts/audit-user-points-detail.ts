@@ -2,21 +2,19 @@
  * Детальный аудит баллов конкретного пользователя.
  * Расписывает каждую запись: откуда баллы, формула, ожидаемое vs факт.
  *
- * Использование: npx tsx scripts/audit-user-points-detail.ts "Alexandr"
- *               npx tsx scripts/audit-user-points-detail.ts "Alexandr" --month
+ * Использование: npx tsx scripts/audit-user-points-detail.ts "Игорь"
+ *               npx tsx scripts/audit-user-points-detail.ts "Игорь" --month
  */
 
+import 'dotenv/config';
 import { PrismaClient } from '../src/generated/prisma/client';
 import path from 'path';
-import dotenv from 'dotenv';
 import {
   calculateCollectPoints,
   calculateCheckPoints,
 } from '../src/lib/ranking/pointsRates';
 import { getPointsRates } from '../src/lib/ranking/getPointsRates';
 import { getStatisticsDateRange } from '../src/lib/utils/moscowDate';
-
-dotenv.config();
 
 const databaseUrl = process.env.DATABASE_URL;
 let finalDatabaseUrl = databaseUrl;
@@ -55,6 +53,32 @@ async function main() {
   console.log('  Проверка сама:', JSON.stringify(rates.checkSelf));
   console.log('  Проверка с диктовщиком [проверяльщик, диктовщик]:', JSON.stringify(rates.checkWithDictator));
   console.log('='.repeat(80));
+
+  // Сырая выгрузка из БД: TaskStatistics по пользователю
+  const rawCollector = await prisma.taskStatistics.count({
+    where: { userId: user.id, roleType: 'collector', positions: { gt: 0 }, task: { OR: [{ completedAt: { gte: startDate, lte: endDate } }, { confirmedAt: { gte: startDate, lte: endDate } }] } },
+  });
+  const rawChecker = await prisma.taskStatistics.count({
+    where: { userId: user.id, roleType: 'checker', positions: { gt: 0 }, task: { confirmedAt: { gte: startDate, lte: endDate } } },
+  });
+  const rawDictator = await prisma.taskStatistics.count({
+    where: { userId: user.id, roleType: 'dictator', positions: { gt: 0 }, task: { confirmedAt: { gte: startDate, lte: endDate } } },
+  });
+  const selfCheckTasks = await prisma.shipmentTask.findMany({
+    where: {
+      checkerId: user.id,
+      dictatorId: user.id,
+      confirmedAt: { gte: startDate, lte: endDate },
+    },
+    select: { id: true, shipment: { select: { number: true } } },
+  });
+  console.log('\n📂 СЫРЫЕ ДАННЫЕ ИЗ БД (TaskStatistics):');
+  console.log(`   collector: ${rawCollector} | checker: ${rawChecker} | dictator: ${rawDictator}`);
+  console.log(`   Самопроверка (checkerId=dictatorId): ${selfCheckTasks.length} заданий`);
+  selfCheckTasks.slice(0, 5).forEach((t, i) => console.log(`      ${i + 1}. ${(t.shipment as { number?: string })?.number ?? '?'}`));
+  if (selfCheckTasks.length > 5) console.log(`      ... и ещё ${selfCheckTasks.length - 5}`);
+  console.log(`   Диктовок должно быть = проверок: ${rawChecker} (включая самопроверку)`);
+  console.log('');
 
   const stats = await prisma.taskStatistics.findMany({
     where: {
@@ -115,32 +139,34 @@ async function main() {
     let rate: string;
     let type: Row['type'];
 
-    if (isDictator) {
-      const pair = rates.checkWithDictator[wh] ?? [0.39, 0.36];
-      const r = pair[1];
-      expected = positions * r;
+    // Приоритет roleType: collector/checker row — свои баллы; dictator — отдельно
+    if (s.roleType === 'collector' && isCollector) {
+      expected = calculateCollectPoints(positions, wh, rates.collect);
+      const r = rates.collect[wh] ?? 1;
       rate = `${positions} × ${r}`;
-      type = 'диктовка';
-      dictatorRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
-    } else if (isChecker) {
+      type = 'сборка';
+      collectorRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
+    } else if (s.roleType === 'checker' && isChecker) {
       const { checkerPoints } = calculateCheckPoints(positions, wh, task.dictatorId, task.checkerId || '', overrides);
       expected = checkerPoints;
       const isSelf = !task.dictatorId || task.dictatorId === task.checkerId;
       if (isSelf) {
         const r = rates.checkSelf[wh] ?? 0.78;
         rate = `${positions} × ${r} (сам)`;
+        dictatorRows.push({ type: 'диктовка', orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate: 'сам с собой (0 б.)', expected: 0, actual: 0, ok: true });
       } else {
         const pair = rates.checkWithDictator[wh] ?? [0.39, 0.36];
         rate = `${positions} × ${pair[0]} (с диктовщ.)`;
       }
       type = 'проверка';
       checkerRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
-    } else if (isCollector) {
-      expected = calculateCollectPoints(positions, wh, rates.collect);
-      const r = rates.collect[wh] ?? 1;
+    } else if (s.roleType === 'dictator' || (isDictator && s.roleType !== 'collector')) {
+      const pair = rates.checkWithDictator[wh] ?? [0.39, 0.36];
+      const r = pair[1];
+      expected = positions * r;
       rate = `${positions} × ${r}`;
-      type = 'сборка';
-      collectorRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
+      type = 'диктовка';
+      dictatorRows.push({ type, orderNum: task.shipment?.number || '?', positions, warehouse: wh, rate, expected, actual, ok: Math.abs(expected - actual) < 1e-4 });
     } else {
       // Fallback: roleType
       if (s.roleType === 'collector') {
@@ -192,11 +218,11 @@ async function main() {
     console.log('   (нет записей)');
   } else {
     dictatorRows.forEach((r, i) => {
-      console.log(`   ${i + 1}. ${r.orderNum} | ${r.warehouse} | ${r.rate} = ${r.expected.toFixed(2)} | в БД: ${r.actual.toFixed(2)} ${r.ok ? '✅' : '❌'}`);
+      const actStr = r.actual === 0 && r.rate.includes('сам') ? '0 (сам с собой)' : r.actual.toFixed(2);
+      console.log(`   ${i + 1}. ${r.orderNum} | ${r.warehouse} | ${r.rate} | ожид: ${r.expected.toFixed(2)} | факт: ${actStr} ${r.ok ? '✅' : '❌'}`);
     });
-    console.log(`   ИТОГО: ${dictatorRows.length} заданий, ${totalPosDictator} поз. → ${sumDictator.toFixed(2)} баллов`);
-    console.log('\n   Расчёт: каждая позиция при диктовке даёт 0.36 (Склад 1) или 0.61 (Склад 2/3).');
-    console.log(`   ${totalPosDictator} позиций могли дать ${sumDictator.toFixed(2)} при среднем тарифе ~${(totalPosDictator > 0 ? sumDictator / totalPosDictator : 0).toFixed(2)} за позицию.`);
+    console.log(`   ИТОГО: ${dictatorRows.length} заданий (кол-во = проверок), ${totalPosDictator} поз. → ${sumDictator.toFixed(2)} баллов`);
+    console.log('   Самопроверка: 0 баллов за диктовку, но засчитывается как 1 диктовка.');
   }
 
   if (checkerRows.length > 0) {
@@ -210,6 +236,12 @@ async function main() {
 
   console.log('\n' + '='.repeat(80));
   console.log(`СУММА: сборка ${sumCollector.toFixed(2)} + диктовка ${sumDictator.toFixed(2)} + проверка ${sumChecker.toFixed(2)} = ${(sumCollector + sumDictator + sumChecker).toFixed(2)} баллов`);
+  console.log('');
+  console.log('📋 ЧЕК-ЛИСТ БАЛЛОВ:');
+  console.log('   ☐ Сборка: только roleType=collector, collectorId=user (без дублей от checkerCollectorStats)');
+  console.log('   ☐ Проверка: roleType=checker, checkerId=user');
+  console.log('   ☐ Диктовка: dictatorId=user (в т.ч. сам с собой = 0 б., но кол-во = проверкам)');
+  console.log('   ☐ Топ и подробная статистика должны совпадать по итогам');
   console.log('');
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Trophy, RefreshCw, Calendar, HelpCircle, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Trophy, RefreshCw, Calendar, HelpCircle, AlertTriangle, Package, CheckCircle, Mic, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import UserStatsModal from '@/components/admin/UserStatsModal';
 import { PointsHelpModal } from '@/components/PointsHelpModal';
@@ -33,6 +33,13 @@ interface RankingEntry {
   efficiency: number | null;
 }
 
+interface UserStatsDetail {
+  extraWorkPoints?: number;
+  checker: { totalTasks: number; totalPoints: number; totalPositions: number; tasks: Array<{ shipmentNumber: string; formula?: string; orderPoints: number | null }> };
+  collector: { totalTasks: number; totalPoints: number; totalPositions: number; tasks: Array<{ shipmentNumber: string; formula?: string; orderPoints: number | null }> };
+  dictator?: { totalTasks: number; totalPoints: number; totalPositions: number; tasks: Array<{ shipmentNumber: string; formula?: string; orderPoints: number | null; checkerName?: string }> };
+}
+
 const PERIOD_LABELS: Record<Period, string> = {
   today: 'День',
   week: 'Неделя',
@@ -57,6 +64,10 @@ export default function TopPage() {
   const [mounted, setMounted] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState('');
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [expandedStats, setExpandedStats] = useState<UserStatsDetail | null>(null);
+  const [expandedLoading, setExpandedLoading] = useState(false);
+  const expandTargetRef = useRef<string | null>(null);
   const [showPointsHelp, setShowPointsHelp] = useState(false);
   const [showErrorsBreakdown, setShowErrorsBreakdown] = useState(false);
   const [expandedErrorRow, setExpandedErrorRow] = useState<number | null>(null);
@@ -95,7 +106,7 @@ export default function TopPage() {
     return () => clearInterval(id);
   }, [load]);
 
-  const formatPoints = (p: number) => Math.round(p * 100) / 100;
+  const formatPointsNum = (p: number) => Math.round(p * 100) / 100;
   const formatPPH = (pph: number | null) =>
     pph != null && !isNaN(pph) ? Math.round(pph).toLocaleString('ru-RU') : '—';
   const formatDate = (d: string) => {
@@ -114,6 +125,41 @@ export default function TopPage() {
   const getBadgeAnimation = (index: number) => {
     if (index <= 2) return 'animate-top-badge-pop opacity-0';
     return 'animate-top-card-stagger opacity-0';
+  };
+
+  const toggleExpand = useCallback(async (user: RankingEntry) => {
+    if (expandedUserId === user.userId) {
+      setExpandedUserId(null);
+      setExpandedStats(null);
+      expandTargetRef.current = null;
+      return;
+    }
+    const targetId = user.userId;
+    expandTargetRef.current = targetId;
+    setExpandedUserId(targetId);
+    setExpandedLoading(true);
+    setExpandedStats(null);
+    try {
+      const res = await fetch(`/api/statistics/user/${targetId}/public?period=${period}`, { cache: 'no-store' });
+      const data = res.ok ? await res.json() : null;
+      if (expandTargetRef.current === targetId) {
+        setExpandedStats(data ? {
+          extraWorkPoints: data.extraWorkPoints,
+          checker: data.checker,
+          collector: data.collector,
+          dictator: data.dictator,
+        } : null);
+      }
+    } catch {
+      if (expandTargetRef.current === targetId) setExpandedStats(null);
+    } finally {
+      setExpandedLoading(false);
+    }
+  }, [expandedUserId, period]);
+
+  const openFullStats = (userId: string, userName: string) => {
+    setSelectedUserId(userId);
+    setSelectedUserName(userName);
   };
 
   return (
@@ -160,7 +206,7 @@ export default function TopPage() {
           )}
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs text-slate-500">
-              Места по баллам (количество позиций)
+              Места по баллам (сборка + проверка + диктовка + доп.работа)
             </p>
             <button
               type="button"
@@ -170,6 +216,11 @@ export default function TopPage() {
               <HelpCircle className="w-3.5 h-3.5" />
               Как считаются баллы
             </button>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500">
+            <span><span className="text-blue-400">Сборка</span> поз.×1 (С1) / ×2 (С2-3)</span>
+            <span><span className="text-purple-400">Проверка</span> сам 0.78 / с диктовщ. 0.39</span>
+            <span><span className="text-amber-400">Диктовка</span> 0.36 (С1) / 0.61 (С2-3)</span>
           </div>
           {(totalCollectorErrors > 0 || totalCheckerErrors > 0 || topErrorsMerged.length > 0) && (
             <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3 mt-2">
@@ -338,20 +389,7 @@ export default function TopPage() {
               {list.slice(0, 20).map((user, index) => (
                 <div
                   key={user.userId}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
-                    setSelectedUserId(user.userId);
-                    setSelectedUserName(user.userName);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setSelectedUserId(user.userId);
-                      setSelectedUserName(user.userName);
-                    }
-                  }}
-                  className={`rounded-xl border p-4 transition-all opacity-0 cursor-pointer hover:ring-2 hover:ring-yellow-500/30 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 ${getCardAnimation(index)} ${
+                  className={`rounded-xl border overflow-hidden transition-all opacity-0 ${getCardAnimation(index)} ${
                     index === 0
                       ? 'border-yellow-500/50 bg-gradient-to-r from-yellow-900/30 to-slate-900/50'
                       : index === 1
@@ -362,6 +400,18 @@ export default function TopPage() {
                   }`}
                   style={index >= 3 ? { animationDelay: `${0.45 + (index - 3) * 0.06}s`, animationFillMode: 'forwards' } : undefined}
                 >
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openFullStats(user.userId, user.userName)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openFullStats(user.userId, user.userName);
+                      }
+                    }}
+                    className="p-4 cursor-pointer hover:ring-2 hover:ring-yellow-500/30 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 rounded-t-xl"
+                  >
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div
@@ -422,27 +472,142 @@ export default function TopPage() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className="text-lg font-bold text-slate-100">
-                        {formatPoints(user.points)}
+                        {formatPointsNum(user.points)}
                       </div>
                       <div className="text-xs text-slate-400">баллов</div>
-                      {(user.collectorPoints ?? 0) > 0 && (
-                        <div className="text-xs text-blue-400/90 mt-0.5">сборка {formatPoints(user.collectorPoints ?? 0)}</div>
-                      )}
-                      {(user.checkerPoints ?? 0) > 0 && (
-                        <div className="text-xs text-purple-400/90">проверка {formatPoints(user.checkerPoints ?? 0)}</div>
-                      )}
-                      {(user.dictatorPoints ?? 0) > 0 && (
-                        <div className="text-xs text-amber-400/90">диктовка {formatPoints(user.dictatorPoints ?? 0)}</div>
-                      )}
-                      {(user.extraWorkPoints ?? 0) > 0 && (
-                        <div className="text-xs text-amber-500/90">доп.работа {formatPoints(user.extraWorkPoints ?? 0)}</div>
-                      )}
+                      <div className="space-y-0.5 mt-1">
+                        {(user.collectorPoints ?? 0) > 0 && (
+                          <div className="text-xs"><span className="text-blue-400/90">Сборка</span> {formatPointsNum(user.collectorPoints ?? 0)}</div>
+                        )}
+                        {(user.checkerPoints ?? 0) > 0 && (
+                          <div className="text-xs"><span className="text-purple-400/90">Проверка</span> {formatPointsNum(user.checkerPoints ?? 0)}</div>
+                        )}
+                        {(user.dictatorPoints ?? 0) > 0 && (
+                          <div className="text-xs"><span className="text-amber-400/90">Диктовка</span> {formatPointsNum(user.dictatorPoints ?? 0)}</div>
+                        )}
+                        {(user.extraWorkPoints ?? 0) > 0 && (
+                          <div className="text-xs"><span className="text-amber-500/90">Доп.работа</span> {formatPointsNum(user.extraWorkPoints ?? 0)}</div>
+                        )}
+                      </div>
                       {user.pph != null && (
                         <div className="text-xs text-slate-500 mt-0.5">
                           {formatPPH(user.pph)} PPH
                         </div>
                       )}
                     </div>
+                  </div>
+                  </div>
+
+                  {/* Кнопка «Подробнее» — раскрывает детали */}
+                  <div className="border-t border-slate-700/50">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand(user);
+                      }}
+                      className="w-full px-4 py-2 flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-700/30 transition-colors"
+                    >
+                      {expandedUserId === user.userId ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                      Подробнее
+                    </button>
+
+                    {expandedUserId === user.userId && (
+                      <div className="px-4 pb-4 pt-2 bg-slate-900/50 border-t border-slate-700/30">
+                        {expandedLoading ? (
+                          <div className="text-center py-4 text-slate-400 text-sm">Загрузка...</div>
+                        ) : expandedStats ? (
+                          <div className="space-y-4 text-sm">
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                              <span><span className="text-blue-400">Сборка</span> {expandedStats.collector.totalPoints.toFixed(2)} ({expandedStats.collector.totalTasks} зак.)</span>
+                              <span><span className="text-purple-400">Проверка</span> {expandedStats.checker.totalPoints.toFixed(2)} ({expandedStats.checker.totalTasks} зак.)</span>
+                              <span><span className="text-amber-400">Диктовка</span> {(expandedStats.dictator?.totalPoints ?? 0).toFixed(2)} ({(expandedStats.dictator?.totalTasks ?? 0)} зак.)</span>
+                              {(expandedStats.extraWorkPoints ?? 0) > 0 && (
+                                <span><span className="text-amber-500">Доп.работа</span> {(expandedStats.extraWorkPoints ?? 0).toFixed(2)}</span>
+                              )}
+                              <span className="text-slate-300 font-medium">= {(expandedStats.collector.totalPoints + expandedStats.checker.totalPoints + (expandedStats.dictator?.totalPoints ?? 0) + (expandedStats.extraWorkPoints ?? 0)).toFixed(2)} баллов</span>
+                            </div>
+
+                            {expandedStats.collector.tasks.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-1.5 text-blue-400/90 font-medium mb-1.5">
+                                  <Package className="w-3.5 h-3.5" />
+                                  Сборка
+                                </div>
+                                <div className="space-y-1 max-h-32 overflow-y-auto">
+                                  {expandedStats.collector.tasks.slice(0, 15).map((t, i) => (
+                                    <div key={i} className="flex justify-between gap-2 text-xs text-slate-400">
+                                      <span className="truncate">{t.shipmentNumber}</span>
+                                      <span>{t.formula ?? ''}</span>
+                                      <span className="text-blue-400/90 shrink-0">{(t.orderPoints ?? 0).toFixed(2)}</span>
+                                    </div>
+                                  ))}
+                                  {expandedStats.collector.tasks.length > 15 && (
+                                    <div className="text-xs text-slate-500">...и ещё {expandedStats.collector.tasks.length - 15}</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {expandedStats.checker.tasks.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-1.5 text-purple-400/90 font-medium mb-1.5">
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  Проверка
+                                </div>
+                                <div className="space-y-1 max-h-32 overflow-y-auto">
+                                  {expandedStats.checker.tasks.slice(0, 15).map((t, i) => (
+                                    <div key={i} className="flex justify-between gap-2 text-xs text-slate-400">
+                                      <span className="truncate">{t.shipmentNumber}</span>
+                                      <span>{t.formula ?? ''}</span>
+                                      <span className="text-purple-400/90 shrink-0">{(t.orderPoints ?? 0).toFixed(2)}</span>
+                                    </div>
+                                  ))}
+                                  {expandedStats.checker.tasks.length > 15 && (
+                                    <div className="text-xs text-slate-500">...и ещё {expandedStats.checker.tasks.length - 15}</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {expandedStats.dictator && expandedStats.dictator.tasks.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-1.5 text-amber-400/90 font-medium mb-1.5">
+                                  <Mic className="w-3.5 h-3.5" />
+                                  Диктовка
+                                </div>
+                                <div className="space-y-1 max-h-32 overflow-y-auto">
+                                  {expandedStats.dictator.tasks.slice(0, 15).map((t, i) => (
+                                    <div key={i} className="flex justify-between gap-2 text-xs text-slate-400">
+                                      <span className="truncate">{t.shipmentNumber}</span>
+                                      <span className="truncate">{t.checkerName ? `${t.checkerName} · ` : ''}{t.formula ?? ''}</span>
+                                      <span className="text-amber-400/90 shrink-0">{(t.orderPoints ?? 0).toFixed(2)}</span>
+                                    </div>
+                                  ))}
+                                  {expandedStats.dictator.tasks.length > 15 && (
+                                    <div className="text-xs text-slate-500">...и ещё {expandedStats.dictator.tasks.length - 15}</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => openFullStats(user.userId, user.userName)}
+                              className="mt-2 w-full py-2 rounded-lg bg-slate-700/60 hover:bg-slate-600/60 text-slate-200 text-sm font-medium transition-colors"
+                            >
+                              Полная статистика
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-center py-4 text-slate-500 text-sm">Ошибка загрузки</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

@@ -71,7 +71,7 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       },
     },
     orderBy: { createdAt: 'desc' },
-    take: 100,
+    take: 500,
   });
 
   const collectorStats = await prisma.taskStatistics.findMany({
@@ -111,7 +111,7 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       },
     },
     orderBy: { createdAt: 'desc' },
-    take: 100,
+    take: 500,
   });
 
   const dictatorStats = await prisma.taskStatistics.findMany({
@@ -146,7 +146,7 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
       },
     },
     orderBy: { createdAt: 'desc' },
-    take: 100,
+    take: 500,
   });
 
   const dailyStats = await prisma.dailyStats.findMany({
@@ -216,18 +216,31 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
 
   const rates = await getPointsRates();
   const checkerOnlyStats = checkerStats.filter((s) => s.task?.checkerId === user.id);
-  // Диктовка — только когда НЕ самопроверка (checkerId !== dictatorId), иначе дублируем баллы
+  // Диктовка с диктовщиком (НЕ самопроверка): dictatorId === user.id && checkerId !== dictatorId
   const dictatorFromChecker = checkerStats.filter((s) => {
     const t = s.task as { dictatorId?: string; checkerId?: string } | undefined;
     if (!t?.dictatorId || t.dictatorId !== user.id) return false;
-    return !(t.checkerId && t.checkerId === t.dictatorId); // исключаем самопроверку
+    return !(t.checkerId && t.checkerId === t.dictatorId); // исключаем самопроверку (добавляем отдельно)
+  });
+  // Самопроверка: dictatorId === checkerId === user.id — считаем диктовку (0 баллов), количество = проверкам
+  const dictatorSelfCheck = checkerStats.filter((s) => {
+    const t = s.task as { dictatorId?: string; checkerId?: string } | undefined;
+    return t?.dictatorId === user.id && t?.checkerId === t.dictatorId;
   });
   const collectorOnlyStats = collectorStats.filter((s) => (s.task as { collectorId?: string })?.collectorId === user.id);
   const dictatorFromCollector = collectorStats.filter((s) => (s.task as { dictatorId?: string })?.dictatorId === user.id);
-  const dictatorOnlyStats = [...dictatorStats, ...dictatorFromChecker, ...dictatorFromCollector];
+  const dictatorOnlyStats = [...dictatorStats, ...dictatorFromChecker, ...dictatorFromCollector, ...dictatorSelfCheck];
 
   const checkerTotalPoints = checkerOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
-  const dictatorTotalPoints = dictatorOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
+  const dictatorTotalPoints = dictatorOnlyStats.reduce((sum, stat) => {
+    const t = stat.task as { dictatorId?: string; checkerId?: string } | undefined;
+    const isSelfCheck = t?.checkerId === t?.dictatorId && t?.dictatorId === user.id;
+    if (isSelfCheck) return sum;
+    if (stat.roleType === 'dictator' && (stat.orderPoints ?? 0) > 0) return sum + (stat.orderPoints ?? 0);
+    const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
+    const pair = rates.checkWithDictator[wh] ?? [0.39, 0.36];
+    return sum + stat.positions * pair[1];
+  }, 0);
   const checkerTotalPositions = checkerOnlyStats.reduce((sum, stat) => sum + stat.positions, 0);
   const checkerTotalUnits = checkerOnlyStats.reduce((sum, stat) => sum + stat.units, 0);
   const checkerTotalOrders = new Set(checkerOnlyStats.map((s) => s.shipmentId)).size;
@@ -300,18 +313,25 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
         const pair = rates.checkWithDictator[wh] ?? CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36];
         const rate = pair[1];
         const calculatedPts = stat.positions * rate;
-        const pts = (stat.orderPoints != null && stat.orderPoints > 0) ? stat.orderPoints : calculatedPts;
-        const formula = `${stat.positions} × ${rate} = ${calculatedPts.toFixed(2)}`;
+        // Для roleType=dictator используем orderPoints из БД; для dictatorFromChecker/Collector/SelfCheck — расчёт
+        const isSelfCheck = (stat.task as { dictatorId?: string; checkerId?: string })?.checkerId === (stat.task as { dictatorId?: string })?.dictatorId;
+        const pts = (stat.roleType === 'dictator' && (stat.orderPoints ?? 0) > 0)
+          ? (stat.orderPoints ?? 0)
+          : (isSelfCheck ? 0 : calculatedPts);
+        const formula = isSelfCheck ? `${stat.positions} поз. · сам с собой (0 б.)` : `${stat.positions} × ${rate} = ${calculatedPts.toFixed(2)}`;
+        const t = stat.task as { checker?: { name: string }; dictatorId?: string; checkerId?: string };
+        const isSc = t?.checkerId === t?.dictatorId && t?.dictatorId === user.id;
         return {
           taskId: stat.taskId,
           shipmentNumber: stat.task?.shipment?.number || 'N/A',
           customerName: stat.task?.shipment?.customerName || 'N/A',
           warehouse: stat.warehouse,
-          checkerName: (stat.task as { checker?: { name: string } })?.checker?.name ?? '—',
+          checkerName: isSc ? 'сам с собой' : (t?.checker?.name ?? '—'),
           positions: stat.positions,
           orderPoints: pts,
           formula,
           confirmedAt: stat.task?.confirmedAt?.toISOString() || null,
+          isSelfCheck: isSc,
         };
       }),
     },

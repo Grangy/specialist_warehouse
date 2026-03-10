@@ -13,6 +13,7 @@
     "stats:recalculate-all": "tsx scripts/recalculate-all-stats-without-units.ts",
     "stats:recalculate-gap": "tsx scripts/recalculate-gap-metrics.ts",
     "stats:recalc-points": "tsx scripts/recalculate-points-positions-only.ts",
+    "stats:recalculate": "./scripts/recalculate-stats.sh",
     "stats:audit-week": "tsx scripts/audit-points-week.ts",
     "stats:audit-all": "tsx scripts/audit-points-week.ts --all",
     "stats:audit-spot-check": "tsx scripts/audit-points-spot-check.ts",

@@ -73,7 +73,7 @@ export async function aggregateRankings(
     ...taskWhere,
   };
 
-  const [collectorByCompleted, collectorByConfirmed, checkerTaskStats, checkerCollectorStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, activeSessions, manualAdjustmentsSetting] = await Promise.all([
+  const [collectorByCompleted, collectorByConfirmed, checkerTaskStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, activeSessions, manualAdjustmentsSetting] = await Promise.all([
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: completedWhere },
       include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true } } },
@@ -85,14 +85,6 @@ export async function aggregateRankings(
     prisma.taskStatistics.findMany({
       where: { roleType: 'checker', task: confirmedWhere },
       include: { user: { select: { id: true, name: true, role: true } }, task: { select: { checkerId: true, dictatorId: true } } },
-    }),
-    prisma.taskStatistics.findMany({
-      where: {
-        roleType: 'collector',
-        user: { role: 'checker' },
-        task: completedWhere,
-      },
-      include: { user: { select: { id: true, name: true, role: true } } },
     }),
     prisma.taskStatistics.findMany({
       where: {
@@ -269,17 +261,8 @@ export async function aggregateRankings(
     }
   }
 
-  for (const stat of checkerCollectorStats) {
-    const agg = ensureAgg(stat.user);
-    const pts = stat.orderPoints || 0;
-    agg.positions += stat.positions;
-    agg.units += stat.units;
-    agg.orders.add(stat.shipmentId);
-    agg.points += pts;
-    agg.collectorPoints += pts;
-    agg.totalPickTimeSec += stat.pickTimeSec || 0;
-    if (stat.efficiencyClamped != null) agg.efficiencies.push(stat.efficiencyClamped);
-  }
+  // checkerCollectorStats убран: те же задачи уже учтены в collectorTaskStats
+  // (когда проверяльщик собирает — roleType=collector, collectorId===userId)
 
   for (const stat of dictatorStatsFiltered) {
     const agg = ensureAgg(stat.user);

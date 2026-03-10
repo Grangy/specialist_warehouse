@@ -59,6 +59,7 @@ interface UserStatsData {
       orderPoints: number | null;
       formula?: string;
       confirmedAt: string | null;
+      isSelfCheck?: boolean;
     }>;
   };
   collector: {
@@ -302,6 +303,22 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
 
           {data && (
             <div className="space-y-4 sm:space-y-6">
+              {/* Итоговая разбивка: за что баллы */}
+              <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-xs font-medium text-slate-400 mb-2">Итого баллов за период:</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                  <span><span className="text-blue-400">Сборка</span> {data.collector.totalPoints.toFixed(2)}</span>
+                  <span><span className="text-purple-400">Проверка</span> {data.checker.totalPoints.toFixed(2)}</span>
+                  <span><span className="text-amber-400">Диктовка</span> {(data.dictator?.totalPoints ?? 0).toFixed(2)}</span>
+                  {(data.extraWorkPoints ?? 0) > 0 && (
+                    <span><span className="text-amber-500">Доп.работа</span> {(data.extraWorkPoints ?? 0).toFixed(2)}</span>
+                  )}
+                  <span className="text-slate-300 font-semibold">
+                    = {(data.collector.totalPoints + data.checker.totalPoints + (data.dictator?.totalPoints ?? 0) + (data.extraWorkPoints ?? 0)).toFixed(2)} баллов
+                  </span>
+                </div>
+              </div>
+
               {/* Общая статистика — компактные карточки на мобиле */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
                 <div className="bg-gradient-to-br from-purple-600/20 to-purple-500/10 rounded-lg p-3 sm:p-4 border border-purple-500/30">
@@ -314,7 +331,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                     {data.checker.totalTasks} зад. · {data.checker.totalPositions} поз. · {data.checker.totalOrders} зак.
                   </div>
                 </div>
-                {(data.dictator?.totalPoints ?? 0) > 0 && (
+                {((data.dictator?.totalPoints ?? 0) > 0 || (data.dictator?.totalTasks ?? 0) > 0) && (
                   <div className="bg-gradient-to-br from-amber-600/20 to-amber-500/10 rounded-lg p-3 sm:p-4 border border-amber-500/30">
                     <div className="text-xs sm:text-sm text-slate-400 mb-0.5 sm:mb-1 flex items-center gap-1">
                       <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -322,7 +339,8 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                     </div>
                     <div className="text-lg sm:text-2xl font-bold text-slate-100">{(data.dictator?.totalPoints ?? 0).toFixed(2)}</div>
                     <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">
-                      {data.dictator?.totalTasks ?? 0} зад. · {data.dictator?.totalPositions ?? 0} поз.
+                      {(data.dictator?.totalTasks ?? 0)} зад. · {data.dictator?.totalPositions ?? 0} поз.
+                      {((data.dictator?.totalTasks ?? 0) > 0 && (data.dictator?.totalPoints ?? 0) === 0) && ' (в т.ч. сам с собой)'}
                     </div>
                   </div>
                 )}
@@ -436,10 +454,11 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
               {/* Контент вкладок */}
               {activeTab === 'checker' && (
                 <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700/50">
-                  <h3 className="text-base sm:text-lg font-semibold text-slate-100 mb-3 sm:mb-4 flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-100 mb-1 flex items-center gap-2">
                     <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400 shrink-0" />
                     Задания как проверяльщик
                   </h3>
+                  <p className="text-xs text-slate-400 mb-3">Баллы: поз. × тариф (сам 0.78 / с диктовщ. 0.39)</p>
                   {data.checker.tasks.length === 0 ? (
                     <div className="text-center py-8 text-slate-400">
                       Нет заданий как проверяльщик
@@ -447,7 +466,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                   ) : (
                     <div className="space-y-3 max-h-[50vh] sm:max-h-96 overflow-y-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
                       {data.checker.tasks.map((task, index) => (
-                        <div key={task.taskId} className="bg-slate-900/50 rounded-lg p-3 sm:p-4 border border-slate-700/30">
+                        <div key={`${task.taskId}-${index}`} className="bg-slate-900/50 rounded-lg p-3 sm:p-4 border border-slate-700/30">
                           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
                             <div className="min-w-0">
                               <div className="font-semibold text-slate-100 text-sm sm:text-base truncate">
@@ -462,7 +481,9 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                                 {formatPoints(task.orderPoints)} баллов
                               </div>
                               {task.formula && (
-                                <div className="text-xs text-slate-400">{task.formula}</div>
+                                <div className="text-xs text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded mt-1">
+                                  за проверку: {task.formula}
+                                </div>
                               )}
                             </div>
                           </div>
@@ -485,15 +506,19 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                 </div>
               )}
 
-              {activeTab === 'dictator' && data.dictator && data.dictator.tasks.length > 0 && (
+              {activeTab === 'dictator' && data.dictator && (data.dictator.tasks?.length ?? 0) > 0 && (
                 <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700/50">
-                  <h3 className="text-base sm:text-lg font-semibold text-slate-100 mb-3 sm:mb-4 flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-100 mb-1 flex items-center gap-2">
                     <Mic className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400 shrink-0" />
                     Задания как диктовщик
                   </h3>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {data.dictator.tasks.map((task) => (
-                      <div key={task.taskId} className="bg-slate-900/50 rounded-lg p-3 sm:p-4 border border-slate-700/30">
+                  <p className="text-xs text-slate-400 mb-3">Баллы: поз. × 0.36 (С1) / 0.61 (С2-3). Сам с собой — 0 баллов (засчитывается как диктовка)</p>
+                  <div className="space-y-3 max-h-[50vh] sm:max-h-96 overflow-y-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+                    {data.dictator.tasks.map((task, index) => (
+                      <div
+                        key={`${task.taskId}-${index}`}
+                        className={`bg-slate-900/50 rounded-lg p-3 sm:p-4 border ${task.isSelfCheck ? 'border-amber-500/30 border-dashed' : 'border-slate-700/30'}`}
+                      >
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-1">
                           <div className="min-w-0">
                             <div className="font-semibold text-slate-100 text-sm sm:text-base truncate">
@@ -504,11 +529,16 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                             </div>
                           </div>
                           <div className="flex flex-col items-start sm:items-end shrink-0">
-                            <div className="text-base sm:text-lg font-bold text-amber-400">
+                            <div className={`text-base sm:text-lg font-bold ${task.isSelfCheck ? 'text-amber-500/80' : 'text-amber-400'}`}>
                               {formatPoints(task.orderPoints)} баллов
+                              {task.isSelfCheck && (
+                                <span className="text-xs font-normal text-slate-500 ml-1">(сам с собой)</span>
+                              )}
                             </div>
                             {task.formula && (
-                              <div className="text-xs text-slate-400">{task.formula}</div>
+                              <div className="text-xs text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded mt-1">
+                                за диктовку: {task.formula}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -523,10 +553,11 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
 
               {activeTab === 'collector' && (
                 <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
-                  <h3 className="text-base sm:text-lg font-semibold text-slate-100 mb-3 sm:mb-4 flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-100 mb-1 flex items-center gap-2">
                     <Package className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 shrink-0" />
                     Задания как сборщик
                   </h3>
+                  <p className="text-xs text-slate-400 mb-3">Баллы: поз. × тариф (Склад 1: 1, Склад 2–3: 2)</p>
                   {data.collector.tasks.length === 0 ? (
                     <div className="text-center py-8 text-slate-400">
                       Нет заданий как сборщик
@@ -534,7 +565,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                   ) : (
                     <div className="space-y-3 max-h-[50vh] sm:max-h-96 overflow-y-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
                       {data.collector.tasks.map((task, index) => (
-                        <div key={task.taskId} className="bg-slate-900/50 rounded-lg p-3 sm:p-4 border border-slate-700/30">
+                        <div key={`${task.taskId}-${index}`} className="bg-slate-900/50 rounded-lg p-3 sm:p-4 border border-slate-700/30">
                           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
                             <div className="min-w-0">
                               <div className="font-semibold text-slate-100 text-sm sm:text-base truncate">
@@ -547,7 +578,9 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                                 {formatPoints(task.orderPoints)} баллов
                               </div>
                               {task.formula && (
-                                <div className="text-xs text-slate-400">{task.formula}</div>
+                                <div className="text-xs text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded mt-1">
+                                  за сборку: {task.formula}
+                                </div>
                               )}
                             </div>
                           </div>
