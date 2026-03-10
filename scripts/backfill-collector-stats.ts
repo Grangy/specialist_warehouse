@@ -12,6 +12,7 @@
  *   npx tsx scripts/backfill-collector-stats.ts           # dry-run, все задания за всё время
  *   npx tsx scripts/backfill-collector-stats.ts --apply  # записать, все задания за всё время
  *   npx tsx scripts/backfill-collector-stats.ts --today --apply  # только за сегодня
+ *   npx tsx scripts/backfill-collector-stats.ts --from 2025-03-01 --apply  # с 1 марта
  *   npx tsx scripts/backfill-collector-stats.ts --limit 5 --apply  # первые 5 заданий (тест)
  *
  * Пересчёт за всё время (после изменения логики или дозаполнения):
@@ -43,6 +44,21 @@ const LIMIT_N =
   limitIdx >= 0 && process.argv[limitIdx + 1]
     ? parseInt(process.argv[limitIdx + 1], 10)
     : null;
+const fromIdx = process.argv.indexOf('--from');
+const FROM_DATE =
+  fromIdx >= 0 && process.argv[fromIdx + 1]
+    ? (() => {
+        const s = process.argv[fromIdx + 1];
+        const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if (m) return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10), 0, 0, 0, 0);
+        const m2 = s.match(/^(\d{1,2})-(\d{1,2})$/);
+        if (m2) {
+          const y = new Date().getFullYear();
+          return new Date(y, parseInt(m2[1], 10) - 1, parseInt(m2[2], 10), 0, 0, 0, 0);
+        }
+        return null;
+      })()
+    : null;
 
 async function main() {
   console.log('\n📦 Backfill collector TaskStatistics');
@@ -62,6 +78,9 @@ async function main() {
       status: { in: ['pending_confirmation', 'processed'] },
       ...(TODAY_ONLY && {
         completedAt: { gte: todayStart, lte: todayEnd },
+      }),
+      ...(FROM_DATE && !TODAY_ONLY && {
+        completedAt: { gte: FROM_DATE },
       }),
     },
     select: {
@@ -88,6 +107,9 @@ async function main() {
   let toBackfill = tasks.filter(
     (t) => t.collectorId && !existingKeys.has(`${t.id}:${t.collectorId}`)
   );
+  if (FROM_DATE && !TODAY_ONLY) {
+    console.log(`Период: с ${FROM_DATE.toISOString().split('T')[0]}`);
+  }
   if (LIMIT_N != null && LIMIT_N > 0) {
     toBackfill = toBackfill.slice(0, LIMIT_N);
     console.log(`Ограничение: первые ${LIMIT_N} заданий`);
