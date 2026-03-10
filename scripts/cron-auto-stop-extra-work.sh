@@ -9,6 +9,12 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# NVM/Node в PATH (если есть) — как в fix-collector-and-restore.sh
+[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"
+for d in /root/.nvm/versions/node/*/bin /usr/local/bin; do
+  [ -x "$d/npx" ] && export PATH="$d:$PATH" && break
+done
+
 if [[ -f .env ]]; then
   set -a
   source .env
