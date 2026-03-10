@@ -38,6 +38,11 @@ cd "$DEPLOY_PATH" || { echo "❌ Директория не найдена: $DEPL
 echo "📥 git pull..."
 git pull origin main
 
+echo "⏸️ Останавливаем приложения (для миграций SQLite)..."
+pm2 stop specialist-warehouse 2>/dev/null || true
+pm2 stop db-backup-scheduled 2>/dev/null || true
+sleep 2
+
 echo "🗄️ Миграции..."
 npx prisma migrate deploy
 
@@ -45,7 +50,8 @@ echo "🏗️ Сборка..."
 npm run build
 
 echo "🔄 pm2 restart..."
-pm2 restart specialist-warehouse
+pm2 restart specialist-warehouse || pm2 start npm --name "specialist-warehouse" -- start
+pm2 restart db-backup-scheduled 2>/dev/null || true
 
 echo ""
 echo "✅ Деплой завершён"
