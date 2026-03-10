@@ -61,6 +61,28 @@ export function getStatisticsDateRange(period: 'today' | 'week' | 'month'): Stat
 }
 
 /**
+ * Границы одного дня по Москве (YYYY-MM-DD).
+ */
+export function getStatisticsDateRangeForDate(dateStr: string): StatisticsDateRange {
+  const m = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!m) {
+    const now = new Date();
+    const p = getMoscowDateParts(now);
+    return {
+      startDate: startOfDayMoscowUTC(p.year, p.month, p.date),
+      endDate: endOfDayMoscowUTC(p.year, p.month, p.date),
+    };
+  }
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10) - 1;
+  const date = parseInt(m[3], 10);
+  return {
+    startDate: startOfDayMoscowUTC(year, month, date),
+    endDate: endOfDayMoscowUTC(year, month, date),
+  };
+}
+
+/**
  * Для overview: «сегодня» по Москве (начало дня) — для фильтра DailyStats.date >= today.
  */
 export function getMoscowTodayStart(): Date {
