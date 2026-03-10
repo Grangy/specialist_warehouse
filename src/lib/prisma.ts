@@ -39,6 +39,10 @@ export const prisma =
   globalForPrisma.prisma ??
   (() => {
     const client = new PrismaClient(prismaConfig);
+    // Включаем WAL для SQLite — меньше блокировок при конкурентных запросах
+    if (finalDatabaseUrl?.startsWith('file:') || databaseUrl?.startsWith('file:')) {
+      client.$executeRawUnsafe('PRAGMA journal_mode=WAL').catch(() => {});
+    }
     if (enableQueryLog) {
       (client as any).$on('query', (e: { query: string; params: string; duration: number }) => {
         const duration = e.duration;
