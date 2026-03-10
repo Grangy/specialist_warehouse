@@ -126,6 +126,7 @@ export async function GET(request: NextRequest) {
       extraWorkHoursByUser.get(s.userId)!.extraWorkHours += hours;
     }
 
+    // weekRankings.allRankings уже включает ручные корректировки (из aggregateRankings)
     const extraWorkPointsByUser = new Map<string, number>();
     for (const r of weekRankings.allRankings) {
       if (r.extraWorkPoints > 0) extraWorkPointsByUser.set(r.userId, r.extraWorkPoints);
@@ -164,7 +165,7 @@ export async function GET(request: NextRequest) {
       extraWorkPointsByUser.set(sess.userId, prevPts + activePts);
     }
 
-    // Ручные корректировки баллов (начисление/снятие)
+    // Ручные корректировки: weekRankings уже их учитывает; добавляем для пользователей, которых нет в allRankings
     const manualAdjustments: Record<string, number> = (() => {
       try {
         return manualAdjustmentsSetting?.value ? (JSON.parse(manualAdjustmentsSetting.value) as Record<string, number>) : {};
@@ -173,8 +174,9 @@ export async function GET(request: NextRequest) {
       }
     })();
     for (const [uid, delta] of Object.entries(manualAdjustments)) {
-      const v = extraWorkPointsByUser.get(uid) ?? 0;
-      extraWorkPointsByUser.set(uid, Math.max(0, v + delta));
+      if (!extraWorkPointsByUser.has(uid) && delta !== 0) {
+        extraWorkPointsByUser.set(uid, Math.max(0, delta));
+      }
     }
 
     const allUserIds = new Set<string>();

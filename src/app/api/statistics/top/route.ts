@@ -10,6 +10,7 @@ import { getMoscowDateString } from '@/lib/utils/moscowDate';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
@@ -55,14 +56,19 @@ export async function GET(request: NextRequest) {
     const totalCollectorErrors = [...errorsByCollector.values()].reduce((a, b) => a + b, 0);
     const totalCheckerErrors = [...errorsByChecker.values()].reduce((a, b) => a + b, 0);
 
-    return NextResponse.json({
-      all: allRankings,
-      period,
-      date: displayDate,
-      totalCollectorErrors,
-      totalCheckerErrors,
-      topErrorsMerged,
-    });
+    return NextResponse.json(
+      {
+        all: allRankings,
+        period,
+        date: displayDate,
+        totalCollectorErrors,
+        totalCheckerErrors,
+        topErrorsMerged,
+      },
+      {
+        headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+      }
+    );
   } catch (error: unknown) {
     console.error('[API Statistics Top] Ошибка:', error);
     return NextResponse.json(

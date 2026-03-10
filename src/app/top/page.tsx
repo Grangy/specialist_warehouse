@@ -66,7 +66,7 @@ export default function TopPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/statistics/top?period=${period}`, { cache: 'no-store' });
+      const res = await fetch(`/api/statistics/top?period=${period}&_t=${Date.now()}`, { cache: 'no-store' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || data.details || `Ошибка ${res.status}`);
