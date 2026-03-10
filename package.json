@@ -42,6 +42,7 @@
     "audit:art": "tsx scripts/audit-art-in-db.ts",
     "audit:db": "tsx scripts/audit-db-what-happened.ts",
     "audit:db-load": "tsx scripts/audit-db-load.ts",
+    "audit:full": "tsx scripts/audit-performance-full.ts",
     "audit:export-1c": "tsx scripts/audit-export-1c.ts",
     "test:notifications": "tsx scripts/test-notifications.ts",
     "audit:statistics-full": "tsx scripts/audit-statistics-full.ts",

@@ -98,23 +98,64 @@ npm run recalc:extra-work
 npm run audit:extra-work-productivity [имя]
 ```
 
-### Аудит нагрузки на БД и сервер (5–10 мин)
+### Аудит производительности и оптимизация
 
-Для оптимизации — снять показания нагрузки:
+#### Полный аудит (рекомендуется)
 
 ```bash
-npm run audit:db-load
-# 10 минут:
-npm run audit:db-load -- --duration=600
-# Подробный вывод (каждый сэмпл + временной ряд + SQLite PRAGMA):
-npm run audit:db-load -- --verbose
-# Экспорт в JSON для анализа:
-npm run audit:db-load -- --export=audit.json
-# Чаще сэмплы (каждые 5 сек):
-npm run audit:db-load -- --interval=5000
+cd /var/www/specialist_warehouse
+source ~/.nvm/nvm.sh   # если npm не в PATH
+./scripts/run-audit-on-server.sh
 ```
 
-Выводит: loadavg, память, размер БД, время типичных запросов. По итогу — рекомендации.
+Создаёт:
+- `audit-reports/PERFORMANCE-AUDIT-*.md` — **отчёт в .md** (система, БД, индексы, время запросов, рекомендации)
+- `audit-reports/audit-db-load-*.log` — нагрузочный тест за 5 мин
+
+Опции:
+```bash
+AUDIT_DURATION=600 AUDIT_VERBOSE=1 AUDIT_EXPORT=1 ./scripts/run-audit-on-server.sh
+# Только .md отчёт (без нагрузочного теста):
+AUDIT_FULL_ONLY=1 ./scripts/run-audit-on-server.sh
+```
+
+#### Только нагрузочный тест (вручную)
+
+```bash
+npm run audit:db-load -- --duration=600 --verbose --export=audit-reports/audit.json 2>&1 | tee audit-reports/audit.log
+```
+
+#### 2. Логирование запросов Next.js → БД
+
+Чтобы увидеть, какие запросы делает приложение и где тормоза:
+
+```bash
+# Временно включить логирование (рестарт PM2 с env):
+pm2 stop sklad-spec
+PRISMA_LOG_QUERIES=1 pm2 start npm --name "sklad-spec" -- start
+# Логи пойдут в pm2:
+pm2 logs sklad-spec
+
+# Только медленные запросы (>50ms):
+PRISMA_LOG_QUERIES=1 PRISMA_LOG_SLOW_MS=50 pm2 start npm --name "sklad-spec" -- start
+
+# Лог в файл (удобно для анализа):
+PRISMA_LOG_QUERIES=1 PRISMA_LOG_FILE=/var/www/specialist_warehouse/audit-reports/prisma-queries.log pm2 start npm --name "sklad-spec" -- start
+```
+
+**Важно:** после сбора логов — выключить и вернуть обычный запуск:
+
+```bash
+pm2 delete sklad-spec
+pm2 start npm --name "sklad-spec" -- start
+```
+
+#### 3. Где искать тормоза
+
+- `task stats agg` > 100 ms — тяжёлая aggregate по TaskStatistics, проверить индексы
+- `shipments count` > 50 ms — много отгрузок, индекс по `deleted`
+- Высокий loadavg при нормальной памяти — конкуренция за CPU (poll, API)
+- Рост RSS процесса — возможная утечка, перезапуск по расписанию
 
 ---
 
