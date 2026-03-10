@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const { startDate, endDate } = getStatisticsDateRange('week');
 
-    const [stoppedSessions, weekRankings, activeSessions, allUserSettings, allWorkers, listConfigSetting] = await Promise.all([
+    const [stoppedSessions, weekRankings, activeSessionsRaw, allUserSettings, allWorkers, listConfigSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
         where: {
           status: 'stopped',
@@ -60,6 +60,26 @@ export async function GET(request: NextRequest) {
       }),
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_list_config' } }),
     ]);
+
+    // Автовозобновление после обеда: если lunchEndsAt прошло — убираем обед в админке
+    const nowCheck = new Date();
+    for (const sess of activeSessionsRaw) {
+      if (sess.status === 'lunch' && sess.lunchEndsAt && nowCheck.getTime() >= sess.lunchEndsAt.getTime()) {
+        await prisma.extraWorkSession.update({
+          where: { id: sess.id },
+          data: {
+            status: 'running',
+            postLunchStartedAt: sess.lunchEndsAt,
+            lunchStartedAt: null,
+            lunchEndsAt: null,
+          },
+        });
+      }
+    }
+    const activeSessions = await prisma.extraWorkSession.findMany({
+      where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+      include: { user: { select: { id: true, name: true } } },
+    });
 
     const hiddenUserIds = new Set<string>();
     try {
