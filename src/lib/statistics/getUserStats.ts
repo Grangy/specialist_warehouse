@@ -4,7 +4,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import { getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
 import {
   calculateCheckPoints,
   calculateCollectPoints,
@@ -19,8 +19,16 @@ import {
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 
-export async function getUserStats(userId: string, period?: 'today' | 'week' | 'month') {
-  const dateRange = period ? getStatisticsDateRange(period) : null;
+export async function getUserStats(
+  userId: string,
+  period?: 'today' | 'week' | 'month',
+  dateOverride?: string
+) {
+  const dateRange = dateOverride
+    ? getStatisticsDateRangeForDate(dateOverride)
+    : period
+      ? getStatisticsDateRange(period)
+      : null;
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -93,6 +101,7 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
           id: true,
           collectorId: true,
           dictatorId: true,
+          checkerId: true,
           shipment: {
             select: {
               id: true,
@@ -132,6 +141,7 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
         select: {
           id: true,
           dictatorId: true,
+          checkerId: true,
           shipment: {
             select: {
               id: true,
@@ -230,8 +240,19 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
   // collectorStats уже отфильтрованы по userId=user.id и roleType='collector' — все записи относятся к этому пользователю как сборщику.
   // Доп. фильтр task.collectorId исключал записи при null/несовпадении.
   const collectorOnlyStats = collectorStats;
-  const dictatorFromCollector = collectorStats.filter((s) => (s.task as { dictatorId?: string })?.dictatorId === user.id);
-  const dictatorOnlyStats = [...dictatorStats, ...dictatorFromChecker, ...dictatorFromCollector, ...dictatorSelfCheck];
+  // Диктовка из сборки: только когда НЕ самопроверка (checkerId !== dictatorId)
+  const dictatorFromCollector = collectorStats.filter((s) => {
+    const t = s.task as { dictatorId?: string; checkerId?: string };
+    if (t?.dictatorId !== user.id) return false;
+    const isSelfCheck = t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId;
+    return !isSelfCheck;
+  });
+  // Исключаем dictator Stats по self-check (диктовал себе) — 0 баллов, не дублируем
+  const dictatorStatsFiltered = dictatorStats.filter((s) => {
+    const t = s.task as { dictatorId?: string; checkerId?: string } | undefined;
+    return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
+  });
+  const dictatorOnlyStats = [...dictatorStatsFiltered, ...dictatorFromChecker, ...dictatorFromCollector, ...dictatorSelfCheck];
 
   const checkerTotalPoints = checkerOnlyStats.reduce((sum, stat) => sum + (stat.orderPoints || 0), 0);
   const dictatorTotalPoints = dictatorOnlyStats.reduce((sum, stat) => {
@@ -253,7 +274,8 @@ export async function getUserStats(userId: string, period?: 'today' | 'week' | '
   const collectorTotalOrders = new Set(collectorOnlyStats.map((s) => s.shipmentId)).size;
 
   return {
-    period: period ?? null,
+    period: dateOverride ? null : (period ?? null),
+    date: dateOverride ?? null,
     extraWorkPoints,
     user: {
       id: user.id,

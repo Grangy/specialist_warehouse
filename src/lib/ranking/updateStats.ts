@@ -420,8 +420,9 @@ export async function updateCheckerStats(taskId: string) {
     // Обновляем месячную статистику для проверяльщика
     await updateMonthlyStats(task.checkerId, task.confirmedAt, stats);
 
-    // Если указан диктовщик, создаем статистику для диктовщика (отдельный roleType — не перезаписываем сборку)
-    if (task.dictatorId && dictatorPoints > 0) {
+    // Самопроверка (диктовал себе): checker получает только checkerPoints, диктовка = 0. Не создаём dictator TS.
+    const isSelfCheck = task.checkerId && task.dictatorId && task.checkerId === task.dictatorId;
+    if (task.dictatorId && dictatorPoints > 0 && !isSelfCheck) {
       await prisma.taskStatistics.upsert({
         where: {
           taskId_userId_roleType: {

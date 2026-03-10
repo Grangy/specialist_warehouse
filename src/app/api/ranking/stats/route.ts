@@ -50,15 +50,15 @@ export async function GET(request: NextRequest) {
     });
 
     // Баллы диктовщика: roleType='dictator' (новые) или roleType='collector' где dictatorId=user (legacy)
-    const [dictatorStatsToday, collectorDictatorStatsToday] = await Promise.all([
+    // Самопроверка (checkerId === dictatorId) — 0 баллов, не включаем
+    const [dictatorStatsTodayRaw, collectorDictatorStatsTodayRaw] = await Promise.all([
       prisma.taskStatistics.findMany({
         where: {
           userId: user.id,
           roleType: 'dictator',
-          task: {
-            confirmedAt: { gte: today, lte: todayEnd },
-          },
+          task: { confirmedAt: { gte: today, lte: todayEnd } },
         },
+        include: { task: { select: { checkerId: true, dictatorId: true } } },
       }),
       prisma.taskStatistics.findMany({
         where: {
@@ -69,8 +69,17 @@ export async function GET(request: NextRequest) {
             confirmedAt: { gte: today, lte: todayEnd },
           },
         },
+        include: { task: { select: { checkerId: true, dictatorId: true } } },
       }),
     ]);
+    const dictatorStatsToday = dictatorStatsTodayRaw.filter((s) => {
+      const t = s.task as { checkerId?: string; dictatorId?: string };
+      return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
+    });
+    const collectorDictatorStatsToday = collectorDictatorStatsTodayRaw.filter((s) => {
+      const t = s.task as { checkerId?: string; dictatorId?: string };
+      return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
+    });
 
     const checkerStatsToday = await prisma.taskStatistics.findMany({
       where: {
@@ -99,16 +108,15 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Баллы диктовщика за месяц
-    const [dictatorStatsMonth, collectorDictatorStatsMonth] = await Promise.all([
+    // Баллы диктовщика за месяц (исключаем самопроверку)
+    const [dictatorStatsMonthRaw, collectorDictatorStatsMonthRaw] = await Promise.all([
       prisma.taskStatistics.findMany({
         where: {
           userId: user.id,
           roleType: 'dictator',
-          task: {
-            confirmedAt: { gte: monthStart, lte: monthEnd },
-          },
+          task: { confirmedAt: { gte: monthStart, lte: monthEnd } },
         },
+        include: { task: { select: { checkerId: true, dictatorId: true } } },
       }),
       prisma.taskStatistics.findMany({
         where: {
@@ -119,8 +127,17 @@ export async function GET(request: NextRequest) {
             confirmedAt: { gte: monthStart, lte: monthEnd },
           },
         },
+        include: { task: { select: { checkerId: true, dictatorId: true } } },
       }),
     ]);
+    const dictatorStatsMonth = dictatorStatsMonthRaw.filter((s) => {
+      const t = s.task as { checkerId?: string; dictatorId?: string };
+      return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
+    });
+    const collectorDictatorStatsMonth = collectorDictatorStatsMonthRaw.filter((s) => {
+      const t = s.task as { checkerId?: string; dictatorId?: string };
+      return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
+    });
 
     const checkerStatsMonth = await prisma.taskStatistics.findMany({
       where: {
@@ -383,7 +400,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Баллы диктовщиков (сборщиков) за сегодня — для ранга как в общем топе
+    // Баллы диктовщиков (сборщиков) за сегодня — для ранга как в общем топе. Исключаем самопроверку.
     const allCollectorDictatorStatsToday = await prisma.taskStatistics.findMany({
       where: {
         roleType: 'collector',
@@ -392,11 +409,14 @@ export async function GET(request: NextRequest) {
           confirmedAt: { gte: today, lte: todayEnd },
         },
       },
-      include: { user: { select: { id: true, role: true } }, task: { select: { dictatorId: true } } },
+      include: { user: { select: { id: true, role: true } }, task: { select: { dictatorId: true, checkerId: true } } },
     });
-    const collectorDictatorStatsTodayFiltered = allCollectorDictatorStatsToday.filter(
-      (s) => s.userId === s.task.dictatorId
-    );
+    const collectorDictatorStatsTodayFiltered = allCollectorDictatorStatsToday.filter((s) => {
+      const t = s.task as { dictatorId?: string; checkerId?: string };
+      if (s.userId !== t?.dictatorId) return false;
+      const isSelfCheck = t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId;
+      return !isSelfCheck;
+    });
 
     const allCheckerStatsToday = await prisma.taskStatistics.findMany({
       where: {
@@ -574,11 +594,14 @@ export async function GET(request: NextRequest) {
           confirmedAt: { gte: monthStart, lte: monthEnd },
         },
       },
-      include: { user: { select: { id: true, role: true } }, task: { select: { dictatorId: true } } },
+      include: { user: { select: { id: true, role: true } }, task: { select: { dictatorId: true, checkerId: true } } },
     });
-    const collectorDictatorStatsMonthFiltered = allCollectorDictatorStatsMonth.filter(
-      (s) => s.userId === s.task.dictatorId
-    );
+    const collectorDictatorStatsMonthFiltered = allCollectorDictatorStatsMonth.filter((s) => {
+      const t = s.task as { dictatorId?: string; checkerId?: string };
+      if (s.userId !== t?.dictatorId) return false;
+      const isSelfCheck = t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId;
+      return !isSelfCheck;
+    });
 
     const allCheckerStatsMonth = await prisma.taskStatistics.findMany({
       where: {

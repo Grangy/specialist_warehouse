@@ -4,7 +4,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import { getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
 import {
   getExtraWorkRatePerHour,
   calculateExtraWorkPointsFromRate,
@@ -52,14 +52,17 @@ type UserAgg = {
 
 export async function aggregateRankings(
   period: 'today' | 'week' | 'month',
-  warehouseFilter?: string
+  warehouseFilter?: string,
+  dateOverride?: string
 ): Promise<{
   allRankings: RankingEntry[];
   errorsByCollector: Map<string, number>;
   errorsByChecker: Map<string, number>;
   totalUniqueOrders: number;
 }> {
-  const { startDate, endDate } = getStatisticsDateRange(period);
+  const { startDate, endDate } = dateOverride
+    ? getStatisticsDateRangeForDate(dateOverride)
+    : getStatisticsDateRange(period);
 
   const taskWhere = {
     ...(warehouseFilter && { warehouse: warehouseFilter }),
@@ -101,7 +104,7 @@ export async function aggregateRankings(
         roleType: 'dictator',
         task: confirmedWhere,
       },
-      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { dictatorId: true } } },
+      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { dictatorId: true, checkerId: true } } },
     }),
     prisma.extraWorkSession.findMany({
       where: {
@@ -136,7 +139,11 @@ export async function aggregateRankings(
       const isSelfCheck = t.checkerId && t.dictatorId && t.checkerId === t.dictatorId;
       return !isSelfCheck; // не дублируем самопроверку
     }),
-    ...dictatorRoleStats,
+    ...dictatorRoleStats.filter((s) => {
+      const t = s.task as { dictatorId?: string; checkerId?: string };
+      const isSelfCheck = t.checkerId && t.dictatorId && t.checkerId === t.dictatorId;
+      return !isSelfCheck; // самопроверка (диктовал себе) — 0 баллов за диктовку, не дублируем
+    }),
   ];
 
   const callsWithErrors = await prisma.collectorCall.findMany({
