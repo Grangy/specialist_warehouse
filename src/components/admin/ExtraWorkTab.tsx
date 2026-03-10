@@ -11,7 +11,8 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight } from 'lucide-react';
+import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight, History } from 'lucide-react';
+import ExtraWorkHistoryTab from './ExtraWorkHistoryTab';
 
 interface ActiveSession {
   id: string;
@@ -56,7 +57,10 @@ function formatHours(h: number): string {
 /** Минимум для диаграммы: 1 минута доп. работы */
 const MIN_HOURS_CHART = 1 / 60;
 
+type SubTab = 'management' | 'history';
+
 export default function ExtraWorkTab() {
+  const [subTab, setSubTab] = useState<SubTab>('management');
   const [data, setData] = useState<ExtraWorkEntry[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
   const [canAssign, setCanAssign] = useState(false);
@@ -272,6 +276,32 @@ export default function ExtraWorkTab() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <div className="flex rounded-lg bg-slate-800/80 p-1">
+            <button
+              type="button"
+              onClick={() => setSubTab('management')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+                subTab === 'management'
+                  ? 'bg-teal-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Briefcase className="w-4 h-4" />
+              Управление
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubTab('history')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+                subTab === 'history'
+                  ? 'bg-teal-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <History className="w-4 h-4" />
+              История
+            </button>
+          </div>
           <button type="button" onClick={load} className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-2 transition-colors">
             <RefreshCw className="w-4 h-4" />
             Обновить
@@ -279,6 +309,10 @@ export default function ExtraWorkTab() {
         </div>
       </div>
 
+      {subTab === 'history' && <ExtraWorkHistoryTab />}
+
+      {subTab === 'management' && (
+      <>
       {/* Вертикальная столбиковая диаграмма */}
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
             <h3 className="text-lg font-bold text-slate-100 mb-4">Часы доп. работы за неделю</h3>
@@ -544,6 +578,9 @@ export default function ExtraWorkTab() {
           </table>
         </div>
       </div>
+
+      </>
+      )}
 
       {/* Модалка «Назначить» */}
       {showAssignModal && (
