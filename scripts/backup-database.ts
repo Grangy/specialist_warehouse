@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
 import { uploadBackupToYandex } from './yandex-upload';
+import { backupSqliteToFile } from './sqlite-backup';
 
 // Определяем путь к корню проекта
 // Скрипт находится в scripts/, поэтому корень проекта на уровень выше
@@ -269,7 +270,7 @@ async function createBackup() {
     console.log(`  Размер: ${fileSize} MB\n`);
 
     if (fs.existsSync(dbFilePath)) {
-      fs.copyFileSync(dbFilePath, backupDbFile);
+      await backupSqliteToFile(prisma, dbFilePath, backupDbFile);
       const dbSize = (fs.statSync(backupDbFile).size / 1024 / 1024).toFixed(2);
       console.log(`✓ Копия .db сохранена: ${backupDbFile} (${dbSize} MB)\n`);
     } else {

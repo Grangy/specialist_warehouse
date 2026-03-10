@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
 import { uploadBackupToYandex, trimYandexBackups } from './yandex-upload';
+import { backupSqliteToFile } from './sqlite-backup';
 
 const INTERVAL_30_MIN_MS = 30 * 60 * 1000;
 const INTERVAL_5H_MS = 5 * 60 * 60 * 1000;
@@ -215,7 +216,7 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
   const tsBase = ts.replace(/\.json$/, '');
   if (fs.existsSync(dbFilePath)) {
     const path30mDb = path.join(backupDir30m, `${tsBase}.db`);
-    fs.copyFileSync(dbFilePath, path30mDb);
+    await backupSqliteToFile(prisma, dbFilePath, path30mDb);
     const dbMb = (fs.statSync(path30mDb).size / 1024 / 1024).toFixed(2);
     console.log(`  + .db: ${tsBase}.db (${dbMb} MB)`);
     const uploaded30db = await uploadBackupToYandex(projectRoot, path30mDb, `30m/${tsBase}.db`);
@@ -249,7 +250,7 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
     console.log(`  + 5h бэкап: ${ts}`);
     if (fs.existsSync(dbFilePath)) {
       const path5hDb = path.join(backupDir5h, `${tsBase}.db`);
-      fs.copyFileSync(dbFilePath, path5hDb);
+      await backupSqliteToFile(prisma, dbFilePath, path5hDb);
       const uploaded5hDb = await uploadBackupToYandex(projectRoot, path5hDb, `5h/${tsBase}.db`);
       if (uploaded5hDb) {
         console.log(`  → Яндекс.Диск backups_warehouse/5h/${tsBase}.db`);

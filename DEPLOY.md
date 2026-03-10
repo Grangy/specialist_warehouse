@@ -16,8 +16,10 @@
 
 ```bash
 mkdir -p backups
-cp prisma/dev.db backups/dev.db.backup.$(date +%Y%m%d_%H%M%S)
+npm run db:backup:db-only -- backups/dev.db.backup.$(date +%Y%m%d_%H%M%S)
 ```
+
+Используется VACUUM INTO для корректного бэкапа при WAL (без потери транзакций из WAL).
 
 ### 2. Обновление кода
 

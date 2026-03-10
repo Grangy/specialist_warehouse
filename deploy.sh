@@ -7,11 +7,10 @@ set -e  # Остановка при ошибке
 
 echo "🚀 Начинаем деплой новой версии..."
 
-# 1. Бэкап БД (храним последние 10 копий dev.db.backup.*)
+# 1. Бэкап БД (VACUUM INTO для WAL, храним последние 10 копий)
 echo "📦 Создаем бэкап базы данных..."
 mkdir -p backups
-cp prisma/dev.db backups/dev.db.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || echo "⚠️  БД не найдена, пропускаем бэкап"
-# Оставляем только последние 10 копий dev.db.backup.*
+npm run db:backup:db-only -- backups/dev.db.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || echo "⚠️  Бэкап не удался, пропускаем"
 if [ -d backups ]; then
   (cd backups && ls -t dev.db.backup.* 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null) || true
 fi
