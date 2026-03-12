@@ -28,11 +28,13 @@ async function handle(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const dryRun = request.nextUrl.searchParams.get('dry') === '1' || request.nextUrl.searchParams.get('dry') === 'true';
     const hour = getMoscowHour(new Date());
-    if (hour !== 18) {
+
+    if (!dryRun && hour !== 18) {
       return NextResponse.json({
         ok: false,
-        message: `Автостоп только в 18:00 МСК. Сейчас ${hour}:xx`,
+        message: `Автостоп только в 18:00 МСК. Сейчас ${hour}:xx. Для теста добавьте ?dry=1`,
       });
     }
 
@@ -46,6 +48,7 @@ async function handle(request: NextRequest) {
 
     const now = new Date();
     let stopped = 0;
+    const wouldStop: Array<{ id: string; userName: string; elapsedSec: number }> = [];
 
     for (const session of activeSessions) {
       let totalElapsedSec = session.elapsedSecBeforeLunch ?? 0;
@@ -57,21 +60,33 @@ async function handle(request: NextRequest) {
         totalElapsedSec += (session.lunchStartedAt.getTime() - session.startedAt.getTime()) / 1000;
       }
 
-      await prisma.extraWorkSession.update({
-        where: { id: session.id },
-        data: {
-          status: 'stopped',
-          stoppedAt: now,
-          elapsedSecBeforeLunch: totalElapsedSec,
-        },
-      });
-      stopped++;
+      wouldStop.push({ id: session.id, userName: session.user?.name ?? '—', elapsedSec: Math.round(totalElapsedSec) });
+
+      if (!dryRun) {
+        await prisma.extraWorkSession.update({
+          where: { id: session.id },
+          data: {
+            status: 'stopped',
+            stoppedAt: now,
+            elapsedSecBeforeLunch: totalElapsedSec,
+          },
+        });
+        stopped++;
+      } else {
+        stopped++;
+      }
     }
 
     return NextResponse.json({
       ok: true,
       stopped,
-      message: stopped > 0 ? `Остановлено сессий: ${stopped}` : 'Активных сессий не было',
+      dryRun: dryRun || undefined,
+      message: dryRun
+        ? `[DRY RUN] Будет остановлено сессий: ${stopped}`
+        : stopped > 0
+          ? `Остановлено сессий: ${stopped}`
+          : 'Активных сессий не было',
+      ...(dryRun && wouldStop.length > 0 && { wouldStop }),
     });
   } catch (e) {
     console.error('[cron/auto-stop-extra-work]', e);
