@@ -10,11 +10,14 @@ import {
   calculateExtraWorkPointsFromRate,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
+import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
+import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 
 export interface RankingEntry {
   userId: string;
   userName: string;
   role: string;
+  isNewbie?: boolean;
   positions: number;
   units: number;
   orders: number;
@@ -76,7 +79,12 @@ export async function aggregateRankings(
     ...taskWhere,
   };
 
-  const [collectorByCompleted, collectorByConfirmed, checkerTaskStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, activeSessions, manualAdjustmentsSetting] = await Promise.all([
+  const droppedWhere = {
+    droppedAt: { gte: startDate, lte: endDate },
+    droppedByCollectorId: { not: null },
+    ...taskWhere,
+  };
+  const [collectorByCompleted, collectorByConfirmed, collectorByDropped, checkerTaskStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, activeSessions, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: completedWhere },
       include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true } } },
@@ -84,6 +92,10 @@ export async function aggregateRankings(
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: confirmedWhere },
       include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true } } },
+    }),
+    prisma.taskStatistics.findMany({
+      where: { roleType: 'collector', task: droppedWhere },
+      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { droppedByCollectorId: true } } },
     }),
     prisma.taskStatistics.findMany({
       where: { roleType: 'checker', task: confirmedWhere },
@@ -118,18 +130,22 @@ export async function aggregateRankings(
       include: { user: { select: { id: true, name: true, role: true } } },
     }),
     prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
+    prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
   ]);
 
+  const collectorByDroppedFiltered = collectorByDropped.filter((s) => {
+    const t = s.task as { droppedByCollectorId?: string | null } | undefined;
+    return t?.droppedByCollectorId === s.userId;
+  });
   const collectorMerged = [
     ...new Map(
-      [...collectorByCompleted, ...collectorByConfirmed].map((s) => [s.id, s])
+      [...collectorByCompleted, ...collectorByConfirmed, ...collectorByDroppedFiltered].map((s) => [s.id, s])
     ).values(),
   ];
-  // Учитываем сборку, когда collectorId совпадает с userId, а также при collectorId=null
-  // (при самопроверке проверяльщика collectorId мог не сохраниться, но TaskStatistics есть)
+  // Учитываем сборку: collectorId совпадает с userId, collectorId=null (самопроверка), или droppedByCollectorId=userId (раздельная сборка)
   const collectorTaskStats = collectorMerged.filter((s) => {
-    const t = s.task as { collectorId?: string; dictatorId?: string } | undefined;
-    return t?.collectorId === s.userId || t?.collectorId == null;
+    const t = s.task as { collectorId?: string; dictatorId?: string; droppedByCollectorId?: string | null } | undefined;
+    return t?.collectorId === s.userId || t?.collectorId == null || t?.droppedByCollectorId === s.userId;
   });
 
   const dictatorStatsFiltered = [
@@ -215,15 +231,13 @@ export async function aggregateRankings(
     agg.points += activePts;
   }
 
-  // Ручные корректировки
-  const manualAdjustments: Record<string, number> = (() => {
-    try {
-      return manualAdjustmentsSetting?.value ? (JSON.parse(manualAdjustmentsSetting.value) as Record<string, number>) : {};
-    } catch {
-      return {};
-    }
-  })();
-  const missingUserIds = Object.keys(manualAdjustments).filter((uid) => !allMap.has(uid));
+  // Ручные корректировки (только за дату добавления, не дублируются каждый день)
+  const manualAdjustmentsMap = getManualAdjustmentsMapForPeriod(
+    manualAdjustmentsSetting?.value ?? null,
+    startDate,
+    endDate
+  );
+  const missingUserIds = [...manualAdjustmentsMap.keys()].filter((uid) => !allMap.has(uid));
   if (missingUserIds.length > 0) {
     const missingUsers = await prisma.user.findMany({
       where: { id: { in: missingUserIds } },
@@ -231,10 +245,30 @@ export async function aggregateRankings(
     });
     for (const u of missingUsers) ensureAgg(u);
   }
-  for (const [uid, delta] of Object.entries(manualAdjustments)) {
+  for (const [uid, delta] of manualAdjustmentsMap) {
     const agg = allMap.get(uid);
     if (agg) {
       agg.extraWorkPoints = Math.max(0, agg.extraWorkPoints + delta);
+      agg.points = Math.max(0, agg.points + delta);
+    }
+  }
+
+  const errorPenaltiesMap = getErrorPenaltiesMapForPeriod(
+    errorPenaltiesSetting?.value ?? null,
+    startDate,
+    endDate
+  );
+  const missingForPenalties = [...errorPenaltiesMap.keys()].filter((uid) => !allMap.has(uid));
+  if (missingForPenalties.length > 0) {
+    const missingUsers = await prisma.user.findMany({
+      where: { id: { in: missingForPenalties } },
+      select: { id: true, name: true, role: true },
+    });
+    for (const u of missingUsers) ensureAgg(u);
+  }
+  for (const [uid, delta] of errorPenaltiesMap) {
+    const agg = allMap.get(uid);
+    if (agg) {
       agg.points = Math.max(0, agg.points + delta);
     }
   }
@@ -285,12 +319,30 @@ export async function aggregateRankings(
     if (stat.efficiencyClamped != null) agg.efficiencies.push(stat.efficiencyClamped);
   }
 
+  const collectorIds = [...allMap.values()].filter((a) => a.role === 'collector').map((a) => a.userId);
+  const userSettingsRows = collectorIds.length > 0
+    ? await prisma.userSettings.findMany({
+        where: { userId: { in: collectorIds } },
+        select: { userId: true, settings: true },
+      })
+    : [];
+  const isNewbieByUser = new Map<string, boolean>();
+  for (const row of userSettingsRows) {
+    try {
+      const parsed = JSON.parse(row.settings || '{}') as Record<string, unknown>;
+      isNewbieByUser.set(row.userId, parsed.isNewbie === true);
+    } catch {
+      // ignore
+    }
+  }
+
   const allRankings: RankingEntry[] = [];
   for (const agg of allMap.values()) {
     allRankings.push({
       userId: agg.userId,
       userName: agg.userName,
       role: agg.role,
+      isNewbie: agg.role === 'collector' ? (isNewbieByUser.get(agg.userId) ?? false) : undefined,
       positions: agg.positions,
       units: agg.units,
       orders: agg.orders.size,

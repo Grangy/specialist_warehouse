@@ -51,7 +51,7 @@ export async function PATCH(
       return authResult;
     }
     const body = await request.json();
-    const { login, password, name, role } = body;
+    const { login, password, name, role, isNewbie } = body;
 
     const updateData: any = {};
 
@@ -95,7 +95,32 @@ export async function PATCH(
       },
     });
 
-    return NextResponse.json(user);
+    if (isNewbie !== undefined && user.role === 'collector') {
+      const existing = await prisma.userSettings.findUnique({ where: { userId: user.id } });
+      const parsed = existing?.settings ? (JSON.parse(existing.settings) as Record<string, unknown>) : {};
+      const merged = { ...parsed, isNewbie: isNewbie === true };
+      await prisma.userSettings.upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, settings: JSON.stringify(merged) },
+        update: { settings: JSON.stringify(merged) },
+      });
+    }
+
+    let isNewbieVal: boolean | undefined;
+    if (user.role === 'collector') {
+      const row = await prisma.userSettings.findUnique({ where: { userId: user.id } });
+      if (row?.settings) {
+        try {
+          isNewbieVal = (JSON.parse(row.settings) as Record<string, unknown>).isNewbie === true;
+        } catch {
+          isNewbieVal = false;
+        }
+      } else {
+        isNewbieVal = false;
+      }
+    }
+
+    return NextResponse.json({ ...user, isNewbie: isNewbieVal });
   } catch (error) {
     console.error('Ошибка при обновлении пользователя:', error);
     return NextResponse.json(

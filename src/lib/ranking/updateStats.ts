@@ -105,7 +105,136 @@ export async function updatePositionDifficulty(taskId: string) {
 }
 
 /**
- * Обновить статистику для сборщика после завершения сборки
+ * Обновить статистику для сборщика, который бросил задание (раздельная сборка).
+ * Каждый получает баллы за собранные им позиции.
+ */
+export async function updateCollectorStatsForDroppedCollector(
+  taskId: string,
+  droppedCollectorId: string,
+  droppedAt: Date
+) {
+  try {
+    const task = await prisma.shipmentTask.findUnique({
+      where: { id: taskId },
+      include: {
+        lines: true,
+        shipment: { select: { id: true } },
+      },
+    });
+    if (!task || !task.lines.length) return;
+
+    const positions = task.lines.filter((l) => (l.collectedQty ?? 0) > 0).length;
+    const units = task.lines.reduce((sum, l) => sum + (l.collectedQty ?? 0), 0);
+    if (positions === 0 && units === 0) return;
+
+    const rates = await getPointsRates();
+    const orderPoints = calculateCollectPoints(positions, task.warehouse, rates.collect);
+
+    const effectiveStartedAt = task.startedAt ?? task.createdAt;
+    const taskTimeSec = effectiveStartedAt
+      ? (droppedAt.getTime() - effectiveStartedAt.getTime()) / 1000
+      : 0;
+    const pph = taskTimeSec > 0 ? (positions * 3600) / taskTimeSec : null;
+    const uph = taskTimeSec > 0 && units > 0 ? (units * 3600) / taskTimeSec : null;
+
+    const stats = {
+      taskTimeSec,
+      pickTimeSec: taskTimeSec > 0 ? taskTimeSec : null,
+      elapsedTimeSec: taskTimeSec,
+      gapTimeSec: 0,
+      positions,
+      units,
+      pph,
+      uph,
+      secPerPos: taskTimeSec > 0 && positions > 0 ? taskTimeSec / positions : null,
+      secPerUnit: taskTimeSec > 0 && units > 0 ? taskTimeSec / units : null,
+      unitsPerPos: positions > 0 ? units / positions : 0,
+      switches: 0,
+      density: positions > 0 ? units / positions : 0,
+      expectedTimeSec: 0,
+      efficiency: null,
+      efficiencyClamped: null,
+      basePoints: orderPoints,
+      orderPoints,
+    };
+
+    await prisma.taskStatistics.upsert({
+      where: {
+        taskId_userId_roleType: {
+          taskId,
+          userId: droppedCollectorId,
+          roleType: 'collector',
+        },
+      },
+      update: {
+        shipmentId: task.shipmentId,
+        warehouse: task.warehouse,
+        taskTimeSec: stats.taskTimeSec,
+        pickTimeSec: stats.pickTimeSec,
+        elapsedTimeSec: stats.elapsedTimeSec,
+        gapTimeSec: stats.gapTimeSec,
+        positions: stats.positions,
+        units: stats.units,
+        pph: stats.pph,
+        uph: stats.uph,
+        secPerPos: stats.secPerPos,
+        secPerUnit: stats.secPerUnit,
+        unitsPerPos: stats.unitsPerPos,
+        warehousesCount: 1,
+        switches: stats.switches,
+        density: stats.density,
+        expectedTimeSec: stats.expectedTimeSec,
+        efficiency: stats.efficiency,
+        efficiencyClamped: stats.efficiencyClamped,
+        basePoints: stats.basePoints,
+        orderPoints: stats.orderPoints,
+        normA: null,
+        normB: null,
+        normC: null,
+        normVersion: 'positions-only',
+      },
+      create: {
+        taskId,
+        userId: droppedCollectorId,
+        roleType: 'collector',
+        shipmentId: task.shipmentId,
+        warehouse: task.warehouse,
+        taskTimeSec: stats.taskTimeSec,
+        pickTimeSec: stats.pickTimeSec,
+        elapsedTimeSec: stats.elapsedTimeSec,
+        gapTimeSec: stats.gapTimeSec,
+        positions: stats.positions,
+        units: stats.units,
+        pph: stats.pph,
+        uph: stats.uph,
+        secPerPos: stats.secPerPos,
+        secPerUnit: stats.secPerUnit,
+        unitsPerPos: stats.unitsPerPos,
+        warehousesCount: 1,
+        switches: stats.switches,
+        density: stats.density,
+        expectedTimeSec: stats.expectedTimeSec,
+        efficiency: stats.efficiency,
+        efficiencyClamped: stats.efficiencyClamped,
+        basePoints: stats.basePoints,
+        orderPoints: stats.orderPoints,
+        normA: null,
+        normB: null,
+        normC: null,
+        normVersion: 'positions-only',
+      },
+    });
+
+    await updateDailyStats(droppedCollectorId, droppedAt, stats);
+    await updateMonthlyStats(droppedCollectorId, droppedAt, stats);
+  } catch (error) {
+    console.error(`[updateCollectorStatsForDroppedCollector] taskId=${taskId}`, error);
+  }
+}
+
+/**
+ * Обновить статистику для сборщика после завершения сборки.
+ * При раздельной сборке: завершитель получает баллы только за оставшиеся позиции.
  */
 export async function updateCollectorStats(taskId: string) {
   try {
@@ -148,11 +277,25 @@ export async function updateCollectorStats(taskId: string) {
       },
     });
 
-    const positions = task.lines.length;
-    const units = task.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0);
+    const totalPositions = task.lines.length;
+    const totalUnits = task.lines.reduce((sum, line) => sum + (line.collectedQty || line.qty), 0);
 
-    if (positions === 0) {
+    if (totalPositions === 0) {
       return; // Нет позиций для расчета
+    }
+
+    // Раздельная сборка: вычитаем позиции/единицы уже учтённых сборщиков (бросивших задание)
+    const existingCollectorStats = await prisma.taskStatistics.findMany({
+      where: { taskId: task.id, roleType: 'collector' },
+      select: { positions: true, units: true },
+    });
+    const alreadyAccountedPositions = existingCollectorStats.reduce((s, st) => s + st.positions, 0);
+    const alreadyAccountedUnits = existingCollectorStats.reduce((s, st) => s + st.units, 0);
+    const positions = Math.max(0, totalPositions - alreadyAccountedPositions);
+    const units = Math.max(0, totalUnits - alreadyAccountedUnits);
+
+    if (positions === 0 && units === 0) {
+      return; // Всё уже учтено у предыдущих сборщиков
     }
 
     const rates = await getPointsRates();
@@ -539,9 +682,22 @@ async function updateDailyStats(userId: string, date: Date, stats: any) {
       },
     },
   });
+  const collectorStatsByDropped = await prisma.taskStatistics.findMany({
+    where: {
+      userId,
+      roleType: 'collector',
+      task: {
+        droppedByCollectorId: userId,
+        droppedAt: {
+          gte: dayStart,
+          lte: dayEnd,
+        },
+      },
+    },
+  });
   const collectorStats = [
     ...new Map(
-      [...collectorStatsByCompleted, ...collectorStatsByConfirmed].map((s) => [s.id, s])
+      [...collectorStatsByCompleted, ...collectorStatsByConfirmed, ...collectorStatsByDropped].map((s) => [s.id, s])
     ).values(),
   ];
 

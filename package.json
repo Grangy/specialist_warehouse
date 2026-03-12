@@ -41,6 +41,7 @@
     "db:migrate:safe": "./scripts/apply-migration-safely.sh",
     "audit:dictator": "tsx scripts/audit-dictator-points.ts",
     "audit:top-ranking": "tsx scripts/audit-top-ranking.ts",
+    "fix:sergey-oleg-extra-work": "tsx scripts/fix-sergey-oleg-extra-work-today.ts",
     "audit:extra-work": "tsx scripts/audit-extra-work-sessions.ts",
     "audit:extra-work-productivity": "tsx scripts/audit-extra-work-productivity.ts",
     "audit:extra-work-lunch": "tsx scripts/audit-extra-work-lunch.ts",
@@ -67,6 +68,9 @@
     "test:exclude-from-1c": "tsx scripts/verify-exclude-from-1c.ts",
     "test:dictator-required": "tsx scripts/test-dictator-required.ts",
     "test:extra-work-points": "tsx scripts/test-extra-work-points.ts",
+    "test:error-penalties": "tsx scripts/test-error-penalties.ts",
+    "test:split-collection": "tsx scripts/test-split-collection.ts",
+    "test": "npm run test:extra-work-points && npm run test:error-penalties && npm run test:split-collection",
     "test:extra-work-access": "tsx scripts/test-extra-work-access.ts",
     "reports:serve": "npx --yes serve reports -p 3333",
     "deploy:remote": "./scripts/deploy-remote.sh"

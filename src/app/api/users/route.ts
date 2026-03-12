@@ -19,23 +19,40 @@ export async function GET(request: NextRequest) {
     const { user } = authResult;
     const isAdmin = user.role === 'admin';
 
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        login: true,
-        name: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const [users, allUserSettings] = await Promise.all([
+      prisma.user.findMany({
+        select: {
+          id: true,
+          login: true,
+          name: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.userSettings.findMany({ select: { userId: true, settings: true } }),
+    ]);
+
+    const isNewbieByUser = new Map<string, boolean>();
+    for (const us of allUserSettings) {
+      if (!us.settings) continue;
+      try {
+        const parsed = JSON.parse(us.settings) as Record<string, unknown>;
+        isNewbieByUser.set(us.userId, parsed.isNewbie === true);
+      } catch {
+        // ignore
+      }
+    }
 
     // Если проверяльщик - возвращаем упрощенный список без статистики
     if (!isAdmin) {
-      return NextResponse.json(users);
+      return NextResponse.json(
+        users.map((u) => ({
+          ...u,
+          isNewbie: u.role === 'collector' ? (isNewbieByUser.get(u.id) ?? false) : undefined,
+        }))
+      );
     }
 
     // Для админов - полный список со статистикой
@@ -83,6 +100,7 @@ export async function GET(request: NextRequest) {
 
         return {
           ...user,
+          isNewbie: user.role === 'collector' ? (isNewbieByUser.get(user.id) ?? false) : undefined,
           dailyRank: dailyStats?.dailyRank || null,
           dailyLevel: dailyLevel ? {
             name: dailyLevel.name,
@@ -119,7 +137,7 @@ export async function POST(request: NextRequest) {
       return authResult;
     }
 
-    const { login, password, name, role } = await request.json();
+    const { login, password, name, role, isNewbie } = await request.json();
 
     if (!login || !password || !name || !role) {
       return NextResponse.json(
@@ -166,7 +184,21 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(user, { status: 201 });
+    if (role === 'collector' && isNewbie === true) {
+      const existing = await prisma.userSettings.findUnique({ where: { userId: user.id } });
+      const parsed = existing?.settings ? (JSON.parse(existing.settings) as Record<string, unknown>) : {};
+      const merged = { ...parsed, isNewbie: true };
+      await prisma.userSettings.upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, settings: JSON.stringify(merged) },
+        update: { settings: JSON.stringify(merged) },
+      });
+    }
+
+    return NextResponse.json(
+      { ...user, isNewbie: role === 'collector' ? !!isNewbie : undefined },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Ошибка при создании пользователя:', error);
     return NextResponse.json(

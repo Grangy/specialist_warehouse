@@ -118,3 +118,4 @@ SECURITY-*.md
 # Деплой (содержит настройки/пути)
 scripts/deploy-remote.sh
 !docs/LOCATIONS_SYSTEM.md
+!docs/DEPLOY-SERVER.md

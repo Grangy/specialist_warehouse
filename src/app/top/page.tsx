@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Trophy, RefreshCw, Calendar, HelpCircle, AlertTriangle, Package, CheckCircle, Mic, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trophy, RefreshCw, Calendar, HelpCircle, AlertTriangle, Package, CheckCircle, Mic, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import UserStatsModal from '@/components/admin/UserStatsModal';
 import { PointsHelpModal } from '@/components/PointsHelpModal';
@@ -12,6 +12,7 @@ interface RankingEntry {
   userId: string;
   userName: string;
   role: string;
+  isNewbie?: boolean;
   positions: number;
   units: number;
   orders: number;
@@ -172,9 +173,10 @@ export default function TopPage() {
           </h1>
           <Link
             href="/"
-            className="text-sm text-slate-400 hover:text-slate-200 transition-all duration-300 hover:underline underline-offset-2"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-slate-500 text-slate-300 hover:text-slate-100 transition-all duration-200 text-sm font-medium"
           >
-            На главную
+            <ArrowLeft className="w-4 h-4" />
+            Панель отгрузки
           </Link>
         </div>
 
@@ -444,6 +446,11 @@ export default function TopPage() {
                           >
                             {user.role === 'collector' ? 'Сборщик' : 'Проверяльщик'}
                           </span>
+                          {user.role === 'collector' && user.isNewbie && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-600/20 text-amber-400 border border-amber-500/40">
+                              Новенький
+                            </span>
+                          )}
                           {user.level && (
                             <span
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${user.level.color} bg-slate-700/50`}

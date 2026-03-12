@@ -18,6 +18,8 @@ import {
   calculateExtraWorkPointsFromRate,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
+import { getManualAdjustmentForPeriod } from '@/lib/ranking/manualAdjustments';
+import { getErrorPenaltyForPeriod } from '@/lib/ranking/errorPenalties';
 
 export async function getUserStats(
   userId: string,
@@ -91,6 +93,7 @@ export async function getUserStats(
           OR: [
             { completedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
             { confirmedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
+            { droppedByCollectorId: user.id, droppedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
           ],
         },
       }),
@@ -182,7 +185,7 @@ export async function getUserStats(
   // Баллы за доп. работу за период
   let extraWorkPoints = 0;
   if (dateRange) {
-    const [stoppedSessions, activeSessions, manualSetting] = await Promise.all([
+    const [stoppedSessions, activeSessions, manualSetting, errorPenaltiesSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
         where: {
           userId: user.id,
@@ -199,6 +202,7 @@ export async function getUserStats(
         },
       }),
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
+      prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
     ]);
     for (const s of stoppedSessions) {
       const rate = await getExtraWorkRatePerHour(prisma, user.id, s.stoppedAt ?? new Date());
@@ -216,11 +220,13 @@ export async function getUserStats(
       const dayCoef = await getWeekdayCoefficientForDate(prisma, now);
       extraWorkPoints += Math.max(0, calculateExtraWorkPointsFromRate(elapsed, rate, dayCoef));
     }
-    try {
-      const adj = manualSetting?.value ? (JSON.parse(manualSetting.value) as Record<string, number>) : {};
-      extraWorkPoints = Math.max(0, extraWorkPoints + (adj[user.id] ?? 0));
-    } catch {
-      // ignore
+    if (dateRange && manualSetting?.value) {
+      const delta = getManualAdjustmentForPeriod(manualSetting.value, user.id, dateRange.startDate, dateRange.endDate);
+      extraWorkPoints = Math.max(0, extraWorkPoints + delta);
+    }
+    if (dateRange && errorPenaltiesSetting?.value) {
+      const penalty = getErrorPenaltyForPeriod(errorPenaltiesSetting.value, user.id, dateRange.startDate, dateRange.endDate);
+      extraWorkPoints = Math.max(0, extraWorkPoints + penalty);
     }
   }
 

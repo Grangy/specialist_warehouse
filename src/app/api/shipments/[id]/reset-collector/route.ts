@@ -63,7 +63,7 @@ export async function POST(
       console.log(`[RESET-COLLECTOR] Блокировка задания ${id} удалена`);
     }
 
-    // Сбрасываем сборщика и пишем «кто бросил» (админ сбросил — показываем плашку следующему)
+    const droppedAt = new Date();
     await prisma.shipmentTask.update({
       where: { id },
       data: {
@@ -72,9 +72,14 @@ export async function POST(
         startedAt: null,
         droppedByCollectorId: task.collectorId,
         droppedByCollectorName: previousCollector?.name ?? task.collectorName ?? null,
-        droppedAt: new Date(),
+        droppedAt,
       },
     });
+
+    if (task.collectorId) {
+      const { updateCollectorStatsForDroppedCollector } = await import('@/lib/ranking/updateStats');
+      await updateCollectorStatsForDroppedCollector(id, task.collectorId, droppedAt);
+    }
 
     console.log(`[RESET-COLLECTOR] Админ ${user.name} (${user.id}) сбросил сборщика для задания ${id}. Предыдущий сборщик: ${previousCollector?.name || task.collectorId || 'не указан'}. Прогресс сохранен.`);
 

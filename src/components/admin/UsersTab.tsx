@@ -34,6 +34,7 @@ interface User {
   role: 'admin' | 'collector' | 'checker' | 'warehouse_3';
   createdAt: string;
   updatedAt: string;
+  isNewbie?: boolean;
   dailyRank?: number | null;
   dailyLevel?: AnimalLevel | null;
   dailyPoints?: number | null;
@@ -62,6 +63,7 @@ export default function UsersTab() {
     password: '',
     name: '',
     role: 'collector' as 'admin' | 'collector' | 'checker' | 'warehouse_3',
+    isNewbie: false,
   });
 
   useEffect(() => {
@@ -100,7 +102,13 @@ export default function UsersTab() {
         const res = await fetch(`/api/users/${editingUser.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            login: formData.login,
+            password: formData.password,
+            name: formData.name,
+            role: formData.role,
+            ...(formData.role === 'collector' && { isNewbie: formData.isNewbie }),
+          }),
         });
 
         if (!res.ok) {
@@ -112,7 +120,13 @@ export default function UsersTab() {
         const res = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            login: formData.login,
+            password: formData.password,
+            name: formData.name,
+            role: formData.role,
+            ...(formData.role === 'collector' && { isNewbie: formData.isNewbie }),
+          }),
         });
 
         if (!res.ok) {
@@ -121,7 +135,7 @@ export default function UsersTab() {
         }
       }
 
-      setFormData({ login: '', password: '', name: '', role: 'collector' });
+      setFormData({ login: '', password: '', name: '', role: 'collector', isNewbie: false });
       setShowAddForm(false);
       setEditingUser(null);
       loadUsers();
@@ -137,6 +151,7 @@ export default function UsersTab() {
       password: '',
       name: user.name,
       role: user.role,
+      isNewbie: user.role === 'collector' ? (user.isNewbie ?? false) : false,
     });
     setShowAddForm(true);
   };
@@ -226,7 +241,7 @@ export default function UsersTab() {
           onClick={() => {
             setShowAddForm(true);
             setEditingUser(null);
-            setFormData({ login: '', password: '', name: '', role: 'collector' });
+            setFormData({ login: '', password: '', name: '', role: 'collector', isNewbie: false });
           }}
           className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white px-6 py-3 rounded-lg transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 font-semibold"
         >
@@ -308,7 +323,10 @@ export default function UsersTab() {
                 </label>
                 <select
                   value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                  onChange={(e) => {
+                    const r = e.target.value as 'admin' | 'collector' | 'checker' | 'warehouse_3';
+                    setFormData({ ...formData, role: r, isNewbie: r === 'collector' ? formData.isNewbie : false });
+                  }}
                   className="w-full bg-slate-700/90 border-2 border-slate-600/50 rounded-lg px-4 py-3 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200"
                 >
                   <option value="admin">Администратор</option>
@@ -317,6 +335,20 @@ export default function UsersTab() {
                   <option value="warehouse_3">Склад 3</option>
                 </select>
               </div>
+              {formData.role === 'collector' && (
+                <div className="flex items-center gap-3 pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.isNewbie}
+                      onChange={(e) => setFormData({ ...formData, isNewbie: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-amber-500 focus:ring-amber-500/50"
+                    />
+                    <span className="text-slate-300 text-sm font-medium">Новенький</span>
+                  </label>
+                  <span className="text-xs text-slate-500">(сниженные штрафы за ошибки: −1/+1 вместо −3/+3)</span>
+                </div>
+              )}
             </div>
             <div className="flex gap-3 pt-2">
               <button
@@ -331,7 +363,7 @@ export default function UsersTab() {
                 onClick={() => {
                   setShowAddForm(false);
                   setEditingUser(null);
-                  setFormData({ login: '', password: '', name: '', role: 'collector' });
+                  setFormData({ login: '', password: '', name: '', role: 'collector', isNewbie: false });
                 }}
                 className="px-6 py-3 bg-slate-700/90 hover:bg-slate-600 text-slate-100 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 font-semibold"
               >
@@ -378,7 +410,8 @@ export default function UsersTab() {
                   <td className="px-4 py-4 text-slate-200 font-medium">{user.login}</td>
                   <td className="px-4 py-4 text-slate-200">{user.name}</td>
                   <td className="px-4 py-4">
-                    <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ${
+                    <div className="flex flex-col gap-1">
+                      <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ${
                       user.role === 'admin' 
                         ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50'
                         : user.role === 'collector'
@@ -393,6 +426,12 @@ export default function UsersTab() {
                       {user.role === 'warehouse_3' && <Package className="w-3.5 h-3.5" />}
                       {roleLabels[user.role]}
                     </span>
+                      {user.role === 'collector' && user.isNewbie && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-600/20 text-amber-400 border border-amber-500/40">
+                          Новенький
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-4 text-center">
                     {user.dailyLevel ? (

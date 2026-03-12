@@ -9,6 +9,9 @@ import {
   calculateExtraWorkPointsFromRate,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
+import { getManualAdjustmentForPeriod, getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
+import { getErrorPenaltyForPeriod, getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
+import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -189,12 +192,13 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    const [dailyStopped, monthlyStopped, extraWorkTodayMap, extraWorkMonthMap, manualAdjustmentsSetting] = await Promise.all([
+    const [dailyStopped, monthlyStopped, extraWorkTodayMap, extraWorkMonthMap, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
       computeExtraWorkPointsForSessions(prisma, extraWorkToday),
       computeExtraWorkPointsForSessions(prisma, extraWorkMonth),
       computeExtraWorkPointsMap(prisma, allExtraWorkToday),
       computeExtraWorkPointsMap(prisma, allExtraWorkMonth),
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
+      prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
     ]);
 
     // Добавляем баллы от активных сессий (real-time)
@@ -230,16 +234,18 @@ export async function GET(request: NextRequest) {
       const curMonth = extraWorkMonthMap.get(sess.userId) ?? 0;
       extraWorkMonthMap.set(sess.userId, curMonth + pts);
     }
-    const manualAdjustments: Record<string, number> = (() => {
-      try {
-        return manualAdjustmentsSetting?.value ? (JSON.parse(manualAdjustmentsSetting.value) as Record<string, number>) : {};
-      } catch {
-        return {};
-      }
-    })();
-    const manualDelta = manualAdjustments[user.id] ?? 0;
-    const dailyExtraWorkPointsWithManual = Math.max(0, dailyExtraWorkPoints + manualDelta);
-    const monthlyExtraWorkPointsWithManual = Math.max(0, monthlyExtraWorkPoints + manualDelta);
+    const { startDate: todayStart, endDate: todayEndMsk } = getStatisticsDateRange('today');
+    const { startDate: monthStartMsk, endDate: monthEndMsk } = getStatisticsDateRange('month');
+    const manualDeltaToday = getManualAdjustmentForPeriod(manualAdjustmentsSetting?.value ?? null, user.id, todayStart, todayEndMsk);
+    const manualDeltaMonth = getManualAdjustmentForPeriod(manualAdjustmentsSetting?.value ?? null, user.id, monthStartMsk, monthEndMsk);
+    const errorPenaltyToday = getErrorPenaltyForPeriod(errorPenaltiesSetting?.value ?? null, user.id, todayStart, todayEndMsk);
+    const errorPenaltyMonth = getErrorPenaltyForPeriod(errorPenaltiesSetting?.value ?? null, user.id, monthStartMsk, monthEndMsk);
+    const manualAdjustmentsToday = getManualAdjustmentsMapForPeriod(manualAdjustmentsSetting?.value ?? null, todayStart, todayEndMsk);
+    const manualAdjustmentsMonth = getManualAdjustmentsMapForPeriod(manualAdjustmentsSetting?.value ?? null, monthStartMsk, monthEndMsk);
+    const errorPenaltiesToday = getErrorPenaltiesMapForPeriod(errorPenaltiesSetting?.value ?? null, todayStart, todayEndMsk);
+    const errorPenaltiesMonth = getErrorPenaltiesMapForPeriod(errorPenaltiesSetting?.value ?? null, monthStartMsk, monthEndMsk);
+    const dailyExtraWorkPointsWithManual = Math.max(0, dailyExtraWorkPoints + manualDeltaToday + errorPenaltyToday);
+    const monthlyExtraWorkPointsWithManual = Math.max(0, monthlyExtraWorkPoints + manualDeltaMonth + errorPenaltyMonth);
 
     // Рассчитываем статистику за сегодня (только для роли пользователя)
     let dailyCollector = null;
@@ -454,13 +460,17 @@ export async function GET(request: NextRequest) {
     }
     for (const [uid, pts] of extraWorkTodayMap) {
       const cur = collectorMapToday.get(uid) || 0;
-      collectorMapToday.set(uid, cur + pts + (manualAdjustments[uid] ?? 0));
+      collectorMapToday.set(uid, cur + pts + (manualAdjustmentsToday.get(uid) ?? 0));
     }
-    for (const [uid, delta] of Object.entries(manualAdjustments)) {
+    for (const [uid, delta] of manualAdjustmentsToday) {
       if (!extraWorkTodayMap.has(uid)) {
         const cur = collectorMapToday.get(uid) || 0;
         collectorMapToday.set(uid, cur + delta);
       }
+    }
+    for (const [uid, delta] of errorPenaltiesToday) {
+      const cur = collectorMapToday.get(uid) ?? 0;
+      collectorMapToday.set(uid, cur + delta);
     }
     const collectorPointsToday = Array.from(collectorMapToday.values()).filter(p => p > 0);
     // Рассчитываем ранг для сборщика (если пользователь сборщик или админ с данными сборщика)
@@ -507,13 +517,17 @@ export async function GET(request: NextRequest) {
     }
     for (const [uid, pts] of extraWorkTodayMap) {
       const cur = checkerMapToday.get(uid) || 0;
-      checkerMapToday.set(uid, cur + pts + (manualAdjustments[uid] ?? 0));
+      checkerMapToday.set(uid, cur + pts + (manualAdjustmentsToday.get(uid) ?? 0));
     }
-    for (const [uid, delta] of Object.entries(manualAdjustments)) {
+    for (const [uid, delta] of manualAdjustmentsToday) {
       if (!extraWorkTodayMap.has(uid)) {
         const cur = checkerMapToday.get(uid) || 0;
         checkerMapToday.set(uid, cur + delta);
       }
+    }
+    for (const [uid, delta] of errorPenaltiesToday) {
+      const cur = checkerMapToday.get(uid) ?? 0;
+      checkerMapToday.set(uid, cur + delta);
     }
     const checkerPointsToday = Array.from(checkerMapToday.values()).filter(p => p > 0);
     // Рассчитываем ранг для проверяльщика (если пользователь проверяльщик)
@@ -639,13 +653,17 @@ export async function GET(request: NextRequest) {
     }
     for (const [uid, pts] of extraWorkMonthMap) {
       const cur = collectorMapMonth.get(uid) || 0;
-      collectorMapMonth.set(uid, cur + pts + (manualAdjustments[uid] ?? 0));
+      collectorMapMonth.set(uid, cur + pts + (manualAdjustmentsMonth.get(uid) ?? 0));
     }
-    for (const [uid, delta] of Object.entries(manualAdjustments)) {
+    for (const [uid, delta] of manualAdjustmentsMonth) {
       if (!extraWorkMonthMap.has(uid)) {
         const cur = collectorMapMonth.get(uid) || 0;
         collectorMapMonth.set(uid, cur + delta);
       }
+    }
+    for (const [uid, delta] of errorPenaltiesMonth) {
+      const cur = collectorMapMonth.get(uid) ?? 0;
+      collectorMapMonth.set(uid, cur + delta);
     }
     const collectorPointsMonth = Array.from(collectorMapMonth.values()).filter(p => p > 0);
     // Рассчитываем ранг для сборщика (если пользователь сборщик или админ с данными сборщика)
@@ -692,13 +710,17 @@ export async function GET(request: NextRequest) {
     }
     for (const [uid, pts] of extraWorkMonthMap) {
       const cur = checkerMapMonth.get(uid) || 0;
-      checkerMapMonth.set(uid, cur + pts + (manualAdjustments[uid] ?? 0));
+      checkerMapMonth.set(uid, cur + pts + (manualAdjustmentsMonth.get(uid) ?? 0));
     }
-    for (const [uid, delta] of Object.entries(manualAdjustments)) {
+    for (const [uid, delta] of manualAdjustmentsMonth) {
       if (!extraWorkMonthMap.has(uid)) {
         const cur = checkerMapMonth.get(uid) || 0;
         checkerMapMonth.set(uid, cur + delta);
       }
+    }
+    for (const [uid, delta] of errorPenaltiesMonth) {
+      const cur = checkerMapMonth.get(uid) ?? 0;
+      checkerMapMonth.set(uid, cur + delta);
     }
     const checkerPointsMonth = Array.from(checkerMapMonth.values()).filter(p => p > 0);
     // Рассчитываем ранг для проверяльщика (если пользователь проверяльщик)

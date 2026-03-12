@@ -919,6 +919,13 @@ export async function GET(request: NextRequest) {
               droppedAt,
             },
           }).catch(() => {});
+          // Раздельная сборка: начисляем баллы бросившему за собранные им позиции
+          if (previousCollectorId) {
+            const { updateCollectorStatsForDroppedCollector } = await import('@/lib/ranking/updateStats');
+            updateCollectorStatsForDroppedCollector(task.id, previousCollectorId, droppedAt).catch((err) =>
+              console.error('[shipments] updateCollectorStatsForDroppedCollector:', err)
+            );
+          }
           Object.assign(task, {
             collectorId: null,
             collectorName: null,
