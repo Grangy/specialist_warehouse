@@ -57,10 +57,11 @@ async function handle(request: NextRequest) {
         const addSec = (now.getTime() - new Date(segStart).getTime()) / 1000;
         totalElapsedSec += Math.max(0, addSec);
       } else if (session.status === 'lunch' && session.lunchStartedAt) {
-        totalElapsedSec += (session.lunchStartedAt.getTime() - session.startedAt.getTime()) / 1000;
+        totalElapsedSec += Math.max(0, (session.lunchStartedAt.getTime() - session.startedAt.getTime()) / 1000);
       }
 
-      wouldStop.push({ id: session.id, userName: session.user?.name ?? '—', elapsedSec: Math.round(totalElapsedSec) });
+      const finalElapsed = Math.max(0, totalElapsedSec); // Никогда не сохраняем отрицательные значения
+      wouldStop.push({ id: session.id, userName: session.user?.name ?? '—', elapsedSec: Math.round(finalElapsed) });
 
       if (!dryRun) {
         await prisma.extraWorkSession.update({
@@ -68,7 +69,7 @@ async function handle(request: NextRequest) {
           data: {
             status: 'stopped',
             stoppedAt: now,
-            elapsedSecBeforeLunch: totalElapsedSec,
+            elapsedSecBeforeLunch: finalElapsed,
           },
         });
         stopped++;

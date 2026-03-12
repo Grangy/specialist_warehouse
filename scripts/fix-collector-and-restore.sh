@@ -5,6 +5,12 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# NVM/Node в PATH (если есть)
+[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"
+for d in /root/.nvm/versions/node/*/bin /usr/local/bin; do
+  [ -x "$d/npx" ] && export PATH="$d:$PATH" && break
+done
+
 echo "=== 1. git pull (фикс recalculate) ==="
 git pull origin main
 

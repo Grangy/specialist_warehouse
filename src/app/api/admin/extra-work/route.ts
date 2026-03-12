@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 import { getStatisticsDateRange, isLunchTimeMoscow } from '@/lib/utils/moscowDate';
+import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import {
   getExtraWorkRatePerHour,
   calculateExtraWorkPointsFromRate,
@@ -165,15 +166,10 @@ export async function GET(request: NextRequest) {
       extraWorkPointsByUser.set(sess.userId, prevPts + activePts);
     }
 
-    // Ручные корректировки: weekRankings уже их учитывает; добавляем для пользователей, которых нет в allRankings
-    const manualAdjustments: Record<string, number> = (() => {
-      try {
-        return manualAdjustmentsSetting?.value ? (JSON.parse(manualAdjustmentsSetting.value) as Record<string, number>) : {};
-      } catch {
-        return {};
-      }
-    })();
-    for (const [uid, delta] of Object.entries(manualAdjustments)) {
+    // Ручные корректировки за неделю (только за дату добавления)
+    const { startDate: weekStart, endDate: weekEnd } = getStatisticsDateRange('week');
+    const manualAdjustmentsWeek = getManualAdjustmentsMapForPeriod(manualAdjustmentsSetting?.value ?? null, weekStart, weekEnd);
+    for (const [uid, delta] of manualAdjustmentsWeek) {
       if (!extraWorkPointsByUser.has(uid) && delta !== 0) {
         extraWorkPointsByUser.set(uid, Math.max(0, delta));
       }
