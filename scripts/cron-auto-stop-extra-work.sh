@@ -30,4 +30,5 @@ URL="${BASE}/api/cron/auto-stop-extra-work?secret=${CRON_SECRET}"
 [[ "$1" == "dry" ]] && URL="${URL}&dry=1"
 
 echo "$(date -Iseconds) Вызов: $URL"
-curl -sS -X POST "$URL" | jq . 2>/dev/null || curl -sS -X POST "$URL"
+RESP=$(curl -sS -X POST "$URL")
+echo "$RESP" | jq . 2>/dev/null || echo "$RESP"
