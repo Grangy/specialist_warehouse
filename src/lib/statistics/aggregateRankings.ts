@@ -142,11 +142,8 @@ export async function aggregateRankings(
       [...collectorByCompleted, ...collectorByConfirmed, ...collectorByDroppedFiltered].map((s) => [s.id, s])
     ).values(),
   ];
-  // Учитываем сборку: collectorId совпадает с userId, collectorId=null (самопроверка), или droppedByCollectorId=userId (раздельная сборка)
-  const collectorTaskStats = collectorMerged.filter((s) => {
-    const t = s.task as { collectorId?: string; dictatorId?: string; droppedByCollectorId?: string | null } | undefined;
-    return t?.collectorId === s.userId || t?.collectorId == null || t?.droppedByCollectorId === s.userId;
-  });
+  // Все collector TaskStatistics: как в getUserStats — если stat есть, пользователь участвовал в сборке
+  const collectorTaskStats = collectorMerged;
 
   const dictatorStatsFiltered = [
     ...dictatorCollectorStats.filter((s) => {
