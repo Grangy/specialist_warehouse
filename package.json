@@ -60,6 +60,7 @@
     "delete:shipment": "tsx scripts/delete-shipment.ts",
     "test:notifications": "tsx scripts/test-notifications.ts",
     "audit:statistics-full": "tsx scripts/audit-statistics-full.ts",
+    "audit:split-max-dmitry": "tsx scripts/audit-split-max-dmitry.ts",
     "restore:art": "tsx scripts/restore-art-from-name.ts",
     "export:art": "tsx scripts/export-art-by-name.ts",
     "apply:art": "tsx scripts/apply-art-from-base.ts",

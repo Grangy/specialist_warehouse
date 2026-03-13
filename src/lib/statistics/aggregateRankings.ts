@@ -87,11 +87,11 @@ export async function aggregateRankings(
   const [collectorByCompleted, collectorByConfirmed, collectorByDropped, checkerTaskStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, activeSessions, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: completedWhere },
-      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true } } },
+      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true, droppedByCollectorId: true } } },
     }),
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: confirmedWhere },
-      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true } } },
+      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true, droppedByCollectorId: true } } },
     }),
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: droppedWhere },
