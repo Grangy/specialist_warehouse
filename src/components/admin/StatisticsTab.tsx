@@ -623,9 +623,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                     {(user.extraWorkPoints ?? 0) > 0 && (
                       <div className="text-xs text-amber-500/90">доп.работа {formatPoints(user.extraWorkPoints ?? 0)}</div>
                     )}
-                    {(user.errorPenalty ?? 0) !== 0 && (
-                      <div className="text-xs text-slate-400">за ошибки {(user.errorPenalty ?? 0) >= 0 ? '+' : ''}{formatPoints(user.errorPenalty ?? 0)}</div>
-                    )}
+                    <div className="text-xs text-slate-400">Ош ({(user.errorPenalty ?? 0) >= 0 ? '+' : ''}{formatPoints(user.errorPenalty ?? 0)})</div>
                     {user.pph != null && (
                       <div className="text-xs text-slate-500 mt-1">{formatPPH(user.pph)} PPH</div>
                     )}

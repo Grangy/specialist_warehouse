@@ -280,11 +280,47 @@ export async function getUserStats(
   const collectorTotalUnits = collectorOnlyStats.reduce((sum, stat) => sum + stat.units, 0);
   const collectorTotalOrders = new Set(collectorOnlyStats.map((s) => s.shipmentId)).size;
 
+  // За какие сборки ошибки (CollectorCall: user как checker или collector)
+  let errorDetails: Array<{ shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number }> = [];
+  if (dateRange) {
+    const calls = await prisma.collectorCall.findMany({
+      where: {
+        status: 'done',
+        errorCount: { gt: 0 },
+        OR: [{ checkerId: user.id }, { collectorId: user.id }],
+        task: {
+          shipment: {
+            confirmedAt: { gte: dateRange.startDate, lte: dateRange.endDate },
+          },
+        },
+      },
+      include: {
+        task: { include: { shipment: { select: { number: true } } } },
+        collector: { select: { name: true } },
+        checker: { select: { name: true } },
+      },
+      orderBy: { confirmedAt: 'desc' },
+      take: 100,
+    });
+    errorDetails = calls.map((c) => {
+      const errCount = c.errorCount ?? 1;
+      const isChecker = c.checkerId === user.id;
+      const pts = isChecker ? errCount : -errCount;
+      return {
+        shipmentNumber: c.task?.shipment?.number ?? '?',
+        role: isChecker ? 'checker' : 'collector',
+        points: pts,
+        errorCount: errCount,
+      };
+    });
+  }
+
   return {
     period: dateOverride ? null : (period ?? null),
     date: dateOverride ?? null,
     extraWorkPoints,
     errorPenalty,
+    errorDetails,
     user: {
       id: user.id,
       name: user.name,

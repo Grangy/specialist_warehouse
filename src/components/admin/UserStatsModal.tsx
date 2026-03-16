@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Package, Clock, CheckCircle, User, Calendar, BarChart3, AlertCircle, Mic, Briefcase, Plus, Minus } from 'lucide-react';
+import { X, Package, Clock, CheckCircle, User, Calendar, BarChart3, AlertCircle, Mic, Briefcase, Plus, Minus, AlertTriangle } from 'lucide-react';
 
 const PERIOD_LABELS: Record<'today' | 'week' | 'month', string> = {
   today: 'День (с утра)',
@@ -12,6 +12,7 @@ const PERIOD_LABELS: Record<'today' | 'week' | 'month', string> = {
 interface UserStatsData {
   extraWorkPoints?: number;
   errorPenalty?: number;
+  errorDetails?: Array<{ shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number }>;
   user: {
     id: string;
     name: string;
@@ -130,7 +131,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
   const [data, setData] = useState<UserStatsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'checker' | 'dictator' | 'collector' | 'daily' | 'monthly'>('checker');
+  const [activeTab, setActiveTab] = useState<'checker' | 'dictator' | 'collector' | 'daily' | 'monthly' | 'errors'>('checker');
   const [showAdjustModal, setShowAdjustModal] = useState<{ add: boolean } | null>(null);
   const [adjustingPoints, setAdjustingPoints] = useState(false);
   const usePublicApiRef = useRef(usePublicApi);
@@ -452,6 +453,16 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                   >
                     Мес. ({data.monthlyStats.length})
                   </button>
+                  <button
+                    onClick={() => setActiveTab('errors')}
+                    className={`flex-shrink-0 px-3 sm:px-4 py-2.5 rounded-md font-medium text-sm transition-all touch-manipulation ${
+                      activeTab === 'errors'
+                        ? (data.errorPenalty ?? 0) >= 0 ? 'bg-teal-600 text-white shadow-lg' : (data.errorPenalty ?? 0) < 0 ? 'bg-red-600 text-white shadow-lg' : 'bg-slate-600 text-white shadow-lg'
+                        : 'text-slate-300 hover:bg-slate-700/50 active:bg-slate-600/50'
+                    }`}
+                  >
+                    Ош ({(data.errorPenalty ?? 0) >= 0 ? '+' : ''}{(data.errorPenalty ?? 0)})
+                  </button>
                 </div>
               </div>
 
@@ -662,6 +673,32 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                         </table>
                       </div>
                     </>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'errors' && (
+                <div className="bg-slate-800/50 rounded-lg p-3 sm:p-4 border border-slate-700/50">
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-100 mb-1 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 shrink-0" />
+                    За какие сборки ошибки
+                  </h3>
+                  <p className="text-xs text-slate-400 mb-3">
+                    {(data.errorPenalty ?? 0) >= 0 ? 'Найденные ошибки: +1 за каждую' : 'Допущенные ошибки: −1 за каждую'}
+                  </p>
+                  {(data.errorDetails?.length ?? 0) === 0 ? (
+                    <div className="text-center py-8 text-slate-400">Нет данных за период</div>
+                  ) : (
+                    <div className="space-y-2 max-h-[50vh] overflow-y-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+                      {data.errorDetails!.map((e, i) => (
+                        <div key={i} className="flex justify-between items-center gap-3 bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
+                          <span className="font-medium text-slate-200 truncate">{e.shipmentNumber}</span>
+                          <span className={`shrink-0 font-semibold ${e.points >= 0 ? 'text-teal-400' : 'text-red-400'}`}>
+                            {e.points >= 0 ? '+' : ''}{e.points} ({e.errorCount} ош.)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}

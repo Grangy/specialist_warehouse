@@ -38,9 +38,12 @@ interface RankingEntry {
 interface UserStatsDetail {
   extraWorkPoints?: number;
   errorPenalty?: number;
+  errorDetails?: Array<{ shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number }>;
   checker: { totalTasks: number; totalPoints: number; totalPositions: number; tasks: Array<{ shipmentNumber: string; formula?: string; orderPoints: number | null }> };
   collector: { totalTasks: number; totalPoints: number; totalPositions: number; tasks: Array<{ shipmentNumber: string; formula?: string; orderPoints: number | null }> };
   dictator?: { totalTasks: number; totalPoints: number; totalPositions: number; tasks: Array<{ shipmentNumber: string; formula?: string; orderPoints: number | null; checkerName?: string }> };
+  dailyStats?: Array<{ date: string }>;
+  monthlyStats?: Array<{ year: number; month: number }>;
 }
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -148,9 +151,13 @@ export default function TopPage() {
       if (expandTargetRef.current === targetId) {
         setExpandedStats(data ? {
           extraWorkPoints: data.extraWorkPoints,
+          errorPenalty: data.errorPenalty,
+          errorDetails: data.errorDetails,
           checker: data.checker,
           collector: data.collector,
           dictator: data.dictator,
+          dailyStats: data.dailyStats,
+          monthlyStats: data.monthlyStats,
         } : null);
       }
     } catch {
@@ -534,6 +541,18 @@ export default function TopPage() {
                           <div className="text-center py-4 text-slate-400 text-sm">Загрузка...</div>
                         ) : expandedStats ? (
                           <div className="space-y-4 text-sm">
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                              <span><span className="text-purple-400">Пр.</span> ({expandedStats.checker.totalTasks})</span>
+                              <span><span className="text-amber-400">Дик.</span> ({(expandedStats.dictator?.totalTasks ?? 0)})</span>
+                              <span><span className="text-blue-400">Сб.</span> ({expandedStats.collector.totalTasks})</span>
+                              {(expandedStats.dailyStats?.length ?? 0) > 0 && (
+                                <span><span className="text-green-400">Дни</span> ({expandedStats.dailyStats!.length})</span>
+                              )}
+                              {(expandedStats.monthlyStats?.length ?? 0) > 0 && (
+                                <span><span className="text-orange-400">Мес.</span> ({expandedStats.monthlyStats!.length})</span>
+                              )}
+                              <span><span className="text-slate-400">Ош</span> ({(expandedStats.errorPenalty ?? 0) >= 0 ? '+' : ''}{(expandedStats.errorPenalty ?? 0)})</span>
+                            </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
                               <span><span className="text-blue-400">Сборка</span> {expandedStats.collector.totalPoints.toFixed(2)} ({expandedStats.collector.totalTasks} зак.)</span>
                               <span><span className="text-purple-400">Проверка</span> {expandedStats.checker.totalPoints.toFixed(2)} ({expandedStats.checker.totalTasks} зак.)</span>
@@ -586,6 +605,27 @@ export default function TopPage() {
                                   ))}
                                   {expandedStats.checker.tasks.length > 15 && (
                                     <div className="text-xs text-slate-500">...и ещё {expandedStats.checker.tasks.length - 15}</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {(expandedStats.errorDetails?.length ?? 0) > 0 && (
+                              <div>
+                                <div className="flex items-center gap-1.5 text-slate-400 font-medium mb-1.5">
+                                  <span>За какие сборки ошибки</span>
+                                </div>
+                                <div className="space-y-1 max-h-24 overflow-y-auto">
+                                  {expandedStats.errorDetails!.slice(0, 10).map((e, i) => (
+                                    <div key={i} className="flex justify-between gap-2 text-xs text-slate-400">
+                                      <span className="truncate">{e.shipmentNumber}</span>
+                                      <span className={e.points >= 0 ? 'text-teal-400' : 'text-red-400'}>
+                                        {e.points >= 0 ? '+' : ''}{e.points} ({e.errorCount} ош.)
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {(expandedStats.errorDetails?.length ?? 0) > 10 && (
+                                    <div className="text-xs text-slate-500">...ещё {(expandedStats.errorDetails?.length ?? 0) - 10}</div>
                                   )}
                                 </div>
                               </div>
