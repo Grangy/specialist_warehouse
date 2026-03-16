@@ -96,13 +96,33 @@ export function getWeekdayCoefficientsPeriod(): { start: Date; end: Date } {
   return { start: startDate, end: endDate };
 }
 
+/** Минимальный коэффициент: ни один день не даёт меньше 50% от пика (справедливость) */
+const MIN_COEFFICIENT = 0.5;
+
+/** Понедельник до 12:00 МСК: утро пустое, но платим не менее 50% (справедливость) */
+const MONDAY_DOW = 1;
+const MONDAY_NOON_MSK_HOUR = 12;
+
 /**
  * Коэффициент для конкретной даты (по дню недели по Москве).
+ * Справедливость: минимум 50% от пика; понедельник до 12:00 — не ниже 50%.
  */
 export async function getWeekdayCoefficientForDate(prisma: PrismaLike, date: Date): Promise<number> {
   const coeffs = await getWeekdayWorkloadCoefficients(prisma);
   const dow = getMoscowDayOfWeek(date);
-  return coeffs[dow] ?? 1;
+  const raw = coeffs[dow] ?? 1;
+  const floored = Math.max(raw, MIN_COEFFICIENT);
+
+  // Понедельник до 12:00: утро мало загружено, но баллы не занижаем
+  if (dow === MONDAY_DOW) {
+    const moscowTime = new Date(date.getTime() + MSK_OFFSET_MS);
+    const hour = moscowTime.getUTCHours();
+    if (hour < MONDAY_NOON_MSK_HOUR) {
+      return MIN_COEFFICIENT;
+    }
+  }
+
+  return floored;
 }
 
 export function clearWeekdayCoefficientsCache(): void {

@@ -18,6 +18,8 @@ export interface ExtraWorkSession {
   lunchStartedAt?: string | null;
   lunchEndsAt?: string | null;
   elapsedSecBeforeLunch: number;
+  ratePerHour?: number;
+  dayCoefficient?: number;
 }
 
 interface ExtraWorkContextType {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { isLunchTimeMoscow } from '@/lib/utils/moscowDate';
+import { getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
+import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +50,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(session ?? null);
+    if (!session) return NextResponse.json(null);
+
+    const [ratePerHour, dayCoefficient] = await Promise.all([
+      getExtraWorkRatePerHour(prisma, session.userId, now),
+      getWeekdayCoefficientForDate(prisma, now),
+    ]);
+
+    return NextResponse.json({
+      ...session,
+      ratePerHour: Math.round(ratePerHour * 100) / 100,
+      dayCoefficient: Math.round(dayCoefficient * 100) / 100,
+    });
   } catch (e) {
     console.error('[extra-work/my-session]', e);
     return NextResponse.json({ error: 'Ошибка' }, { status: 500 });

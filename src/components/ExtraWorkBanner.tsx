@@ -87,13 +87,18 @@ export function ExtraWorkBanner() {
   const lunchScheduledLabel =
     session.lunchSlot === '13-14' ? 'Обед с 13:00' : session.lunchSlot === '14-15' ? 'Обед с 14:00' : 'Обед запланирован';
 
+  const rate = session.ratePerHour ?? 0.5;
+  const dayCoef = session.dayCoefficient ?? 1;
+  const points = (elapsedSec / 3600) * rate * dayCoef;
+  const remainingSec = session.durationMinutes ? Math.max(0, session.durationMinutes * 60 - elapsedSec) : null;
+
   return (
     <button
       type="button"
       onClick={() => setPopupOpen(true)}
       className="w-full fixed top-0 left-0 right-0 z-[90] bg-amber-500/95 text-amber-950 px-3 py-2 shadow-md animate-fadeIn text-left hover:bg-amber-500 transition-colors"
     >
-      <div className="max-w-7xl mx-auto flex items-center gap-2">
+      <div className="max-w-7xl mx-auto flex items-center gap-2 flex-wrap">
         <Briefcase className="w-5 h-5 flex-shrink-0 text-amber-800" />
         <span className="font-semibold text-sm">Доп. работа</span>
         {session.warehouse && (
@@ -104,7 +109,13 @@ export function ExtraWorkBanner() {
         ) : session.status === 'lunch_scheduled' ? (
           <span className="text-xs">— {lunchScheduledLabel}</span>
         ) : (
-          <span className="font-mono text-sm tabular-nums">{fmt(elapsedSec)}</span>
+          <>
+            <span className="font-mono text-sm tabular-nums">{fmt(elapsedSec)}</span>
+            <span className="text-xs text-amber-900/80">{points.toFixed(1)} б.</span>
+            {remainingSec != null && (
+              <span className="text-xs text-amber-900/70">осталось {fmt(remainingSec)}</span>
+            )}
+          </>
         )}
       </div>
     </button>

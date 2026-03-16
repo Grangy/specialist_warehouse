@@ -260,7 +260,7 @@ export async function GET(request: NextRequest) {
           userId: w.id,
           userName: w.name,
           extraWorkHours: 0,
-          extraWorkPoints: extraWorkPointsByUser.get(w.id) ?? 0,
+          extraWorkPoints: Math.max(0, extraWorkPointsByUser.get(w.id) ?? 0),
           productivity: prod,
           productivityToday: Math.round(prod * todayCoeff * 100) / 100,
           weekdayCoefficient: todayCoeff,
