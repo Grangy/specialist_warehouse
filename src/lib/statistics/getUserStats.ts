@@ -182,8 +182,9 @@ export async function getUserStats(
     take: 12,
   });
 
-  // Баллы за доп. работу за период
+  // Баллы за доп. работу за период (только сессии + ручные корректировки, БЕЗ error_penalty)
   let extraWorkPoints = 0;
+  let errorPenalty = 0;
   if (dateRange) {
     const [stoppedSessions, activeSessions, manualSetting, errorPenaltiesSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
@@ -224,9 +225,9 @@ export async function getUserStats(
       const delta = getManualAdjustmentForPeriod(manualSetting.value, user.id, dateRange.startDate, dateRange.endDate);
       extraWorkPoints = Math.max(0, extraWorkPoints + delta);
     }
+    // error_penalty — отдельно, не показываем как «Доп.работа» (это штрафы/бонусы за ошибки)
     if (dateRange && errorPenaltiesSetting?.value) {
-      const penalty = getErrorPenaltyForPeriod(errorPenaltiesSetting.value, user.id, dateRange.startDate, dateRange.endDate);
-      extraWorkPoints = Math.max(0, extraWorkPoints + penalty);
+      errorPenalty = getErrorPenaltyForPeriod(errorPenaltiesSetting.value, user.id, dateRange.startDate, dateRange.endDate);
     }
   }
 
@@ -283,6 +284,7 @@ export async function getUserStats(
     period: dateOverride ? null : (period ?? null),
     date: dateOverride ?? null,
     extraWorkPoints,
+    errorPenalty,
     user: {
       id: user.id,
       name: user.name,

@@ -21,6 +21,7 @@ interface RankingEntry {
   checkerPoints?: number;
   dictatorPoints?: number;
   extraWorkPoints?: number;
+  errorPenalty?: number;
   errors?: number;
   checkerErrors?: number;
   rank: number | null;
@@ -36,6 +37,7 @@ interface RankingEntry {
 
 interface UserStatsDetail {
   extraWorkPoints?: number;
+  errorPenalty?: number;
   checker: { totalTasks: number; totalPoints: number; totalPositions: number; tasks: Array<{ shipmentNumber: string; formula?: string; orderPoints: number | null }> };
   collector: { totalTasks: number; totalPoints: number; totalPositions: number; tasks: Array<{ shipmentNumber: string; formula?: string; orderPoints: number | null }> };
   dictator?: { totalTasks: number; totalPoints: number; totalPositions: number; tasks: Array<{ shipmentNumber: string; formula?: string; orderPoints: number | null; checkerName?: string }> };
@@ -495,6 +497,9 @@ export default function TopPage() {
                         {(user.extraWorkPoints ?? 0) > 0 && (
                           <div className="text-xs"><span className="text-amber-500/90">Доп.работа</span> {formatPointsNum(user.extraWorkPoints ?? 0)}</div>
                         )}
+                        {(user.errorPenalty ?? 0) !== 0 && (
+                          <div className="text-xs"><span className="text-slate-400">За ошибки</span> {(user.errorPenalty ?? 0) >= 0 ? '+' : ''}{formatPointsNum(user.errorPenalty ?? 0)}</div>
+                        )}
                       </div>
                       {user.pph != null && (
                         <div className="text-xs text-slate-500 mt-0.5">
@@ -536,7 +541,10 @@ export default function TopPage() {
                               {(expandedStats.extraWorkPoints ?? 0) > 0 && (
                                 <span><span className="text-amber-500">Доп.работа</span> {(expandedStats.extraWorkPoints ?? 0).toFixed(2)}</span>
                               )}
-                              <span className="text-slate-300 font-medium">= {(expandedStats.collector.totalPoints + expandedStats.checker.totalPoints + (expandedStats.dictator?.totalPoints ?? 0) + (expandedStats.extraWorkPoints ?? 0)).toFixed(2)} баллов</span>
+                              {(expandedStats.errorPenalty ?? 0) !== 0 && (
+                                <span><span className="text-slate-400">За ошибки</span> {(expandedStats.errorPenalty ?? 0) >= 0 ? '+' : ''}{(expandedStats.errorPenalty ?? 0).toFixed(2)}</span>
+                              )}
+                              <span className="text-slate-300 font-medium">= {(expandedStats.collector.totalPoints + expandedStats.checker.totalPoints + (expandedStats.dictator?.totalPoints ?? 0) + (expandedStats.extraWorkPoints ?? 0) + (expandedStats.errorPenalty ?? 0)).toFixed(2)} баллов</span>
                             </div>
 
                             <div>

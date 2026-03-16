@@ -10,7 +10,6 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { setPendingMessage } from '@/lib/adminMessages';
 import { touchSync } from '@/lib/syncTouch';
-import { isCollectorNewbie } from '@/lib/ranking/isNewbie';
 import { addErrorPenalty } from '@/lib/ranking/errorPenalties';
 
 export const dynamic = 'force-dynamic';
@@ -90,16 +89,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const newbie = await isCollectorNewbie(task.collectorId);
+    // 1 ошибка: сборщик −1, проверяльщик −1, админ +2 (нашёл ошибку проверяльщика)
     const today = new Date();
-    if (newbie) {
-      await addErrorPenalty(task.collectorId, -1, today);
-      await addErrorPenalty(task.checkerId, 1, today);
-    } else {
-      await addErrorPenalty(task.collectorId, -3, today);
-      await addErrorPenalty(task.checkerId, -3, today);
-      await addErrorPenalty(admin.id, 6, today);
-    }
+    await addErrorPenalty(task.collectorId, -1, today);
+    await addErrorPenalty(task.checkerId, -1, today);
+    await addErrorPenalty(admin.id, 2, today);
 
     const msgText = dateStr
       ? `⚠️ Ошибка со сборки от ${dateStr}\n\nЗаказ ${num}, позиция: ${productName}\n\nАдминистратор зафиксировал ошибку.`

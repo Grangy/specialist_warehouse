@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { areAllTasksConfirmed } from '@/lib/shipmentTasks';
 import { updateCheckerStats } from '@/lib/ranking/updateStats';
-import { isCollectorNewbie } from '@/lib/ranking/isNewbie';
 import { addErrorPenalty } from '@/lib/ranking/errorPenalties';
 
 export const dynamic = 'force-dynamic';
@@ -179,7 +178,7 @@ export async function POST(
         },
       });
 
-      // Штрафы за ошибки при «Отправить в офис»: сборщик −3, проверяльщик +3 (новенький: −1/+1)
+      // Штрафы за ошибки при «Отправить в офис»: 1 ошибка = сборщик −1, проверяльщик +1
       const allTaskIds = (await prisma.shipmentTask.findMany({
         where: { shipmentId: task.shipmentId },
         select: { id: true },
@@ -195,14 +194,8 @@ export async function POST(
       const today = new Date();
       for (const call of callsWithErrors) {
         const errCount = call.errorCount ?? 1;
-        const newbie = await isCollectorNewbie(call.collectorId);
-        if (newbie) {
-          await addErrorPenalty(call.collectorId, -1 * errCount, today);
-          await addErrorPenalty(call.checkerId, 1 * errCount, today);
-        } else {
-          await addErrorPenalty(call.collectorId, -3 * errCount, today);
-          await addErrorPenalty(call.checkerId, 3 * errCount, today);
-        }
+        await addErrorPenalty(call.collectorId, -1 * errCount, today);
+        await addErrorPenalty(call.checkerId, 1 * errCount, today);
       }
 
       // Отправляем событие об обновлении заказа через SSE

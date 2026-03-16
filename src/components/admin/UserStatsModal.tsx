@@ -11,6 +11,7 @@ const PERIOD_LABELS: Record<'today' | 'week' | 'month', string> = {
 
 interface UserStatsData {
   extraWorkPoints?: number;
+  errorPenalty?: number;
   user: {
     id: string;
     name: string;
@@ -313,8 +314,11 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                   {(data.extraWorkPoints ?? 0) > 0 && (
                     <span><span className="text-amber-500">Доп.работа</span> {(data.extraWorkPoints ?? 0).toFixed(2)}</span>
                   )}
+                  {(data.errorPenalty ?? 0) !== 0 && (
+                    <span><span className="text-slate-400">За ошибки</span> {(data.errorPenalty ?? 0) >= 0 ? '+' : ''}{(data.errorPenalty ?? 0).toFixed(2)}</span>
+                  )}
                   <span className="text-slate-300 font-semibold">
-                    = {(data.collector.totalPoints + data.checker.totalPoints + (data.dictator?.totalPoints ?? 0) + (data.extraWorkPoints ?? 0)).toFixed(2)} баллов
+                    = {(data.collector.totalPoints + data.checker.totalPoints + (data.dictator?.totalPoints ?? 0) + (data.extraWorkPoints ?? 0) + (data.errorPenalty ?? 0)).toFixed(2)} баллов
                   </span>
                 </div>
               </div>

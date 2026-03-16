@@ -31,6 +31,7 @@ interface RankingEntry {
   checkerPoints?: number;
   dictatorPoints?: number;
   extraWorkPoints?: number;
+  errorPenalty?: number;
   errors?: number;
   checkerErrors?: number;
   rank: number | null;
@@ -167,6 +168,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState('');
   const [canAdjustPoints, setCanAdjustPoints] = useState(false);
+  const [adminErrorPenalty, setAdminErrorPenalty] = useState<{ week: number; month: number } | null>(null);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -221,6 +223,14 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!canAdjustPoints) return;
+    fetch('/api/admin/error-penalty-stats', { cache: 'no-store' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => d && setAdminErrorPenalty({ week: d.week ?? 0, month: d.month ?? 0 }))
+      .catch(() => {});
+  }, [canAdjustPoints]);
 
   // Автоматическое обновление рейтинга "сегодня" каждые 30 секунд
   useEffect(() => {
@@ -364,6 +374,21 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
               Пользователей: {formatNumber(overview.total.users)}
             </div>
           </div>
+          {adminErrorPenalty != null && (adminErrorPenalty.week !== 0 || adminErrorPenalty.month !== 0) && (
+            <div className="bg-gradient-to-br from-teal-600/20 to-teal-500/10 border border-teal-500/30 rounded-xl p-5 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-3">
+                <AlertTriangle className="w-8 h-8 text-teal-400" />
+                <span className="text-xs text-slate-400">Ваши баллы за ошибки проверяльщиков</span>
+              </div>
+              <div className="text-2xl font-bold text-slate-100 mb-1">
+                +{formatPoints(adminErrorPenalty.week)} / +{formatPoints(adminErrorPenalty.month)}
+              </div>
+              <div className="text-sm text-slate-400">Неделя / Месяц</div>
+              <div className="mt-3 pt-3 border-t border-slate-700/50 text-xs text-slate-400">
+                За каждую зафиксированную ошибку проверяльщика: +2 балла
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -597,6 +622,9 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                     )}
                     {(user.extraWorkPoints ?? 0) > 0 && (
                       <div className="text-xs text-amber-500/90">доп.работа {formatPoints(user.extraWorkPoints ?? 0)}</div>
+                    )}
+                    {(user.errorPenalty ?? 0) !== 0 && (
+                      <div className="text-xs text-slate-400">за ошибки {(user.errorPenalty ?? 0) >= 0 ? '+' : ''}{formatPoints(user.errorPenalty ?? 0)}</div>
                     )}
                     {user.pph != null && (
                       <div className="text-xs text-slate-500 mt-1">{formatPPH(user.pph)} PPH</div>

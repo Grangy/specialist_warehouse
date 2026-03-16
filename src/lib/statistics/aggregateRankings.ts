@@ -26,6 +26,8 @@ export interface RankingEntry {
   checkerPoints: number;
   dictatorPoints: number;
   extraWorkPoints: number;
+  /** Баллы за ошибки: + за найденные (проверяльщик), − за допущенные (сборщик/проверяльщик) */
+  errorPenalty: number;
   errors: number;
   checkerErrors: number;
   rank: number | null;
@@ -335,6 +337,7 @@ export async function aggregateRankings(
 
   const allRankings: RankingEntry[] = [];
   for (const agg of allMap.values()) {
+    const errPen = errorPenaltiesMap.get(agg.userId) ?? 0;
     allRankings.push({
       userId: agg.userId,
       userName: agg.userName,
@@ -348,6 +351,7 @@ export async function aggregateRankings(
       checkerPoints: agg.checkerPoints,
       dictatorPoints: agg.dictatorPoints,
       extraWorkPoints: agg.extraWorkPoints,
+      errorPenalty: errPen,
       errors: errorsByCollector.get(agg.userId) ?? 0,
       checkerErrors: errorsByChecker.get(agg.userId) ?? 0,
       rank: null,
