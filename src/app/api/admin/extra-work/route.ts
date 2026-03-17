@@ -35,9 +35,12 @@ export interface ExtraWorkEntry {
 }
 
 import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
+import { autoStopExtraWorkAt18 } from '@/lib/extraWorkAutoStop';
 
 export async function GET(request: NextRequest) {
   try {
+    await autoStopExtraWorkAt18();
+
     const authResult = await requireAuth(request, ['admin', 'checker']);
     if (authResult instanceof NextResponse) {
       return authResult;
