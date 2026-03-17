@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Недостаточно прав доступа' }, { status: 403 });
     }
 
-    const { startDate, endDate } = getStatisticsDateRange('week');
+    const { startDate, endDate } = getStatisticsDateRange('month');
 
     const [stoppedSessions, weekRankings, activeSessionsRaw, allUserSettings, allWorkers, listConfigSetting, manualAdjustmentsSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         },
         select: { userId: true, elapsedSecBeforeLunch: true, user: { select: { id: true, name: true } } },
       }),
-      aggregateRankings('week'),
+      aggregateRankings('month'),
       prisma.extraWorkSession.findMany({
         where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
         include: { user: { select: { id: true, name: true } } },
@@ -166,10 +166,10 @@ export async function GET(request: NextRequest) {
       extraWorkPointsByUser.set(sess.userId, prevPts + activePts);
     }
 
-    // Ручные корректировки за неделю (только за дату добавления)
-    const { startDate: weekStart, endDate: weekEnd } = getStatisticsDateRange('week');
-    const manualAdjustmentsWeek = getManualAdjustmentsMapForPeriod(manualAdjustmentsSetting?.value ?? null, weekStart, weekEnd);
-    for (const [uid, delta] of manualAdjustmentsWeek) {
+    // Ручные корректировки за месяц (только за дату добавления)
+    const { startDate: monthStart, endDate: monthEnd } = getStatisticsDateRange('month');
+    const manualAdjustmentsMonth = getManualAdjustmentsMapForPeriod(manualAdjustmentsSetting?.value ?? null, monthStart, monthEnd);
+    for (const [uid, delta] of manualAdjustmentsMonth) {
       if (!extraWorkPointsByUser.has(uid) && delta !== 0) {
         extraWorkPointsByUser.set(uid, Math.max(0, delta));
       }
