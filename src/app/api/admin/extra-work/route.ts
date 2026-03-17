@@ -7,6 +7,8 @@ import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustment
 import {
   getExtraWorkRatePerHour,
   computeExtraWorkPointsForSession,
+  getUsefulnessPctMap,
+  getBaselineUserName,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 
@@ -27,6 +29,8 @@ export interface ExtraWorkEntry {
   weekdayCoefficient: number;
   /** Обед пользователя (настройка раз навсегда) */
   lunchSlot: string | null;
+  /** Полезность в % относительно эталона (Эрнес=100). null если эталон не задан */
+  usefulnessPct?: number | null;
 }
 
 import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
@@ -184,17 +188,23 @@ export async function GET(request: NextRequest) {
     for (const s of activeSessions) allUserIds.add(s.userId);
     for (const w of allWorkers) allUserIds.add(w.id);
 
-    const productivityByUser = new Map<string, number>();
+    const [productivityByUser, usefulnessPctMap, baselineUserName] = await Promise.all([
+      (async () => {
+        const m = new Map<string, number>();
+        await Promise.all(
+          [...allUserIds].map(async (userId) => {
+            const rate = await getExtraWorkRatePerHour(prisma, userId, now);
+            m.set(userId, Math.round(rate * 100) / 100);
+          })
+        );
+        return m;
+      })(),
+      getUsefulnessPctMap(prisma, [...allUserIds], now),
+      getBaselineUserName(prisma),
+    ]);
     const todayCoeff = await getWeekdayCoefficientForDate(prisma, now);
     const weekdayCoefficients = await getWeekdayWorkloadCoefficients(prisma);
     const coeffPeriod = getWeekdayCoefficientsPeriod();
-
-    await Promise.all(
-      [...allUserIds].map(async (userId) => {
-        const rate = await getExtraWorkRatePerHour(prisma, userId, now);
-        productivityByUser.set(userId, Math.round(rate * 100) / 100);
-      })
-    );
 
     const sessionsByUser = new Map(activeSessions.map((s) => [s.userId, s]));
 
@@ -210,6 +220,7 @@ export async function GET(request: NextRequest) {
           productivityToday,
           weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(u.userId) ?? null,
+          usefulnessPct: usefulnessPctMap.get(u.userId) ?? null,
         };
         const sess = sessionsByUser.get(u.userId);
         if (sess) {
@@ -243,6 +254,7 @@ export async function GET(request: NextRequest) {
           productivityToday: Math.round(prod * todayCoeff * 100) / 100,
           weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(sess.userId) ?? null,
+          usefulnessPct: usefulnessPctMap.get(sess.userId) ?? null,
           activeSession: {
             id: sess.id,
             status: sess.status,
@@ -269,6 +281,7 @@ export async function GET(request: NextRequest) {
           productivityToday: Math.round(prod * todayCoeff * 100) / 100,
           weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(w.id) ?? null,
+          usefulnessPct: usefulnessPctMap.get(w.id) ?? null,
         });
       }
     }
@@ -284,6 +297,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       entries: resultWithActive,
       hiddenUserIds: [...hiddenUserIds],
+      baselineUserName,
       activeSessions: activeSessions.map((s) => ({ id: s.id, userId: s.userId, userName: s.user.name, status: s.status, startedAt: s.startedAt, lunchSlot: s.lunchSlot, lunchScheduledFor: s.lunchScheduledFor, lunchEndsAt: s.lunchEndsAt })),
       weekdayCoefficients: weekdayCoefficients,
       coeffPeriodStart: coeffPeriod.start.toISOString().slice(0, 10),

@@ -50,19 +50,80 @@ async function getWarehousePaceLast15Min(
   return { points, activeCount };
 }
 
-/** Коэффициент полезности: баллы пользователя за месяц / средние баллы (0.5–1.5) */
+const TASK_FILTER_OR_MONTH = (monthStart: Date, beforeDate: Date) => [
+  { roleType: 'collector' as const, task: { completedAt: { gte: monthStart, lte: beforeDate } } },
+  { roleType: 'collector' as const, task: { confirmedAt: { gte: monthStart, lte: beforeDate } } },
+  { roleType: 'checker' as const, task: { confirmedAt: { gte: monthStart, lte: beforeDate } } },
+  { roleType: 'dictator' as const, task: { confirmedAt: { gte: monthStart, lte: beforeDate } } },
+];
+
+/** Баллы пользователя за месяц (сборка + проверка + диктовка) */
+export async function getUserMonthlyPoints(
+  prisma: PrismaLike,
+  userId: string,
+  beforeDate: Date
+): Promise<number> {
+  const monthStart = new Date(beforeDate.getFullYear(), beforeDate.getMonth(), 1);
+  const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
+  const r = await prisma.taskStatistics.aggregate({
+    where: { userId, OR: taskFilterOr },
+    _sum: { orderPoints: true },
+  });
+  return r._sum.orderPoints ?? 0;
+}
+
+/** Эталонный пользователь (100%): ищем по имени. SystemSettings extra_work_baseline_user или "Эрнес" */
+async function getBaselineUserId(prisma: PrismaLike): Promise<string | null> {
+  const row = await prisma.systemSettings.findUnique({
+    where: { key: 'extra_work_baseline_user' },
+  });
+  const name = row?.value?.trim() || 'Эрнес';
+  const user = await prisma.user.findFirst({
+    where: { name: { contains: name } },
+    select: { id: true },
+  });
+  return user?.id ?? null;
+}
+
+/** Имя эталонного пользователя для отображения */
+export async function getBaselineUserName(prisma: PrismaLike): Promise<string | null> {
+  const row = await prisma.systemSettings.findUnique({
+    where: { key: 'extra_work_baseline_user' },
+  });
+  const name = row?.value?.trim() || 'Эрнес';
+  const user = await prisma.user.findFirst({
+    where: { name: { contains: name } },
+    select: { name: true },
+  });
+  return user?.name ?? null;
+}
+
+/** Коэффициент полезности: баллы пользователя / баллы эталона (Эрнес=100%). Если эталона нет — средние. */
 async function getUsefulnessCoefficient(
   prisma: PrismaLike,
   userId: string,
   beforeDate: Date
 ): Promise<number> {
   const monthStart = new Date(beforeDate.getFullYear(), beforeDate.getMonth(), 1);
-  const taskFilterOr = [
-    { roleType: 'collector', task: { completedAt: { gte: monthStart, lte: beforeDate } } },
-    { roleType: 'collector', task: { confirmedAt: { gte: monthStart, lte: beforeDate } } },
-    { roleType: 'checker', task: { confirmedAt: { gte: monthStart, lte: beforeDate } } },
-    { roleType: 'dictator', task: { confirmedAt: { gte: monthStart, lte: beforeDate } } },
-  ];
+  const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
+  const baselineId = await getBaselineUserId(prisma);
+  if (baselineId) {
+    const [userSum, baselineSum] = await Promise.all([
+      prisma.taskStatistics.aggregate({
+        where: { userId, OR: taskFilterOr },
+        _sum: { orderPoints: true },
+      }),
+      prisma.taskStatistics.aggregate({
+        where: { userId: baselineId, OR: taskFilterOr },
+        _sum: { orderPoints: true },
+      }),
+    ]);
+    const userPts = userSum._sum.orderPoints ?? 0;
+    const denom = baselineSum._sum.orderPoints ?? 0;
+    if (denom <= 0) return 1;
+    const coef = userPts / denom;
+    return Math.max(0.5, Math.min(1.5, coef));
+  }
   const [userSum, allSum, userCount] = await Promise.all([
     prisma.taskStatistics.aggregate({
       where: { userId, OR: taskFilterOr },
@@ -84,6 +145,56 @@ async function getUsefulnessCoefficient(
   if (avgPts <= 0) return 1;
   const coef = userPts / avgPts;
   return Math.max(0.5, Math.min(1.5, coef));
+}
+
+/** Полезность в % (100 = эталон). Для отображения. */
+export async function getUsefulnessPct(
+  prisma: PrismaLike,
+  userId: string,
+  beforeDate: Date
+): Promise<number | null> {
+  const baselineId = await getBaselineUserId(prisma);
+  if (!baselineId) return null;
+  const [userPts, baselinePts] = await Promise.all([
+    getUserMonthlyPoints(prisma, userId, beforeDate),
+    getUserMonthlyPoints(prisma, baselineId, beforeDate),
+  ]);
+  if (baselinePts <= 0) return null;
+  const pct = (userPts / baselinePts) * 100;
+  return Math.round(pct * 10) / 10;
+}
+
+/** Полезность в % для списка пользователей (батч). 100 = эталон. */
+export async function getUsefulnessPctMap(
+  prisma: PrismaLike,
+  userIds: string[],
+  beforeDate: Date
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  const baselineId = await getBaselineUserId(prisma);
+  if (!baselineId || userIds.length === 0) return result;
+  const monthStart = new Date(beforeDate.getFullYear(), beforeDate.getMonth(), 1);
+  const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
+  const allResults = await Promise.all([
+    prisma.taskStatistics.aggregate({
+      where: { userId: baselineId, OR: taskFilterOr },
+      _sum: { orderPoints: true },
+    }),
+    ...userIds.map((uid) =>
+      prisma.taskStatistics.aggregate({
+        where: { userId: uid, OR: taskFilterOr },
+        _sum: { orderPoints: true },
+      })
+    ),
+  ]);
+  const baselinePts = allResults[0]._sum.orderPoints ?? 0;
+  if (baselinePts <= 0) return result;
+  userIds.forEach((uid, i) => {
+    const userPts = allResults[i + 1]?._sum?.orderPoints ?? 0;
+    const pct = (userPts / baselinePts) * 100;
+    result.set(uid, Math.round(pct * 10) / 10);
+  });
+  return result;
 }
 
 /** Фиксированная ставка (баллов/мин) для 09:00–09:15 из SystemSettings */

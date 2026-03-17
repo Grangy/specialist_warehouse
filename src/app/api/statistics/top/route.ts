@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
     const warehouseFilter = searchParams.get('warehouse') || undefined;
 
-    const { allRankings, errorsByCollector, errorsByChecker } = await aggregateRankings(period, warehouseFilter);
+    const { allRankings, errorsByCollector, errorsByChecker, baselineUserName } = await aggregateRankings(period, warehouseFilter);
 
     const allPoints = allRankings.map((s) => s.points).filter((p) => p > 0);
     if (allPoints.length > 0) {
@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
         totalCollectorErrors,
         totalCheckerErrors,
         topErrorsMerged,
+        baselineUserName,
       },
       {
         headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },

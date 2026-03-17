@@ -34,6 +34,7 @@ interface ExtraWorkEntry {
   productivityToday?: number;
   weekdayCoefficient?: number;
   lunchSlot: string | null;
+  usefulnessPct?: number | null;
   activeSession?: {
     id: string;
     status: string;
@@ -76,6 +77,8 @@ export default function ExtraWorkTab() {
   const [togglingHiddenUserId, setTogglingHiddenUserId] = useState<string | null>(null);
   const [coeffPeriod, setCoeffPeriod] = useState<{ start: string; end: string } | null>(null);
   const [todayCoeff, setTodayCoeff] = useState<number | null>(null);
+  const [showFormulaHelp, setShowFormulaHelp] = useState(false);
+  const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -93,6 +96,7 @@ export default function ExtraWorkTab() {
       if (json.coeffPeriodStart && json.coeffPeriodEnd) {
         setCoeffPeriod({ start: json.coeffPeriodStart, end: json.coeffPeriodEnd });
       }
+      setBaselineUserName(json.baselineUserName ?? null);
       const first = json.entries?.[0];
       setTodayCoeff(first?.weekdayCoefficient ?? null);
       if (sessionRes.ok) {
@@ -281,7 +285,7 @@ export default function ExtraWorkTab() {
             {showFormulaHelp && (
               <div className="mt-3 p-4 rounded-lg bg-slate-800/80 border border-slate-600/50 text-xs text-slate-300 space-y-2">
                 <p><strong className="text-amber-400">Динамическая формула:</strong> баллы/мин = (темп склада за 15 мин ÷ 15 ÷ активные сотрудники) × коэффициент полезности.</p>
-                <p>Темп = сумма orderPoints за последние 15 мин (сборка, проверка, диктовка). Активные = distinct userId за те же 15 мин. Полезность = баллы за месяц ÷ средние (0.5–1.5).</p>
+                <p>Темп = сумма orderPoints за 15 мин. Активные = distinct userId. Полезность = баллы за месяц ÷ баллы эталона ({baselineUserName ?? 'Эрнес'}=100%).</p>
                 <p><strong className="text-amber-400">09:00–09:15 МСК:</strong> фиксированная ставка (нет истории за 15 мин). Значение в system_settings.</p>
               </div>
             )}
@@ -371,6 +375,7 @@ export default function ExtraWorkTab() {
                 <th className="py-2 pr-4" title="Баллов/мин = (темп/15/активн)×полезность; 09:00–09:15 — фикс.">Произв.</th>
                 <th className="py-2 pr-4">Часы доп. работы</th>
                 <th className="py-2 pr-4" title="(темп/15/активн)×полезность × минуты; 09:00–09:15 — фикс. ставка">Доп.баллы</th>
+                <th className="py-2 pr-4" title={baselineUserName ? `Полезность относительно ${baselineUserName} (100%)` : 'Полезность'}>Польз.%</th>
                 <th className="py-2 pr-4" title="Настраивается раз навсегда, применяется ко всем сессиям">Обед</th>
                 <th className="py-2 pr-4">Статус</th>
                 <th className="py-2">Действия</th>
@@ -391,6 +396,9 @@ export default function ExtraWorkTab() {
                     </td>
                     <td className="py-3 pr-4 text-slate-300">{formatHours(d.extraWorkHours)}</td>
                     <td className="py-3 pr-4 text-amber-400">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
+                    <td className="py-3 pr-4 text-slate-400 text-xs">
+                      {d.usefulnessPct != null ? `${d.usefulnessPct}%` : '—'}
+                    </td>
                     <td className="py-3 pr-4">
                       {canAssign ? (
                         <select
@@ -479,7 +487,7 @@ export default function ExtraWorkTab() {
               {hiddenData.length > 0 && (
                 <>
                   <tr>
-                    <td colSpan={7} className="py-0">
+                    <td colSpan={8} className="py-0">
                       <button
                         type="button"
                         onClick={() => setHiddenSectionOpen((v) => !v)}
@@ -490,7 +498,7 @@ export default function ExtraWorkTab() {
                         ) : (
                           <ChevronRight className="w-4 h-4" />
                         )}
-                        <span className="font-medium">Скрытые</span>
+                          <span className="font-medium">Скрытые</span>
                         <span className="text-slate-500">({hiddenData.length})</span>
                       </button>
                     </td>
@@ -510,6 +518,9 @@ export default function ExtraWorkTab() {
                           </td>
                           <td className="py-3 pr-4 text-slate-500">{formatHours(d.extraWorkHours)}</td>
                           <td className="py-3 pr-4 text-amber-500/80">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
+                          <td className="py-3 pr-4 text-slate-600 text-xs">
+                            {d.usefulnessPct != null ? `${d.usefulnessPct}%` : '—'}
+                          </td>
                           <td className="py-3 pr-4">
                             {canAssign ? (
                               <select

@@ -33,6 +33,7 @@ interface RankingEntry {
   pph: number | null;
   uph: number | null;
   efficiency: number | null;
+  usefulnessPct?: number | null;
 }
 
 interface UserStatsDetail {
@@ -78,6 +79,7 @@ export default function TopPage() {
   const [showErrorsBreakdown, setShowErrorsBreakdown] = useState(false);
   const [expandedErrorRow, setExpandedErrorRow] = useState<number | null>(null);
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
+  const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -94,6 +96,7 @@ export default function TopPage() {
       setTopErrorsMerged(data.topErrorsMerged || []);
       setTotalCollectorErrors(data.totalCollectorErrors ?? 0);
       setTotalCheckerErrors(data.totalCheckerErrors ?? 0);
+      setBaselineUserName(data.baselineUserName ?? null);
       setMounted(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить рейтинг');
@@ -232,7 +235,7 @@ export default function TopPage() {
             <span><span className="text-blue-400">Сборка</span> поз.×1 (С1) / ×2 (С2-3)</span>
             <span><span className="text-purple-400">Проверка</span> сам 0.78 / с диктовщ. 0.39</span>
             <span><span className="text-amber-400">Диктовка</span> 0.36 (С1) / 0.61 (С2-3)</span>
-            <span><span className="text-amber-500">Доп.работа</span> (темп/15/активн)×полезность; 09:00–09:15 — фикс.</span>
+            <span><span className="text-amber-500">Доп.работа</span> (темп/15/активн)×полезность; 09:00–09:15 — фикс. {baselineUserName && `(100%=${baselineUserName})`}</span>
           </div>
           {(totalCollectorErrors > 0 || totalCheckerErrors > 0 || topErrorsMerged.length > 0) && (
             <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3 mt-2">
@@ -503,7 +506,12 @@ export default function TopPage() {
                           <div className="text-xs"><span className="text-amber-400/90">Диктовка</span> {formatPointsNum(user.dictatorPoints ?? 0)}</div>
                         )}
                         {(user.extraWorkPoints ?? 0) > 0 && (
-                          <div className="text-xs"><span className="text-amber-500/90">Доп.работа</span> {formatPointsNum(user.extraWorkPoints ?? 0)}</div>
+                          <div className="text-xs">
+                            <span className="text-amber-500/90">Доп.работа</span> {formatPointsNum(user.extraWorkPoints ?? 0)}
+                            {user.usefulnessPct != null && baselineUserName && (
+                              <span className="text-slate-500 ml-1" title={`Полезность относительно ${baselineUserName}`}>({user.usefulnessPct}%)</span>
+                            )}
+                          </div>
                         )}
                         {(user.errorPenalty ?? 0) !== 0 && (
                           <div className="text-xs"><span className="text-slate-400">За ошибки</span> {(user.errorPenalty ?? 0) >= 0 ? '+' : ''}{formatPointsNum(user.errorPenalty ?? 0)}</div>

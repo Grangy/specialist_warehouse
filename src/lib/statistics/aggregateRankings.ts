@@ -8,6 +8,8 @@ import { getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/uti
 import {
   getExtraWorkRatePerHour,
   computeExtraWorkPointsForSession,
+  getUsefulnessPctMap,
+  getBaselineUserName,
 } from '@/lib/ranking/extraWorkPoints';
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
@@ -36,6 +38,8 @@ export interface RankingEntry {
   efficiency: number | null;
   /** Отработанные часы (сборка+проверка+диктовка) */
   workHours: number;
+  /** Полезность в % относительно эталона (Эрнес=100). null если эталон не задан */
+  usefulnessPct: number | null;
 }
 
 type UserAgg = {
@@ -63,6 +67,7 @@ export async function aggregateRankings(
   errorsByCollector: Map<string, number>;
   errorsByChecker: Map<string, number>;
   totalUniqueOrders: number;
+  baselineUserName: string | null;
 }> {
   const { startDate, endDate } = dateOverride
     ? getStatisticsDateRangeForDate(dateOverride)
@@ -340,6 +345,8 @@ export async function aggregateRankings(
     }
   }
 
+  const userIds = [...allMap.keys()];
+  const usefulnessPctMap = await getUsefulnessPctMap(prisma, userIds, endDate);
   const allRankings: RankingEntry[] = [];
   for (const agg of allMap.values()) {
     const errPen = errorPenaltiesMap.get(agg.userId) ?? 0;
@@ -365,6 +372,7 @@ export async function aggregateRankings(
       uph: agg.totalPickTimeSec > 0 ? (agg.units * 3600) / agg.totalPickTimeSec : null,
       efficiency: agg.efficiencies.length > 0 ? agg.efficiencies.reduce((a, b) => a + b, 0) / agg.efficiencies.length : null,
       workHours: Math.round((agg.totalPickTimeSec / 3600) * 100) / 100,
+      usefulnessPct: usefulnessPctMap.get(agg.userId) ?? null,
     });
   }
 
@@ -375,5 +383,6 @@ export async function aggregateRankings(
     for (const o of agg.orders) allOrderIds.add(o);
   }
 
-  return { allRankings, errorsByCollector, errorsByChecker, totalUniqueOrders: allOrderIds.size };
+  const baselineUserName = await getBaselineUserName(prisma);
+  return { allRankings, errorsByCollector, errorsByChecker, totalUniqueOrders: allOrderIds.size, baselineUserName };
 }
