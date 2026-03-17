@@ -121,7 +121,21 @@ function RankingBlock({
               className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3 cursor-pointer hover:bg-slate-800/70 transition-all"
             >
               <div className="flex justify-between items-center">
-                <span className="font-medium text-slate-200 truncate">{user.userName}</span>
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="font-medium text-slate-200 truncate">{user.userName}</span>
+                  {user.level && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 ${user.level.color} bg-slate-700/50`}
+                      title={user.usefulnessPct != null ? 'Полезность относительно эталона' : undefined}
+                    >
+                      <span>{user.level.emoji}</span>
+                      <span>{user.level.name}</span>
+                      {user.usefulnessPct != null && (
+                        <span className="text-slate-400 font-normal">({user.usefulnessPct}%)</span>
+                      )}
+                    </span>
+                  )}
+                </div>
                 <span className="text-sm font-bold text-slate-100 flex-shrink-0 ml-2">{formatPoints(user.points)}</span>
               </div>
               <div className="flex gap-3 mt-0.5 text-xs text-slate-500 flex-wrap">
@@ -584,9 +598,15 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                           {user.role === 'collector' ? 'Сборщик' : 'Проверяльщик'}
                         </span>
                         {user.level && (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${user.level.color} bg-slate-700/50`}>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${user.level.color} bg-slate-700/50`}
+                            title={user.usefulnessPct != null ? 'Полезность относительно эталона' : undefined}
+                          >
                             <span>{user.level.emoji}</span>
                             <span>{user.level.name}</span>
+                            {user.usefulnessPct != null && (
+                              <span className="text-slate-400 font-normal">({user.usefulnessPct}%)</span>
+                            )}
                           </span>
                         )}
                       </div>

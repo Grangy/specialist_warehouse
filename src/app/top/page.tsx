@@ -467,9 +467,13 @@ export default function TopPage() {
                           {user.level && (
                             <span
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${user.level.color} bg-slate-700/50`}
+                              title={user.usefulnessPct != null && baselineUserName ? `Полезность относительно ${baselineUserName}` : undefined}
                             >
                               <span>{user.level.emoji}</span>
                               <span>{user.level.name}</span>
+                              {user.usefulnessPct != null && (
+                                <span className="text-slate-400 font-normal">({user.usefulnessPct}%)</span>
+                              )}
                             </span>
                           )}
                         </div>
