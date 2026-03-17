@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/middleware';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 import { getStatisticsDateRange, isLunchTimeMoscow } from '@/lib/utils/moscowDate';
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
+import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 import {
   getExtraWorkRatePerHour,
   computeExtraWorkPointsForSession,
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     const { startDate, endDate } = getStatisticsDateRange('month');
 
-    const [stoppedSessions, weekRankings, activeSessionsRaw, allUserSettings, allWorkers, listConfigSetting, manualAdjustmentsSetting] = await Promise.all([
+    const [stoppedSessions, weekRankings, activeSessionsRaw, allUserSettings, allWorkers, listConfigSetting, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
         where: {
           status: 'stopped',
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_list_config' } }),
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
+      prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
     ]);
 
     // Строгая проверка: снимаем «Обед»/«Обед запланирован», если НЕ время обеда по Москве (13:00–14:59)
@@ -174,9 +176,10 @@ export async function GET(request: NextRequest) {
       extraWorkPointsByUser.set(sess.userId, prevPts + activePts);
     }
 
-    // Ручные корректировки за месяц (только за дату добавления)
+    // Ручные корректировки и штрафы за месяц (для полезности)
     const { startDate: monthStart, endDate: monthEnd } = getStatisticsDateRange('month');
     const manualAdjustmentsMonth = getManualAdjustmentsMapForPeriod(manualAdjustmentsSetting?.value ?? null, monthStart, monthEnd);
+    const errorPenaltiesMonth = getErrorPenaltiesMapForPeriod(errorPenaltiesSetting?.value ?? null, monthStart, monthEnd);
     for (const [uid, delta] of manualAdjustmentsMonth) {
       if (!extraWorkPointsByUser.has(uid) && delta !== 0) {
         extraWorkPointsByUser.set(uid, Math.max(0, delta));
@@ -203,7 +206,7 @@ export async function GET(request: NextRequest) {
         );
         return m;
       })(),
-      getUsefulnessPctMap(prisma, [...allUserIds], now, extraWorkByUser),
+      getUsefulnessPctMap(prisma, [...allUserIds], now, extraWorkByUser, errorPenaltiesMonth),
       getBaselineUserName(prisma),
     ]);
     const todayCoeff = await getWeekdayCoefficientForDate(prisma, now);

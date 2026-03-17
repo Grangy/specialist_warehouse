@@ -76,7 +76,7 @@ export async function getUserMonthlyPoints(
 }
 
 /** Эталонный пользователь (100%): ищем по имени. SystemSettings extra_work_baseline_user или "Эрнес" */
-async function getBaselineUserId(prisma: PrismaLike): Promise<string | null> {
+export async function getBaselineUserId(prisma: PrismaLike): Promise<string | null> {
   const row = await prisma.systemSettings.findUnique({
     where: { key: 'extra_work_baseline_user' },
   });
@@ -178,12 +178,13 @@ export async function getUsefulnessPct(
   return Math.round(pct * 10) / 10;
 }
 
-/** Полезность в % для списка пользователей (батч). 100 = эталон. Включает доп.работу. */
+/** Полезность в % для списка пользователей (батч). 100 = эталон. Включает доп.работу и штрафы за ошибки. */
 export async function getUsefulnessPctMap(
   prisma: PrismaLike,
   userIds: string[],
   beforeDate: Date,
-  extraWorkByUser?: Map<string, number>
+  extraWorkByUser?: Map<string, number>,
+  errorPenaltiesByUser?: Map<string, number>
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   const baselineId = await getBaselineUserId(prisma);
@@ -204,12 +205,14 @@ export async function getUsefulnessPctMap(
   ]);
   const baselineTaskPts = allResults[0]._sum.orderPoints ?? 0;
   const baselineExtra = extraWorkByUser?.get(baselineId) ?? 0;
-  const baselinePts = baselineTaskPts + baselineExtra;
+  const baselineErrPen = errorPenaltiesByUser?.get(baselineId) ?? 0;
+  const baselinePts = baselineTaskPts + baselineExtra + baselineErrPen;
   if (baselinePts <= 0) return result;
   userIds.forEach((uid, i) => {
     const userTaskPts = allResults[i + 1]?._sum?.orderPoints ?? 0;
     const userExtra = extraWorkByUser?.get(uid) ?? 0;
-    const userPts = userTaskPts + userExtra;
+    const userErrPen = errorPenaltiesByUser?.get(uid) ?? 0;
+    const userPts = userTaskPts + userExtra + userErrPen;
     const pct = (userPts / baselinePts) * 100;
     result.set(uid, Math.round(pct * 10) / 10);
   });

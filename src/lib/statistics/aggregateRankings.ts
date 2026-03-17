@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
 import {
   computeExtraWorkPointsForSession,
-  getUsefulnessPctMap,
+  getBaselineUserId,
   getBaselineUserName,
 } from '@/lib/ranking/extraWorkPoints';
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
@@ -289,6 +289,11 @@ export async function aggregateRankings(
     startDate,
     endDate
   );
+  const errorPenaltiesMonth = getErrorPenaltiesMapForPeriod(
+    errorPenaltiesSetting?.value ?? null,
+    monthStart,
+    monthEnd
+  );
   const missingForPenalties = [...errorPenaltiesMap.keys()].filter((uid) => !allMap.has(uid));
   if (missingForPenalties.length > 0) {
     const missingUsers = await prisma.user.findMany({
@@ -367,11 +372,13 @@ export async function aggregateRankings(
     }
   }
 
-  const userIds = [...allMap.keys()];
-  const usefulnessPctMap = await getUsefulnessPctMap(prisma, userIds, monthEnd, extraWorkByUser);
+  const baselineId = await getBaselineUserId(prisma);
+  const baselinePts = baselineId ? (allMap.get(baselineId)?.points ?? 0) : 0;
   const allRankings: RankingEntry[] = [];
   for (const agg of allMap.values()) {
     const errPen = errorPenaltiesMap.get(agg.userId) ?? 0;
+    const usefulnessPct =
+      baselinePts > 0 ? Math.round((agg.points / baselinePts) * 1000) / 10 : null;
     allRankings.push({
       userId: agg.userId,
       userName: agg.userName,
@@ -394,7 +401,7 @@ export async function aggregateRankings(
       uph: agg.totalPickTimeSec > 0 ? (agg.units * 3600) / agg.totalPickTimeSec : null,
       efficiency: agg.efficiencies.length > 0 ? agg.efficiencies.reduce((a, b) => a + b, 0) / agg.efficiencies.length : null,
       workHours: Math.round((agg.totalPickTimeSec / 3600) * 100) / 100,
-      usefulnessPct: usefulnessPctMap.get(agg.userId) ?? null,
+      usefulnessPct,
     });
   }
 
