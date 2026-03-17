@@ -6,7 +6,7 @@ import { getStatisticsDateRange, isLunchTimeMoscow } from '@/lib/utils/moscowDat
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import {
   getExtraWorkRatePerHour,
-  calculateExtraWorkPointsFromRate,
+  computeExtraWorkPointsForSession,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 
@@ -136,10 +136,10 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     for (const sess of activeSessions) {
       let currentElapsedSec = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
+      let virtualStartedAt = sess.startedAt;
       if (sess.status === 'running') {
         let segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
         let addSec = (now.getTime() - segStart.getTime()) / 1000;
-        // Если postLunchStartedAt в будущем (разница часов сервера/клиента) — исправляем в БД
         if (addSec < 0) {
           await prisma.extraWorkSession.update({
             where: { id: sess.id },
@@ -149,6 +149,7 @@ export async function GET(request: NextRequest) {
           addSec = 0;
         }
         currentElapsedSec += Math.max(0, addSec);
+        virtualStartedAt = new Date(now.getTime() - currentElapsedSec * 1000);
       }
       const hours = currentElapsedSec / 3600;
       if (!extraWorkHoursByUser.has(sess.userId)) {
@@ -159,9 +160,12 @@ export async function GET(request: NextRequest) {
         });
       }
       extraWorkHoursByUser.get(sess.userId)!.extraWorkHours += hours;
-      const rate = await getExtraWorkRatePerHour(prisma, sess.userId, now);
-      const dayCoef = await getWeekdayCoefficientForDate(prisma, now);
-      const activePts = Math.max(0, calculateExtraWorkPointsFromRate(currentElapsedSec, rate, dayCoef));
+      const activePts = await computeExtraWorkPointsForSession(prisma, {
+        userId: sess.userId,
+        elapsedSecBeforeLunch: currentElapsedSec,
+        stoppedAt: now,
+        startedAt: virtualStartedAt,
+      });
       const prevPts = Math.max(0, extraWorkPointsByUser.get(sess.userId) ?? 0);
       extraWorkPointsByUser.set(sess.userId, prevPts + activePts);
     }

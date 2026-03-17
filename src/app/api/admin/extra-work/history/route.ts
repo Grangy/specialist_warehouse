@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
-import {
-  getExtraWorkRatePerHour,
-  calculateExtraWorkPointsFromRate,
-} from '@/lib/ranking/extraWorkPoints';
-import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
+import { computeExtraWorkPointsForSession } from '@/lib/ranking/extraWorkPoints';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,14 +47,12 @@ export async function GET(request: NextRequest) {
 
     const items = await Promise.all(
       sessions.map(async (s) => {
-        const stoppedAt = s.stoppedAt ?? new Date();
-        const rate = await getExtraWorkRatePerHour(prisma, s.userId, stoppedAt);
-        const dayCoef = await getWeekdayCoefficientForDate(prisma, stoppedAt);
-        const pts = calculateExtraWorkPointsFromRate(
-          s.elapsedSecBeforeLunch ?? 0,
-          rate,
-          dayCoef
-        );
+        const pts = await computeExtraWorkPointsForSession(prisma, {
+          userId: s.userId,
+          elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
+          stoppedAt: s.stoppedAt,
+          startedAt: s.startedAt,
+        });
         return {
           id: s.id,
           userName: s.user?.name ?? s.userId.slice(0, 8),

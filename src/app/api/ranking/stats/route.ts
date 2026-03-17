@@ -5,10 +5,8 @@ import { getAnimalLevel } from '@/lib/ranking/levels';
 import {
   computeExtraWorkPointsForSessions,
   computeExtraWorkPointsMap,
-  getExtraWorkRatePerHour,
-  calculateExtraWorkPointsFromRate,
+  computeExtraWorkPointsForSession,
 } from '@/lib/ranking/extraWorkPoints';
-import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 import { getManualAdjustmentForPeriod, getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltyForPeriod, getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
@@ -163,7 +161,7 @@ export async function GET(request: NextRequest) {
           status: 'stopped',
           stoppedAt: { gte: today, lte: todayEnd },
         },
-        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true },
+        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
       }),
       prisma.extraWorkSession.findMany({
         where: {
@@ -171,7 +169,7 @@ export async function GET(request: NextRequest) {
           status: 'stopped',
           stoppedAt: { gte: monthStart, lte: monthEnd },
         },
-        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true },
+        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
       }),
       prisma.extraWorkSession.findMany({
         where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
@@ -184,11 +182,11 @@ export async function GET(request: NextRequest) {
     const [allExtraWorkToday, allExtraWorkMonth] = await Promise.all([
       prisma.extraWorkSession.findMany({
         where: { status: 'stopped', stoppedAt: { gte: today, lte: todayEnd } },
-        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true },
+        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
       }),
       prisma.extraWorkSession.findMany({
         where: { status: 'stopped', stoppedAt: { gte: monthStart, lte: monthEnd } },
-        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true },
+        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
       }),
     ]);
 
@@ -206,13 +204,18 @@ export async function GET(request: NextRequest) {
     let monthlyActivePts = 0;
     for (const sess of activeSessionsUser) {
       let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
+      let virtualStartedAt = sess.startedAt;
       if (sess.status === 'running') {
         const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
         elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
+        virtualStartedAt = new Date(now.getTime() - elapsed * 1000);
       }
-      const rate = await getExtraWorkRatePerHour(prisma, user.id, now);
-      const dayCoef = await getWeekdayCoefficientForDate(prisma, now);
-      const pts = Math.max(0, calculateExtraWorkPointsFromRate(elapsed, rate, dayCoef));
+      const pts = await computeExtraWorkPointsForSession(prisma, {
+        userId: user.id,
+        elapsedSecBeforeLunch: elapsed,
+        stoppedAt: now,
+        startedAt: virtualStartedAt,
+      });
       dailyActivePts += pts;
       monthlyActivePts += pts;
     }
@@ -222,13 +225,18 @@ export async function GET(request: NextRequest) {
     // Добавляем баллы активных сессий в карты для рангов (все пользователи)
     for (const sess of activeSessionsAll) {
       let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
+      let virtualStartedAt = sess.startedAt;
       if (sess.status === 'running') {
         const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
         elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
+        virtualStartedAt = new Date(now.getTime() - elapsed * 1000);
       }
-      const rate = await getExtraWorkRatePerHour(prisma, sess.userId, now);
-      const dayCoef = await getWeekdayCoefficientForDate(prisma, now);
-      const pts = Math.max(0, calculateExtraWorkPointsFromRate(elapsed, rate, dayCoef));
+      const pts = await computeExtraWorkPointsForSession(prisma, {
+        userId: sess.userId,
+        elapsedSecBeforeLunch: elapsed,
+        stoppedAt: now,
+        startedAt: virtualStartedAt,
+      });
       const curToday = extraWorkTodayMap.get(sess.userId) ?? 0;
       extraWorkTodayMap.set(sess.userId, curToday + pts);
       const curMonth = extraWorkMonthMap.get(sess.userId) ?? 0;

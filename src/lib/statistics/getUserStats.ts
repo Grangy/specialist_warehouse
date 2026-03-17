@@ -13,11 +13,7 @@ import {
   CHECK_WITH_DICTATOR_POINTS_PER_POS,
 } from '@/lib/ranking/pointsRates';
 import { getPointsRates } from '@/lib/ranking/getPointsRates';
-import {
-  getExtraWorkRatePerHour,
-  calculateExtraWorkPointsFromRate,
-} from '@/lib/ranking/extraWorkPoints';
-import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
+import { computeExtraWorkPointsForSession } from '@/lib/ranking/extraWorkPoints';
 import { getManualAdjustmentForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltyForPeriod } from '@/lib/ranking/errorPenalties';
 
@@ -193,7 +189,7 @@ export async function getUserStats(
           status: 'stopped',
           stoppedAt: { gte: dateRange.startDate, lte: dateRange.endDate },
         },
-        select: { elapsedSecBeforeLunch: true, stoppedAt: true },
+        select: { elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
       }),
       prisma.extraWorkSession.findMany({
         where: {
@@ -206,20 +202,28 @@ export async function getUserStats(
       prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
     ]);
     for (const s of stoppedSessions) {
-      const rate = await getExtraWorkRatePerHour(prisma, user.id, s.stoppedAt ?? new Date());
-      const dayCoef = await getWeekdayCoefficientForDate(prisma, s.stoppedAt ?? new Date());
-      extraWorkPoints += Math.max(0, calculateExtraWorkPointsFromRate(s.elapsedSecBeforeLunch ?? 0, rate, dayCoef));
+      extraWorkPoints += await computeExtraWorkPointsForSession(prisma, {
+        userId: user.id,
+        elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
+        stoppedAt: s.stoppedAt,
+        startedAt: s.startedAt,
+      });
     }
     const now = new Date();
     for (const sess of activeSessions) {
       let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
+      let virtualStartedAt = sess.startedAt;
       if (sess.status === 'running') {
         const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
         elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
+        virtualStartedAt = new Date(now.getTime() - elapsed * 1000);
       }
-      const rate = await getExtraWorkRatePerHour(prisma, user.id, now);
-      const dayCoef = await getWeekdayCoefficientForDate(prisma, now);
-      extraWorkPoints += Math.max(0, calculateExtraWorkPointsFromRate(elapsed, rate, dayCoef));
+      extraWorkPoints += await computeExtraWorkPointsForSession(prisma, {
+        userId: user.id,
+        elapsedSecBeforeLunch: elapsed,
+        stoppedAt: now,
+        startedAt: virtualStartedAt,
+      });
     }
     if (dateRange && manualSetting?.value) {
       const delta = getManualAdjustmentForPeriod(manualSetting.value, user.id, dateRange.startDate, dateRange.endDate);

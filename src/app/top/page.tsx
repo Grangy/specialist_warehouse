@@ -232,6 +232,7 @@ export default function TopPage() {
             <span><span className="text-blue-400">Сборка</span> поз.×1 (С1) / ×2 (С2-3)</span>
             <span><span className="text-purple-400">Проверка</span> сам 0.78 / с диктовщ. 0.39</span>
             <span><span className="text-amber-400">Диктовка</span> 0.36 (С1) / 0.61 (С2-3)</span>
+            <span><span className="text-amber-500">Доп.работа</span> (темп/15/активн)×полезность; 09:00–09:15 — фикс.</span>
           </div>
           {(totalCollectorErrors > 0 || totalCheckerErrors > 0 || topErrorsMerged.length > 0) && (
             <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3 mt-2">
@@ -558,7 +559,7 @@ export default function TopPage() {
                               <span><span className="text-purple-400">Проверка</span> {expandedStats.checker.totalPoints.toFixed(2)} ({expandedStats.checker.totalTasks} зак.)</span>
                               <span><span className="text-amber-400">Диктовка</span> {(expandedStats.dictator?.totalPoints ?? 0).toFixed(2)} ({(expandedStats.dictator?.totalTasks ?? 0)} зак.)</span>
                               {(expandedStats.extraWorkPoints ?? 0) > 0 && (
-                                <span><span className="text-amber-500">Доп.работа</span> {(expandedStats.extraWorkPoints ?? 0).toFixed(2)}</span>
+                                <span title="(темп/15/активн)×полезность; 09:00–09:15 — фикс. ставка"><span className="text-amber-500">Доп.работа</span> {(expandedStats.extraWorkPoints ?? 0).toFixed(2)}</span>
                               )}
                               {(expandedStats.errorPenalty ?? 0) !== 0 && (
                                 <span><span className="text-slate-400">За ошибки</span> {(expandedStats.errorPenalty ?? 0) >= 0 ? '+' : ''}{(expandedStats.errorPenalty ?? 0).toFixed(2)}</span>

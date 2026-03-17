@@ -366,11 +366,12 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                   )}
                 </div>
                 {(period && ((data.extraWorkPoints ?? 0) > 0 || canAdjustPoints)) && (
-                  <div className="bg-gradient-to-br from-amber-600/20 to-amber-500/10 rounded-lg p-3 sm:p-4 border border-amber-500/30">
+                  <div className="bg-gradient-to-br from-amber-600/20 to-amber-500/10 rounded-lg p-3 sm:p-4 border border-amber-500/30" title="(темп/15/активн)×полезность; 09:00–09:15 — фикс.">
                     <div className="text-xs sm:text-sm text-slate-400 mb-0.5 sm:mb-1 flex items-center gap-1">
                       <Briefcase className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                       <span className="truncate">Доп.работа</span>
                     </div>
+                    <div className="text-[10px] text-slate-500 mb-0.5">(темп/15/активн)×полезность</div>
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-lg sm:text-2xl font-bold text-slate-100">{(data.extraWorkPoints ?? 0).toFixed(2)}</div>
                       {canAdjustPoints && userId && (
