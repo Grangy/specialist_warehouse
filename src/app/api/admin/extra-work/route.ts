@@ -188,18 +188,22 @@ export async function GET(request: NextRequest) {
     for (const s of activeSessions) allUserIds.add(s.userId);
     for (const w of allWorkers) allUserIds.add(w.id);
 
+    const extraWorkByUser = new Map<string, number>();
+    for (const r of weekRankings.allRankings) {
+      if ((r.extraWorkPoints ?? 0) > 0) extraWorkByUser.set(r.userId, r.extraWorkPoints);
+    }
     const [productivityByUser, usefulnessPctMap, baselineUserName] = await Promise.all([
       (async () => {
         const m = new Map<string, number>();
         await Promise.all(
           [...allUserIds].map(async (userId) => {
-            const rate = await getExtraWorkRatePerHour(prisma, userId, now);
+            const rate = await getExtraWorkRatePerHour(prisma, userId, now, extraWorkByUser);
             m.set(userId, Math.round(rate * 100) / 100);
           })
         );
         return m;
       })(),
-      getUsefulnessPctMap(prisma, [...allUserIds], now),
+      getUsefulnessPctMap(prisma, [...allUserIds], now, extraWorkByUser),
       getBaselineUserName(prisma),
     ]);
     const todayCoeff = await getWeekdayCoefficientForDate(prisma, now);

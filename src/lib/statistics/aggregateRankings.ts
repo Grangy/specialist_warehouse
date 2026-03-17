@@ -6,7 +6,6 @@
 import { prisma } from '@/lib/prisma';
 import { getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
 import {
-  getExtraWorkRatePerHour,
   computeExtraWorkPointsForSession,
   getUsefulnessPctMap,
   getBaselineUserName,
@@ -72,6 +71,7 @@ export async function aggregateRankings(
   const { startDate, endDate } = dateOverride
     ? getStatisticsDateRangeForDate(dateOverride)
     : getStatisticsDateRange(period);
+  const { startDate: monthStart, endDate: monthEnd } = getStatisticsDateRange('month');
 
   const taskWhere = {
     ...(warehouseFilter && { warehouse: warehouseFilter }),
@@ -90,7 +90,7 @@ export async function aggregateRankings(
     droppedByCollectorId: { not: null },
     ...taskWhere,
   };
-  const [collectorByCompleted, collectorByConfirmed, collectorByDropped, checkerTaskStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, activeSessions, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
+  const [collectorByCompleted, collectorByConfirmed, collectorByDropped, checkerTaskStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, extraWorkSessionsMonth, activeSessions, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: completedWhere },
       include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true, droppedByCollectorId: true } } },
@@ -128,6 +128,13 @@ export async function aggregateRankings(
       where: {
         status: 'stopped',
         stoppedAt: { gte: startDate, lte: endDate },
+      },
+      select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true, user: { select: { id: true, name: true, role: true } } },
+    }),
+    prisma.extraWorkSession.findMany({
+      where: {
+        status: 'stopped',
+        stoppedAt: { gte: monthStart, lte: monthEnd },
       },
       select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true, user: { select: { id: true, name: true, role: true } } },
     }),
@@ -205,20 +212,40 @@ export async function aggregateRankings(
     return allMap.get(user.id)!;
   }
 
-  // Баллы за доп. работу: остановленные сессии (новая формула)
-  for (const sess of extraWorkSessions) {
+  const manualAdjustmentsMap = getManualAdjustmentsMapForPeriod(
+    manualAdjustmentsSetting?.value ?? null,
+    startDate,
+    endDate
+  );
+  const manualAdjustmentsMonth = getManualAdjustmentsMapForPeriod(
+    manualAdjustmentsSetting?.value ?? null,
+    monthStart,
+    monthEnd
+  );
+
+  // Накопление доп.баллов за месяц (хронологически) для полезности
+  const extraWorkByUser = new Map<string, number>();
+  for (const [uid, delta] of manualAdjustmentsMonth) {
+    extraWorkByUser.set(uid, (extraWorkByUser.get(uid) ?? 0) + delta);
+  }
+  const sortedStoppedMonth = [...extraWorkSessionsMonth].sort(
+    (a, b) => (a.stoppedAt?.getTime() ?? 0) - (b.stoppedAt?.getTime() ?? 0)
+  );
+  for (const sess of sortedStoppedMonth) {
     const pts = await computeExtraWorkPointsForSession(prisma, {
       userId: sess.userId,
       elapsedSecBeforeLunch: sess.elapsedSecBeforeLunch ?? 0,
       stoppedAt: sess.stoppedAt,
       startedAt: sess.startedAt,
-    });
-    const agg = ensureAgg(sess.user);
-    agg.extraWorkPoints += pts;
-    agg.points += pts;
+    }, extraWorkByUser);
+    extraWorkByUser.set(sess.userId, (extraWorkByUser.get(sess.userId) ?? 0) + pts);
+    if (sess.stoppedAt && sess.stoppedAt >= startDate && sess.stoppedAt <= endDate) {
+      const agg = ensureAgg(sess.user);
+      agg.extraWorkPoints += pts;
+      agg.points += pts;
+    }
   }
 
-  // Активные сессии (real-time): считаем как «виртуальную» сессию до now
   const now = new Date();
   for (const sess of activeSessions) {
     let currentElapsedSec = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
@@ -234,18 +261,13 @@ export async function aggregateRankings(
       elapsedSecBeforeLunch: currentElapsedSec,
       stoppedAt: now,
       startedAt: virtualStartedAt,
-    });
+    }, extraWorkByUser);
     const agg = ensureAgg(sess.user);
     agg.extraWorkPoints += pts;
     agg.points += pts;
   }
 
-  // Ручные корректировки (только за дату добавления, не дублируются каждый день)
-  const manualAdjustmentsMap = getManualAdjustmentsMapForPeriod(
-    manualAdjustmentsSetting?.value ?? null,
-    startDate,
-    endDate
-  );
+  // Ручные корректировки — добавляем к agg
   const missingUserIds = [...manualAdjustmentsMap.keys()].filter((uid) => !allMap.has(uid));
   if (missingUserIds.length > 0) {
     const missingUsers = await prisma.user.findMany({
@@ -346,7 +368,7 @@ export async function aggregateRankings(
   }
 
   const userIds = [...allMap.keys()];
-  const usefulnessPctMap = await getUsefulnessPctMap(prisma, userIds, endDate);
+  const usefulnessPctMap = await getUsefulnessPctMap(prisma, userIds, monthEnd, extraWorkByUser);
   const allRankings: RankingEntry[] = [];
   for (const agg of allMap.values()) {
     const errPen = errorPenaltiesMap.get(agg.userId) ?? 0;

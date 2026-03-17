@@ -285,7 +285,7 @@ export default function ExtraWorkTab() {
             {showFormulaHelp && (
               <div className="mt-3 p-4 rounded-lg bg-slate-800/80 border border-slate-600/50 text-xs text-slate-300 space-y-2">
                 <p><strong className="text-amber-400">Динамическая формула:</strong> баллы/мин = (темп склада за 15 мин ÷ 15 ÷ активные сотрудники) × коэффициент полезности.</p>
-                <p>Темп = сумма orderPoints за 15 мин. Активные = distinct userId. Полезность = баллы за месяц ÷ баллы эталона ({baselineUserName ?? 'Эрнес'}=100%).</p>
+                <p>Темп = сумма orderPoints за 15 мин. Активные = distinct userId. Полезность = (сборка + проверка + диктовка + доп.работа) с начала месяца ÷ баллы эталона ({baselineUserName ?? 'Эрнес'}=100%).</p>
                 <p><strong className="text-amber-400">09:00–09:15 МСК:</strong> фиксированная ставка (нет истории за 15 мин). Значение в system_settings.</p>
               </div>
             )}

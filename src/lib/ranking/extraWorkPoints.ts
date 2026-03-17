@@ -5,7 +5,7 @@
  * 09:00–09:15 МСК: фиксированная ставка (нет истории за 15 мин).
  */
 
-import { getMoscowHour } from '@/lib/utils/moscowDate';
+import { getMoscowHour, getMonthStartMoscowUTC } from '@/lib/utils/moscowDate';
 import type { prisma } from '@/lib/prisma';
 
 type PrismaLike = typeof prisma;
@@ -57,19 +57,22 @@ const TASK_FILTER_OR_MONTH = (monthStart: Date, beforeDate: Date) => [
   { roleType: 'dictator' as const, task: { confirmedAt: { gte: monthStart, lte: beforeDate } } },
 ];
 
-/** Баллы пользователя за месяц (сборка + проверка + диктовка) */
+/** Баллы пользователя с начала месяца по Москве (сборка + проверка + диктовка). Опционально + доп.работа. */
 export async function getUserMonthlyPoints(
   prisma: PrismaLike,
   userId: string,
-  beforeDate: Date
+  beforeDate: Date,
+  extraWorkByUser?: Map<string, number>
 ): Promise<number> {
-  const monthStart = new Date(beforeDate.getFullYear(), beforeDate.getMonth(), 1);
+  const monthStart = getMonthStartMoscowUTC(beforeDate);
   const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
   const r = await prisma.taskStatistics.aggregate({
     where: { userId, OR: taskFilterOr },
     _sum: { orderPoints: true },
   });
-  return r._sum.orderPoints ?? 0;
+  const taskPts = r._sum.orderPoints ?? 0;
+  const extraPts = extraWorkByUser?.get(userId) ?? 0;
+  return taskPts + extraPts;
 }
 
 /** Эталонный пользователь (100%): ищем по имени. SystemSettings extra_work_baseline_user или "Эрнес" */
@@ -98,13 +101,14 @@ export async function getBaselineUserName(prisma: PrismaLike): Promise<string | 
   return user?.name ?? null;
 }
 
-/** Коэффициент полезности: баллы пользователя / баллы эталона (Эрнес=100%). Если эталона нет — средние. */
+/** Коэффициент полезности: (баллы сб+пр+дик+доп.работа) / эталон. extraWorkByUser — накопленные доп.баллы до beforeDate. */
 async function getUsefulnessCoefficient(
   prisma: PrismaLike,
   userId: string,
-  beforeDate: Date
+  beforeDate: Date,
+  extraWorkByUser?: Map<string, number>
 ): Promise<number> {
-  const monthStart = new Date(beforeDate.getFullYear(), beforeDate.getMonth(), 1);
+  const monthStart = getMonthStartMoscowUTC(beforeDate);
   const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
   const baselineId = await getBaselineUserId(prisma);
   if (baselineId) {
@@ -118,8 +122,12 @@ async function getUsefulnessCoefficient(
         _sum: { orderPoints: true },
       }),
     ]);
-    const userPts = userSum._sum.orderPoints ?? 0;
-    const denom = baselineSum._sum.orderPoints ?? 0;
+    const userTaskPts = userSum._sum.orderPoints ?? 0;
+    const baselineTaskPts = baselineSum._sum.orderPoints ?? 0;
+    const userExtra = extraWorkByUser?.get(userId) ?? 0;
+    const baselineExtra = extraWorkByUser?.get(baselineId) ?? 0;
+    const userPts = userTaskPts + userExtra;
+    const denom = baselineTaskPts + baselineExtra;
     if (denom <= 0) return 1;
     const coef = userPts / denom;
     return Math.max(0.5, Math.min(1.5, coef));
@@ -138,42 +146,49 @@ async function getUsefulnessCoefficient(
       where: { OR: taskFilterOr },
     }),
   ]);
-  const userPts = userSum._sum.orderPoints ?? 0;
-  const totalPts = allSum._sum.orderPoints ?? 0;
+  const userTaskPts = userSum._sum.orderPoints ?? 0;
+  const userExtra = extraWorkByUser?.get(userId) ?? 0;
+  const userPts = userTaskPts + userExtra;
+  const totalTaskPts = allSum._sum.orderPoints ?? 0;
+  const totalExtra = extraWorkByUser
+    ? [...extraWorkByUser.values()].reduce((a, b) => a + b, 0)
+    : 0;
   const workerCount = Math.max(1, userCount.length);
-  const avgPts = totalPts / workerCount;
+  const avgPts = (totalTaskPts + totalExtra) / workerCount;
   if (avgPts <= 0) return 1;
   const coef = userPts / avgPts;
   return Math.max(0.5, Math.min(1.5, coef));
 }
 
-/** Полезность в % (100 = эталон). Для отображения. */
+/** Полезность в % (100 = эталон). Для отображения. extraWorkByUser — доп.баллы за месяц. */
 export async function getUsefulnessPct(
   prisma: PrismaLike,
   userId: string,
-  beforeDate: Date
+  beforeDate: Date,
+  extraWorkByUser?: Map<string, number>
 ): Promise<number | null> {
   const baselineId = await getBaselineUserId(prisma);
   if (!baselineId) return null;
   const [userPts, baselinePts] = await Promise.all([
-    getUserMonthlyPoints(prisma, userId, beforeDate),
-    getUserMonthlyPoints(prisma, baselineId, beforeDate),
+    getUserMonthlyPoints(prisma, userId, beforeDate, extraWorkByUser),
+    getUserMonthlyPoints(prisma, baselineId, beforeDate, extraWorkByUser),
   ]);
   if (baselinePts <= 0) return null;
   const pct = (userPts / baselinePts) * 100;
   return Math.round(pct * 10) / 10;
 }
 
-/** Полезность в % для списка пользователей (батч). 100 = эталон. */
+/** Полезность в % для списка пользователей (батч). 100 = эталон. Включает доп.работу. */
 export async function getUsefulnessPctMap(
   prisma: PrismaLike,
   userIds: string[],
-  beforeDate: Date
+  beforeDate: Date,
+  extraWorkByUser?: Map<string, number>
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   const baselineId = await getBaselineUserId(prisma);
   if (!baselineId || userIds.length === 0) return result;
-  const monthStart = new Date(beforeDate.getFullYear(), beforeDate.getMonth(), 1);
+  const monthStart = getMonthStartMoscowUTC(beforeDate);
   const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
   const allResults = await Promise.all([
     prisma.taskStatistics.aggregate({
@@ -187,10 +202,14 @@ export async function getUsefulnessPctMap(
       })
     ),
   ]);
-  const baselinePts = allResults[0]._sum.orderPoints ?? 0;
+  const baselineTaskPts = allResults[0]._sum.orderPoints ?? 0;
+  const baselineExtra = extraWorkByUser?.get(baselineId) ?? 0;
+  const baselinePts = baselineTaskPts + baselineExtra;
   if (baselinePts <= 0) return result;
   userIds.forEach((uid, i) => {
-    const userPts = allResults[i + 1]?._sum?.orderPoints ?? 0;
+    const userTaskPts = allResults[i + 1]?._sum?.orderPoints ?? 0;
+    const userExtra = extraWorkByUser?.get(uid) ?? 0;
+    const userPts = userTaskPts + userExtra;
     const pct = (userPts / baselinePts) * 100;
     result.set(uid, Math.round(pct * 10) / 10);
   });
@@ -210,31 +229,34 @@ async function getStartupRatePerMin(prisma: PrismaLike): Promise<number> {
 /**
  * Баллы за 1 минуту доп. работы в указанный момент.
  * 09:00–09:15 МСК: фиксированная ставка. Иначе: динамическая формула.
+ * extraWorkByUser — накопленные доп.баллы (для полезности с учётом доп.работы).
  */
 export async function getExtraWorkPointsPerMinute(
   prisma: PrismaLike,
   userId: string,
-  atUtc: Date
+  atUtc: Date,
+  extraWorkByUser?: Map<string, number>
 ): Promise<number> {
   if (isInStartupWindow(atUtc)) {
     return getStartupRatePerMin(prisma);
   }
   const { points, activeCount } = await getWarehousePaceLast15Min(prisma, atUtc);
-  const usefulness = await getUsefulnessCoefficient(prisma, userId, atUtc);
+  const usefulness = await getUsefulnessCoefficient(prisma, userId, atUtc, extraWorkByUser);
   const ratePerMin = (points / 15 / activeCount) * usefulness;
   return Math.max(0, ratePerMin);
 }
 
 /**
  * Эквивалент ставки за час (для отображения «производительности» в админке).
- * pointsPerMin × 60.
+ * pointsPerMin × 60. extraWorkByUser — для полезности с учётом доп.работы.
  */
 export async function getExtraWorkRatePerHour(
   prisma: PrismaLike,
   userId: string,
-  beforeDate: Date
+  beforeDate: Date,
+  extraWorkByUser?: Map<string, number>
 ): Promise<number> {
-  const perMin = await getExtraWorkPointsPerMinute(prisma, userId, beforeDate);
+  const perMin = await getExtraWorkPointsPerMinute(prisma, userId, beforeDate, extraWorkByUser);
   return perMin * 60;
 }
 
@@ -261,10 +283,12 @@ export type ExtraWorkSessionForPoints = {
 /**
  * Баллы за одну сессию по новой формуле.
  * Учитывает split 09:00–09:15 (фикс.) и после (динамика).
+ * extraWorkByUser — накопленные доп.баллы до этой сессии (для полезности).
  */
 export async function computeExtraWorkPointsForSession(
   prisma: PrismaLike,
-  session: ExtraWorkSessionForPoints
+  session: ExtraWorkSessionForPoints,
+  extraWorkByUser?: Map<string, number>
 ): Promise<number> {
   const elapsedSec = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
   if (elapsedSec <= 0) return 0;
@@ -273,7 +297,7 @@ export async function computeExtraWorkPointsForSession(
   const startedAt = session.startedAt ?? new Date(stoppedAt.getTime() - elapsedSec * 1000);
 
   const startupRate = await getStartupRatePerMin(prisma);
-  const dynamicRate = await getExtraWorkPointsPerMinute(prisma, session.userId, stoppedAt);
+  const dynamicRate = await getExtraWorkPointsPerMinute(prisma, session.userId, stoppedAt, extraWorkByUser);
 
   let total = 0;
   const stepSec = 60;

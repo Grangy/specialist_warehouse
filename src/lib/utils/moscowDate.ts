@@ -120,6 +120,12 @@ export function getMoscowWeekStart(): Date {
   return startOfDayMoscowUTC(startYear, startMonth, startDate);
 }
 
+/** Начало месяца по Москве (1-е число 00:00 МСК) в UTC для даты, попадающей в этот месяц. */
+export function getMonthStartMoscowUTC(utcDate: Date): Date {
+  const m = getMoscowDateParts(utcDate);
+  return startOfDayMoscowUTC(m.year, m.month, 1);
+}
+
 /**
  * Для overview: год и месяц по Москве (текущие).
  */
