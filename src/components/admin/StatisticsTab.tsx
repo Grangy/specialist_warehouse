@@ -185,8 +185,8 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
   const [canAdjustPoints, setCanAdjustPoints] = useState(false);
   const [adminErrorPenalty, setAdminErrorPenalty] = useState<{ week: number; month: number } | null>(null);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const timestamp = new Date().getTime();
       const topParams = new URLSearchParams({ period, _t: String(timestamp) });
@@ -220,7 +220,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
     } catch (error) {
       console.error('[StatisticsTab] Ошибка при загрузке статистики:', error);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -247,13 +247,10 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
       .catch(() => {});
   }, [canAdjustPoints]);
 
-  // Автоматическое обновление рейтинга "сегодня" каждые 30 секунд
+  // Автообновление рейтинга "сегодня" каждые 30 сек без перезагрузки UI (без спиннера)
   useEffect(() => {
     if (period === 'today') {
-      const interval = setInterval(() => {
-        loadData();
-      }, 30000); // Обновляем каждые 30 секунд
-
+      const interval = setInterval(() => loadData(true), 30000);
       return () => clearInterval(interval);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -310,7 +307,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={loadData}
+            onClick={() => loadData(true)}
             disabled={isLoading}
             className="px-4 py-2 bg-blue-600/90 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 disabled:hover:scale-100"
             title="Обновить статистику"
@@ -389,18 +386,18 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
               Пользователей: {formatNumber(overview.total.users)}
             </div>
           </div>
-          {adminErrorPenalty != null && (adminErrorPenalty.week !== 0 || adminErrorPenalty.month !== 0) && (
+          {adminErrorPenalty != null && (
             <div className="bg-gradient-to-br from-teal-600/20 to-teal-500/10 border border-teal-500/30 rounded-xl p-5 backdrop-blur-sm">
               <div className="flex items-center justify-between mb-3">
                 <AlertTriangle className="w-8 h-8 text-teal-400" />
                 <span className="text-xs text-slate-400">Ваши баллы за ошибки проверяльщиков</span>
               </div>
               <div className="text-2xl font-bold text-slate-100 mb-1">
-                +{formatPoints(adminErrorPenalty.week)} / +{formatPoints(adminErrorPenalty.month)}
+                {(adminErrorPenalty.week >= 0 ? '+' : '')}{formatPoints(adminErrorPenalty.week)} / {(adminErrorPenalty.month >= 0 ? '+' : '')}{formatPoints(adminErrorPenalty.month)}
               </div>
               <div className="text-sm text-slate-400">Неделя / Месяц</div>
               <div className="mt-3 pt-3 border-t border-slate-700/50 text-xs text-slate-400">
-                За каждую зафиксированную ошибку проверяльщика: +2 балла
+                За каждую зафиксированную ошибку проверяльщика: +2 балла. Начисляется тому админу, кто нажал «Ошибка сборки» в админке (под залогиненным аккаунтом).
               </div>
             </div>
           )}

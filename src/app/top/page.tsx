@@ -81,9 +81,11 @@ export default function TopPage() {
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
     try {
       const res = await fetch(`/api/statistics/top?period=${period}&_t=${Date.now()}`, { cache: 'no-store' });
       if (!res.ok) {
@@ -99,19 +101,21 @@ export default function TopPage() {
       setBaselineUserName(data.baselineUserName ?? null);
       setMounted(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось загрузить рейтинг');
-      setList([]);
-      setTopErrorsMerged([]);
-      setTotalCollectorErrors(0);
-      setTotalCheckerErrors(0);
+      if (!silent) {
+        setError(e instanceof Error ? e.message : 'Не удалось загрузить рейтинг');
+        setList([]);
+        setTopErrorsMerged([]);
+        setTotalCollectorErrors(0);
+        setTotalCheckerErrors(0);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [period]);
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 45000); // Обновление каждые 45 сек (доп.баллы, активные сессии)
+    const id = setInterval(() => load(true), 45000);
     return () => clearInterval(id);
   }, [load]);
 
