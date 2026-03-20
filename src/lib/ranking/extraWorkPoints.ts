@@ -1,7 +1,10 @@
 /**
  * Баллы за доп. работу: новая формула.
  *
- * Баллы/мин = (темп склада за 15 мин / 15 / активные сотрудники) × коэффициент полезности
+ * Темп за минуту = баллы склада за последние 15 мин ÷ 15.
+ * Эту величину делим между активными за это окно работниками пропорционально
+ * коэффициенту эффективности (баллы человека с начала месяца / эталон); если ниже 30%, берётся 30%.
+ * Баллы/мин для сотрудника = темп_за_мин × (вес_сотрудника / сумма_весов_активных).
  * 09:00–09:15 МСК: фиксированная ставка (нет истории за 15 мин).
  */
 
@@ -12,6 +15,9 @@ type PrismaLike = typeof prisma;
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/** Нижняя граница веса при распределении темпа доп. работы (доля от эталона) */
+const MIN_EFFICIENCY_WEIGHT = 0.3;
 
 /** Дефолтная фиксированная ставка (баллов/мин) для 09:00–09:15. ~3 б/час = 0.05 б/мин */
 const DEFAULT_STARTUP_RATE_PER_MIN = 0.05;
@@ -29,11 +35,11 @@ function isInStartupWindow(utcDate: Date): boolean {
   return h === 9 && m < 15;
 }
 
-/** Темп склада за последние 15 минут и число активных сотрудников */
+/** Темп склада за последние 15 минут и пользователи, давшие этот вклад */
 async function getWarehousePaceLast15Min(
   prisma: PrismaLike,
   beforeDate: Date
-): Promise<{ points: number; activeCount: number }> {
+): Promise<{ points: number; activeUserIds: string[] }> {
   const start = new Date(beforeDate.getTime() - FIFTEEN_MIN_MS);
   const stats = await prisma.taskStatistics.findMany({
     where: {
@@ -46,8 +52,64 @@ async function getWarehousePaceLast15Min(
     select: { userId: true, orderPoints: true },
   });
   const points = stats.reduce((s, x) => s + (x.orderPoints ?? 0), 0);
-  const activeCount = Math.max(1, new Set(stats.map((s) => s.userId)).size);
-  return { points, activeCount };
+  const activeUserIds = [...new Set(stats.map((s) => s.userId))];
+  return { points, activeUserIds };
+}
+
+/**
+ * Вес эффективности для распределения доп. работы: max(30%, баллы_с_начала_месяца / эталон).
+ * Баллы месяца = сборка + проверка + диктовка + накопленная доп.работа (extraWorkByUser).
+ */
+async function getEfficiencyWeightsForUsers(
+  prisma: PrismaLike,
+  userIds: string[],
+  beforeDate: Date,
+  extraWorkByUser?: Map<string, number>
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (userIds.length === 0) return result;
+
+  const monthStart = getMonthStartMoscowUTC(beforeDate);
+  const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
+  const baselineId = await getBaselineUserId(prisma);
+
+  const unique = [...new Set(userIds)];
+
+  if (!baselineId) {
+    unique.forEach((id) => result.set(id, 1));
+    return result;
+  }
+
+  const baselineSum = await prisma.taskStatistics.aggregate({
+    where: { userId: baselineId, OR: taskFilterOr },
+    _sum: { orderPoints: true },
+  });
+  const baselineTaskPts = baselineSum._sum.orderPoints ?? 0;
+  const baselineExtra = extraWorkByUser?.get(baselineId) ?? 0;
+  const baselinePts = baselineTaskPts + baselineExtra;
+
+  if (baselinePts <= 0) {
+    unique.forEach((id) => result.set(id, 1));
+    return result;
+  }
+
+  const aggregates = await Promise.all(
+    unique.map((uid) =>
+      prisma.taskStatistics.aggregate({
+        where: { userId: uid, OR: taskFilterOr },
+        _sum: { orderPoints: true },
+      })
+    )
+  );
+
+  unique.forEach((uid, i) => {
+    const taskPts = aggregates[i]._sum.orderPoints ?? 0;
+    const extra = extraWorkByUser?.get(uid) ?? 0;
+    const raw = (taskPts + extra) / baselinePts;
+    result.set(uid, Math.max(MIN_EFFICIENCY_WEIGHT, raw));
+  });
+
+  return result;
 }
 
 const TASK_FILTER_OR_MONTH = (monthStart: Date, beforeDate: Date) => [
@@ -243,9 +305,16 @@ export async function getExtraWorkPointsPerMinute(
   if (isInStartupWindow(atUtc)) {
     return getStartupRatePerMin(prisma);
   }
-  const { points, activeCount } = await getWarehousePaceLast15Min(prisma, atUtc);
-  const usefulness = await getUsefulnessCoefficient(prisma, userId, atUtc, extraWorkByUser);
-  const ratePerMin = (points / 15 / activeCount) * usefulness;
+  const { points, activeUserIds } = await getWarehousePaceLast15Min(prisma, atUtc);
+  if (activeUserIds.length === 0) {
+    return 0;
+  }
+  const idsForWeights = [...new Set([...activeUserIds, userId])];
+  const weightMap = await getEfficiencyWeightsForUsers(prisma, idsForWeights, atUtc, extraWorkByUser);
+  const weightSumActive = activeUserIds.reduce((s, id) => s + (weightMap.get(id) ?? 1), 0);
+  const wUser = weightMap.get(userId) ?? MIN_EFFICIENCY_WEIGHT;
+  const denom = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
+  const ratePerMin = (points / 15) * (wUser / denom);
   return Math.max(0, ratePerMin);
 }
 

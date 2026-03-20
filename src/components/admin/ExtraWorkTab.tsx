@@ -272,7 +272,7 @@ export default function ExtraWorkTab() {
           <div>
             <h2 className="text-xl font-bold text-slate-100">Дополнительная работа</h2>
             <p className="text-sm text-slate-400">
-              Баллы/мин = (темп склада за 15 мин ÷ 15 ÷ активные) × полезность. 09:00–09:15 — фикс. ставка.
+              Темп за мин = баллы за 15 мин ÷ 15; баллы/мин = темп × (вес ÷ сумма весов активных за эти 15 мин). Вес = max(30%, к/эталон). 09:00–09:15 — фикс. ставка.
             </p>
             <button
               type="button"
@@ -284,8 +284,8 @@ export default function ExtraWorkTab() {
             </button>
             {showFormulaHelp && (
               <div className="mt-3 p-4 rounded-lg bg-slate-800/80 border border-slate-600/50 text-xs text-slate-300 space-y-2">
-                <p><strong className="text-amber-400">Динамическая формула:</strong> баллы/мин = (темп склада за 15 мин ÷ 15 ÷ активные сотрудники) × коэффициент полезности.</p>
-                <p>Темп = сумма orderPoints за 15 мин. Активные = distinct userId. Полезность = (сборка + проверка + диктовка + доп.работа) с начала месяца ÷ баллы эталона ({baselineUserName ?? 'Эрнес'}=100%).</p>
+                <p><strong className="text-amber-400">Динамическая формула:</strong> темп_за_мин = сумма баллов за 15 мин ÷ 15; баллы/мин = темп_за_мин × (вес_сотрудника ÷ сумма весов всех, кто дал этот темп за 15 мин).</p>
+                <p>Вес = (сборка + проверка + диктовка + доп.работа) с начала месяца ÷ эталон ({baselineUserName ?? 'Эрнес'}=100%), не ниже 30%.</p>
                 <p><strong className="text-amber-400">09:00–09:15 МСК:</strong> фиксированная ставка (нет истории за 15 мин). Значение в system_settings.</p>
               </div>
             )}
@@ -372,9 +372,9 @@ export default function ExtraWorkTab() {
             <thead>
               <tr className="text-left text-slate-400 border-b border-slate-700">
                 <th className="py-2 pr-4">Сотрудник</th>
-                <th className="py-2 pr-4" title="Баллов/мин = (темп/15/активн)×полезность; 09:00–09:15 — фикс.">Произв.</th>
+                <th className="py-2 pr-4" title="Баллов/мин = темп/15×(вес/∑весов); вес=max(30%,к/эталон); 09:00–09:15 — фикс.">Произв.</th>
                 <th className="py-2 pr-4">Часы доп. работы</th>
-                <th className="py-2 pr-4" title="(темп/15/активн)×полезность × минуты; 09:00–09:15 — фикс. ставка">Доп.баллы</th>
+                <th className="py-2 pr-4" title="Баллов/мин × минуты; 09:00–09:15 — фикс. ставка">Доп.баллы</th>
                 <th className="py-2 pr-4" title={baselineUserName ? `Полезность относительно ${baselineUserName} (100%)` : 'Полезность'}>Польз.%</th>
                 <th className="py-2 pr-4" title="Настраивается раз навсегда, применяется ко всем сессиям">Обед</th>
                 <th className="py-2 pr-4">Статус</th>

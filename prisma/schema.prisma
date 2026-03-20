@@ -195,7 +195,7 @@ model CollectorCall {
   calledAt            DateTime  @default(now()) @map("called_at")
   status              String    @default("new") // new | accepted | done | canceled
   errorCount          Int?      @map("error_count") // ошибки сборщика (1 при source=admin)
-  checkerErrorCount   Int?      @map("checker_error_count") // ошибки проверяльщика (2 при source=admin «за проверку»)
+  checkerErrorCount   Int?      @map("checker_error_count") // ошибки проверяльщика (1 при source=admin «за проверку»)
   comment             String?   // комментарий при подтверждении или «за проверку: {наименование}»
   confirmedAt         DateTime? @map("confirmed_at") // когда проверяльщик подтвердил ошибки
   source              String    @default("checker") // checker | admin

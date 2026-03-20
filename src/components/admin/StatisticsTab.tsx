@@ -639,7 +639,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                       <div className="text-xs text-amber-400/90">диктовка {formatPoints(user.dictatorPoints ?? 0)}</div>
                     )}
                     {(user.extraWorkPoints ?? 0) > 0 && (
-                      <div className="text-xs text-amber-500/90" title="(темп/15/активн)×полезность; 09:00–09:15 — фикс.">
+                      <div className="text-xs text-amber-500/90" title="темп/15×(вес/∑весов); вес=max(30%,к/эталон); 09:00–09:15 — фикс.">
                         доп.работа {formatPoints(user.extraWorkPoints ?? 0)}
                         {user.usefulnessPct != null && (
                           <span className="text-slate-500 ml-0.5">({user.usefulnessPct}%)</span>

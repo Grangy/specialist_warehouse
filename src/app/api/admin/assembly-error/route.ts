@@ -1,7 +1,7 @@
 /**
  * POST /api/admin/assembly-error
  * Админ отмечает позицию в завершённом заказе как «Ошибка сборки».
- * Сборщику +1 ошибка, проверяльщику +2 ошибки «за проверку».
+ * Сборщику +1 ошибка, проверяльщику +1 ошибка «за проверку».
  * Оба получают уведомление с указанием даты заказа и наименования.
  */
 
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
         checkerId: task.checkerId,
         status: 'done',
         errorCount: 1,
-        checkerErrorCount: 2,
+        checkerErrorCount: 1,
         comment,
         confirmedAt: new Date(),
         source: 'admin',
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       callId: call.id,
-      message: `Ошибка зафиксирована: сборщику +1, проверяльщику +2. Уведомления отправлены.`,
+      message: `Ошибка зафиксирована: сборщику +1, проверяльщику +1. Уведомления отправлены.`,
     });
   } catch (error) {
     console.error('[API admin/assembly-error]', error);
