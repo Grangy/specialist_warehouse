@@ -86,7 +86,9 @@
     "test": "npm run test:extra-work-points && npm run test:error-penalties && npm run test:split-collection",
     "test:extra-work-access": "tsx scripts/test-extra-work-access.ts",
     "reports:serve": "npx --yes serve reports -p 3333",
-    "deploy:remote": "./scripts/deploy-remote.sh"
+    "deploy:remote": "./scripts/deploy-remote.sh",
+    "verify:warehouse": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/verify-warehouse-optimizations.ts",
+    "audit:warehouse-load": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/audit-warehouse-requests-load.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

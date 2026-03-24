@@ -25,7 +25,7 @@ export function ExtraWorkSessionEffects() {
     check();
     const id = setInterval(check, 3000);
     return () => clearInterval(id);
-  }, [session?.id, session?.status, session?.lunchScheduledFor, refetchSession]);
+  }, [session, session?.id, session?.status, session?.lunchScheduledFor, refetchSession]);
 
   useEffect(() => {
     if (!session || session.status !== 'lunch' || !session.lunchEndsAt) return;
@@ -43,7 +43,7 @@ export function ExtraWorkSessionEffects() {
     };
     const id = setInterval(check, 5000);
     return () => clearInterval(id);
-  }, [session?.id, session?.status, session?.lunchEndsAt, refetchSession]);
+  }, [session, session?.id, session?.status, session?.lunchEndsAt, refetchSession]);
 
   useEffect(() => {
     if (!session || session.status === 'lunch' || !session.durationMinutes) return;
@@ -61,7 +61,7 @@ export function ExtraWorkSessionEffects() {
     };
     const id = setInterval(check, 10000);
     return () => clearInterval(id);
-  }, [session?.id, session?.status, session?.startedAt, session?.durationMinutes, refetchSession]);
+  }, [session, session?.id, session?.status, session?.startedAt, session?.durationMinutes, refetchSession]);
 
   return null;
 }

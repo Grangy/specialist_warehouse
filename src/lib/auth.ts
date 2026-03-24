@@ -106,3 +106,14 @@ export async function cleanupExpiredSessions(): Promise<void> {
   });
 }
 
+/** Не чаще чем раз в интервал — чтобы не делать deleteMany на каждый GET /api/shipments */
+const SESSION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+let lastSessionCleanupAt = 0;
+
+export async function cleanupExpiredSessionsIfDue(): Promise<void> {
+  const now = Date.now();
+  if (now - lastSessionCleanupAt < SESSION_CLEANUP_INTERVAL_MS) return;
+  lastSessionCleanupAt = now;
+  await cleanupExpiredSessions();
+}
+

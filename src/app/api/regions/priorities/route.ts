@@ -158,6 +158,7 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    await touchSync();
     return NextResponse.json(regionPriority);
   } catch (error) {
     console.error('Ошибка при создании/обновлении приоритета региона:', error);
