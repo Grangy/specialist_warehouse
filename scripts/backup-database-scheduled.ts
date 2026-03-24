@@ -18,13 +18,6 @@ import dotenv from 'dotenv';
 import { uploadBackupToYandex, trimYandexBackups } from './yandex-upload';
 import { backupSqliteToFile } from './sqlite-backup';
 
-/** Интервал «30m» бэкапов (мин). На слабом VPS снижает пиковую нагрузку: например BACKUP_INTERVAL_MINUTES=60 в .env */
-const INTERVAL_30_MIN_MS = (() => {
-  const raw = parseInt(process.env.BACKUP_INTERVAL_MINUTES || '30', 10);
-  const clamped = Number.isFinite(raw) ? Math.min(180, Math.max(15, raw)) : 30;
-  return clamped * 60 * 1000;
-})();
-const INTERVAL_5H_MS = 5 * 60 * 60 * 1000;
 /** Локально и на Яндексе: 20 тридцатиминутных, 10 пятичасовых */
 const KEEP_30M = 20;
 const KEEP_5H = 10;
@@ -62,6 +55,14 @@ if (fs.existsSync(envPath)) {
 } else {
   dotenv.config();
 }
+
+/** Интервал «30m» бэкапов (мин), после загрузки .env. На слабом VPS: BACKUP_INTERVAL_MINUTES=60 */
+const INTERVAL_30_MIN_MS = (() => {
+  const raw = parseInt(process.env.BACKUP_INTERVAL_MINUTES || '30', 10);
+  const clamped = Number.isFinite(raw) ? Math.min(180, Math.max(15, raw)) : 30;
+  return clamped * 60 * 1000;
+})();
+const INTERVAL_5H_MS = 5 * 60 * 60 * 1000;
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
