@@ -41,13 +41,19 @@ export async function POST(
       );
     }
 
-    // Обновляем lastHeartbeat
-    await prisma.shipmentTaskLock.update({
-      where: { id: lock.id },
+    // Обновляем lastHeartbeat (updateMany: если блокировку уже сняли — нет P2025, только count=0)
+    const updated = await prisma.shipmentTaskLock.updateMany({
+      where: { id: lock.id, userId: user.id },
       data: {
         lastHeartbeat: new Date(),
       },
     });
+    if (updated.count === 0) {
+      return NextResponse.json(
+        { error: 'Блокировка уже снята', code: 'LOCK_GONE' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
