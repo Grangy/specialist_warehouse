@@ -12,12 +12,35 @@ import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+/**
+ * Публичный топ дергают часто (страница + автообновление 45с).
+ * aggregateRankings — много findMany по task_statistics и N×await computeExtraWorkPointsForSession.
+ * Кэш в памяти процесса сильно снижает задержку и нагрузку на CPU/SQLite.
+ */
+const TOP_CACHE_TTL_MS = 45_000;
+const topResponseCache = new Map<string, { expiresAt: number; body: Record<string, unknown> }>();
+
+function topCacheKey(period: string, warehouse?: string): string {
+  return `${period}:${warehouse ?? ''}`;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const periodParam = searchParams.get('period') || 'today';
     const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
     const warehouseFilter = searchParams.get('warehouse') || undefined;
+
+    const ck = topCacheKey(period, warehouseFilter);
+    const cached = topResponseCache.get(ck);
+    if (cached && cached.expiresAt > Date.now()) {
+      return NextResponse.json(cached.body, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'X-Top-Cache': 'HIT',
+        },
+      });
+    }
 
     const { allRankings, errorsByCollector, errorsByChecker, baselineUserName } = await aggregateRankings(period, warehouseFilter);
 
@@ -56,20 +79,27 @@ export async function GET(request: NextRequest) {
     const totalCollectorErrors = [...errorsByCollector.values()].reduce((a, b) => a + b, 0);
     const totalCheckerErrors = [...errorsByChecker.values()].reduce((a, b) => a + b, 0);
 
-    return NextResponse.json(
-      {
-        all: allRankings,
-        period,
-        date: displayDate,
-        totalCollectorErrors,
-        totalCheckerErrors,
-        topErrorsMerged,
-        baselineUserName,
+    const body = {
+      all: allRankings,
+      period,
+      date: displayDate,
+      totalCollectorErrors,
+      totalCheckerErrors,
+      topErrorsMerged,
+      baselineUserName,
+    };
+
+    topResponseCache.set(ck, {
+      expiresAt: Date.now() + TOP_CACHE_TTL_MS,
+      body: body as Record<string, unknown>,
+    });
+
+    return NextResponse.json(body, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'X-Top-Cache': 'MISS',
       },
-      {
-        headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
-      }
-    );
+    });
   } catch (error: unknown) {
     console.error('[API Statistics Top] Ошибка:', error);
     return NextResponse.json(
