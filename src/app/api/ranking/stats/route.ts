@@ -13,6 +13,10 @@ import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
 
+/** Кэш тяжёлого ответа в памяти процесса (снижает CPU от опроса в шапке раз в минуту) */
+const RANKING_STATS_CACHE_TTL_MS = 45_000;
+const rankingStatsResponseCache = new Map<string, { expiresAt: number; body: unknown }>();
+
 /**
  * GET /api/ranking/stats
  * Получение статистики пользователя (daily и monthly)
@@ -24,6 +28,11 @@ export async function GET(request: NextRequest) {
       return authResult;
     }
     const { user } = authResult;
+
+    const cached = rankingStatsResponseCache.get(user.id);
+    if (cached && cached.expiresAt > Date.now()) {
+      return NextResponse.json(cached.body);
+    }
 
     // Получаем текущую дату
     const now = new Date();
@@ -761,7 +770,7 @@ export async function GET(request: NextRequest) {
     const dailyData = user.role === 'checker' ? dailyChecker : dailyCollector;
     const monthlyData = user.role === 'checker' ? monthlyChecker : monthlyCollector;
 
-    return NextResponse.json({
+    const responseBody = {
       daily: dailyData
         ? {
             points: dailyData.points,
@@ -805,7 +814,14 @@ export async function GET(request: NextRequest) {
             checker: user.role === 'admin' ? monthlyChecker : null,
           }
         : null,
+    };
+
+    rankingStatsResponseCache.set(user.id, {
+      expiresAt: Date.now() + RANKING_STATS_CACHE_TTL_MS,
+      body: responseBody,
     });
+
+    return NextResponse.json(responseBody);
   } catch (error: unknown) {
     console.error('[API Ranking Stats] Ошибка:', error);
     return NextResponse.json(

@@ -23,6 +23,8 @@ export interface ExtraWorkSession {
   lunchScheduledFor?: string | null;
   lunchStartedAt?: string | null;
   lunchEndsAt?: string | null;
+  /** После обеда — начало сегмента «после обеда» (иначе таймер считать от startedAt неверно) */
+  postLunchStartedAt?: string | null;
   elapsedSecBeforeLunch: number;
   ratePerHour?: number;
   dayCoefficient?: number;

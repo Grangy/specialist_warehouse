@@ -8,6 +8,7 @@ import { PWARegister } from '@/components/PWARegister';
 import { Diagnostics } from '@/components/Diagnostics';
 import { ExtraWorkBanner } from '@/components/ExtraWorkBanner';
 import { ExtraWorkPopup } from '@/components/ExtraWorkPopup';
+import { ExtraWorkSessionEffects } from '@/components/ExtraWorkSessionEffects';
 import { ExtraWorkLayout } from '@/components/ExtraWorkLayout';
 import '@/styles/globals.css';
 
@@ -50,6 +51,7 @@ export default function RootLayout({
         <Diagnostics />
         <ToastProvider>
           <ExtraWorkProvider>
+            <ExtraWorkSessionEffects />
             <ExtraWorkLayout>
               <ShipmentsPollingProvider>
                 <UserSettingsProvider>

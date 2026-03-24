@@ -9,65 +9,14 @@ export function ExtraWorkPopup() {
   const [isCompleting, setIsCompleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
-  const [resumedAt, setResumedAt] = useState<number | null>(null);
 
-  // Старт запланированного обеда
-  useEffect(() => {
-    if (!session || session.status !== 'lunch_scheduled' || !session.lunchScheduledFor) return;
-    const scheduledFor = new Date(session.lunchScheduledFor).getTime();
-    const check = () => {
-      if (Date.now() >= scheduledFor) {
-        fetch('/api/extra-work/start-scheduled-lunch', { method: 'POST' })
-          .then((res) => res.ok && res.json())
-          .then(() => {});
-      }
-    };
-    const id = setInterval(check, 3000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for polling logic
-  }, [session?.id, session?.status, session?.lunchScheduledFor]);
-
-  // Автовозобновление после обеда
-  useEffect(() => {
-    if (!session || session.status !== 'lunch' || !session.lunchEndsAt) return;
-    const endsAt = new Date(session.lunchEndsAt).getTime();
-    const check = () => {
-      if (Date.now() >= endsAt) {
-        fetch('/api/admin/extra-work/resume', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: session.id }),
-        }).then(() => setResumedAt(Date.now()));
-      }
-    };
-    const id = setInterval(check, 5000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for polling logic
-  }, [session?.id, session?.status, session?.lunchEndsAt]);
-
-  // Автостоп по длительности (для типа timer и manual с duration)
-  useEffect(() => {
-    if (!session || session.status === 'lunch' || !session.durationMinutes) return;
-    const endAt = new Date(session.startedAt).getTime() + session.durationMinutes * 60 * 1000;
-    const check = () => {
-      if (Date.now() >= endAt) {
-        fetch('/api/admin/extra-work/stop', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: session.id }),
-        });
-      }
-    };
-    const id = setInterval(check, 10000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for polling logic
-  }, [session?.id, session?.status, session?.startedAt, session?.durationMinutes]);
-
-  // Таймер
+  // Таймер отображения (POST — в ExtraWorkSessionEffects)
   useEffect(() => {
     if (!session || session.status === 'lunch') return;
     const baseSec = session.elapsedSecBeforeLunch;
-    const startOfCurrentSegment = resumedAt ?? new Date(session.startedAt).getTime();
+    const startOfCurrentSegment = session.postLunchStartedAt
+      ? new Date(session.postLunchStartedAt).getTime()
+      : new Date(session.startedAt).getTime();
     const update = () => {
       setElapsedSec(baseSec + (Date.now() - startOfCurrentSegment) / 1000);
     };
@@ -75,7 +24,7 @@ export function ExtraWorkPopup() {
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for timer logic
-  }, [session?.id, session?.status, session?.startedAt, session?.elapsedSecBeforeLunch, resumedAt]);
+  }, [session?.id, session?.status, session?.startedAt, session?.postLunchStartedAt, session?.elapsedSecBeforeLunch]);
 
   if (!session || !popupOpen) return null;
 

@@ -5,7 +5,7 @@ import React, { createContext, useCallback, useRef, useState, useMemo, useEffect
 const POLL_URL = '/api/shipments/poll';
 
 /** Базовый интервал опроса (мс) — прогресс сборки/проверки у других пользователей */
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 15_000;
 /** Максимальный интервал при backoff (мс) */
 const POLL_INTERVAL_MAX_MS = 120_000;
 /** После скольких ответов "нет изменений" подряд увеличивать интервал */
