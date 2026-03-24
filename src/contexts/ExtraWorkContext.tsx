@@ -1,9 +1,15 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import { useToastContext } from '@/contexts/ToastContext';
 
 const EXTRA_WORK_SOUND_URL = '/music/you-will-work.wav';
+
+/** Без активной сессии — редкий опрос, чтобы не грузить API и CPU на проде */
+const POLL_INTERVAL_IDLE_MS = 45_000;
+/** При активной доп. работе — частый опрос таймера/обеда */
+const POLL_INTERVAL_ACTIVE_MS = 5000;
 
 export interface ExtraWorkSession {
   id: string;
@@ -32,6 +38,7 @@ interface ExtraWorkContextType {
 const ExtraWorkContext = createContext<ExtraWorkContextType | undefined>(undefined);
 
 export function ExtraWorkProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const { showToast } = useToastContext();
   const [session, setSession] = useState<ExtraWorkSession | null>(null);
   const [popupOpen, setPopupOpen] = useState(false);
@@ -69,11 +76,22 @@ export function ExtraWorkProvider({ children }: { children: React.ReactNode }) {
     }
   }, [showToast]);
 
+  const pollExtraWork = pathname !== '/login';
+
   useEffect(() => {
+    if (pathname === '/login') {
+      setSession(null);
+      prevSessionId.current = null;
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!pollExtraWork) return;
     queueMicrotask(() => load());
-    const id = setInterval(() => load(), 5000);
+    const ms = session ? POLL_INTERVAL_ACTIVE_MS : POLL_INTERVAL_IDLE_MS;
+    const id = setInterval(() => load(), ms);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, session, pollExtraWork]);
 
   const refetchSession = useCallback(async () => {
     await load();
