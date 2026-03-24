@@ -43,9 +43,12 @@ export async function POST(
     const taskId = task.id;
     const shipmentId = task.shipmentId;
 
-    await prisma.shipmentTaskLock.delete({
-      where: { id: lock.id },
+    const removed = await prisma.shipmentTaskLock.deleteMany({
+      where: { id: lock.id, userId: user.id },
     });
+    if (removed.count === 0) {
+      return NextResponse.json({ success: true });
+    }
 
     // При выходе из режима сборки НЕ сбрасываем сборщика: задание остаётся «моим» до перехвата другим.
     // ВАЖНО: НЕ трогаем updatedAt, чтобы таймаут 15 минут считался именно от последнего ПРОГРЕССА,
