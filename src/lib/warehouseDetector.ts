@@ -9,6 +9,42 @@
  * ВАЖНО: location всегда имеет приоритет над warehouseFrom1C
  */
 
+/** В production не спамим логами на каждую строку импорта: одно предупреждение на N случаев */
+const MISMATCH_LOG_EVERY = 100;
+const UNKNOWN_LOCATION_LOG_EVERY = 50;
+
+let prodMismatchCount = 0;
+let prodUnknownLocationCount = 0;
+
+function logMismatchDevOrSampled(
+  fullMessage: string,
+  shortParts: { normalized1C: string; location: string; detectedFromLocation: string }
+): void {
+  if (process.env.NODE_ENV === 'development') {
+    console.warn(fullMessage);
+    return;
+  }
+  prodMismatchCount += 1;
+  if (prodMismatchCount % MISMATCH_LOG_EVERY !== 0) return;
+  console.warn(
+    `[WarehouseDetector] Несоответствие 1С vs location (сообщ. #${prodMismatchCount}, показ раз в ${MISMATCH_LOG_EVERY}): 1С="${shortParts.normalized1C}" location="${shortParts.location}" → "${shortParts.detectedFromLocation}"`
+  );
+}
+
+function logUnknownLocationSampled(location: string): void {
+  if (process.env.NODE_ENV === 'development') {
+    console.warn(
+      `[WarehouseDetector] Не удалось определить склад по location "${location}". Используем "Склад 1" по умолчанию.`
+    );
+    return;
+  }
+  prodUnknownLocationCount += 1;
+  if (prodUnknownLocationCount % UNKNOWN_LOCATION_LOG_EVERY !== 0) return;
+  console.warn(
+    `[WarehouseDetector] Не удалось определить склад по location (сообщ. #${prodUnknownLocationCount}, показ раз в ${UNKNOWN_LOCATION_LOG_EVERY}): пример "${location}"`
+  );
+}
+
 /**
  * Определяет склад по ячейке (location)
  * 
@@ -35,8 +71,9 @@ export function detectWarehouseFromLocation(
       }
       if (normalized1C !== detectedFromLocation && 
           (normalized1C === 'Склад 1' || normalized1C === 'Склад 2' || normalized1C === 'Склад 3')) {
-        console.warn(
-          `[WarehouseDetector] Несоответствие: 1С указал "${normalized1C}", но location "${location}" указывает на "${detectedFromLocation}". Используем значение из location.`
+        logMismatchDevOrSampled(
+          `[WarehouseDetector] Несоответствие: 1С указал "${normalized1C}", но location "${location}" указывает на "${detectedFromLocation}". Используем значение из location.`,
+          { normalized1C, location, detectedFromLocation }
         );
       }
     }
@@ -49,7 +86,9 @@ export function detectWarehouseFromLocation(
     const normalized1C = warehouseFrom1C.trim();
     // Заменяем "Основной склад" на "Склад 1"
     if (normalized1C === 'Основной склад') {
-      console.log(`[WarehouseDetector] Заменяем "Основной склад" на "Склад 1"`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[WarehouseDetector] Заменяем "Основной склад" на "Склад 1"`);
+      }
       return 'Склад 1';
     }
     // Если значение от 1С валидное, используем его
@@ -106,9 +145,7 @@ function detectWarehouseFromLocationOnly(location: string): string {
   }
 
   // Если не удалось определить, используем Склад 1 по умолчанию
-  console.warn(
-    `[WarehouseDetector] Не удалось определить склад по location "${location}". Используем "Склад 1" по умолчанию.`
-  );
+  logUnknownLocationSampled(location);
   return 'Склад 1';
 }
 

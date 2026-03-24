@@ -5,7 +5,7 @@ import React, { createContext, useCallback, useRef, useState, useMemo, useEffect
 const POLL_URL = '/api/shipments/poll';
 
 /** Базовый интервал опроса (мс) — прогресс сборки/проверки у других пользователей */
-const POLL_INTERVAL_MS = 15_000;
+const POLL_INTERVAL_MS = 18_000;
 /** Максимальный интервал при backoff (мс) */
 const POLL_INTERVAL_MAX_MS = 120_000;
 /** После скольких ответов "нет изменений" подряд увеличивать интервал */
@@ -48,6 +48,8 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const noUpdatesCountRef = useRef(0);
   const currentIntervalMsRef = useRef(POLL_INTERVAL_MS);
+  /** Не запускать второй poll, пока предыдущий не завершился (убирает дубли в nginx) */
+  const pollInFlightRef = useRef(false);
   const [isPolling, setIsPolling] = useState(false);
   const [lastPollResult, setLastPollResult] = useState<LastPollResult | null>(null);
 
@@ -72,6 +74,8 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const poll = useCallback(async () => {
     if (subscribersRef.current.size === 0) return;
+    if (pollInFlightRef.current) return;
+    pollInFlightRef.current = true;
 
     const since = lastFetchTimeRef.current;
     const url = since ? `${POLL_URL}?since=${encodeURIComponent(since)}` : POLL_URL;
@@ -108,6 +112,8 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
       }
     } catch {
       // Сеть/ошибка — не меняем интервал, следующий тик по расписанию
+    } finally {
+      pollInFlightRef.current = false;
     }
   }, [stopPolling, startPolling]);
   // Держим актуальную ссылку на poll для setInterval (избегаем циклических deps)
