@@ -18,7 +18,12 @@ import dotenv from 'dotenv';
 import { uploadBackupToYandex, trimYandexBackups } from './yandex-upload';
 import { backupSqliteToFile } from './sqlite-backup';
 
-const INTERVAL_30_MIN_MS = 30 * 60 * 1000;
+/** Интервал «30m» бэкапов (мин). На слабом VPS снижает пиковую нагрузку: например BACKUP_INTERVAL_MINUTES=60 в .env */
+const INTERVAL_30_MIN_MS = (() => {
+  const raw = parseInt(process.env.BACKUP_INTERVAL_MINUTES || '30', 10);
+  const clamped = Number.isFinite(raw) ? Math.min(180, Math.max(15, raw)) : 30;
+  return clamped * 60 * 1000;
+})();
 const INTERVAL_5H_MS = 5 * 60 * 60 * 1000;
 /** Локально и на Яндексе: 20 тридцатиминутных, 10 пятичасовых */
 const KEEP_30M = 20;
@@ -276,8 +281,9 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
 }
 
 async function main() {
+  const intervalMin = INTERVAL_30_MIN_MS / 60_000;
   console.log('Бэкапы БД по расписанию');
-  console.log('  - каждые 30 мин → backups/30m/ и Яндекс backups_warehouse/30m/ (хранить 20)');
+  console.log(`  - каждые ${intervalMin} мин → backups/30m/ и Яндекс backups_warehouse/30m/ (хранить 20) [BACKUP_INTERVAL_MINUTES=${intervalMin}]`);
   console.log('  - каждые 5 ч   → backups/5h/   и Яндекс backups_warehouse/5h/   (хранить 10)');
   console.log('  - backups/    → backup_*.json и backup_info_*.txt (хранить по 10)');
   console.log('  Остановка: Ctrl+C\n');
