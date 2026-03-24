@@ -179,6 +179,9 @@ model ShipmentTask {
   statistics      TaskStatistics[] // Может быть несколько статистик: для сборщика и проверяльщика
   collectorCalls CollectorCall[]
 
+  @@index([completedAt])
+  @@index([confirmedAt])
+  @@index([droppedAt])
   @@map("shipment_tasks")
 }
 
@@ -341,6 +344,8 @@ model TaskStatistics {
   user User         @relation("UserTaskStatistics", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([taskId, userId, roleType]) // Составной уникальный ключ: одно задание может иметь статистику и для сборщика, и для проверяльщика
+  @@index([userId])
+  @@index([roleType])
   @@map("task_statistics")
 }
 

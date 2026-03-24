@@ -90,30 +90,57 @@ export async function aggregateRankings(
     droppedByCollectorId: { not: null },
     ...taskWhere,
   };
+
+  /** Только поля, нужные для агрегации — меньше I/O и памяти, чем полная строка TaskStatistics */
+  const statUserSel = { id: true, name: true, role: true } as const;
+  const statCoreSel = {
+    id: true,
+    userId: true,
+    shipmentId: true,
+    positions: true,
+    units: true,
+    orderPoints: true,
+    pickTimeSec: true,
+    efficiencyClamped: true,
+    user: { select: statUserSel },
+  } as const;
+
   const [collectorByCompleted, collectorByConfirmed, collectorByDropped, checkerTaskStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, extraWorkSessionsMonth, activeSessions, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: completedWhere },
-      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true, droppedByCollectorId: true } } },
+      select: {
+        ...statCoreSel,
+        task: { select: { collectorId: true, dictatorId: true, droppedByCollectorId: true } },
+      },
     }),
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: confirmedWhere },
-      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { collectorId: true, dictatorId: true, droppedByCollectorId: true } } },
+      select: {
+        ...statCoreSel,
+        task: { select: { collectorId: true, dictatorId: true, droppedByCollectorId: true } },
+      },
     }),
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: droppedWhere },
-      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { droppedByCollectorId: true } } },
+      select: {
+        ...statCoreSel,
+        task: { select: { droppedByCollectorId: true } },
+      },
     }),
     prisma.taskStatistics.findMany({
       where: { roleType: 'checker', task: confirmedWhere },
-      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { checkerId: true, dictatorId: true } } },
+      select: {
+        ...statCoreSel,
+        task: { select: { checkerId: true, dictatorId: true } },
+      },
     }),
     prisma.taskStatistics.findMany({
       where: {
         roleType: 'collector',
         task: { dictatorId: { not: null }, ...confirmedWhere },
       },
-      include: {
-        user: { select: { id: true, name: true, role: true } },
+      select: {
+        ...statCoreSel,
         task: { select: { dictatorId: true, checkerId: true } },
       },
     }),
@@ -122,7 +149,10 @@ export async function aggregateRankings(
         roleType: 'dictator',
         task: confirmedWhere,
       },
-      include: { user: { select: { id: true, name: true, role: true } }, task: { select: { dictatorId: true, checkerId: true } } },
+      select: {
+        ...statCoreSel,
+        task: { select: { dictatorId: true, checkerId: true } },
+      },
     }),
     prisma.extraWorkSession.findMany({
       where: {
