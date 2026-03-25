@@ -9,8 +9,6 @@ import {
   clearEfficiencyWeightsSessionCache,
   clearWarehousePaceSessionCache,
   computeExtraWorkPointsForSession,
-  getBaselineUserId,
-  getBaselineUserName,
 } from '@/lib/ranking/extraWorkPoints';
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
@@ -399,8 +397,9 @@ export async function aggregateRankings(
     }
   }
 
-  const baselineId = await getBaselineUserId(prisma);
-  const baselinePts = baselineId ? (allMap.get(baselineId)?.points ?? 0) : 0;
+  const topAgg = [...allMap.values()].sort((a, b) => b.points - a.points)[0];
+  const baselinePts = topAgg?.points ?? 0;
+  const baselineUserName = topAgg?.userName ?? null;
   const allRankings: RankingEntry[] = [];
   for (const agg of allMap.values()) {
     const errPen = errorPenaltiesMap.get(agg.userId) ?? 0;
@@ -439,6 +438,5 @@ export async function aggregateRankings(
     for (const o of agg.orders) allOrderIds.add(o);
   }
 
-  const baselineUserName = await getBaselineUserName(prisma);
   return { allRankings, errorsByCollector, errorsByChecker, totalUniqueOrders: allOrderIds.size, baselineUserName };
 }

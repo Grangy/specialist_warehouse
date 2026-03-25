@@ -9,7 +9,6 @@ import {
   getExtraWorkRatePerHour,
   computeExtraWorkPointsForSession,
   getUsefulnessPctMap,
-  getBaselineUserName,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 
@@ -198,7 +197,7 @@ export async function GET(request: NextRequest) {
     for (const r of weekRankings.allRankings) {
       if ((r.extraWorkPoints ?? 0) > 0) extraWorkByUser.set(r.userId, r.extraWorkPoints);
     }
-    const [productivityByUser, usefulnessPctMap, baselineUserName] = await Promise.all([
+    const [productivityByUser, usefulnessPctMap] = await Promise.all([
       (async () => {
         const m = new Map<string, number>();
         await Promise.all(
@@ -210,8 +209,8 @@ export async function GET(request: NextRequest) {
         return m;
       })(),
       getUsefulnessPctMap(prisma, [...allUserIds], now, extraWorkByUser, errorPenaltiesMonth),
-      getBaselineUserName(prisma),
     ]);
+    const baselineUserName = weekRankings.baselineUserName ?? null;
     const todayCoeff = await getWeekdayCoefficientForDate(prisma, now);
     const weekdayCoefficients = await getWeekdayWorkloadCoefficients(prisma);
     const coeffPeriod = getWeekdayCoefficientsPeriod();

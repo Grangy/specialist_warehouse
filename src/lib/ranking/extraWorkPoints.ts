@@ -98,7 +98,6 @@ export function clearWarehousePaceSessionCache(): void {
 }
 
 const MAX_EFFICIENCY_TASKSUM_CACHE_ENTRIES = 12_000;
-const efficiencyBaselineTaskPtsCache = new Map<string, number>();
 const efficiencyUserTaskPtsCache = new Map<string, number>();
 
 function ensureCacheSize(cache: Map<string, number>): void {
@@ -108,7 +107,6 @@ function ensureCacheSize(cache: Map<string, number>): void {
 }
 
 export function clearEfficiencyWeightsSessionCache(): void {
-  efficiencyBaselineTaskPtsCache.clear();
   efficiencyUserTaskPtsCache.clear();
 }
 
@@ -130,33 +128,6 @@ async function getEfficiencyWeightsForUsers(
   // как и в исходной логике.
   const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
   const unique = [...new Set(userIds)].sort((a, b) => a.localeCompare(b));
-
-  const baselineId = await getBaselineUserId(prisma);
-
-  if (!baselineId) {
-    unique.forEach((id) => result.set(id, 1));
-    return result;
-  }
-
-  const baselineKey = `${baselineId}|${monthStart.getTime()}|${beforeDate.getTime()}`;
-  let baselineTaskPts = efficiencyBaselineTaskPtsCache.get(baselineKey);
-  if (baselineTaskPts === undefined) {
-    const baselineSum = await prisma.taskStatistics.aggregate({
-      where: { userId: baselineId, OR: taskFilterOr },
-      _sum: { orderPoints: true },
-    });
-    baselineTaskPts = baselineSum._sum.orderPoints ?? 0;
-    efficiencyBaselineTaskPtsCache.set(baselineKey, baselineTaskPts);
-    ensureCacheSize(efficiencyBaselineTaskPtsCache);
-  }
-
-  const baselineExtra = extraWorkByUser?.get(baselineId) ?? 0;
-  const baselinePts = baselineTaskPts + baselineExtra;
-
-  if (baselinePts <= 0) {
-    unique.forEach((id) => result.set(id, 1));
-    return result;
-  }
 
   // Предварительно достаём taskStatistics сумму по каждому uid (без extra), чтобы затем быстро пересчитать веса.
   const taskSumEntries: Array<{ uid: string; key: string; taskPts?: number }> = unique.map((uid) => ({
@@ -190,12 +161,27 @@ async function getEfficiencyWeightsForUsers(
     ensureCacheSize(efficiencyUserTaskPtsCache);
   }
 
+  const measureByUid = new Map<string, number>();
+  let baselinePtsMax = 0;
+
   unique.forEach((uid) => {
     // Ключ только для кеша. Значения taskPts считаются по точному `beforeDate` (формула не меняется).
     const key = `${uid}|${monthStart.getTime()}|${beforeDate.getTime()}`;
     const taskPts = efficiencyUserTaskPtsCache.get(key) ?? 0;
     const extra = extraWorkByUser?.get(uid) ?? 0;
-    const raw = (taskPts + extra) / baselinePts;
+    const measure = taskPts + extra;
+    measureByUid.set(uid, measure);
+    if (measure > baselinePtsMax) baselinePtsMax = measure;
+  });
+
+  if (baselinePtsMax <= 0) {
+    unique.forEach((id) => result.set(id, 1));
+    return result;
+  }
+
+  unique.forEach((uid) => {
+    const measure = measureByUid.get(uid) ?? 0;
+    const raw = measure / baselinePtsMax;
     result.set(uid, Math.max(MIN_EFFICIENCY_WEIGHT, raw));
   });
 
@@ -345,33 +331,36 @@ export async function getUsefulnessPctMap(
   errorPenaltiesByUser?: Map<string, number>
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
-  const baselineId = await getBaselineUserId(prisma);
-  if (!baselineId || userIds.length === 0) return result;
+  if (userIds.length === 0) return result;
   const monthStart = getMonthStartMoscowUTC(beforeDate);
   const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
-  const allResults = await Promise.all([
-    prisma.taskStatistics.aggregate({
-      where: { userId: baselineId, OR: taskFilterOr },
-      _sum: { orderPoints: true },
-    }),
-    ...userIds.map((uid) =>
+
+  const unique = [...new Set(userIds)];
+  const taskSums = await Promise.all(
+    unique.map((uid) =>
       prisma.taskStatistics.aggregate({
         where: { userId: uid, OR: taskFilterOr },
         _sum: { orderPoints: true },
       })
-    ),
-  ]);
-  const baselineTaskPts = allResults[0]._sum.orderPoints ?? 0;
-  const baselineExtra = extraWorkByUser?.get(baselineId) ?? 0;
-  const baselineErrPen = errorPenaltiesByUser?.get(baselineId) ?? 0;
-  const baselinePts = baselineTaskPts + baselineExtra + baselineErrPen;
-  if (baselinePts <= 0) return result;
-  userIds.forEach((uid, i) => {
-    const userTaskPts = allResults[i + 1]?._sum?.orderPoints ?? 0;
+    )
+  );
+
+  const userPtsByUid = new Map<string, number>();
+  let baselinePtsMax = 0;
+  unique.forEach((uid, i) => {
+    const taskPts = taskSums[i]?._sum?.orderPoints ?? 0;
     const userExtra = extraWorkByUser?.get(uid) ?? 0;
     const userErrPen = errorPenaltiesByUser?.get(uid) ?? 0;
-    const userPts = userTaskPts + userExtra + userErrPen;
-    const pct = (userPts / baselinePts) * 100;
+    const userPts = taskPts + userExtra + userErrPen;
+    userPtsByUid.set(uid, userPts);
+    if (userPts > baselinePtsMax) baselinePtsMax = userPts;
+  });
+
+  if (baselinePtsMax <= 0) return result;
+
+  unique.forEach((uid) => {
+    const userPts = userPtsByUid.get(uid) ?? 0;
+    const pct = (userPts / baselinePtsMax) * 100;
     result.set(uid, Math.round(pct * 10) / 10);
   });
   return result;
@@ -486,8 +475,6 @@ export async function computeExtraWorkPointsForSession(
   // getExtraWorkPointsPerMinute считаем pace/weights в памяти.
   type PrefetchedTask = { userId: string; effectiveTs: number; orderPoints: number };
 
-  const baselineId = await getBaselineUserId(prisma);
-
   const earliestMonthStartTs = getMonthStartMoscowUTC(startedAt).getTime();
   const tasksMinTs = Math.min(startedAt.getTime() - FIFTEEN_MIN_MS, earliestMonthStartTs);
   const tasksMaxTs = stoppedAt.getTime();
@@ -592,16 +579,20 @@ export async function computeExtraWorkPointsForSession(
       return 0;
     }
 
-    const baselineTaskPts = baselineId ? (monthSumByUser.get(baselineId) ?? 0) : 0;
-    const baselineExtra = baselineId ? (extraWorkByUser?.get(baselineId) ?? 0) : 0;
-    const baselinePts = baselineTaskPts + baselineExtra;
+    // Эталон (100%): топ-1 по (taskPts + extra) среди всех, кто имеет taskPts
+    // в текущем "весовом" окне (monthSumByUser), а не только среди активных 15-мин.
+    let baselinePtsMax = 0;
+    for (const [uid, taskPts] of monthSumByUser.entries()) {
+      const extra = extraWorkByUser?.get(uid) ?? 0;
+      const measure = taskPts + extra;
+      if (measure > baselinePtsMax) baselinePtsMax = measure;
+    }
 
     const calcWeight = (uid: string): number => {
-      if (!baselineId) return 1;
-      if (baselinePts <= 0) return 1;
+      if (baselinePtsMax <= 0) return 1;
       const taskPts = monthSumByUser.get(uid) ?? 0;
       const extra = extraWorkByUser?.get(uid) ?? 0;
-      const raw = (taskPts + extra) / baselinePts;
+      const raw = (taskPts + extra) / baselinePtsMax;
       return Math.max(MIN_EFFICIENCY_WEIGHT, raw);
     };
 
