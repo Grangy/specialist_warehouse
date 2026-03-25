@@ -468,6 +468,16 @@ model DailyAchievement {
   @@map("daily_achievements")
 }
 
+// Снимок aggregateRankings для быстрого топа (обновляет worker:stats)
+model StatsSnapshot {
+  id         String   @id @default(cuid())
+  cacheKey  String   @unique @map("cache_key")
+  payload   String
+  computedAt DateTime @map("computed_at")
+
+  @@map("stats_snapshots")
+}
+
 // Системные настройки
 model SystemSettings {
   id    String @id @default(cuid())

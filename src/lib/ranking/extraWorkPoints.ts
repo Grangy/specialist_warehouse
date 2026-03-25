@@ -79,6 +79,28 @@ async function getWarehousePaceLast15Min(
   return { points, activeUserIds };
 }
 
+/** Кэш весов внутри одного aggregateRankings (сбрасывается в начале aggregateRankings). */
+const efficiencyWeightsSessionCache = new Map<string, Map<string, number>>();
+
+export function clearEfficiencyWeightsSessionCache(): void {
+  efficiencyWeightsSessionCache.clear();
+}
+
+function efficiencyWeightsCacheKey(
+  monthStart: Date,
+  beforeDate: Date,
+  uniqueSorted: string[],
+  extraWorkByUser?: Map<string, number>
+): string {
+  const ex = extraWorkByUser
+    ? [...extraWorkByUser.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([k, v]) => `${k}:${v}`)
+        .join('|')
+    : '';
+  return `${monthStart.getTime()}-${beforeDate.getTime()}-${uniqueSorted.join(',')}-${ex}`;
+}
+
 /**
  * Вес эффективности для распределения доп. работы: max(30%, баллы_с_начала_месяца / эталон).
  * Баллы месяца = сборка + проверка + диктовка + накопленная доп.работа (extraWorkByUser).
@@ -94,12 +116,16 @@ async function getEfficiencyWeightsForUsers(
 
   const monthStart = getMonthStartMoscowUTC(beforeDate);
   const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
-  const baselineId = await getBaselineUserId(prisma);
+  const unique = [...new Set(userIds)].sort((a, b) => a.localeCompare(b));
+  const ck = efficiencyWeightsCacheKey(monthStart, beforeDate, unique, extraWorkByUser);
+  const hit = efficiencyWeightsSessionCache.get(ck);
+  if (hit) return new Map(hit);
 
-  const unique = [...new Set(userIds)];
+  const baselineId = await getBaselineUserId(prisma);
 
   if (!baselineId) {
     unique.forEach((id) => result.set(id, 1));
+    efficiencyWeightsSessionCache.set(ck, new Map(result));
     return result;
   }
 
@@ -113,6 +139,7 @@ async function getEfficiencyWeightsForUsers(
 
   if (baselinePts <= 0) {
     unique.forEach((id) => result.set(id, 1));
+    efficiencyWeightsSessionCache.set(ck, new Map(result));
     return result;
   }
 
@@ -132,6 +159,11 @@ async function getEfficiencyWeightsForUsers(
     result.set(uid, Math.max(MIN_EFFICIENCY_WEIGHT, raw));
   });
 
+  efficiencyWeightsSessionCache.set(ck, new Map(result));
+  if (efficiencyWeightsSessionCache.size > 4000) {
+    const k0 = efficiencyWeightsSessionCache.keys().next().value;
+    if (k0 !== undefined) efficiencyWeightsSessionCache.delete(k0);
+  }
   return result;
 }
 
@@ -310,14 +342,24 @@ export async function getUsefulnessPctMap(
   return result;
 }
 
-/** Фиксированная ставка (баллов/мин) для 09:00–09:15 из SystemSettings */
+/** Фиксированная ставка (баллов/мин) для 09:00–09:15 из SystemSettings (мемо 60 с — сотни вызовов за aggregateRankings). */
+let startupRatePerMinMemo: { value: number; until: number } | null = null;
 async function getStartupRatePerMin(prisma: PrismaLike): Promise<number> {
+  const now = Date.now();
+  if (startupRatePerMinMemo && now < startupRatePerMinMemo.until) {
+    return startupRatePerMinMemo.value;
+  }
   const row = await prisma.systemSettings.findUnique({
     where: { key: 'extra_work_startup_rate_points_per_min' },
   });
-  if (!row?.value) return DEFAULT_STARTUP_RATE_PER_MIN;
+  if (!row?.value) {
+    startupRatePerMinMemo = { value: DEFAULT_STARTUP_RATE_PER_MIN, until: now + 60_000 };
+    return DEFAULT_STARTUP_RATE_PER_MIN;
+  }
   const parsed = parseFloat(row.value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_STARTUP_RATE_PER_MIN;
+  const v = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_STARTUP_RATE_PER_MIN;
+  startupRatePerMinMemo = { value: v, until: now + 60_000 };
+  return v;
 }
 
 /**
@@ -381,6 +423,9 @@ export type ExtraWorkSessionForPoints = {
   startedAt?: Date | null;
 };
 
+/** Защита от битых данных и чрезмерного числа итераций в цикле. */
+const MAX_ELAPSED_SEC_EXTRA_WORK_SESSION = 14 * 24 * 60 * 60;
+
 /**
  * Баллы за одну сессию по новой формуле.
  * Учитывает split 09:00–09:15 (фикс.) и после (динамика).
@@ -391,7 +436,10 @@ export async function computeExtraWorkPointsForSession(
   session: ExtraWorkSessionForPoints,
   extraWorkByUser?: Map<string, number>
 ): Promise<number> {
-  const elapsedSec = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
+  const rawElapsed = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
+  const elapsedSec = Number.isFinite(rawElapsed)
+    ? Math.min(rawElapsed, MAX_ELAPSED_SEC_EXTRA_WORK_SESSION)
+    : 0;
   if (elapsedSec <= 0) return 0;
 
   const stoppedAt = session.stoppedAt ?? new Date();
@@ -400,6 +448,9 @@ export async function computeExtraWorkPointsForSession(
   const startupRate = await getStartupRatePerMin(prisma);
   const rateBy15mBucket = new Map<number, number>();
   const getDynamicRateCached = async (atUtc: Date): Promise<number> => {
+    if (isInStartupWindow(atUtc)) {
+      return startupRate;
+    }
     const bucket = Math.floor(atUtc.getTime() / 900_000);
     const hit = rateBy15mBucket.get(bucket);
     if (hit !== undefined) return hit;
@@ -425,6 +476,10 @@ export async function computeExtraWorkPointsForSession(
     const toNextStartup = secondsUntilNextStartupWindowStart(cur);
     const capByStartup = toNextStartup > 0 ? Math.min(rem, toNextStartup) : rem;
     const chunk = Math.max(1, Math.min(rem, 900, capByStartup));
+    if (!(chunk > 0)) {
+      t += 1;
+      continue;
+    }
     const segEnd = new Date(startedAt.getTime() + (t + chunk) * 1000);
     const atForRate = atUtcForDynamicRateSegmentEnd(segEnd);
     const rate = await getDynamicRateCached(atForRate);

@@ -6,6 +6,7 @@
 import { prisma } from '@/lib/prisma';
 import { getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
 import {
+  clearEfficiencyWeightsSessionCache,
   computeExtraWorkPointsForSession,
   getBaselineUserId,
   getBaselineUserName,
@@ -68,6 +69,7 @@ export async function aggregateRankings(
   totalUniqueOrders: number;
   baselineUserName: string | null;
 }> {
+  clearEfficiencyWeightsSessionCache();
   const { startDate, endDate } = dateOverride
     ? getStatisticsDateRangeForDate(dateOverride)
     : getStatisticsDateRange(period);

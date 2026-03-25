@@ -37,11 +37,17 @@ const RATE_LIMIT_CONFIG = {
     windowMs: 60 * 1000, // 1 минута
     blockDurationMs: 2 * 60 * 1000, // блок на 2 минуты при превышении
   },
+  /** GET /api/statistics/top — публичный топ; ответ из снимка, но лимит снимает злоупотребления */
+  publicTop: {
+    maxAttempts: 90,
+    windowMs: 60 * 1000,
+    blockDurationMs: 2 * 60 * 1000,
+  },
 };
 
 export function checkRateLimit(
   identifier: string,
-  type: 'login' | 'api' | 'general' | 'publicStats' = 'general'
+  type: 'login' | 'api' | 'general' | 'publicStats' | 'publicTop' = 'general'
 ): { allowed: boolean; remaining: number; resetTime: number } {
   const config = RATE_LIMIT_CONFIG[type];
   const now = Date.now();

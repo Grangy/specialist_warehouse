@@ -49,6 +49,9 @@ npx prisma migrate deploy
 echo "🏗️ Сборка..."
 npm run build
 
+echo "📊 Снимки топа (stats_snapshots)..."
+npx tsx scripts/stats-snapshot-worker.ts || echo "⚠️ worker:stats завершился с ошибкой (проверьте логи)"
+
 echo "🔄 pm2 restart..."
 pm2 restart specialist-warehouse || pm2 start npm --name "specialist-warehouse" -- start
 pm2 restart db-backup-scheduled 2>/dev/null || true

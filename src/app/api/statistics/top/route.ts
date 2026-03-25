@@ -8,14 +8,28 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getTopCachedOrCompute, type TopPeriod } from '@/lib/statistics/topResponseCache';
+import { checkRateLimit, getClientIdentifier } from '@/lib/security/rateLimiter';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-/** На Vercel/Edge — лимит времени на тяжёлый aggregateRankings (самохост: см. proxy_read_timeout nginx). */
-export const maxDuration = 120;
+/** Ответ из снимка БД — быстрый; legacy-расчёт в запросе только при dev. */
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   try {
+    const { allowed, resetTime } = checkRateLimit(getClientIdentifier(request), 'publicTop');
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Слишком много запросов к топу. Подождите немного.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil((resetTime - Date.now()) / 1000)),
+          },
+        }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const periodParam = searchParams.get('period') || 'today';
     const period: TopPeriod =
