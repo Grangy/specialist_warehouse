@@ -10,6 +10,7 @@ import type { RankingEntry } from '@/lib/statistics/aggregateRankings';
 import { getAggregateSnapshot } from '@/lib/statistics/statsAggregateCache';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 120;
 
 function assignRanks(entries: RankingEntry[], byPoints: (e: RankingEntry) => number) {
   const pts = entries.map(byPoints).filter((p) => p > 0);

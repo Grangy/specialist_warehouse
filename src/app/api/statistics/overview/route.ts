@@ -10,6 +10,7 @@ import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 import { getAggregateSnapshot } from '@/lib/statistics/statsAggregateCache';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 120;
 
 /**
  * GET /api/statistics/overview

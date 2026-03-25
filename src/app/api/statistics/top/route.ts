@@ -11,6 +11,8 @@ import { getTopCachedOrCompute, type TopPeriod } from '@/lib/statistics/topRespo
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+/** На Vercel/Edge — лимит времени на тяжёлый aggregateRankings (самохост: см. proxy_read_timeout nginx). */
+export const maxDuration = 120;
 
 export async function GET(request: NextRequest) {
   try {

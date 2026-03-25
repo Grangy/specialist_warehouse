@@ -8,7 +8,7 @@
  * 09:00–09:15 МСК: фиксированная ставка (нет истории за 15 мин).
  */
 
-import { getMoscowHour, getMonthStartMoscowUTC } from '@/lib/utils/moscowDate';
+import { getMoscowHour, getMonthStartMoscowUTC, getStartupWindow09MoscowUTC } from '@/lib/utils/moscowDate';
 import type { prisma } from '@/lib/prisma';
 
 type PrismaLike = typeof prisma;
@@ -33,6 +33,29 @@ function isInStartupWindow(utcDate: Date): boolean {
   const h = getMoscowHour(utcDate);
   const m = getMoscowMinute(utcDate);
   return h === 9 && m < 15;
+}
+
+function secondsRemainingInStartupWindow(utc: Date): number {
+  const { start, end } = getStartupWindow09MoscowUTC(utc);
+  const t = utc.getTime();
+  if (t < start.getTime() || t >= end.getTime()) return 0;
+  return Math.ceil((end.getTime() - t) / 1000);
+}
+
+function secondsUntilNextStartupWindowStart(utc: Date): number {
+  const { start, end } = getStartupWindow09MoscowUTC(utc);
+  const t = utc.getTime();
+  if (t < start.getTime()) return Math.ceil((start.getTime() - t) / 1000);
+  if (t < end.getTime()) return 0;
+  const nextStart = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return Math.ceil((nextStart.getTime() - t) / 1000);
+}
+
+function atUtcForDynamicRateSegmentEnd(segEnd: Date): Date {
+  if (isInStartupWindow(segEnd)) {
+    return new Date(segEnd.getTime() - 1);
+  }
+  return segEnd;
 }
 
 /** Темп склада за последние 15 минут и пользователи, давшие этот вклад */
@@ -357,12 +380,18 @@ export type ExtraWorkSessionForPoints = {
  * Учитывает split 09:00–09:15 (фикс.) и после (динамика).
  * extraWorkByUser — накопленные доп.баллы до этой сессии (для полезности).
  */
+/** Защита от битых данных и чрезмерно длинных циклов (иначе aggregateRankings → 504). */
+const MAX_ELAPSED_SEC_EXTRA_WORK_SESSION = 14 * 24 * 60 * 60; // 14 суток
+
 export async function computeExtraWorkPointsForSession(
   prisma: PrismaLike,
   session: ExtraWorkSessionForPoints,
   extraWorkByUser?: Map<string, number>
 ): Promise<number> {
-  const elapsedSec = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
+  const rawElapsed = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
+  const elapsedSec = Number.isFinite(rawElapsed)
+    ? Math.min(rawElapsed, MAX_ELAPSED_SEC_EXTRA_WORK_SESSION)
+    : 0;
   if (elapsedSec <= 0) return 0;
 
   const stoppedAt = session.stoppedAt ?? new Date();
@@ -371,6 +400,9 @@ export async function computeExtraWorkPointsForSession(
   const startupRate = await getStartupRatePerMin(prisma);
   const rateBy15mBucket = new Map<number, number>();
   const getDynamicRateCached = async (atUtc: Date): Promise<number> => {
+    if (isInStartupWindow(atUtc)) {
+      return startupRate;
+    }
     const bucket = Math.floor(atUtc.getTime() / 900_000);
     const hit = rateBy15mBucket.get(bucket);
     if (hit !== undefined) return hit;
@@ -396,6 +428,10 @@ export async function computeExtraWorkPointsForSession(
     const toNextStartup = secondsUntilNextStartupWindowStart(cur);
     const capByStartup = toNextStartup > 0 ? Math.min(rem, toNextStartup) : rem;
     const chunk = Math.max(1, Math.min(rem, 900, capByStartup));
+    if (!(chunk > 0)) {
+      t += 1;
+      continue;
+    }
     const segEnd = new Date(startedAt.getTime() + (t + chunk) * 1000);
     const atForRate = atUtcForDynamicRateSegmentEnd(segEnd);
     const rate = await getDynamicRateCached(atForRate);

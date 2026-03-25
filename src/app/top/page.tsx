@@ -87,10 +87,24 @@ export default function TopPage() {
       setError(null);
     }
     try {
-      const res = await fetch(`/api/statistics/top?period=${period}&_t=${Date.now()}`, { cache: 'no-store' });
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 125_000);
+      let res: Response;
+      try {
+        res = await fetch(`/api/statistics/top?period=${period}&_t=${Date.now()}`, {
+          cache: 'no-store',
+          signal: ac.signal,
+        });
+      } finally {
+        clearTimeout(to);
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || data.details || `Ошибка ${res.status}`);
+        const msg =
+          res.status === 504
+            ? 'Сервер не успел за отведённое время (504). Обычно это тяжёлый пересчёт топа — подождите минуту и обновите страницу.'
+            : data.error || data.details || `Ошибка ${res.status}`;
+        throw new Error(msg);
       }
       const data = await res.json();
       setList(data.all || []);
@@ -102,7 +116,14 @@ export default function TopPage() {
       setMounted(true);
     } catch (e) {
       if (!silent) {
-        setError(e instanceof Error ? e.message : 'Не удалось загрузить рейтинг');
+        const aborted = e instanceof Error && e.name === 'AbortError';
+        setError(
+          aborted
+            ? 'Превышено время ожидания ответа. Попробуйте обновить страницу через минуту.'
+            : e instanceof Error
+              ? e.message
+              : 'Не удалось загрузить рейтинг'
+        );
         setList([]);
         setTopErrorsMerged([]);
         setTotalCollectorErrors(0);
