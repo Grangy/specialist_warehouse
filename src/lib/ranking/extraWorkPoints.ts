@@ -8,7 +8,7 @@
  * 09:00–09:15 МСК: фиксированная ставка (нет истории за 15 мин).
  */
 
-import { getMoscowHour, getMonthStartMoscowUTC } from '@/lib/utils/moscowDate';
+import { getMoscowHour, getMonthStartMoscowUTC, getStartupWindow09MoscowUTC } from '@/lib/utils/moscowDate';
 import type { prisma } from '@/lib/prisma';
 
 type PrismaLike = typeof prisma;
@@ -33,6 +33,29 @@ function isInStartupWindow(utcDate: Date): boolean {
   const h = getMoscowHour(utcDate);
   const m = getMoscowMinute(utcDate);
   return h === 9 && m < 15;
+}
+
+function secondsRemainingInStartupWindow(utc: Date): number {
+  const { start, end } = getStartupWindow09MoscowUTC(utc);
+  const t = utc.getTime();
+  if (t < start.getTime() || t >= end.getTime()) return 0;
+  return Math.ceil((end.getTime() - t) / 1000);
+}
+
+function secondsUntilNextStartupWindowStart(utc: Date): number {
+  const { start, end } = getStartupWindow09MoscowUTC(utc);
+  const t = utc.getTime();
+  if (t < start.getTime()) return Math.ceil((start.getTime() - t) / 1000);
+  if (t < end.getTime()) return 0;
+  const nextStart = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return Math.ceil((nextStart.getTime() - t) / 1000);
+}
+
+function atUtcForDynamicRateSegmentEnd(segEnd: Date): Date {
+  if (isInStartupWindow(segEnd)) {
+    return new Date(segEnd.getTime() - 1);
+  }
+  return segEnd;
 }
 
 /** Темп склада за последние 15 минут и пользователи, давшие этот вклад */
