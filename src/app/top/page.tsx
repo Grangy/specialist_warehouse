@@ -116,7 +116,9 @@ export default function TopPage() {
 
   useEffect(() => {
     const refreshMs = period === 'today' ? 3 * 60 * 1000 : period === 'week' ? 10 * 60 * 1000 : 20 * 60 * 1000;
-    load();
+    // На смену периода/первый показ — принудительно берём свежий снапшот, иначе UI может показывать
+    // "пусто" из-за старого top-кэша.
+    load(false, true);
     // forceReload=true: добиваемся nocache=1 на API, чтобы топ пересчитался/перекешировался,
     // а не просто отдавался из in-memory top cache.
     const id = setInterval(() => load(true, true), refreshMs);
@@ -204,7 +206,7 @@ export default function TopPage() {
           className="flex flex-col gap-3 mb-6 opacity-0 animate-top-card-stagger"
           style={{ animationDelay: '0.2s', animationFillMode: 'forwards' }}
         >
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {(['today', 'week', 'month'] as const).map((p) => (
               <button
                 key={p}
@@ -219,6 +221,20 @@ export default function TopPage() {
                 {PERIOD_LABELS[p]}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => load(false, true)}
+              disabled={isLoading}
+              className={`ml-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                isLoading
+                  ? 'bg-slate-800/40 text-slate-500 border-slate-700 cursor-not-allowed'
+                  : 'bg-slate-800/80 text-slate-200 border-slate-600 hover:bg-slate-700/80 hover:text-slate-100'
+              }`}
+              title="Принудительно обновить данные с сервера (nocache=1)"
+            >
+              <RefreshCw className="w-4 h-4 inline-block mr-2 align-[-2px]" />
+              Обновить сейчас
+            </button>
           </div>
           {date && (
             <div className="flex items-center gap-2 text-slate-400 text-sm">
