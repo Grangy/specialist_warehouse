@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { getMoscowDateString } from '@/lib/utils/moscowDate';
+import { clearUserStatsCache } from '@/lib/statistics/getUserStats';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +63,11 @@ export async function POST(request: NextRequest) {
       update: { value: JSON.stringify(adj) },
       create: { key: 'extra_work_manual_adjustments', value: JSON.stringify(adj) },
     });
+
+    // После ручных корректировок очищаем cache детальной статистики пользователя,
+    // чтобы UI не показывал старые значения и не падал на нестыковках.
+    clearUserStatsCache();
+
     return NextResponse.json({ ok: true, manualAdjustment: total });
   } catch (e) {
     console.error('[extra-work/adjust-points]', e);

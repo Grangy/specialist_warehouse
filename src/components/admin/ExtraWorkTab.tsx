@@ -83,6 +83,12 @@ export default function ExtraWorkTab() {
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
   const [showCurrentIndicators, setShowCurrentIndicators] = useState(false);
 
+  // Ручное начисление доп. баллов (отдельный раздел)
+  const [manualAdjustUserId, setManualAdjustUserId] = useState<string | null>(null);
+  const [manualAdjustPoints, setManualAdjustPoints] = useState<string>('1');
+  const [manualAdjustPassword, setManualAdjustPassword] = useState<string>('');
+  const [manualAdjustSubmitting, setManualAdjustSubmitting] = useState(false);
+
   const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -127,6 +133,12 @@ export default function ExtraWorkTab() {
     return () => clearInterval(id);
   }, [load]);
 
+  useEffect(() => {
+    if (!manualAdjustUserId && data?.[0]?.userId) {
+      setManualAdjustUserId(data[0].userId);
+    }
+  }, [data, manualAdjustUserId]);
+
   const handleAssign = async (
     userId: string,
     warehouse: string,
@@ -149,6 +161,42 @@ export default function ExtraWorkTab() {
       alert(e instanceof Error ? e.message : 'Ошибка');
     } finally {
       setAssigningUserId(null);
+    }
+  };
+
+  const submitManualAdjust = async (mode: 'add' | 'remove') => {
+    if (!manualAdjustUserId) {
+      alert('Выберите пользователя');
+      return;
+    }
+    const raw = parseFloat(manualAdjustPoints.replace(',', '.'));
+    if (!Number.isFinite(raw) || raw <= 0) {
+      alert('Введите число баллов > 0');
+      return;
+    }
+    const password = manualAdjustPassword.trim();
+    if (!password) {
+      alert('Введите пароль');
+      return;
+    }
+
+    const pointsSigned = mode === 'add' ? Math.abs(raw) : -Math.abs(raw);
+    setManualAdjustSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/extra-work/adjust-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: manualAdjustUserId, points: pointsSigned, password }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Ошибка начисления');
+      setManualAdjustPassword('');
+      setManualAdjustPoints('1');
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Ошибка');
+    } finally {
+      setManualAdjustSubmitting(false);
     }
   };
 
@@ -643,6 +691,81 @@ export default function ExtraWorkTab() {
           </table>
         </div>
       </div>
+
+      {/* Ручное начисление доп. баллов */}
+      {canAssign && (
+        <div className="mt-6 bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <h4 className="text-lg font-bold text-slate-100">Начисление доп. баллов (вручную)</h4>
+              <p className="text-sm text-slate-400 mt-1">
+                Изменения применяются через настройку `extra_work_manual_adjustments` и учитываются в статистике.
+              </p>
+            </div>
+            <div className="text-xs text-slate-500">Только admin</div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs text-slate-400">Кому начислять</label>
+              <select
+                value={manualAdjustUserId ?? ''}
+                onChange={(e) => setManualAdjustUserId(e.target.value || null)}
+                className="w-full px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-700 text-slate-100 text-sm"
+              >
+                {data.map((d) => (
+                  <option key={d.userId} value={d.userId}>
+                    {d.userName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-slate-400">Баллы (положительное число)</label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={0.1}
+                value={manualAdjustPoints}
+                onChange={(e) => setManualAdjustPoints(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-700 text-slate-100 text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-slate-400">Пароль</label>
+              <input
+                type="password"
+                value={manualAdjustPassword}
+                onChange={(e) => setManualAdjustPassword(e.target.value)}
+                placeholder="Пароль для подтверждения"
+                className="w-full px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-700 text-slate-100 text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row gap-3">
+            <button
+              type="button"
+              disabled={manualAdjustSubmitting}
+              onClick={() => void submitManualAdjust('add')}
+              className="flex-1 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-semibold disabled:opacity-50"
+            >
+              {manualAdjustSubmitting ? '...' : 'Добавить баллы'}
+            </button>
+            <button
+              type="button"
+              disabled={manualAdjustSubmitting}
+              onClick={() => void submitManualAdjust('remove')}
+              className="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold disabled:opacity-50"
+            >
+              {manualAdjustSubmitting ? '...' : 'Снять баллы'}
+            </button>
+          </div>
+        </div>
+      )}
 
       </>
       )}
