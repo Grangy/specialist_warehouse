@@ -23,6 +23,24 @@ export function statsSnapshotCacheKey(period: 'today' | 'week' | 'month', wareho
   return `${period}:${warehouse ?? ''}`;
 }
 
+let statsSnapshotsTableExistsCache: boolean | null = null;
+
+async function statsSnapshotsTableExists(): Promise<boolean> {
+  if (statsSnapshotsTableExistsCache !== null) return statsSnapshotsTableExistsCache;
+  try {
+    // Даже если таблицы нет, sqlite_master существует.
+    const rows = await prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM sqlite_master
+      WHERE type='table' AND name='stats_snapshots'
+      LIMIT 1
+    `;
+    statsSnapshotsTableExistsCache = Array.isArray(rows) && rows.length > 0;
+  } catch {
+    statsSnapshotsTableExistsCache = false;
+  }
+  return statsSnapshotsTableExistsCache;
+}
+
 export const SNAPSHOT_WARM_KEYS: Array<{ period: 'today' | 'week' | 'month'; warehouse?: string }> = [
   { period: 'today' },
   { period: 'week' },
@@ -57,6 +75,8 @@ export async function loadStatsSnapshotFromDb(
 ): Promise<{ data: AggregateSnapshotResult; computedAt: Date } | null> {
   // SQLite schema (см. prisma/migrations/*/migration.sql):
   // stats_snapshots(id TEXT PK, cache_key TEXT UNIQUE, payload TEXT, computed_at DATETIME)
+  if (!(await statsSnapshotsTableExists())) return null;
+
   try {
     const rows = (await prisma.$queryRaw<
       Array<{ payload: string; computed_at: string }>
@@ -93,6 +113,8 @@ export async function saveStatsSnapshotToDb(
   const now = new Date();
 
   try {
+    if (!(await statsSnapshotsTableExists())) return;
+
     // SQLite upsert:
     // - conflict target is UNIQUE(cache_key)
     // - update payload/computed_at, keep id stable to avoid changing PK
