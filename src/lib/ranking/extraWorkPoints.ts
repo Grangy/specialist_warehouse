@@ -38,7 +38,9 @@ const MIN_EFFICIENCY_WEIGHT = 0.3;
  * DAMPING_EXP<1 => более мягкое нивелирование, чтобы не “обнулять” начисления.
  */
 const ACTIVE_USERS_DAMPING_TARGET = 15;
-const DAMPING_EXP = 0.5;
+// 0.5 было слишком режущим (у многих за день extraWorkPoints попадали в 0).
+// 0.35 — компромисс: разгон при малом activeCount сглаживаем, но не "обнуляем" начисления.
+const DAMPING_EXP = 0.35;
 
 export function getEffectiveDenomByActiveCount(denom: number, activeCount: number): number {
   if (!Number.isFinite(denom) || denom <= 0) return denom;
