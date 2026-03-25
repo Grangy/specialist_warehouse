@@ -7,9 +7,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/middleware';
 import { getAnimalLevel } from '@/lib/ranking/levels';
 import type { RankingEntry } from '@/lib/statistics/aggregateRankings';
-import { getAggregateSnapshot } from '@/lib/statistics/statsAggregateCache';
+import { getAggregateSnapshot, getAggregateSnapshotWithDebug } from '@/lib/statistics/statsAggregateCache';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 120;
 
 function assignRanks(entries: RankingEntry[], byPoints: (e: RankingEntry) => number) {
   const pts = entries.map(byPoints).filter((p) => p > 0);
@@ -39,8 +40,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const periodParam = searchParams.get('period') || 'today';
     const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
+    const debug = searchParams.get('debug') === '1' || searchParams.get('debug') === 'true';
 
-    const { data } = await getAggregateSnapshot(period, warehouseFilter);
+    // В `debug=false` возвращаем только `data`, а в `debug=true` — ещё и `r.debug`.
+    // Разделяем ветки, чтобы TypeScript не ругался на отсутствие поля `debug`.
+    const data = debug
+      ? (await getAggregateSnapshotWithDebug(period, warehouseFilter)).data
+      : (await getAggregateSnapshot(period, warehouseFilter)).data;
+    const aggDebug = debug ? (await getAggregateSnapshotWithDebug(period, warehouseFilter)).debug : undefined;
     const allRankings = structuredClone(data.allRankings);
 
     assignRanks(allRankings, (e) => e.points);
@@ -74,6 +81,7 @@ export async function GET(request: NextRequest) {
       dictators,
       others,
       all: allRankings,
+      ...(debug && { debug: aggDebug }),
     });
   } catch (error: unknown) {
     console.error('[API Statistics Ranking] Ошибка:', error);

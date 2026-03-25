@@ -81,13 +81,14 @@ export default function TopPage() {
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
 
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (silent = false, forceReload = false) => {
     if (!silent) {
       setIsLoading(true);
       setError(null);
     }
     try {
-      const res = await fetch(`/api/statistics/top?period=${period}&_t=${Date.now()}`, { cache: 'no-store' });
+      const nocachePart = forceReload ? '&nocache=1' : '';
+      const res = await fetch(`/api/statistics/top?period=${period}&_t=${Date.now()}${nocachePart}`, { cache: 'no-store' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || data.details || `Ошибка ${res.status}`);
@@ -378,7 +379,7 @@ export default function TopPage() {
             <p className="font-medium">Ошибка</p>
             <p className="text-sm mt-1">{error}</p>
             <button
-              onClick={() => load()}
+              onClick={() => load(false, true)}
               className="mt-3 px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-transform hover:scale-[1.02] active:scale-[0.98]"
             >
               <RefreshCw className="w-4 h-4" />
@@ -398,7 +399,7 @@ export default function TopPage() {
           <>
             <div className="flex justify-end mb-4">
               <button
-                onClick={() => load()}
+                onClick={() => load(false, true)}
                 disabled={isLoading}
                 className="text-slate-400 hover:text-slate-200 flex items-center gap-2 text-sm disabled:opacity-50"
                 title="Обновить"

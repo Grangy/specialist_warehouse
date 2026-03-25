@@ -63,8 +63,14 @@ async function getWarehousePaceLast15Min(
   prisma: PrismaLike,
   beforeDate: Date
 ): Promise<{ points: number; activeUserIds: string[] }> {
+  const bucket = Math.floor(beforeDate.getTime() / 900_000);
+  const hit = warehousePaceSessionCache.get(bucket);
+  if (hit) return hit;
+
   const start = new Date(beforeDate.getTime() - FIFTEEN_MIN_MS);
-  const stats = await prisma.taskStatistics.findMany({
+  // groupBy по userId вместо findMany по всем строкам: меньше данных и CPU.
+  const grouped = await prisma.taskStatistics.groupBy({
+    by: ['userId'],
     where: {
       OR: [
         { roleType: 'collector', task: { completedAt: { gte: start, lte: beforeDate } } },
@@ -72,11 +78,38 @@ async function getWarehousePaceLast15Min(
         { roleType: 'dictator', task: { confirmedAt: { gte: start, lte: beforeDate } } },
       ],
     },
-    select: { userId: true, orderPoints: true },
+    _sum: { orderPoints: true },
   });
-  const points = stats.reduce((s, x) => s + (x.orderPoints ?? 0), 0);
-  const activeUserIds = [...new Set(stats.map((s) => s.userId))];
-  return { points, activeUserIds };
+  const points = grouped.reduce((s, x) => s + (x._sum.orderPoints ?? 0), 0);
+  const activeUserIds = grouped.map((x) => x.userId);
+  const value = { points, activeUserIds };
+  warehousePaceSessionCache.set(bucket, value);
+  if (warehousePaceSessionCache.size > 2000) {
+    const k0 = warehousePaceSessionCache.keys().next().value;
+    if (k0 !== undefined) warehousePaceSessionCache.delete(k0);
+  }
+  return value;
+}
+
+/** Кэш темпа склада внутри одного aggregateRankings (сбрасывается в начале aggregateRankings). */
+const warehousePaceSessionCache = new Map<number, { points: number; activeUserIds: string[] }>();
+export function clearWarehousePaceSessionCache(): void {
+  warehousePaceSessionCache.clear();
+}
+
+const MAX_EFFICIENCY_TASKSUM_CACHE_ENTRIES = 12_000;
+const efficiencyBaselineTaskPtsCache = new Map<string, number>();
+const efficiencyUserTaskPtsCache = new Map<string, number>();
+
+function ensureCacheSize(cache: Map<string, number>): void {
+  if (cache.size <= MAX_EFFICIENCY_TASKSUM_CACHE_ENTRIES) return;
+  const k0 = cache.keys().next().value;
+  if (k0 !== undefined) cache.delete(k0);
+}
+
+export function clearEfficiencyWeightsSessionCache(): void {
+  efficiencyBaselineTaskPtsCache.clear();
+  efficiencyUserTaskPtsCache.clear();
 }
 
 /**
@@ -93,21 +126,30 @@ async function getEfficiencyWeightsForUsers(
   if (userIds.length === 0) return result;
 
   const monthStart = getMonthStartMoscowUTC(beforeDate);
+  // Важно для корректности формулы: используем точный `beforeDate`,
+  // как и в исходной логике.
   const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
-  const baselineId = await getBaselineUserId(prisma);
+  const unique = [...new Set(userIds)].sort((a, b) => a.localeCompare(b));
 
-  const unique = [...new Set(userIds)];
+  const baselineId = await getBaselineUserId(prisma);
 
   if (!baselineId) {
     unique.forEach((id) => result.set(id, 1));
     return result;
   }
 
-  const baselineSum = await prisma.taskStatistics.aggregate({
-    where: { userId: baselineId, OR: taskFilterOr },
-    _sum: { orderPoints: true },
-  });
-  const baselineTaskPts = baselineSum._sum.orderPoints ?? 0;
+  const baselineKey = `${baselineId}|${monthStart.getTime()}|${beforeDate.getTime()}`;
+  let baselineTaskPts = efficiencyBaselineTaskPtsCache.get(baselineKey);
+  if (baselineTaskPts === undefined) {
+    const baselineSum = await prisma.taskStatistics.aggregate({
+      where: { userId: baselineId, OR: taskFilterOr },
+      _sum: { orderPoints: true },
+    });
+    baselineTaskPts = baselineSum._sum.orderPoints ?? 0;
+    efficiencyBaselineTaskPtsCache.set(baselineKey, baselineTaskPts);
+    ensureCacheSize(efficiencyBaselineTaskPtsCache);
+  }
+
   const baselineExtra = extraWorkByUser?.get(baselineId) ?? 0;
   const baselinePts = baselineTaskPts + baselineExtra;
 
@@ -116,17 +158,42 @@ async function getEfficiencyWeightsForUsers(
     return result;
   }
 
-  const aggregates = await Promise.all(
-    unique.map((uid) =>
-      prisma.taskStatistics.aggregate({
-        where: { userId: uid, OR: taskFilterOr },
-        _sum: { orderPoints: true },
-      })
-    )
-  );
+  // Предварительно достаём taskStatistics сумму по каждому uid (без extra), чтобы затем быстро пересчитать веса.
+  const taskSumEntries: Array<{ uid: string; key: string; taskPts?: number }> = unique.map((uid) => ({
+    uid,
+    key: `${uid}|${monthStart.getTime()}|${beforeDate.getTime()}`,
+  }));
 
-  unique.forEach((uid, i) => {
-    const taskPts = aggregates[i]._sum.orderPoints ?? 0;
+  const missingUids: string[] = [];
+  for (const e of taskSumEntries) {
+    const cached = efficiencyUserTaskPtsCache.get(e.key);
+    if (cached === undefined) missingUids.push(e.uid);
+  }
+
+  if (missingUids.length > 0) {
+    // Один groupBy вместо N отдельных aggregate — резко сокращает количество DB round-trip'ов.
+    const grouped = await prisma.taskStatistics.groupBy({
+      by: ['userId'],
+      where: { userId: { in: missingUids }, OR: taskFilterOr },
+      _sum: { orderPoints: true },
+    });
+
+    const byUid = new Map<string, number>();
+    for (const r of grouped) {
+      byUid.set(r.userId, r._sum.orderPoints ?? 0);
+    }
+
+    missingUids.forEach((uid) => {
+      const k = `${uid}|${monthStart.getTime()}|${beforeDate.getTime()}`;
+      efficiencyUserTaskPtsCache.set(k, byUid.get(uid) ?? 0);
+    });
+    ensureCacheSize(efficiencyUserTaskPtsCache);
+  }
+
+  unique.forEach((uid) => {
+    // Ключ только для кеша. Значения taskPts считаются по точному `beforeDate` (формула не меняется).
+    const key = `${uid}|${monthStart.getTime()}|${beforeDate.getTime()}`;
+    const taskPts = efficiencyUserTaskPtsCache.get(key) ?? 0;
     const extra = extraWorkByUser?.get(uid) ?? 0;
     const raw = (taskPts + extra) / baselinePts;
     result.set(uid, Math.max(MIN_EFFICIENCY_WEIGHT, raw));
@@ -160,30 +227,36 @@ export async function getUserMonthlyPoints(
   return taskPts + extraPts;
 }
 
-/** Эталонный пользователь (100%): ищем по имени. SystemSettings extra_work_baseline_user или "Эрнес" */
-export async function getBaselineUserId(prisma: PrismaLike): Promise<string | null> {
+/** Один запрос на эталон (id+name) вместо двух; на 60 с — сотни вызовов за один aggregateRankings. */
+let baselineUserMemo: { id: string | null; name: string | null; until: number } | null = null;
+
+async function loadBaselineUser(prisma: PrismaLike): Promise<{ id: string | null; name: string | null }> {
+  const now = Date.now();
+  if (baselineUserMemo && now < baselineUserMemo.until) {
+    return { id: baselineUserMemo.id, name: baselineUserMemo.name };
+  }
   const row = await prisma.systemSettings.findUnique({
     where: { key: 'extra_work_baseline_user' },
   });
   const name = row?.value?.trim() || 'Эрнес';
   const user = await prisma.user.findFirst({
     where: { name: { contains: name } },
-    select: { id: true },
+    select: { id: true, name: true },
   });
-  return user?.id ?? null;
+  const id = user?.id ?? null;
+  const nm = user?.name ?? null;
+  baselineUserMemo = { id, name: nm, until: now + 60_000 };
+  return { id, name: nm };
+}
+
+/** Эталонный пользователь (100%): ищем по имени. SystemSettings extra_work_baseline_user или "Эрнес" */
+export async function getBaselineUserId(prisma: PrismaLike): Promise<string | null> {
+  return (await loadBaselineUser(prisma)).id;
 }
 
 /** Имя эталонного пользователя для отображения */
 export async function getBaselineUserName(prisma: PrismaLike): Promise<string | null> {
-  const row = await prisma.systemSettings.findUnique({
-    where: { key: 'extra_work_baseline_user' },
-  });
-  const name = row?.value?.trim() || 'Эрнес';
-  const user = await prisma.user.findFirst({
-    where: { name: { contains: name } },
-    select: { name: true },
-  });
-  return user?.name ?? null;
+  return (await loadBaselineUser(prisma)).name;
 }
 
 /** Коэффициент полезности: (баллы сб+пр+дик+доп.работа) / эталон. extraWorkByUser — накопленные доп.баллы до beforeDate. */
@@ -304,14 +377,24 @@ export async function getUsefulnessPctMap(
   return result;
 }
 
-/** Фиксированная ставка (баллов/мин) для 09:00–09:15 из SystemSettings */
+/** Фиксированная ставка (баллов/мин) для 09:00–09:15 из SystemSettings (мемо 60 с — сотни вызовов за aggregateRankings). */
+let startupRatePerMinMemo: { value: number; until: number } | null = null;
 async function getStartupRatePerMin(prisma: PrismaLike): Promise<number> {
+  const now = Date.now();
+  if (startupRatePerMinMemo && now < startupRatePerMinMemo.until) {
+    return startupRatePerMinMemo.value;
+  }
   const row = await prisma.systemSettings.findUnique({
     where: { key: 'extra_work_startup_rate_points_per_min' },
   });
-  if (!row?.value) return DEFAULT_STARTUP_RATE_PER_MIN;
+  if (!row?.value) {
+    startupRatePerMinMemo = { value: DEFAULT_STARTUP_RATE_PER_MIN, until: now + 60_000 };
+    return DEFAULT_STARTUP_RATE_PER_MIN;
+  }
   const parsed = parseFloat(row.value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_STARTUP_RATE_PER_MIN;
+  const v = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_STARTUP_RATE_PER_MIN;
+  startupRatePerMinMemo = { value: v, until: now + 60_000 };
+  return v;
 }
 
 /**
@@ -375,6 +458,9 @@ export type ExtraWorkSessionForPoints = {
   startedAt?: Date | null;
 };
 
+/** Защита от битых данных и чрезмерного числа итераций в цикле. */
+const MAX_ELAPSED_SEC_EXTRA_WORK_SESSION = 14 * 24 * 60 * 60;
+
 /**
  * Баллы за одну сессию по новой формуле.
  * Учитывает split 09:00–09:15 (фикс.) и после (динамика).
@@ -385,21 +471,149 @@ export async function computeExtraWorkPointsForSession(
   session: ExtraWorkSessionForPoints,
   extraWorkByUser?: Map<string, number>
 ): Promise<number> {
-  const elapsedSec = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
+  const rawElapsed = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
+  const elapsedSec = Number.isFinite(rawElapsed)
+    ? Math.min(rawElapsed, MAX_ELAPSED_SEC_EXTRA_WORK_SESSION)
+    : 0;
   if (elapsedSec <= 0) return 0;
 
   const stoppedAt = session.stoppedAt ?? new Date();
   const startedAt = session.startedAt ?? new Date(stoppedAt.getTime() - elapsedSec * 1000);
 
   const startupRate = await getStartupRatePerMin(prisma);
+
+  // One-shot prefetch: вместо DB-запросов "на каждый момент" внутри
+  // getExtraWorkPointsPerMinute считаем pace/weights в памяти.
+  type PrefetchedTask = { userId: string; effectiveTs: number; orderPoints: number };
+
+  const baselineId = await getBaselineUserId(prisma);
+
+  const earliestMonthStartTs = getMonthStartMoscowUTC(startedAt).getTime();
+  const tasksMinTs = Math.min(startedAt.getTime() - FIFTEEN_MIN_MS, earliestMonthStartTs);
+  const tasksMaxTs = stoppedAt.getTime();
+  const minDate = new Date(tasksMinTs);
+  const maxDate = new Date(tasksMaxTs);
+
+  const rows = await prisma.$queryRaw<
+    Array<{
+      userId: string;
+      roleType: string;
+      orderPoints: number | null;
+      completedAt: string | null;
+      confirmedAt: string | null;
+    }>
+  >`
+    SELECT
+      ts.user_id AS "userId",
+      ts.role_type AS "roleType",
+      ts.order_points AS "orderPoints",
+      st.completed_at AS "completedAt",
+      st.confirmed_at AS "confirmedAt"
+    FROM task_statistics ts
+    JOIN shipment_tasks st ON st.id = ts.task_id
+    WHERE
+      (ts.role_type = 'collector' AND st.completed_at BETWEEN ${minDate} AND ${maxDate})
+      OR
+      (ts.role_type IN ('checker','dictator') AND st.confirmed_at BETWEEN ${minDate} AND ${maxDate})
+  `;
+
+  const tasks: PrefetchedTask[] = rows
+    .map((r) => {
+      const orderPoints = Number(r.orderPoints ?? 0) || 0;
+      const effectiveTs =
+        r.roleType === 'collector'
+          ? (r.completedAt ? new Date(r.completedAt).getTime() : NaN)
+          : (r.confirmedAt ? new Date(r.confirmedAt).getTime() : NaN);
+      if (!Number.isFinite(effectiveTs)) return null;
+      return { userId: r.userId, effectiveTs, orderPoints };
+    })
+    .filter((x): x is PrefetchedTask => x !== null)
+    .sort((a, b) => a.effectiveTs - b.effectiveTs);
+
+  // Sliding windows in memory:
+  //  - pace window: [momentTs - 15m, momentTs] (inclusive)
+  //  - month window (для weights): [monthStartTs(MSK), momentTs] (inclusive)
+  let addIdx = 0;
+  let paceRemoveIdx = 0;
+  let monthRemoveIdx = 0;
+
+  let paceTotalPoints = 0;
+  const paceCountByUser = new Map<string, number>(); // presence для activeUserIds
+  const monthSumByUser = new Map<string, number>(); // taskPts для weights
+
+  const updateWindowsTo = (momentTs: number): void => {
+    // Add tasks up to momentTs (<= momentTs).
+    while (addIdx < tasks.length && tasks[addIdx].effectiveTs <= momentTs) {
+      const tt = tasks[addIdx];
+      paceTotalPoints += tt.orderPoints;
+      paceCountByUser.set(tt.userId, (paceCountByUser.get(tt.userId) ?? 0) + 1);
+      monthSumByUser.set(tt.userId, (monthSumByUser.get(tt.userId) ?? 0) + tt.orderPoints);
+      addIdx++;
+    }
+
+    // Remove from pace window: effectiveTs < (momentTs - 15m)
+    const paceStartTs = momentTs - FIFTEEN_MIN_MS;
+    while (paceRemoveIdx < addIdx && tasks[paceRemoveIdx].effectiveTs < paceStartTs) {
+      const tt = tasks[paceRemoveIdx];
+      paceTotalPoints -= tt.orderPoints;
+      const prev = (paceCountByUser.get(tt.userId) ?? 0) - 1;
+      if (prev <= 0) paceCountByUser.delete(tt.userId);
+      else paceCountByUser.set(tt.userId, prev);
+      paceRemoveIdx++;
+    }
+
+    // Remove from month window: effectiveTs < monthStartTs(MSK)
+    const monthStartTs = getMonthStartMoscowUTC(new Date(momentTs)).getTime();
+    while (monthRemoveIdx < addIdx && tasks[monthRemoveIdx].effectiveTs < monthStartTs) {
+      const tt = tasks[monthRemoveIdx];
+      const prev = (monthSumByUser.get(tt.userId) ?? 0) - tt.orderPoints;
+      if (prev === 0) monthSumByUser.delete(tt.userId);
+      else monthSumByUser.set(tt.userId, prev);
+      monthRemoveIdx++;
+    }
+  };
+
+  // Cache by the same 15-min bucket key as in the original code.
   const rateBy15mBucket = new Map<number, number>();
   const getDynamicRateCached = async (atUtc: Date): Promise<number> => {
+    if (isInStartupWindow(atUtc)) return startupRate;
+
     const bucket = Math.floor(atUtc.getTime() / 900_000);
     const hit = rateBy15mBucket.get(bucket);
     if (hit !== undefined) return hit;
-    const r = await getExtraWorkPointsPerMinute(prisma, session.userId, atUtc, extraWorkByUser);
-    rateBy15mBucket.set(bucket, r);
-    return r;
+
+    const momentTs = atUtc.getTime();
+    updateWindowsTo(momentTs);
+
+    const activeUserIds = Array.from(paceCountByUser.keys());
+    const points = paceTotalPoints;
+    if (activeUserIds.length === 0 || points <= 0) {
+      rateBy15mBucket.set(bucket, 0);
+      return 0;
+    }
+
+    const baselineTaskPts = baselineId ? (monthSumByUser.get(baselineId) ?? 0) : 0;
+    const baselineExtra = baselineId ? (extraWorkByUser?.get(baselineId) ?? 0) : 0;
+    const baselinePts = baselineTaskPts + baselineExtra;
+
+    const calcWeight = (uid: string): number => {
+      if (!baselineId) return 1;
+      if (baselinePts <= 0) return 1;
+      const taskPts = monthSumByUser.get(uid) ?? 0;
+      const extra = extraWorkByUser?.get(uid) ?? 0;
+      const raw = (taskPts + extra) / baselinePts;
+      return Math.max(MIN_EFFICIENCY_WEIGHT, raw);
+    };
+
+    const wUser = calcWeight(session.userId);
+    let weightSumActive = 0;
+    for (const id of activeUserIds) weightSumActive += calcWeight(id);
+
+    const denom = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
+    const ratePerMin = (points / 15) * (wUser / denom);
+    const res = Math.max(0, ratePerMin);
+    rateBy15mBucket.set(bucket, res);
+    return res;
   };
 
   let total = 0;
@@ -419,6 +633,10 @@ export async function computeExtraWorkPointsForSession(
     const toNextStartup = secondsUntilNextStartupWindowStart(cur);
     const capByStartup = toNextStartup > 0 ? Math.min(rem, toNextStartup) : rem;
     const chunk = Math.max(1, Math.min(rem, 900, capByStartup));
+    if (!(chunk > 0)) {
+      t += 1;
+      continue;
+    }
     const segEnd = new Date(startedAt.getTime() + (t + chunk) * 1000);
     const atForRate = atUtcForDynamicRateSegmentEnd(segEnd);
     const rate = await getDynamicRateCached(atForRate);

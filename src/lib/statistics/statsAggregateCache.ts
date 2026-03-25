@@ -1,13 +1,20 @@
 /**
- * Единый кэш результата aggregateRankings: свежий снимок по TTL, иначе отдаём последний
- * (stale-while-revalidate) + фоновое обновление + восстановление с диска после рестарта.
- * Цель: первый запрос клиента к /top и админ-статистике почти всегда мгновенный.
+ * Кэш aggregateRankings для HTTP: сначала память, затем таблица stats_snapshots (быстро),
+ * затем legacy-файл .cache; тяжёлый aggregateRankings в запросе — только если разрешено env.
+ *
+ * В production: STATS_SNAPSHOT_ALLOW_LEGACY_COMPUTE=false + pm2 worker (npm run worker:stats).
  */
 
 import fs from 'fs';
 import path from 'path';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 import type { RankingEntry } from '@/lib/statistics/aggregateRankings';
+import {
+  loadStatsSnapshotFromDb,
+  SNAPSHOT_WARM_KEYS,
+  statsSnapshotCacheKey,
+  saveStatsSnapshotToDb,
+} from '@/lib/statistics/statsSnapshotStore';
 
 export const AGGREGATE_CACHE_TTL_MS = 60_000;
 
@@ -16,7 +23,7 @@ export type StatsPeriod = 'today' | 'week' | 'month';
 export type AggregateSnapshotResult = Awaited<ReturnType<typeof aggregateRankings>>;
 
 function cacheKey(period: StatsPeriod, warehouse?: string): string {
-  return `${period}:${warehouse ?? ''}`;
+  return statsSnapshotCacheKey(period, warehouse);
 }
 
 function parseKey(key: string): { period: StatsPeriod; warehouse?: string } {
@@ -76,7 +83,7 @@ function loadDiskIntoMemory(): void {
         const data = deserializeEntry(ser);
         memory.set(k, { data, freshUntil: restoredFreshUntil });
       } catch {
-        /* skip bad row */
+        /* skip */
       }
     }
   } catch {
@@ -116,10 +123,30 @@ function cloneSnapshot(data: AggregateSnapshotResult): AggregateSnapshotResult {
   return structuredClone(data);
 }
 
+function emptySnapshot(): AggregateSnapshotResult {
+  return {
+    allRankings: [],
+    errorsByCollector: new Map(),
+    errorsByChecker: new Map(),
+    totalUniqueOrders: 0,
+    baselineUserName: null,
+  };
+}
+
+function allowLegacyCompute(): boolean {
+  const e = process.env.STATS_SNAPSHOT_ALLOW_LEGACY_COMPUTE;
+  if (e === 'true') return true;
+  if (e === 'false') return false;
+  return process.env.NODE_ENV !== 'production';
+}
+
 async function computeAndStore(key: string, period: StatsPeriod, warehouse?: string): Promise<void> {
   const data = await aggregateRankings(period, warehouse);
   memory.set(key, { data, freshUntil: Date.now() + AGGREGATE_CACHE_TTL_MS });
   schedulePersist();
+  // Write-through: чтобы background warm loop мог подхватить новое snapshot-значение
+  // из БД и обновить уже top-кэш (и другие процессы/инстансы).
+  await saveStatsSnapshotToDb(key, data);
 }
 
 function scheduleRefresh(key: string): void {
@@ -127,8 +154,15 @@ function scheduleRefresh(key: string): void {
   refreshing.add(key);
   void (async () => {
     try {
-      const { period, warehouse } = parseKey(key);
-      await computeAndStore(key, period, warehouse);
+      const fromDb = await loadStatsSnapshotFromDb(key);
+      if (fromDb) {
+        memory.set(key, { data: fromDb.data, freshUntil: Date.now() + AGGREGATE_CACHE_TTL_MS });
+        return;
+      }
+      if (allowLegacyCompute()) {
+        const { period, warehouse } = parseKey(key);
+        await computeAndStore(key, period, warehouse);
+      }
     } catch (e) {
       console.error('[statsAggregateCache] scheduleRefresh', key, e);
     } finally {
@@ -139,9 +173,10 @@ function scheduleRefresh(key: string): void {
 
 export type AggregateFreshness = 'fresh' | 'stale' | 'cold';
 
+export type AggregateSnapshotSource = 'memoryFresh' | 'memoryStale' | 'db' | 'disk' | 'compute' | 'empty';
+
 /**
- * Всегда отдаёт данные быстро: свежий снимок, устаревший из памяти/диска (и фоновое обновление),
- * либо один тяжёлый пересчёт только при полном отсутствии снимка.
+ * В production без legacy: данные из stats_snapshots (быстро). Иначе — память / диск / редкий расчёт.
  */
 export async function getAggregateSnapshot(
   period: StatsPeriod,
@@ -159,22 +194,209 @@ export async function getAggregateSnapshot(
     return { data: cloneSnapshot(hit.data), freshness: 'stale' };
   }
 
-  await computeAndStore(key, period, warehouseFilter);
-  const after = memory.get(key);
-  if (!after) {
-    throw new Error('[statsAggregateCache] computeAndStore did not populate memory');
+  const fromDb = await loadStatsSnapshotFromDb(key);
+  if (fromDb) {
+    memory.set(key, { data: fromDb.data, freshUntil: now + AGGREGATE_CACHE_TTL_MS });
+    const ageMs = now - fromDb.computedAt.getTime();
+    const freshness: AggregateFreshness = ageMs < AGGREGATE_CACHE_TTL_MS ? 'fresh' : 'stale';
+    return { data: cloneSnapshot(fromDb.data), freshness };
   }
-  return { data: cloneSnapshot(after.data), freshness: 'cold' };
+
+  try {
+    const raw = fs.readFileSync(CACHE_FILE, 'utf-8');
+    const parsed = JSON.parse(raw) as DiskFile;
+    const ser = parsed.snapshots?.[key];
+    if (ser) {
+      const data = deserializeEntry(ser);
+      memory.set(key, { data, freshUntil: now + AGGREGATE_CACHE_TTL_MS });
+      return { data: cloneSnapshot(data), freshness: 'stale' };
+    }
+  } catch {
+    /* no file */
+  }
+
+  if (allowLegacyCompute()) {
+    await computeAndStore(key, period, warehouseFilter);
+    const after = memory.get(key);
+    if (!after) {
+      throw new Error('[statsAggregateCache] computeAndStore did not populate memory');
+    }
+    return { data: cloneSnapshot(after.data), freshness: 'cold' };
+  }
+
+  return { data: cloneSnapshot(emptySnapshot()), freshness: 'cold' };
 }
 
-const WARM_KEYS: Array<{ period: StatsPeriod; warehouse?: string }> = [
-  { period: 'today' },
-  { period: 'week' },
-  { period: 'month' },
-  { period: 'today', warehouse: 'Склад 3' },
-  { period: 'week', warehouse: 'Склад 3' },
-  { period: 'month', warehouse: 'Склад 3' },
-];
+export type AggregateSnapshotDebug = {
+  freshness: AggregateFreshness;
+  source: AggregateSnapshotSource;
+  timingsMs: {
+    total: number;
+    memoryCheck: number;
+    dbLoad: number;
+    diskLoad: number;
+    legacyCompute: number;
+  };
+};
+
+/**
+ * Форсированный пересчёт "с нуля" и сохранение:
+ * - обновляет memory + disk cache
+ * - делает write-through в `stats_snapshots` (если таблица есть)
+ *
+ * Полезно для аудита/ручного обновления: гарантирует, что последующие запросы
+ * будут брать новый снапшот (и топ можно прогреть поверх него).
+ */
+export async function recomputeAndPersistAggregateSnapshot(
+  period: StatsPeriod,
+  warehouseFilter?: string
+): Promise<{ data: AggregateSnapshotResult }> {
+  const key = cacheKey(period, warehouseFilter);
+  await computeAndStore(key, period, warehouseFilter);
+  const after = memory.get(key);
+  if (!after) throw new Error('[statsAggregateCache] recompute did not populate memory');
+  return { data: cloneSnapshot(after.data) };
+}
+
+export async function getAggregateSnapshotWithDebug(
+  period: StatsPeriod,
+  warehouseFilter?: string,
+  opts?: { force?: boolean }
+): Promise<{ data: AggregateSnapshotResult; debug: AggregateSnapshotDebug }> {
+  const tTotal0 = Date.now();
+  const key = cacheKey(period, warehouseFilter);
+  const now = Date.now();
+
+  const timings = {
+    total: 0,
+    memoryCheck: 0,
+    dbLoad: 0,
+    diskLoad: 0,
+    legacyCompute: 0,
+  };
+
+  if (opts?.force) {
+    const tCompute0 = Date.now();
+    const computed = await aggregateRankings(period, warehouseFilter);
+    const legacyComputeMs = Date.now() - tCompute0;
+
+    return {
+      data: cloneSnapshot(computed),
+      debug: {
+        freshness: 'cold',
+        source: 'compute',
+        timingsMs: {
+          total: Date.now() - tTotal0,
+          memoryCheck: 0,
+          dbLoad: 0,
+          diskLoad: 0,
+          legacyCompute: legacyComputeMs,
+        },
+      },
+    };
+  }
+
+  const hit = (() => {
+    const t0 = Date.now();
+    const h = memory.get(key);
+    timings.memoryCheck = Date.now() - t0;
+    return h;
+  })();
+
+  if (hit && now < hit.freshUntil) {
+    const data = cloneSnapshot(hit.data);
+    return {
+      data,
+      debug: {
+        freshness: 'fresh',
+        source: 'memoryFresh',
+        timingsMs: { ...timings, total: Date.now() - tTotal0 },
+      },
+    };
+  }
+
+  if (hit) {
+    scheduleRefresh(key);
+    const data = cloneSnapshot(hit.data);
+    return {
+      data,
+      debug: {
+        freshness: 'stale',
+        source: 'memoryStale',
+        timingsMs: { ...timings, total: Date.now() - tTotal0 },
+      },
+    };
+  }
+
+  const tDb0 = Date.now();
+  const fromDb = await loadStatsSnapshotFromDb(key);
+  timings.dbLoad = Date.now() - tDb0;
+  if (fromDb) {
+    memory.set(key, { data: fromDb.data, freshUntil: now + AGGREGATE_CACHE_TTL_MS });
+    const ageMs = now - fromDb.computedAt.getTime();
+    const freshness: AggregateFreshness = ageMs < AGGREGATE_CACHE_TTL_MS ? 'fresh' : 'stale';
+    return {
+      data: cloneSnapshot(fromDb.data),
+      debug: {
+        freshness,
+        source: 'db',
+        timingsMs: { ...timings, total: Date.now() - tTotal0 },
+      },
+    };
+  }
+
+  // fallback to disk cache
+  const tDisk0 = Date.now();
+  try {
+    const raw = fs.readFileSync(CACHE_FILE, 'utf-8');
+    const parsed = JSON.parse(raw) as DiskFile;
+    const ser = parsed.snapshots?.[key];
+    if (ser) {
+      const data = deserializeEntry(ser);
+      memory.set(key, { data, freshUntil: now + AGGREGATE_CACHE_TTL_MS });
+      return {
+        data: cloneSnapshot(data),
+        debug: {
+          freshness: 'stale',
+          source: 'disk',
+          timingsMs: { ...timings, diskLoad: Date.now() - tDisk0, total: Date.now() - tTotal0 },
+        },
+      };
+    }
+  } catch {
+    /* no file */
+  } finally {
+    timings.diskLoad = Date.now() - tDisk0;
+  }
+
+  // legacy compute path
+  if (allowLegacyCompute()) {
+    const tCompute0 = Date.now();
+    await computeAndStore(key, period, warehouseFilter);
+    timings.legacyCompute = Date.now() - tCompute0;
+    const after = memory.get(key);
+    if (!after) throw new Error('[statsAggregateCache] computeAndStore did not populate memory');
+    return {
+      data: cloneSnapshot(after.data),
+      debug: {
+        freshness: 'cold',
+        source: 'compute',
+        timingsMs: { ...timings, total: Date.now() - tTotal0 },
+      },
+    };
+  }
+
+  return {
+    data: cloneSnapshot(emptySnapshot()),
+    debug: {
+      freshness: 'cold',
+      source: 'empty',
+      timingsMs: { ...timings, total: Date.now() - tTotal0 },
+    },
+  };
+}
+
+export { SNAPSHOT_WARM_KEYS };
 
 let aggregateWarming = false;
 
@@ -182,12 +404,15 @@ export async function warmAggregateSnapshots(): Promise<void> {
   if (aggregateWarming) return;
   aggregateWarming = true;
   try {
-    for (const { period, warehouse } of WARM_KEYS) {
-      const key = cacheKey(period, warehouse);
+    for (const { period, warehouse } of SNAPSHOT_WARM_KEYS) {
+      const k = cacheKey(period, warehouse);
       try {
-        await computeAndStore(key, period, warehouse);
+        const row = await loadStatsSnapshotFromDb(k);
+        if (row) {
+          memory.set(k, { data: row.data, freshUntil: Date.now() + AGGREGATE_CACHE_TTL_MS });
+        }
       } catch (e) {
-        console.error('[statsAggregateCache] warm', key, e);
+        console.error('[statsAggregateCache] warm from DB', k, e);
       }
     }
   } finally {
@@ -202,7 +427,7 @@ async function warmAllStatsCaches(): Promise<void> {
 }
 
 function startBackgroundLoop(): void {
-  if (typeof setTimeout === 'undefined' || typeof setInterval === 'undefined') return;
+  if (typeof setInterval === 'undefined') return;
 
   const g = globalThis as typeof globalThis & { __statsAggregateWarmStarted?: boolean };
   if (g.__statsAggregateWarmStarted) return;
@@ -214,10 +439,14 @@ function startBackgroundLoop(): void {
     void warmAllStatsCaches();
   }, 0);
 
+  /** Лёгкий опрос: подтянуть снимки из БД в память, без aggregateRankings в веб-процессе. */
   const interval = Math.floor(AGGREGATE_CACHE_TTL_MS * 0.5);
   setInterval(() => {
     void warmAllStatsCaches();
   }, interval);
 }
 
-startBackgroundLoop();
+const disableWarming = process.env.STATS_DISABLE_WARMING === 'true';
+if (!disableWarming) {
+  startBackgroundLoop();
+}
