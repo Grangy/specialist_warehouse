@@ -113,3 +113,20 @@ npm run stats:audit-week
    ```
 
 3. **Если расхождения в аудите:** повторно запустите `npm run stats:recalc-points -- --apply`.
+
+---
+
+## Производительность топа / бенчмарк
+
+Замер того же пути, что даёт «Загрузка рейтинга» на `/top` (ядро — `aggregateRankings`):
+
+```bash
+npm run benchmark:stats
+npm run benchmark:stats:quick
+```
+
+Опции: `--quick` (только `week`), `--http` (нужен `npm run dev` — полный HTTP-стек). Жёсткие бюджеты для CI: переменные `STATS_BUDGET_MS_TODAY`, `STATS_BUDGET_MS_WEEK`, `STATS_BUDGET_MS_MONTH`.
+
+**Почему долго:** несколько тяжёлых `findMany` по `task_statistics` + расчёт доп. работы по сессиям месяца. Цель — стабильно &lt; 2–5 с; пока не достигнуто — поднимайте `proxy_read_timeout` у nginx для `/api/statistics/`.
+
+**Дальнейшие шаги:** кэш весов эффективности по 15‑мин ведрам внутри одного `aggregateRankings`; `EXPLAIN QUERY PLAN` и индексы под даты `completedAt`/`confirmedAt`; прогрев кэша после деплоя; при необходимости — фоновый пересчёт снимка вместо полного расчёта на каждый запрос.

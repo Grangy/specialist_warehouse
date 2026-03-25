@@ -160,30 +160,36 @@ export async function getUserMonthlyPoints(
   return taskPts + extraPts;
 }
 
-/** Эталонный пользователь (100%): ищем по имени. SystemSettings extra_work_baseline_user или "Эрнес" */
-export async function getBaselineUserId(prisma: PrismaLike): Promise<string | null> {
+/** Один запрос на эталон (id+name) вместо двух; на 60 с — сотни вызовов за один aggregateRankings. */
+let baselineUserMemo: { id: string | null; name: string | null; until: number } | null = null;
+
+async function loadBaselineUser(prisma: PrismaLike): Promise<{ id: string | null; name: string | null }> {
+  const now = Date.now();
+  if (baselineUserMemo && now < baselineUserMemo.until) {
+    return { id: baselineUserMemo.id, name: baselineUserMemo.name };
+  }
   const row = await prisma.systemSettings.findUnique({
     where: { key: 'extra_work_baseline_user' },
   });
   const name = row?.value?.trim() || 'Эрнес';
   const user = await prisma.user.findFirst({
     where: { name: { contains: name } },
-    select: { id: true },
+    select: { id: true, name: true },
   });
-  return user?.id ?? null;
+  const id = user?.id ?? null;
+  const nm = user?.name ?? null;
+  baselineUserMemo = { id, name: nm, until: now + 60_000 };
+  return { id, name: nm };
+}
+
+/** Эталонный пользователь (100%): ищем по имени. SystemSettings extra_work_baseline_user или "Эрнес" */
+export async function getBaselineUserId(prisma: PrismaLike): Promise<string | null> {
+  return (await loadBaselineUser(prisma)).id;
 }
 
 /** Имя эталонного пользователя для отображения */
 export async function getBaselineUserName(prisma: PrismaLike): Promise<string | null> {
-  const row = await prisma.systemSettings.findUnique({
-    where: { key: 'extra_work_baseline_user' },
-  });
-  const name = row?.value?.trim() || 'Эрнес';
-  const user = await prisma.user.findFirst({
-    where: { name: { contains: name } },
-    select: { name: true },
-  });
-  return user?.name ?? null;
+  return (await loadBaselineUser(prisma)).name;
 }
 
 /** Коэффициент полезности: (баллы сб+пр+дик+доп.работа) / эталон. extraWorkByUser — накопленные доп.баллы до beforeDate. */
@@ -380,18 +386,12 @@ export type ExtraWorkSessionForPoints = {
  * Учитывает split 09:00–09:15 (фикс.) и после (динамика).
  * extraWorkByUser — накопленные доп.баллы до этой сессии (для полезности).
  */
-/** Защита от битых данных и чрезмерно длинных циклов (иначе aggregateRankings → 504). */
-const MAX_ELAPSED_SEC_EXTRA_WORK_SESSION = 14 * 24 * 60 * 60; // 14 суток
-
 export async function computeExtraWorkPointsForSession(
   prisma: PrismaLike,
   session: ExtraWorkSessionForPoints,
   extraWorkByUser?: Map<string, number>
 ): Promise<number> {
-  const rawElapsed = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
-  const elapsedSec = Number.isFinite(rawElapsed)
-    ? Math.min(rawElapsed, MAX_ELAPSED_SEC_EXTRA_WORK_SESSION)
-    : 0;
+  const elapsedSec = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
   if (elapsedSec <= 0) return 0;
 
   const stoppedAt = session.stoppedAt ?? new Date();
@@ -400,9 +400,6 @@ export async function computeExtraWorkPointsForSession(
   const startupRate = await getStartupRatePerMin(prisma);
   const rateBy15mBucket = new Map<number, number>();
   const getDynamicRateCached = async (atUtc: Date): Promise<number> => {
-    if (isInStartupWindow(atUtc)) {
-      return startupRate;
-    }
     const bucket = Math.floor(atUtc.getTime() / 900_000);
     const hit = rateBy15mBucket.get(bucket);
     if (hit !== undefined) return hit;
@@ -428,10 +425,6 @@ export async function computeExtraWorkPointsForSession(
     const toNextStartup = secondsUntilNextStartupWindowStart(cur);
     const capByStartup = toNextStartup > 0 ? Math.min(rem, toNextStartup) : rem;
     const chunk = Math.max(1, Math.min(rem, 900, capByStartup));
-    if (!(chunk > 0)) {
-      t += 1;
-      continue;
-    }
     const segEnd = new Date(startedAt.getTime() + (t + chunk) * 1000);
     const atForRate = atUtcForDynamicRateSegmentEnd(segEnd);
     const rate = await getDynamicRateCached(atForRate);
