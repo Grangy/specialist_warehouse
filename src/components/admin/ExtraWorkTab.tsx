@@ -272,7 +272,8 @@ export default function ExtraWorkTab() {
           <div>
             <h2 className="text-xl font-bold text-slate-100">Дополнительная работа</h2>
             <p className="text-sm text-slate-400">
-              Темп за мин = баллы за 15 мин ÷ 15; баллы/мин = темп × (вес ÷ сумма весов активных за эти 15 мин). Вес = max(30%, к/эталон). 09:00–09:15 — фикс. ставка.
+              Новая формула: баллы/мин = (баллы за 15 мин ÷ 15) × (вес ÷ сумма весов активных за окно).
+              Вес = max(30%, к/эталон). 09:00–09:15 — фиксированная ставка (без истории 15 минут).
             </p>
             <button
               type="button"
@@ -284,9 +285,18 @@ export default function ExtraWorkTab() {
             </button>
             {showFormulaHelp && (
               <div className="mt-3 p-4 rounded-lg bg-slate-800/80 border border-slate-600/50 text-xs text-slate-300 space-y-2">
-                <p><strong className="text-amber-400">Динамическая формула:</strong> темп_за_мин = сумма баллов за 15 мин ÷ 15; баллы/мин = темп_за_мин × (вес_сотрудника ÷ сумма весов всех, кто дал этот темп за 15 мин).</p>
-                <p>Вес = (сборка + проверка + диктовка + доп.работа) с начала месяца ÷ эталон ({baselineUserName ?? 'Эрнес'}=100%), не ниже 30%.</p>
-                <p><strong className="text-amber-400">09:00–09:15 МСК:</strong> фиксированная ставка (нет истории за 15 мин). Значение в system_settings.</p>
+                <p>
+                  <strong className="text-amber-400">Окно 15 минут:</strong> темп_за_мин = сумма <span className="text-slate-200">orderPoints</span> за 15 мин ÷ 15.
+                </p>
+                <p>
+                  <strong className="text-amber-400">Распределение:</strong> баллы/мин сотрудника = темп × (его вес ÷ сумма весов активных за окно).
+                </p>
+                <p>
+                  <strong className="text-amber-400">Вес:</strong> вес = max(30%, к/эталон), где к = (сборка + проверка + диктовка + доп.работа) за месяц.
+                </p>
+                <p>
+                  <strong className="text-amber-400">09:00–09:15 МСК:</strong> фиксированная ставка (без истории 15 минут).
+                </p>
               </div>
             )}
             {todayCoeff != null && coeffPeriod && (
@@ -308,7 +318,7 @@ export default function ExtraWorkTab() {
               }`}
             >
               <Briefcase className="w-4 h-4" />
-              Управление
+              Расчёт
             </button>
             <button
               type="button"
@@ -366,19 +376,19 @@ export default function ExtraWorkTab() {
 
       {/* Таблица с кнопками Назначить / Обед */}
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 overflow-x-auto">
-        <h3 className="text-lg font-bold text-slate-100 mb-4">Управление</h3>
+        <h3 className="text-lg font-bold text-slate-100 mb-4">Доп. работа по новой формуле</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-slate-400 border-b border-slate-700">
                 <th className="py-2 pr-4">Сотрудник</th>
-                <th className="py-2 pr-4" title="Баллов/мин = темп/15×(вес/∑весов); вес=max(30%,к/эталон); 09:00–09:15 — фикс.">Произв.</th>
+                <th className="py-2 pr-4">Баллы/мин</th>
                 <th className="py-2 pr-4">Часы доп. работы</th>
-                <th className="py-2 pr-4" title="Баллов/мин × минуты; 09:00–09:15 — фикс. ставка">Доп.баллы</th>
-                <th className="py-2 pr-4" title={baselineUserName ? `Полезность относительно ${baselineUserName} (100%)` : 'Полезность'}>Польз.%</th>
-                <th className="py-2 pr-4" title="Настраивается раз навсегда, применяется ко всем сессиям">Обед</th>
-                <th className="py-2 pr-4">Статус</th>
-                <th className="py-2">Действия</th>
+                <th className="py-2 pr-4">Доп.баллы</th>
+                <th className="py-2 pr-4">Вес, %</th>
+                <th className="py-2 pr-4 hidden sm:table-cell">Обед</th>
+                <th className="py-2 pr-4 hidden sm:table-cell">Статус</th>
+                <th className="py-2 hidden sm:table-cell">Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -388,18 +398,15 @@ export default function ExtraWorkTab() {
                 return (
                   <tr key={d.userId} className="border-b border-slate-700/50">
                     <td className="py-3 pr-4 font-medium text-slate-200">{d.userName}</td>
-                    <td className="py-3 pr-4 text-slate-300" title={d.productivityToday != null ? `${d.productivity.toFixed(2)} × ${d.weekdayCoefficient?.toFixed(2) ?? 1} = ${d.productivityToday.toFixed(2)} балл/час сегодня` : undefined}>
-                      {(d.productivityToday ?? d.productivity).toFixed(2)}
-                      {d.weekdayCoefficient != null && d.weekdayCoefficient !== 1 && (
-                        <span className="text-slate-500 text-xs ml-1">×{d.weekdayCoefficient.toFixed(2)}</span>
-                      )}
+                    <td className="py-3 pr-4 text-slate-300">
+                      {(((d.productivityToday ?? d.productivity) ?? 0) / 60).toFixed(2)}
                     </td>
                     <td className="py-3 pr-4 text-slate-300">{formatHours(d.extraWorkHours)}</td>
                     <td className="py-3 pr-4 text-amber-400">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
                     <td className="py-3 pr-4 text-slate-400 text-xs">
-                      {d.usefulnessPct != null ? `${d.usefulnessPct}%` : '—'}
+                      {d.usefulnessPct != null ? `${Math.max(30, d.usefulnessPct).toFixed(1)}%` : '—'}
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="py-3 pr-4 hidden sm:table-cell">
                       {canAssign ? (
                         <select
                           value={d.lunchSlot ?? ''}
@@ -418,7 +425,7 @@ export default function ExtraWorkTab() {
                         <span className="text-slate-500">{d.lunchSlot ? (d.lunchSlot === '13-14' ? '13–14' : '14–15') : '—'}</span>
                       )}
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="py-3 pr-4 hidden sm:table-cell">
                       {isActive ? (
                         <span className={`px-2 py-0.5 rounded text-xs ${sess?.status === 'lunch' ? 'bg-amber-500/30 text-amber-400' : sess?.status === 'lunch_scheduled' ? 'bg-amber-500/20 text-amber-300' : 'bg-teal-500/30 text-teal-400'}`}>
                           {sess?.status === 'lunch' ? 'Обед' : sess?.status === 'lunch_scheduled' ? 'Обед запланирован' : 'Работает'}
@@ -427,14 +434,13 @@ export default function ExtraWorkTab() {
                         <span className="text-slate-500">—</span>
                       )}
                     </td>
-                    <td className="py-3">
+                    <td className="py-3 hidden sm:table-cell">
                       <div className="flex flex-wrap gap-2">
                         {canAssign && (
                           <button
                             type="button"
                             onClick={() => handleToggleHidden(d.userId)}
                             disabled={!!togglingHiddenUserId}
-                            title={hiddenUserIds.has(d.userId) ? 'Показать в списке' : 'Скрыть (вниз)'}
                             className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 ${
                               hiddenUserIds.has(d.userId)
                                 ? 'bg-slate-600 hover:bg-slate-500 text-slate-300'
@@ -486,7 +492,7 @@ export default function ExtraWorkTab() {
               })}
               {hiddenData.length > 0 && (
                 <>
-                  <tr>
+                  <tr className="hidden">
                     <td colSpan={8} className="py-0">
                       <button
                         type="button"
@@ -508,20 +514,17 @@ export default function ExtraWorkTab() {
                       const sess = d.activeSession ?? activeSessions.find((s) => s.userId === d.userId);
                       const isActive = !!sess && sess.status !== 'stopped';
                       return (
-                        <tr key={d.userId} className="border-b border-slate-700/50 bg-slate-800/30">
+                        <tr key={d.userId} className="hidden border-b border-slate-700/50 bg-slate-800/30">
                           <td className="py-3 pr-4 font-medium text-slate-400">{d.userName}</td>
                           <td className="py-3 pr-4 text-slate-500">
-                            {(d.productivityToday ?? d.productivity).toFixed(2)}
-                            {d.weekdayCoefficient != null && d.weekdayCoefficient !== 1 && (
-                              <span className="text-slate-600 text-xs ml-1">×{d.weekdayCoefficient.toFixed(2)}</span>
-                            )}
+                            {(((d.productivityToday ?? d.productivity) ?? 0) / 60).toFixed(2)}
                           </td>
                           <td className="py-3 pr-4 text-slate-500">{formatHours(d.extraWorkHours)}</td>
                           <td className="py-3 pr-4 text-amber-500/80">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
                           <td className="py-3 pr-4 text-slate-600 text-xs">
-                            {d.usefulnessPct != null ? `${d.usefulnessPct}%` : '—'}
+                            {d.usefulnessPct != null ? `${Math.max(30, d.usefulnessPct).toFixed(1)}%` : '—'}
                           </td>
-                          <td className="py-3 pr-4">
+                          <td className="py-3 pr-4 hidden sm:table-cell">
                             {canAssign ? (
                               <select
                                 value={d.lunchSlot ?? ''}
@@ -540,7 +543,7 @@ export default function ExtraWorkTab() {
                               <span className="text-slate-600">{d.lunchSlot ? (d.lunchSlot === '13-14' ? '13–14' : '14–15') : '—'}</span>
                             )}
                           </td>
-                          <td className="py-3 pr-4">
+                          <td className="py-3 pr-4 hidden sm:table-cell">
                             {isActive ? (
                               <span className={`px-2 py-0.5 rounded text-xs ${sess?.status === 'lunch' ? 'bg-amber-500/30 text-amber-400' : sess?.status === 'lunch_scheduled' ? 'bg-amber-500/20 text-amber-300' : 'bg-teal-500/30 text-teal-400'}`}>
                                 {sess?.status === 'lunch' ? 'Обед' : sess?.status === 'lunch_scheduled' ? 'Обед запланирован' : 'Работает'}
@@ -549,13 +552,12 @@ export default function ExtraWorkTab() {
                               <span className="text-slate-600">—</span>
                             )}
                           </td>
-                          <td className="py-3">
+                          <td className="py-3 hidden sm:table-cell">
                             <div className="flex flex-wrap gap-2">
                               <button
                                 type="button"
                                 onClick={() => handleToggleHidden(d.userId)}
                                 disabled={!!togglingHiddenUserId}
-                                title="Показать в списке"
                                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-300 disabled:opacity-50"
                               >
                                 <Eye className="w-3.5 h-3.5" />
