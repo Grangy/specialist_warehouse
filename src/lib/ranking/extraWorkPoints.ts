@@ -335,34 +335,38 @@ export async function getUsefulnessPctMap(
   const monthStart = getMonthStartMoscowUTC(beforeDate);
   const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
 
-  const unique = [...new Set(userIds)];
-  const taskSums = await Promise.all(
-    unique.map((uid) =>
-      prisma.taskStatistics.aggregate({
-        where: { userId: uid, OR: taskFilterOr },
-        _sum: { orderPoints: true },
-      })
-    )
-  );
-
-  const userPtsByUid = new Map<string, number>();
-  let baselinePtsMax = 0;
-  unique.forEach((uid, i) => {
-    const taskPts = taskSums[i]?._sum?.orderPoints ?? 0;
-    const userExtra = extraWorkByUser?.get(uid) ?? 0;
-    const userErrPen = errorPenaltiesByUser?.get(uid) ?? 0;
-    const userPts = taskPts + userExtra + userErrPen;
-    userPtsByUid.set(uid, userPts);
-    if (userPts > baselinePtsMax) baselinePtsMax = userPts;
+  // Эталон 100%: топ-1 по (taskPts + extra + penalties) среди ВСЕХ пользователей в month-окне,
+  // а не только среди userIds, пришедших из админки.
+  // Это убирает ситуацию, когда «Эрнес» оставался 100%, потому что он был в списке, а топ-1 — нет.
+  const allUserTaskSums = await prisma.taskStatistics.groupBy({
+    by: ['userId'],
+    where: { OR: taskFilterOr },
+    _sum: { orderPoints: true },
   });
+
+  let baselinePtsMax = 0;
+  const taskPtsByUid = new Map<string, number>();
+  for (const r of allUserTaskSums) {
+    const uid = r.userId;
+    const taskPts = r._sum.orderPoints ?? 0;
+    taskPtsByUid.set(uid, taskPts);
+    const extra = extraWorkByUser?.get(uid) ?? 0;
+    const pen = errorPenaltiesByUser?.get(uid) ?? 0;
+    const measure = taskPts + extra + pen;
+    if (measure > baselinePtsMax) baselinePtsMax = measure;
+  }
 
   if (baselinePtsMax <= 0) return result;
 
-  unique.forEach((uid) => {
-    const userPts = userPtsByUid.get(uid) ?? 0;
+  const unique = [...new Set(userIds)];
+  for (const uid of unique) {
+    const taskPts = taskPtsByUid.get(uid) ?? 0;
+    const extra = extraWorkByUser?.get(uid) ?? 0;
+    const pen = errorPenaltiesByUser?.get(uid) ?? 0;
+    const userPts = taskPts + extra + pen;
     const pct = (userPts / baselinePtsMax) * 100;
     result.set(uid, Math.round(pct * 10) / 10);
-  });
+  }
   return result;
 }
 
