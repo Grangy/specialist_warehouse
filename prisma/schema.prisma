@@ -182,6 +182,7 @@ model ShipmentTask {
   @@index([completedAt])
   @@index([confirmedAt])
   @@index([droppedAt])
+  @@index([dictatorId, confirmedAt])
   @@map("shipment_tasks")
 }
 

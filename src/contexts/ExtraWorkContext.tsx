@@ -82,8 +82,10 @@ export function ExtraWorkProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (pathname === '/login') {
-      setSession(null);
-      prevSessionId.current = null;
+      queueMicrotask(() => {
+        setSession(null);
+        prevSessionId.current = null;
+      });
     }
   }, [pathname]);
 

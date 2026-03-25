@@ -369,16 +369,38 @@ export async function computeExtraWorkPointsForSession(
   const startedAt = session.startedAt ?? new Date(stoppedAt.getTime() - elapsedSec * 1000);
 
   const startupRate = await getStartupRatePerMin(prisma);
-  const dynamicRate = await getExtraWorkPointsPerMinute(prisma, session.userId, stoppedAt, extraWorkByUser);
+  const rateBy15mBucket = new Map<number, number>();
+  const getDynamicRateCached = async (atUtc: Date): Promise<number> => {
+    const bucket = Math.floor(atUtc.getTime() / 900_000);
+    const hit = rateBy15mBucket.get(bucket);
+    if (hit !== undefined) return hit;
+    const r = await getExtraWorkPointsPerMinute(prisma, session.userId, atUtc, extraWorkByUser);
+    rateBy15mBucket.set(bucket, r);
+    return r;
+  };
 
   let total = 0;
-  const stepSec = 60;
-  for (let t = 0; t < elapsedSec; t += stepSec) {
-    const segSec = Math.min(stepSec, elapsedSec - t);
-    const segMin = segSec / 60;
-    const segEnd = new Date(startedAt.getTime() + (t + segSec) * 1000);
-    const rate = isInStartupWindow(segEnd) ? startupRate : dynamicRate;
-    total += segMin * rate;
+  let t = 0;
+  while (t < elapsedSec) {
+    const cur = new Date(startedAt.getTime() + t * 1000);
+    const rem = elapsedSec - t;
+
+    if (isInStartupWindow(cur)) {
+      const secLeft = secondsRemainingInStartupWindow(cur);
+      const chunk = secLeft > 0 ? Math.min(rem, secLeft) : Math.min(rem, 1);
+      total += (chunk / 60) * startupRate;
+      t += chunk;
+      continue;
+    }
+
+    const toNextStartup = secondsUntilNextStartupWindowStart(cur);
+    const capByStartup = toNextStartup > 0 ? Math.min(rem, toNextStartup) : rem;
+    const chunk = Math.max(1, Math.min(rem, 900, capByStartup));
+    const segEnd = new Date(startedAt.getTime() + (t + chunk) * 1000);
+    const atForRate = atUtcForDynamicRateSegmentEnd(segEnd);
+    const rate = await getDynamicRateCached(atForRate);
+    total += (chunk / 60) * rate;
+    t += chunk;
   }
   return Math.max(0, total);
 }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, canAccessStatus } from '@/lib/middleware';
-import { cleanupExpiredSessions, verifyPassword, getSessionUser } from '@/lib/auth';
+import { cleanupExpiredSessionsIfDue, verifyPassword, getSessionUser } from '@/lib/auth';
+import { getCachedRegionLists } from '@/lib/regionPriorityCache';
 import { splitShipmentIntoTasks } from '@/lib/shipmentTasks';
 import { detectWarehouseFromLocation } from '@/lib/warehouseDetector';
 import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
@@ -517,7 +518,7 @@ export async function GET(request: NextRequest) {
     }
     const { user } = authResult;
 
-    await cleanupExpiredSessions();
+    await cleanupExpiredSessionsIfDue();
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -544,9 +545,9 @@ export async function GET(request: NextRequest) {
       where.status = { in: allowedStatuses };
     }
 
-    // Получаем приоритеты регионов для сортировки и фильтрации
-    const regionPriorities = await prisma.regionPriority.findMany();
-    
+    // Получаем приоритеты регионов для сортировки и фильтрации (кэш по sync_touch + дате)
+    const { regionPriorities, temporaries: temporariesForToday } = await getCachedRegionLists();
+
     // Определяем текущий день недели (0 = понедельник, 4 = пятница)
     const today = new Date();
     const dayOfWeek = (today.getDay() + 6) % 7; // Преобразуем воскресенье (0) в 6, понедельник (1) в 0
@@ -588,12 +589,7 @@ export async function GET(request: NextRequest) {
 
     // Временные регионы на сегодня (до 21:00 МСК): видимы сборщику и участвуют в сортировке
     if (isBeforeEndOfWorkingDay(new Date())) {
-      const todayStr = getMoscowDateString(new Date());
-      const temporaries = await prisma.temporaryRegionPriority.findMany({
-        where: { date: todayStr },
-        orderBy: { priority: 'asc' },
-      });
-      temporaries.forEach((t, index) => {
+      temporariesForToday.forEach((t, index) => {
         const nr = normalizeRegion(t.region) || t.region;
         if (nr) {
           collectorVisibleRegions.add(nr);

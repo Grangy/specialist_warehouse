@@ -18,6 +18,9 @@
 # production
 /build
 
+# server-side snapshot cache (stats aggregate JSON)
+.cache/
+
 # misc
 .DS_Store
 *.pem

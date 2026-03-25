@@ -10,6 +10,8 @@ const POLL_INTERVAL_MS = 18_000;
 const POLL_INTERVAL_MAX_MS = 120_000;
 /** После скольких ответов "нет изменений" подряд увеличивать интервал */
 const BACKOFF_AFTER_NO_UPDATES = 5;
+/** Слияние вызовов подписчиков при hasUpdates (меньше дублей GET /api/shipments) */
+const NOTIFY_DEBOUNCE_MS = 400;
 
 export interface PendingMessagePayload {
   id: string;
@@ -50,6 +52,7 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
   const currentIntervalMsRef = useRef(POLL_INTERVAL_MS);
   /** Не запускать второй poll, пока предыдущий не завершился (убирает дубли в nginx) */
   const pollInFlightRef = useRef(false);
+  const notifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [lastPollResult, setLastPollResult] = useState<LastPollResult | null>(null);
 
@@ -58,8 +61,28 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    if (notifyTimerRef.current) {
+      clearTimeout(notifyTimerRef.current);
+      notifyTimerRef.current = null;
+    }
     setIsPolling(false);
   }, []);
+
+  const flushNotifySubscribers = useCallback(() => {
+    notifyTimerRef.current = null;
+    subscribersRef.current.forEach((cb) => {
+      try {
+        cb();
+      } catch (e) {
+        console.error('[Polling] subscriber error:', e);
+      }
+    });
+  }, []);
+
+  const scheduleNotifySubscribers = useCallback(() => {
+    if (notifyTimerRef.current) clearTimeout(notifyTimerRef.current);
+    notifyTimerRef.current = setTimeout(flushNotifySubscribers, NOTIFY_DEBOUNCE_MS);
+  }, [flushNotifySubscribers]);
 
   const startPolling = useCallback(() => {
     if (subscribersRef.current.size === 0) return;
@@ -91,13 +114,7 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
       if (data.hasUpdates) {
         noUpdatesCountRef.current = 0;
         currentIntervalMsRef.current = POLL_INTERVAL_MS;
-        subscribersRef.current.forEach((cb) => {
-          try {
-            cb();
-          } catch (e) {
-            console.error('[Polling] subscriber error:', e);
-          }
-        });
+        scheduleNotifySubscribers();
       } else {
         noUpdatesCountRef.current += 1;
         if (noUpdatesCountRef.current >= BACKOFF_AFTER_NO_UPDATES) {
@@ -115,9 +132,8 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [stopPolling, startPolling]);
+  }, [stopPolling, startPolling, scheduleNotifySubscribers]);
   // Держим актуальную ссылку на poll для setInterval (избегаем циклических deps)
-  // eslint-disable-next-line react-hooks/immutability -- ref обновляется синхронно для корректного первого тика
   pollRef.current = poll;
 
   const subscribe = useCallback((callback: OnHasUpdates) => {
@@ -142,14 +158,8 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
     if (subscribersRef.current.size === 0) return;
     noUpdatesCountRef.current = 0;
     currentIntervalMsRef.current = POLL_INTERVAL_MS;
-    subscribersRef.current.forEach((cb) => {
-      try {
-        cb();
-      } catch (e) {
-        console.error('[Polling] triggerRefetch subscriber error:', e);
-      }
-    });
-  }, []);
+    scheduleNotifySubscribers();
+  }, [scheduleNotifySubscribers]);
 
   const clearPendingMessage = useCallback(() => {
     setLastPollResult((prev) =>

@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
-import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
+import { getAggregateSnapshot } from '@/lib/statistics/statsAggregateCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,13 +25,13 @@ export async function GET(request: NextRequest) {
     const warehouseFilter = user.role === 'warehouse_3' ? 'Склад 3' : undefined;
 
     const [todayData, weekData, monthData] = await Promise.all([
-      aggregateRankings('today', warehouseFilter),
-      aggregateRankings('week', warehouseFilter),
-      aggregateRankings('month', warehouseFilter),
+      getAggregateSnapshot('today', warehouseFilter),
+      getAggregateSnapshot('week', warehouseFilter),
+      getAggregateSnapshot('month', warehouseFilter),
     ]);
 
     function toOverview(
-      r: typeof todayData.allRankings,
+      r: (typeof todayData)['data']['allRankings'],
       errCol: Map<string, number>,
       errChk: Map<string, number>,
       totalOrders: number
@@ -49,22 +49,22 @@ export async function GET(request: NextRequest) {
     }
 
     const today = toOverview(
-      todayData.allRankings,
-      todayData.errorsByCollector,
-      todayData.errorsByChecker,
-      todayData.totalUniqueOrders
+      todayData.data.allRankings,
+      todayData.data.errorsByCollector,
+      todayData.data.errorsByChecker,
+      todayData.data.totalUniqueOrders
     );
     const week = toOverview(
-      weekData.allRankings,
-      weekData.errorsByCollector,
-      weekData.errorsByChecker,
-      weekData.totalUniqueOrders
+      weekData.data.allRankings,
+      weekData.data.errorsByCollector,
+      weekData.data.errorsByChecker,
+      weekData.data.totalUniqueOrders
     );
     const month = toOverview(
-      monthData.allRankings,
-      monthData.errorsByCollector,
-      monthData.errorsByChecker,
-      monthData.totalUniqueOrders
+      monthData.data.allRankings,
+      monthData.data.errorsByCollector,
+      monthData.data.errorsByChecker,
+      monthData.data.totalUniqueOrders
     );
 
     const { startDate: todayStart, endDate: todayEnd } = getStatisticsDateRange('today');

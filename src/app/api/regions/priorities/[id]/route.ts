@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { touchSync } from '@/lib/syncTouch';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,7 @@ export async function DELETE(
       where: { id },
     });
 
+    await touchSync();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Ошибка при удалении приоритета региона:', error);

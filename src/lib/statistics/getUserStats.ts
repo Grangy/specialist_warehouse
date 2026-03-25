@@ -16,8 +16,48 @@ import { getPointsRates } from '@/lib/ranking/getPointsRates';
 import { computeExtraWorkPointsForSession } from '@/lib/ranking/extraWorkPoints';
 import { getManualAdjustmentForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltyForPeriod } from '@/lib/ranking/errorPenalties';
+import { getUserStatsCacheKey } from '@/lib/statistics/userStatsCacheKey';
+
+export { getUserStatsCacheKey } from '@/lib/statistics/userStatsCacheKey';
+
+const USER_STATS_CACHE_TTL_MS = 45_000;
+type UserStatsPayload = NonNullable<Awaited<ReturnType<typeof getUserStatsUncached>>>;
+const userStatsCache = new Map<string, { expires: number; data: UserStatsPayload }>();
+
+export function peekUserStatsCache(
+  userId: string,
+  period?: 'today' | 'week' | 'month',
+  dateOverride?: string
+): UserStatsPayload | null {
+  const key = getUserStatsCacheKey(userId, period, dateOverride);
+  const hit = userStatsCache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.data;
+  return null;
+}
+
+export function clearUserStatsCache(): void {
+  userStatsCache.clear();
+}
 
 export async function getUserStats(
+  userId: string,
+  period?: 'today' | 'week' | 'month',
+  dateOverride?: string
+) {
+  const key = getUserStatsCacheKey(userId, period, dateOverride);
+  const now = Date.now();
+  const hit = userStatsCache.get(key);
+  if (hit && hit.expires > now) {
+    return hit.data;
+  }
+  const data = await getUserStatsUncached(userId, period, dateOverride);
+  if (data) {
+    userStatsCache.set(key, { expires: now + USER_STATS_CACHE_TTL_MS, data });
+  }
+  return data;
+}
+
+async function getUserStatsUncached(
   userId: string,
   period?: 'today' | 'week' | 'month',
   dateOverride?: string
@@ -40,145 +80,172 @@ export async function getUserStats(
 
   if (!user) return null;
 
-  const checkerStats = await prisma.taskStatistics.findMany({
-    where: {
-      userId: user.id,
-      roleType: 'checker',
-      ...(dateRange && {
+  const [
+    checkerStats,
+    collectorStats,
+    dictatorStats,
+    dailyStats,
+    monthlyStats,
+    rates,
+    errorCallsForDetails,
+  ] = await Promise.all([
+    prisma.taskStatistics.findMany({
+      where: {
+        userId: user.id,
+        roleType: 'checker',
+        ...(dateRange && {
+          task: {
+            confirmedAt: {
+              gte: dateRange.startDate,
+              lte: dateRange.endDate,
+            },
+          },
+        }),
+      },
+      include: {
         task: {
-          confirmedAt: {
+          select: {
+            id: true,
+            checkerId: true,
+            dictatorId: true,
+            shipment: {
+              select: {
+                id: true,
+                number: true,
+                customerName: true,
+                createdAt: true,
+                confirmedAt: true,
+              },
+            },
+            warehouse: true,
+            completedAt: true,
+            confirmedAt: true,
+            collector: { select: { name: true } },
+            checker: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    }),
+    prisma.taskStatistics.findMany({
+      where: {
+        userId: user.id,
+        roleType: 'collector',
+        ...(dateRange && {
+          task: {
+            OR: [
+              { completedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
+              { confirmedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
+              { droppedByCollectorId: user.id, droppedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
+            ],
+          },
+        }),
+      },
+      include: {
+        task: {
+          select: {
+            id: true,
+            collectorId: true,
+            dictatorId: true,
+            checkerId: true,
+            shipment: {
+              select: {
+                id: true,
+                number: true,
+                customerName: true,
+                createdAt: true,
+                confirmedAt: true,
+              },
+            },
+            warehouse: true,
+            startedAt: true,
+            completedAt: true,
+            confirmedAt: true,
+            checker: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    }),
+    prisma.taskStatistics.findMany({
+      where: {
+        userId: user.id,
+        roleType: 'dictator',
+        ...(dateRange && {
+          task: {
+            confirmedAt: {
+              gte: dateRange.startDate,
+              lte: dateRange.endDate,
+            },
+          },
+        }),
+      },
+      include: {
+        task: {
+          select: {
+            id: true,
+            dictatorId: true,
+            checkerId: true,
+            shipment: {
+              select: {
+                id: true,
+                number: true,
+                customerName: true,
+              },
+            },
+            warehouse: true,
+            confirmedAt: true,
+            checker: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    }),
+    prisma.dailyStats.findMany({
+      where: {
+        userId: user.id,
+        ...(dateRange && {
+          date: {
             gte: dateRange.startDate,
             lte: dateRange.endDate,
           },
-        },
-      }),
-    },
-    include: {
-      task: {
-        select: {
-          id: true,
-          checkerId: true,
-          dictatorId: true,
-          shipment: {
-            select: {
-              id: true,
-              number: true,
-              customerName: true,
-              createdAt: true,
-              confirmedAt: true,
+        }),
+      },
+      orderBy: { date: 'desc' },
+      take: dateRange ? 31 : 30,
+    }),
+    prisma.monthlyStats.findMany({
+      where: { userId: user.id },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      take: 12,
+    }),
+    getPointsRates(),
+    dateRange
+      ? prisma.collectorCall.findMany({
+          where: {
+            status: 'done',
+            errorCount: { gt: 0 },
+            OR: [{ checkerId: user.id }, { collectorId: user.id }],
+            task: {
+              shipment: {
+                confirmedAt: { gte: dateRange.startDate, lte: dateRange.endDate },
+              },
             },
           },
-          warehouse: true,
-          completedAt: true,
-          confirmedAt: true,
-          collector: { select: { name: true } },
-          checker: { select: { name: true } },
-        },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 500,
-  });
-
-  const collectorStats = await prisma.taskStatistics.findMany({
-    where: {
-      userId: user.id,
-      roleType: 'collector',
-      ...(dateRange && {
-        task: {
-          OR: [
-            { completedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
-            { confirmedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
-            { droppedByCollectorId: user.id, droppedAt: { gte: dateRange.startDate, lte: dateRange.endDate } },
-          ],
-        },
-      }),
-    },
-    include: {
-      task: {
-        select: {
-          id: true,
-          collectorId: true,
-          dictatorId: true,
-          checkerId: true,
-          shipment: {
-            select: {
-              id: true,
-              number: true,
-              customerName: true,
-              createdAt: true,
-              confirmedAt: true,
-            },
+          include: {
+            task: { include: { shipment: { select: { number: true } } } },
+            collector: { select: { name: true } },
+            checker: { select: { name: true } },
           },
-          warehouse: true,
-          startedAt: true,
-          completedAt: true,
-          confirmedAt: true,
-          checker: { select: { name: true } },
-        },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 500,
-  });
+          orderBy: { confirmedAt: 'desc' },
+          take: 100,
+        })
+      : Promise.resolve([]),
+  ]);
 
-  const dictatorStats = await prisma.taskStatistics.findMany({
-    where: {
-      userId: user.id,
-      roleType: 'dictator',
-      ...(dateRange && {
-        task: {
-          confirmedAt: {
-            gte: dateRange.startDate,
-            lte: dateRange.endDate,
-          },
-        },
-      }),
-    },
-    include: {
-      task: {
-        select: {
-          id: true,
-          dictatorId: true,
-          checkerId: true,
-          shipment: {
-            select: {
-              id: true,
-              number: true,
-              customerName: true,
-            },
-          },
-          warehouse: true,
-          confirmedAt: true,
-          checker: { select: { name: true } },
-        },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 500,
-  });
-
-  const dailyStats = await prisma.dailyStats.findMany({
-    where: {
-      userId: user.id,
-      ...(dateRange && {
-        date: {
-          gte: dateRange.startDate,
-          lte: dateRange.endDate,
-        },
-      }),
-    },
-    orderBy: { date: 'desc' },
-    take: dateRange ? 31 : 30,
-  });
-
-  const monthlyStats = await prisma.monthlyStats.findMany({
-    where: { userId: user.id },
-    orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    take: 12,
-  });
-
-  // Баллы за доп. работу за период (только сессии + ручные корректировки, БЕЗ error_penalty)
   let extraWorkPoints = 0;
   let errorPenalty = 0;
   if (dateRange) {
@@ -201,64 +268,64 @@ export async function getUserStats(
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
       prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
     ]);
-    for (const s of stoppedSessions) {
-      extraWorkPoints += await computeExtraWorkPointsForSession(prisma, {
-        userId: user.id,
-        elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
-        stoppedAt: s.stoppedAt,
-        startedAt: s.startedAt,
-      });
-    }
+    const stoppedPoints = await Promise.all(
+      stoppedSessions.map((s) =>
+        computeExtraWorkPointsForSession(prisma, {
+          userId: user.id,
+          elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
+          stoppedAt: s.stoppedAt,
+          startedAt: s.startedAt,
+        })
+      )
+    );
+    extraWorkPoints += stoppedPoints.reduce((a, b) => a + b, 0);
+
     const now = new Date();
-    for (const sess of activeSessions) {
-      let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
-      let virtualStartedAt = sess.startedAt;
-      if (sess.status === 'running') {
-        const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
-        elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
-        virtualStartedAt = new Date(now.getTime() - elapsed * 1000);
-      }
-      extraWorkPoints += await computeExtraWorkPointsForSession(prisma, {
-        userId: user.id,
-        elapsedSecBeforeLunch: elapsed,
-        stoppedAt: now,
-        startedAt: virtualStartedAt,
-      });
-    }
+    const activePoints = await Promise.all(
+      activeSessions.map(async (sess) => {
+        let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
+        let virtualStartedAt = sess.startedAt;
+        if (sess.status === 'running') {
+          const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
+          elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
+          virtualStartedAt = new Date(now.getTime() - elapsed * 1000);
+        }
+        return computeExtraWorkPointsForSession(prisma, {
+          userId: user.id,
+          elapsedSecBeforeLunch: elapsed,
+          stoppedAt: now,
+          startedAt: virtualStartedAt,
+        });
+      })
+    );
+    extraWorkPoints += activePoints.reduce((a, b) => a + b, 0);
+
     if (dateRange && manualSetting?.value) {
       const delta = getManualAdjustmentForPeriod(manualSetting.value, user.id, dateRange.startDate, dateRange.endDate);
       extraWorkPoints = Math.max(0, extraWorkPoints + delta);
     }
-    // error_penalty — отдельно, не показываем как «Доп.работа» (это штрафы/бонусы за ошибки)
     if (dateRange && errorPenaltiesSetting?.value) {
       errorPenalty = getErrorPenaltyForPeriod(errorPenaltiesSetting.value, user.id, dateRange.startDate, dateRange.endDate);
     }
   }
 
-  const rates = await getPointsRates();
   const checkerOnlyStats = checkerStats.filter((s) => s.task?.checkerId === user.id);
-  // Диктовка с диктовщиком (НЕ самопроверка): dictatorId === user.id && checkerId !== dictatorId
   const dictatorFromChecker = checkerStats.filter((s) => {
     const t = s.task as { dictatorId?: string; checkerId?: string } | undefined;
     if (!t?.dictatorId || t.dictatorId !== user.id) return false;
-    return !(t.checkerId && t.checkerId === t.dictatorId); // исключаем самопроверку (добавляем отдельно)
+    return !(t.checkerId && t.checkerId === t.dictatorId);
   });
-  // Самопроверка: dictatorId === checkerId === user.id — считаем диктовку (0 баллов), количество = проверкам
   const dictatorSelfCheck = checkerStats.filter((s) => {
     const t = s.task as { dictatorId?: string; checkerId?: string } | undefined;
     return t?.dictatorId === user.id && t?.checkerId === t.dictatorId;
   });
-  // collectorStats уже отфильтрованы по userId=user.id и roleType='collector' — все записи относятся к этому пользователю как сборщику.
-  // Доп. фильтр task.collectorId исключал записи при null/несовпадении.
   const collectorOnlyStats = collectorStats;
-  // Диктовка из сборки: только когда НЕ самопроверка (checkerId !== dictatorId)
   const dictatorFromCollector = collectorStats.filter((s) => {
     const t = s.task as { dictatorId?: string; checkerId?: string };
     if (t?.dictatorId !== user.id) return false;
     const isSelfCheck = t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId;
     return !isSelfCheck;
   });
-  // Исключаем dictator Stats по self-check (диктовал себе) — 0 баллов, не дублируем
   const dictatorStatsFiltered = dictatorStats.filter((s) => {
     const t = s.task as { dictatorId?: string; checkerId?: string } | undefined;
     return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
@@ -284,29 +351,8 @@ export async function getUserStats(
   const collectorTotalUnits = collectorOnlyStats.reduce((sum, stat) => sum + stat.units, 0);
   const collectorTotalOrders = new Set(collectorOnlyStats.map((s) => s.shipmentId)).size;
 
-  // За какие сборки ошибки (CollectorCall: user как checker или collector)
-  let errorDetails: Array<{ shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number }> = [];
-  if (dateRange) {
-    const calls = await prisma.collectorCall.findMany({
-      where: {
-        status: 'done',
-        errorCount: { gt: 0 },
-        OR: [{ checkerId: user.id }, { collectorId: user.id }],
-        task: {
-          shipment: {
-            confirmedAt: { gte: dateRange.startDate, lte: dateRange.endDate },
-          },
-        },
-      },
-      include: {
-        task: { include: { shipment: { select: { number: true } } } },
-        collector: { select: { name: true } },
-        checker: { select: { name: true } },
-      },
-      orderBy: { confirmedAt: 'desc' },
-      take: 100,
-    });
-    errorDetails = calls.map((c) => {
+  const errorDetails: Array<{ shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number }> =
+    errorCallsForDetails.map((c) => {
       const errCount = c.errorCount ?? 1;
       const isChecker = c.checkerId === user.id;
       const pts = isChecker ? errCount : -errCount;
@@ -317,7 +363,6 @@ export async function getUserStats(
         errorCount: errCount,
       };
     });
-  }
 
   return {
     period: dateOverride ? null : (period ?? null),
@@ -337,7 +382,7 @@ export async function getUserStats(
       totalUnits: checkerTotalUnits,
       totalOrders: checkerTotalOrders,
       totalPoints: checkerTotalPoints,
-      tasks:       checkerOnlyStats.map((stat) => {
+      tasks: checkerOnlyStats.map((stat) => {
         const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
         const dictId = (stat.task as { dictatorId?: string })?.dictatorId ?? null;
         const checkId = (stat.task as { checkerId?: string })?.checkerId || '';
@@ -348,12 +393,12 @@ export async function getUserStats(
           checkId,
           { checkSelf: rates.checkSelf, checkWithDictator: rates.checkWithDictator }
         );
-        const pts = (stat.orderPoints != null && stat.orderPoints > 0) ? stat.orderPoints : checkerPoints;
-        let formula = '';
-        const r = !dictId || dictId === checkId
-          ? (CHECK_SELF_POINTS_PER_POS[wh] ?? 0.78)
-          : (CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36])[0];
-        formula = `${stat.positions} × ${r} = ${checkerPoints.toFixed(2)}`;
+        const pts = stat.orderPoints != null && stat.orderPoints > 0 ? stat.orderPoints : checkerPoints;
+        const r =
+          !dictId || dictId === checkId
+            ? CHECK_SELF_POINTS_PER_POS[wh] ?? 0.78
+            : (CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36])[0];
+        const formula = `${stat.positions} × ${r} = ${checkerPoints.toFixed(2)}`;
         return {
           taskId: stat.taskId,
           shipmentNumber: stat.task?.shipment?.number || 'N/A',
@@ -385,12 +430,18 @@ export async function getUserStats(
         const pair = rates.checkWithDictator[wh] ?? CHECK_WITH_DICTATOR_POINTS_PER_POS[wh] ?? [0.39, 0.36];
         const rate = pair[1];
         const calculatedPts = stat.positions * rate;
-        // Для roleType=dictator используем orderPoints из БД; для dictatorFromChecker/Collector/SelfCheck — расчёт
-        const isSelfCheck = (stat.task as { dictatorId?: string; checkerId?: string })?.checkerId === (stat.task as { dictatorId?: string })?.dictatorId;
-        const pts = (stat.roleType === 'dictator' && (stat.orderPoints ?? 0) > 0)
-          ? (stat.orderPoints ?? 0)
-          : (isSelfCheck ? 0 : calculatedPts);
-        const formula = isSelfCheck ? `${stat.positions} поз. · сам с собой (0 б.)` : `${stat.positions} × ${rate} = ${calculatedPts.toFixed(2)}`;
+        const isSelfCheck =
+          (stat.task as { dictatorId?: string; checkerId?: string })?.checkerId ===
+          (stat.task as { dictatorId?: string })?.dictatorId;
+        const pts =
+          stat.roleType === 'dictator' && (stat.orderPoints ?? 0) > 0
+            ? stat.orderPoints ?? 0
+            : isSelfCheck
+              ? 0
+              : calculatedPts;
+        const formula = isSelfCheck
+          ? `${stat.positions} поз. · сам с собой (0 б.)`
+          : `${stat.positions} × ${rate} = ${calculatedPts.toFixed(2)}`;
         const t = stat.task as { checker?: { name: string }; dictatorId?: string; checkerId?: string };
         const isSc = t?.checkerId === t?.dictatorId && t?.dictatorId === user.id;
         return {
@@ -398,7 +449,7 @@ export async function getUserStats(
           shipmentNumber: stat.task?.shipment?.number || 'N/A',
           customerName: stat.task?.shipment?.customerName || 'N/A',
           warehouse: stat.warehouse,
-          checkerName: isSc ? 'сам с собой' : (t?.checker?.name ?? '—'),
+          checkerName: isSc ? 'сам с собой' : t?.checker?.name ?? '—',
           positions: stat.positions,
           orderPoints: pts,
           formula,
@@ -413,7 +464,7 @@ export async function getUserStats(
       totalUnits: collectorTotalUnits,
       totalOrders: collectorTotalOrders,
       totalPoints: collectorTotalPoints,
-      tasks:       collectorOnlyStats.map((stat) => {
+      tasks: collectorOnlyStats.map((stat) => {
         const wh = stat.warehouse || (stat.task as { warehouse?: string })?.warehouse || 'Склад 1';
         const positions = stat.positions || 0;
         const pts = stat.orderPoints ?? calculateCollectPoints(positions, wh, rates.collect);

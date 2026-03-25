@@ -137,17 +137,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
   const usePublicApiRef = useRef(usePublicApi);
   usePublicApiRef.current = usePublicApi;
 
-  useEffect(() => {
-    if (userId) {
-      loadData();
-    } else {
-      setData(null);
-      setError('');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, period, usePublicApi]);
-
-  const loadData = async () => {
+  const loadData = async (signal?: AbortSignal) => {
     if (!userId) return;
     const usePublic = usePublicApiRef.current;
     try {
@@ -155,24 +145,42 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
       setError('');
       const query = period ? `?period=${period}` : '';
       const base = usePublic ? `/api/statistics/user/${userId}/public` : `/api/statistics/user/${userId}`;
-      const res = await fetch(`${base}${query}`, { credentials: usePublic ? 'omit' : 'include' });
+      const res = await fetch(`${base}${query}`, {
+        credentials: usePublic ? 'omit' : 'include',
+        signal,
+      });
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
+        const errorData = (await res.json().catch(() => ({}))) as { error?: string; retryAfter?: number };
         if (res.status === 429) {
-          const sec = errorData.retryAfter ?? 60;
-          throw new Error(`Слишком много запросов. Подождите ${sec} сек.`);
+          const sec = typeof errorData.retryAfter === 'number' ? errorData.retryAfter : 60;
+          setError(`Слишком много запросов. Подождите ${sec} сек. или нажмите «Повторить».`);
+          return;
         }
-        throw new Error(errorData.error || 'Ошибка загрузки статистики');
+        setError(errorData.error || 'Ошибка загрузки статистики');
+        return;
       }
       const userData = await res.json();
       setData(userData);
-    } catch (error: any) {
-      setError(error?.message || 'Ошибка загрузки статистики');
-      console.error(error);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      const msg = err instanceof Error ? err.message : 'Ошибка загрузки статистики';
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!userId) {
+      setData(null);
+      setError('');
+      return;
+    }
+    const ac = new AbortController();
+    void loadData(ac.signal);
+    return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, period, usePublicApi]);
 
   const formatDateTime = (dateStr: string | null) => {
     if (!dateStr) return '—';
@@ -269,7 +277,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                 if (!res.ok) throw new Error(d.error || 'Ошибка');
                 setShowAdjustModal(null);
                 onAdjustSuccess?.();
-                loadData();
+                void loadData();
               } catch (e) {
                 alert(e instanceof Error ? e.message : 'Ошибка');
               } finally {
@@ -297,9 +305,18 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
           )}
 
           {error && (
-            <div className="bg-red-900/40 border-2 border-red-500/60 text-red-200 px-4 py-3 rounded-lg mb-4 flex items-center gap-2 animate-shake">
-              <AlertCircle className="w-5 h-5 text-red-400" />
-              <span className="font-medium">{error}</span>
+            <div className="bg-red-900/40 border-2 border-red-500/60 text-red-200 px-4 py-3 rounded-lg mb-4 flex flex-col sm:flex-row sm:items-center gap-3 animate-shake">
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+                <span className="font-medium">{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadData()}
+                className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100 text-sm font-medium touch-manipulation"
+              >
+                Повторить
+              </button>
             </div>
           )}
 

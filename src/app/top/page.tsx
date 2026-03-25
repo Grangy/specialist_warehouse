@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Trophy, RefreshCw, Calendar, HelpCircle, AlertTriangle, Package, CheckCircle, Mic, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
+import { Trophy, RefreshCw, Calendar, Clock, HelpCircle, AlertTriangle, Package, CheckCircle, Mic, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import UserStatsModal from '@/components/admin/UserStatsModal';
 import { PointsHelpModal } from '@/components/PointsHelpModal';
@@ -222,6 +222,10 @@ export default function TopPage() {
               <span>{PERIOD_LABELS[period]} ({PERIOD_HINTS[period]}) · {formatDate(date)}</span>
             </div>
           )}
+          <div className="flex items-start gap-2 text-slate-500 text-xs leading-snug rounded-lg bg-slate-800/40 border border-slate-700/50 px-3 py-2">
+            <Clock className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" aria-hidden />
+            <span>Обновление данных на сервере — не чаще чем раз в 15 минут (может отображаться предыдущий снимок).</span>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs text-slate-500">
               Места по баллам (сборка + проверка + диктовка + доп.работа)

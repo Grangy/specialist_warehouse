@@ -144,6 +144,20 @@ export function getMoscowDateString(utcNow: Date = new Date()): string {
   return `${y}-${month}-${date}`;
 }
 
+/** Начало календарного дня по Москве для момента utc (00:00 МСК) в UTC. */
+export function getMoscowDayStartUTC(utcDate: Date): Date {
+  const m = getMoscowDateParts(utcDate);
+  return startOfDayMoscowUTC(m.year, m.month, m.date);
+}
+
+/** Окно 09:00–09:15 МСК в UTC для того же календарного дня по Москве, что и utcDate. */
+export function getStartupWindow09MoscowUTC(utcDate: Date): { start: Date; end: Date } {
+  const dayStart = getMoscowDayStartUTC(utcDate);
+  const start = new Date(dayStart.getTime() + 9 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 15 * 60 * 1000);
+  return { start, end };
+}
+
 /** Текущий час по Москве (0–23). */
 export function getMoscowHour(utcNow: Date = new Date()): number {
   const moscowTime = new Date(utcNow.getTime() + MSK_OFFSET_MS);
