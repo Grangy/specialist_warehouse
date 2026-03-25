@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/middleware';
 import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 import { getMonthStartMoscowUTC, getStartupWindow09MoscowUTC } from '@/lib/utils/moscowDate';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
-import { computeExtraWorkPointsForSession, isLunchTimeMoscow, isWorkingTimeMoscow } from '@/lib/ranking/extraWorkPoints';
+import { computeExtraWorkPointsForSession, getEffectiveDenomByActiveCount, isLunchTimeMoscow, isWorkingTimeMoscow } from '@/lib/ranking/extraWorkPoints';
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 
@@ -130,8 +130,10 @@ export async function GET(request: NextRequest) {
     const weightUser = calcWeight(baseProdSelected);
     const weightPct = Math.round(weightUser * 1000) / 10;
 
-    // denom = сумма весов активных за последние 15 минут
-    const denom = warehousePace.activeUserIds.length
+    // denom = сумма весов активных за последние 15 минут,
+    // но дополнительно нормализуется по числу activeUserIds, чтобы при резком падении активных не разгоняло ставку.
+    const activeCount = warehousePace.activeUserIds.length;
+    const denomRaw = activeCount
       ? warehousePace.activeUserIds.reduce((s, uid) => {
           const ptsMonthWeekdays = ptsByUid.get(uid) ?? 0;
           const workingDaysWeekdays = workingDaysByUid.get(uid) ?? 0;
@@ -139,6 +141,7 @@ export async function GET(request: NextRequest) {
           return s + calcWeight(baseProd);
         }, 0)
       : 0;
+    const denom = getEffectiveDenomByActiveCount(denomRaw, activeCount);
 
     const pointsPerMin = warehousePace.points15m > 0 ? warehousePace.points15m / 15 : 0;
 
@@ -201,7 +204,7 @@ export async function GET(request: NextRequest) {
         denom: Math.round(denom * 1000) / 1000,
         formula: inStartupWindow
           ? 'в окне 09:00–09:15 ставка фиксированная'
-          : 'ratePerMin = (points15m/15) × (weightUser/denom)',
+          : 'ratePerMin = (points15m/15) × (weightUser/denomAdjusted), где denomAdjusted нормализован по числу activeUserIds',
         minWeight: MIN_EFFICIENCY_WEIGHT,
       },
       rate: {

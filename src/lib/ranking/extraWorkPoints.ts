@@ -26,6 +26,22 @@ const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 /** Нижняя граница веса при распределении темпа доп. работы (доля от эталона) */
 const MIN_EFFICIENCY_WEIGHT = 0.3;
 
+/**
+ * Нивелирование влияния "меньше активных => каждому улетает больше".
+ * Когда активных работников меньше целевого порога, масштабируем effective denom вверх.
+ *
+ * В результате при 15 активных и при 1 активном разница ставки становится сильно меньше,
+ * а не линейной (как было раньше).
+ */
+const ACTIVE_USERS_DAMPING_TARGET = 15;
+
+export function getEffectiveDenomByActiveCount(denom: number, activeCount: number): number {
+  if (!Number.isFinite(denom) || denom <= 0) return denom;
+  if (!Number.isFinite(activeCount) || activeCount <= 0) return denom;
+  if (activeCount >= ACTIVE_USERS_DAMPING_TARGET) return denom;
+  return denom * (ACTIVE_USERS_DAMPING_TARGET / activeCount);
+}
+
 /** Дефолтная фиксированная ставка (баллов/мин) для 09:00–09:15. ~3 б/час = 0.05 б/мин */
 const DEFAULT_STARTUP_RATE_PER_MIN = 0.05;
 
@@ -448,7 +464,8 @@ export async function getExtraWorkPointsPerMinute(
   const weightMap = await getEfficiencyWeightsForUsers(prisma, idsForWeights, atUtc, extraWorkByUser);
   const weightSumActive = activeUserIds.reduce((s, id) => s + (weightMap.get(id) ?? 1), 0);
   const wUser = weightMap.get(userId) ?? MIN_EFFICIENCY_WEIGHT;
-  const denom = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
+  const denomRaw = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
+  const denom = getEffectiveDenomByActiveCount(denomRaw, activeUserIds.length);
   const ratePerMin = (points / 15) * (wUser / denom);
   return Math.max(0, ratePerMin);
 }
@@ -547,7 +564,8 @@ export async function getExtraWorkRateDebug(
 
   const weightSumActive = activeUserIds.reduce((s, id) => s + (weightMap.get(id) ?? 1), 0);
   const wUser = weightMap.get(userId) ?? MIN_EFFICIENCY_WEIGHT;
-  const denom = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
+  const denomRaw = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
+  const denom = getEffectiveDenomByActiveCount(denomRaw, activeUserIds.length);
   const ratePerMin = (points / 15) * (wUser / denom);
 
   const weightMapObj: Record<string, number> = {};
@@ -791,7 +809,8 @@ export async function computeExtraWorkPointsForSession(
     let weightSumActive = 0;
     for (const id of activeUserIds) weightSumActive += calcWeight(id);
 
-    const denom = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
+    const denomRaw = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
+    const denom = getEffectiveDenomByActiveCount(denomRaw, activeUserIds.length);
     const ratePerMin = (points / 15) * (wUser / denom);
     const res = Math.max(0, ratePerMin);
     rateBy15mBucket.set(bucket, res);

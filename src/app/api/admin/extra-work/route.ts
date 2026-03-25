@@ -8,6 +8,7 @@ import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 import {
   computeExtraWorkPointsForSession,
   getUsefulnessPctMap,
+  getEffectiveDenomByActiveCount,
   isWorkingTimeMoscow,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
@@ -285,7 +286,9 @@ export async function GET(request: NextRequest) {
       return Math.max(MIN_EFFICIENCY_WEIGHT, raw);
     };
 
-    const denom = activeUserIds.reduce((s, uid) => s + calcWeight(uid), 0);
+    const activeCount = activeUserIds.length;
+    const denomRaw = activeUserIds.reduce((s, uid) => s + calcWeight(uid), 0);
+    const denom = getEffectiveDenomByActiveCount(denomRaw, activeCount);
     const pointsPerMin = points15m / 15;
 
     const ratePerHourByUser = new Map<string, number>();
