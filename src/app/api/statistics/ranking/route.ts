@@ -6,7 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/middleware';
 import { getAnimalLevel } from '@/lib/ranking/levels';
-import { aggregateRankings, type RankingEntry } from '@/lib/statistics/aggregateRankings';
+import type { RankingEntry } from '@/lib/statistics/aggregateRankings';
+import { getAggregateSnapshot } from '@/lib/statistics/statsAggregateCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,8 @@ export async function GET(request: NextRequest) {
     const periodParam = searchParams.get('period') || 'today';
     const period = periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
 
-    const { allRankings } = await aggregateRankings(period, warehouseFilter);
+    const { data } = await getAggregateSnapshot(period, warehouseFilter);
+    const allRankings = structuredClone(data.allRankings);
 
     assignRanks(allRankings, (e) => e.points);
 

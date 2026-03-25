@@ -433,6 +433,11 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
         </label>
       </div>
 
+      <div className="w-full max-w-3xl flex items-start gap-2 text-slate-500 text-xs leading-snug rounded-lg bg-slate-800/40 border border-slate-700/50 px-3 py-2">
+        <Clock className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" aria-hidden />
+        <span>Обновление данных на сервере — не чаще чем раз в 15 минут (может отображаться предыдущий снимок).</span>
+      </div>
+
       {/* Блок топ ошибающихся (изначально свёрнут, клик — раскрыть) */}
       {(totalCollectorErrors > 0 || totalCheckerErrors > 0 || topErrorsMerged.length > 0) && (
         <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3">

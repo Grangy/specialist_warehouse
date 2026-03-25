@@ -41,7 +41,9 @@ export const prisma =
     const client = new PrismaClient(prismaConfig);
     // Включаем WAL для SQLite — меньше блокировок при конкурентных запросах
     if (finalDatabaseUrl?.startsWith('file:') || databaseUrl?.startsWith('file:')) {
+      // WAL — меньше блокировок; busy_timeout — ждать lock до 60 с (меньше P1008 при конкуренции)
       client.$queryRawUnsafe('PRAGMA journal_mode=WAL').catch(() => {});
+      client.$queryRawUnsafe('PRAGMA busy_timeout=60000').catch(() => {});
     }
     if (enableQueryLog) {
       (client as any).$on('query', (e: { query: string; params: string; duration: number }) => {

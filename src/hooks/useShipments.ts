@@ -6,6 +6,7 @@ import { isUrgent } from '@/lib/utils/helpers';
 import type { Shipment, Tab, FilterState } from '@/types';
 import { useToast } from './useToast';
 import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
+import { formatErrorForLog } from '@/lib/formatErrorForLog';
 
 export function useShipments(options?: { showOnlyToday?: boolean }) {
   const showOnlyToday = options?.showOnlyToday ?? false;
@@ -117,7 +118,7 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
       // Показываем ошибку только один раз для других ошибок
       if (!errorShownRef.current) {
         errorShownRef.current = true;
-        console.error('Ошибка при загрузке заказов:', error);
+        console.error('Ошибка при загрузке заказов:', formatErrorForLog(error));
         showErrorRef.current('Ошибка загрузки данных, попробуйте обновить страницу');
       }
       
@@ -373,7 +374,7 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
           localStorage.removeItem('selectedWarehouse');
         }
       } catch (error) {
-        console.error('Ошибка при сохранении склада в localStorage:', error);
+        console.error('Ошибка при сохранении склада в localStorage:', formatErrorForLog(error));
       }
     }
   }, []);
@@ -384,7 +385,7 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
     try {
       await fetch(`/api/shipments/${shipmentId}/refresh`, { method: 'POST' });
     } catch (e) {
-      console.error('[useShipments] Ошибка refresh заказа:', e);
+      console.error('[useShipments] Ошибка refresh заказа:', formatErrorForLog(e));
     }
   }, []);
 

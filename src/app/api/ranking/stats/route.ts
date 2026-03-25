@@ -11,6 +11,52 @@ import { getManualAdjustmentForPeriod, getManualAdjustmentsMapForPeriod } from '
 import { getErrorPenaltyForPeriod, getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 
+function inRange(d: Date | null | undefined, start: Date, end: Date): boolean {
+  if (!d) return false;
+  const t = d.getTime();
+  return t >= start.getTime() && t <= end.getTime();
+}
+
+type UserTaskStatRow = {
+  roleType: string;
+  task: {
+    completedAt: Date | null;
+    confirmedAt: Date | null;
+    checkerId: string | null;
+    dictatorId: string | null;
+  } | null;
+};
+
+/** Разбор результата одного findMany с OR по периоду — как раньше отдельные выборки по ролям/датам задачи */
+function splitUserTaskStatsForPeriod<
+  T extends { roleType: string; task: UserTaskStatRow['task'] },
+>(
+  rows: T[],
+  userId: string,
+  start: Date,
+  end: Date
+): {
+  collectorStats: T[];
+  dictatorStatsRaw: T[];
+  collectorDictatorStatsRaw: T[];
+  checkerStats: T[];
+} {
+  const collectorStats = rows.filter(
+    (s): s is T => s.roleType === 'collector' && !!s.task && inRange(s.task.completedAt, start, end)
+  );
+  const dictatorStatsRaw = rows.filter((s): s is T => s.roleType === 'dictator');
+  const collectorDictatorStatsRaw = rows.filter(
+    (s): s is T =>
+      s.roleType === 'collector' &&
+      s.task?.dictatorId === userId &&
+      inRange(s.task?.confirmedAt ?? null, start, end)
+  );
+  const checkerStats = rows.filter(
+    (s): s is T => s.roleType === 'checker' && !!s.task && inRange(s.task.confirmedAt, start, end)
+  );
+  return { collectorStats, dictatorStatsRaw, collectorDictatorStatsRaw, checkerStats };
+}
+
 export const dynamic = 'force-dynamic';
 
 /** Кэш тяжёлого ответа в памяти процесса (снижает CPU от опроса в шапке раз в минуту) */
@@ -45,43 +91,173 @@ export async function GET(request: NextRequest) {
     const monthStart = new Date(currentYear, currentMonth - 1, 1);
     const monthEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999);
 
-    // Получаем TaskStatistics за сегодня (раздельно для сборщика и проверяльщика)
-    const collectorStatsToday = await prisma.taskStatistics.findMany({
-      where: {
-        userId: user.id,
-        roleType: 'collector',
-        task: {
-          completedAt: {
-            gte: today,
-            lte: todayEnd,
-          },
-        },
-      },
-    });
+    const taskSelectUser = {
+      checkerId: true,
+      dictatorId: true,
+      completedAt: true,
+      confirmedAt: true,
+    } as const;
 
-    // Баллы диктовщика: roleType='dictator' (новые) или roleType='collector' где dictatorId=user (legacy)
-    // Самопроверка (checkerId === dictatorId) — 0 баллов, не включаем
-    const [dictatorStatsTodayRaw, collectorDictatorStatsTodayRaw] = await Promise.all([
+    const userTaskOrToday = [
+      { roleType: 'collector' as const, task: { completedAt: { gte: today, lte: todayEnd } } },
+      { roleType: 'dictator' as const, task: { confirmedAt: { gte: today, lte: todayEnd } } },
+      {
+        roleType: 'collector' as const,
+        task: { dictatorId: user.id, confirmedAt: { gte: today, lte: todayEnd } },
+      },
+      { roleType: 'checker' as const, task: { confirmedAt: { gte: today, lte: todayEnd } } },
+    ];
+
+    const userTaskOrMonth = [
+      { roleType: 'collector' as const, task: { completedAt: { gte: monthStart, lte: monthEnd } } },
+      { roleType: 'dictator' as const, task: { confirmedAt: { gte: monthStart, lte: monthEnd } } },
+      {
+        roleType: 'collector' as const,
+        task: { dictatorId: user.id, confirmedAt: { gte: monthStart, lte: monthEnd } },
+      },
+      { roleType: 'checker' as const, task: { confirmedAt: { gte: monthStart, lte: monthEnd } } },
+    ];
+
+    const extraWorkSelect = {
+      userId: true,
+      elapsedSecBeforeLunch: true,
+      stoppedAt: true,
+      startedAt: true,
+    } as const;
+
+    const [
+      userStatsTodayRaw,
+      userStatsMonthRaw,
+      allCollectorStatsToday,
+      allCollectorDictatorStatsToday,
+      allCheckerStatsToday,
+      allCollectorStatsMonth,
+      allCollectorDictatorStatsMonth,
+      allCheckerStatsMonth,
+      extraWorkToday,
+      extraWorkMonth,
+      activeSessionsUser,
+      activeSessionsAll,
+      allExtraWorkToday,
+      allExtraWorkMonth,
+      dailyStatsForAchievements,
+      rankingSettingsRows,
+    ] = await Promise.all([
       prisma.taskStatistics.findMany({
-        where: {
-          userId: user.id,
-          roleType: 'dictator',
-          task: { confirmedAt: { gte: today, lte: todayEnd } },
-        },
-        include: { task: { select: { checkerId: true, dictatorId: true } } },
+        where: { userId: user.id, OR: userTaskOrToday },
+        include: { task: { select: taskSelectUser } },
+      }),
+      prisma.taskStatistics.findMany({
+        where: { userId: user.id, OR: userTaskOrMonth },
+        include: { task: { select: taskSelectUser } },
       }),
       prisma.taskStatistics.findMany({
         where: {
-          userId: user.id,
+          roleType: 'collector',
+          task: { completedAt: { gte: today, lte: todayEnd } },
+        },
+        include: { user: { select: { id: true, role: true } } },
+      }),
+      prisma.taskStatistics.findMany({
+        where: {
           roleType: 'collector',
           task: {
-            dictatorId: user.id,
+            dictatorId: { not: null },
             confirmedAt: { gte: today, lte: todayEnd },
           },
         },
-        include: { task: { select: { checkerId: true, dictatorId: true } } },
+        include: {
+          user: { select: { id: true, role: true } },
+          task: { select: { dictatorId: true, checkerId: true } },
+        },
+      }),
+      prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'checker',
+          task: { confirmedAt: { gte: today, lte: todayEnd } },
+        },
+        include: { user: { select: { id: true, role: true } } },
+      }),
+      prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          task: { completedAt: { gte: monthStart, lte: monthEnd } },
+        },
+        include: { user: { select: { id: true, role: true } } },
+      }),
+      prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'collector',
+          task: {
+            dictatorId: { not: null },
+            confirmedAt: { gte: monthStart, lte: monthEnd },
+          },
+        },
+        include: {
+          user: { select: { id: true, role: true } },
+          task: { select: { dictatorId: true, checkerId: true } },
+        },
+      }),
+      prisma.taskStatistics.findMany({
+        where: {
+          roleType: 'checker',
+          task: { confirmedAt: { gte: monthStart, lte: monthEnd } },
+        },
+        include: { user: { select: { id: true, role: true } } },
+      }),
+      prisma.extraWorkSession.findMany({
+        where: {
+          userId: user.id,
+          status: 'stopped',
+          stoppedAt: { gte: today, lte: todayEnd },
+        },
+        select: extraWorkSelect,
+      }),
+      prisma.extraWorkSession.findMany({
+        where: {
+          userId: user.id,
+          status: 'stopped',
+          stoppedAt: { gte: monthStart, lte: monthEnd },
+        },
+        select: extraWorkSelect,
+      }),
+      prisma.extraWorkSession.findMany({
+        where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+      }),
+      prisma.extraWorkSession.findMany({
+        where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+      }),
+      prisma.extraWorkSession.findMany({
+        where: { status: 'stopped', stoppedAt: { gte: today, lte: todayEnd } },
+        select: extraWorkSelect,
+      }),
+      prisma.extraWorkSession.findMany({
+        where: { status: 'stopped', stoppedAt: { gte: monthStart, lte: monthEnd } },
+        select: extraWorkSelect,
+      }),
+      prisma.dailyStats
+        .findUnique({
+          where: {
+            userId_date: {
+              userId: user.id,
+              date: today,
+            },
+          },
+          include: { achievements: true },
+        })
+        .catch(() => null),
+      prisma.systemSettings.findMany({
+        where: { key: { in: ['extra_work_manual_adjustments', 'error_penalty_adjustments'] } },
       }),
     ]);
+
+    const splitToday = splitUserTaskStatsForPeriod(userStatsTodayRaw, user.id, today, todayEnd);
+    type UserTaskRowToday = (typeof userStatsTodayRaw)[number];
+    const collectorStatsToday = splitToday.collectorStats as UserTaskRowToday[];
+    const dictatorStatsTodayRaw = splitToday.dictatorStatsRaw as UserTaskRowToday[];
+    const collectorDictatorStatsTodayRaw = splitToday.collectorDictatorStatsRaw as UserTaskRowToday[];
+    const checkerStatsToday = splitToday.checkerStats as UserTaskRowToday[];
+
     const dictatorStatsToday = dictatorStatsTodayRaw.filter((s) => {
       const t = s.task as { checkerId?: string; dictatorId?: string };
       return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
@@ -91,55 +267,13 @@ export async function GET(request: NextRequest) {
       return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
     });
 
-    const checkerStatsToday = await prisma.taskStatistics.findMany({
-      where: {
-        userId: user.id,
-        roleType: 'checker',
-        task: {
-          confirmedAt: {
-            gte: today,
-            lte: todayEnd,
-          },
-        },
-      },
-    });
+    const splitMonth = splitUserTaskStatsForPeriod(userStatsMonthRaw, user.id, monthStart, monthEnd);
+    type UserTaskRowMonth = (typeof userStatsMonthRaw)[number];
+    const collectorStatsMonth = splitMonth.collectorStats as UserTaskRowMonth[];
+    const dictatorStatsMonthRaw = splitMonth.dictatorStatsRaw as UserTaskRowMonth[];
+    const collectorDictatorStatsMonthRaw = splitMonth.collectorDictatorStatsRaw as UserTaskRowMonth[];
+    const checkerStatsMonth = splitMonth.checkerStats as UserTaskRowMonth[];
 
-    // Получаем TaskStatistics за месяц
-    const collectorStatsMonth = await prisma.taskStatistics.findMany({
-      where: {
-        userId: user.id,
-        roleType: 'collector',
-        task: {
-          completedAt: {
-            gte: monthStart,
-            lte: monthEnd,
-          },
-        },
-      },
-    });
-
-    // Баллы диктовщика за месяц (исключаем самопроверку)
-    const [dictatorStatsMonthRaw, collectorDictatorStatsMonthRaw] = await Promise.all([
-      prisma.taskStatistics.findMany({
-        where: {
-          userId: user.id,
-          roleType: 'dictator',
-          task: { confirmedAt: { gte: monthStart, lte: monthEnd } },
-        },
-        include: { task: { select: { checkerId: true, dictatorId: true } } },
-      }),
-      prisma.taskStatistics.findMany({
-        where: {
-          userId: user.id,
-          roleType: 'collector',
-          task: {
-            dictatorId: user.id,
-            confirmedAt: { gte: monthStart, lte: monthEnd },
-          },
-        },
-        include: { task: { select: { checkerId: true, dictatorId: true } } },
-      }),
-    ]);
     const dictatorStatsMonth = dictatorStatsMonthRaw.filter((s) => {
       const t = s.task as { checkerId?: string; dictatorId?: string };
       return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
@@ -149,103 +283,77 @@ export async function GET(request: NextRequest) {
       return !(t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId);
     });
 
-    const checkerStatsMonth = await prisma.taskStatistics.findMany({
-      where: {
-        userId: user.id,
-        roleType: 'checker',
-        task: {
-          confirmedAt: {
-            gte: monthStart,
-            lte: monthEnd,
-          },
-        },
-      },
-    });
+    const manualAdjustmentsSetting =
+      rankingSettingsRows.find((r: { key: string }) => r.key === 'extra_work_manual_adjustments') ?? null;
+    const errorPenaltiesSetting =
+      rankingSettingsRows.find((r: { key: string }) => r.key === 'error_penalty_adjustments') ?? null;
 
-    // Баллы за доп. работу за сегодня и за месяц (для текущего пользователя)
-    const [extraWorkToday, extraWorkMonth, activeSessionsUser, activeSessionsAll] = await Promise.all([
-      prisma.extraWorkSession.findMany({
-        where: {
-          userId: user.id,
-          status: 'stopped',
-          stoppedAt: { gte: today, lte: todayEnd },
-        },
-        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
-      }),
-      prisma.extraWorkSession.findMany({
-        where: {
-          userId: user.id,
-          status: 'stopped',
-          stoppedAt: { gte: monthStart, lte: monthEnd },
-        },
-        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
-      }),
-      prisma.extraWorkSession.findMany({
-        where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
-      }),
-      prisma.extraWorkSession.findMany({
-        where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
-      }),
-    ]);
-    // Баллы за доп. работу всех пользователей за сегодня и месяц (для рангов)
-    const [allExtraWorkToday, allExtraWorkMonth] = await Promise.all([
-      prisma.extraWorkSession.findMany({
-        where: { status: 'stopped', stoppedAt: { gte: today, lte: todayEnd } },
-        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
-      }),
-      prisma.extraWorkSession.findMany({
-        where: { status: 'stopped', stoppedAt: { gte: monthStart, lte: monthEnd } },
-        select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
-      }),
-    ]);
+    let dailyAchievements: { type: string; value: unknown }[] = [];
+    if (dailyStatsForAchievements?.achievements?.length) {
+      dailyAchievements = dailyStatsForAchievements.achievements.map(
+        (a: { achievementType: string; achievementValue: unknown }) => ({
+          type: a.achievementType,
+          value: a.achievementValue,
+        })
+      );
+    }
 
-    const [dailyStopped, monthlyStopped, extraWorkTodayMap, extraWorkMonthMap, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
+    const [dailyStopped, monthlyStopped, extraWorkTodayMap, extraWorkMonthMap] = await Promise.all([
       computeExtraWorkPointsForSessions(prisma, extraWorkToday),
       computeExtraWorkPointsForSessions(prisma, extraWorkMonth),
       computeExtraWorkPointsMap(prisma, allExtraWorkToday),
       computeExtraWorkPointsMap(prisma, allExtraWorkMonth),
-      prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
-      prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
     ]);
 
     // Добавляем баллы от активных сессий (real-time)
-    let dailyActivePts = 0;
-    let monthlyActivePts = 0;
-    for (const sess of activeSessionsUser) {
+    type ActiveEwSess = {
+      elapsedSecBeforeLunch?: number | null;
+      startedAt?: Date | null;
+      status: string;
+      postLunchStartedAt?: Date | null;
+    };
+    const activeSessionArgs = (sess: ActiveEwSess, uid: string) => {
       let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
       let virtualStartedAt = sess.startedAt;
       if (sess.status === 'running') {
-        const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
-        elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
+        const segStart = sess.postLunchStartedAt ?? sess.startedAt;
+        if (segStart) {
+          elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
+        }
         virtualStartedAt = new Date(now.getTime() - elapsed * 1000);
       }
-      const pts = await computeExtraWorkPointsForSession(prisma, {
-        userId: user.id,
+      return {
+        userId: uid,
         elapsedSecBeforeLunch: elapsed,
         stoppedAt: now,
         startedAt: virtualStartedAt,
-      });
-      dailyActivePts += pts;
-      monthlyActivePts += pts;
-    }
-    let dailyExtraWorkPoints = dailyStopped + dailyActivePts;
-    let monthlyExtraWorkPoints = monthlyStopped + monthlyActivePts;
+      };
+    };
+
+    const userActivePtsList = await Promise.all(
+      activeSessionsUser.map((sess: ActiveEwSess) =>
+        computeExtraWorkPointsForSession(
+          prisma,
+          activeSessionArgs(sess, user.id)
+        )
+      )
+    );
+    const activePtsSum = userActivePtsList.reduce((a: number, b: number) => a + b, 0);
+    let dailyExtraWorkPoints = dailyStopped + activePtsSum;
+    let monthlyExtraWorkPoints = monthlyStopped + activePtsSum;
 
     // Добавляем баллы активных сессий в карты для рангов (все пользователи)
-    for (const sess of activeSessionsAll) {
-      let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
-      let virtualStartedAt = sess.startedAt;
-      if (sess.status === 'running') {
-        const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
-        elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
-        virtualStartedAt = new Date(now.getTime() - elapsed * 1000);
-      }
-      const pts = await computeExtraWorkPointsForSession(prisma, {
-        userId: sess.userId,
-        elapsedSecBeforeLunch: elapsed,
-        stoppedAt: now,
-        startedAt: virtualStartedAt,
-      });
+    const allActivePtsList = await Promise.all(
+      activeSessionsAll.map((sess: ActiveEwSess & { userId: string }) =>
+        computeExtraWorkPointsForSession(
+          prisma,
+          activeSessionArgs(sess, sess.userId)
+        )
+      )
+    );
+    for (let i = 0; i < activeSessionsAll.length; i++) {
+      const sess = activeSessionsAll[i];
+      const pts = allActivePtsList[i] ?? 0;
       const curToday = extraWorkTodayMap.get(sess.userId) ?? 0;
       extraWorkTodayMap.set(sess.userId, curToday + pts);
       const curMonth = extraWorkMonthMap.get(sess.userId) ?? 0;
@@ -269,7 +377,6 @@ export async function GET(request: NextRequest) {
     let dailyChecker = null;
     let dailyRank = null;
     let dailyLevel = null;
-    let dailyAchievements: any[] = [];
 
     if (user.role === 'collector' || user.role === 'admin') {
       const filtered = collectorStatsToday.filter((s) => s.positions > 0 && s.orderPoints !== null);
@@ -401,65 +508,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Рассчитываем ранги так же, как в админке - раздельно для сборщиков и проверяльщиков
-    // Получаем все TaskStatistics за сегодня для расчета рангов (с информацией о пользователе)
-    const allCollectorStatsToday = await prisma.taskStatistics.findMany({
-      where: {
-        roleType: 'collector',
-        task: {
-          completedAt: {
-            gte: today,
-            lte: todayEnd,
-          },
-        },
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            role: true,
-          },
-        },
-      },
-    });
-
-    // Баллы диктовщиков (сборщиков) за сегодня — для ранга как в общем топе. Исключаем самопроверку.
-    const allCollectorDictatorStatsToday = await prisma.taskStatistics.findMany({
-      where: {
-        roleType: 'collector',
-        task: {
-          dictatorId: { not: null },
-          confirmedAt: { gte: today, lte: todayEnd },
-        },
-      },
-      include: { user: { select: { id: true, role: true } }, task: { select: { dictatorId: true, checkerId: true } } },
-    });
-    const collectorDictatorStatsTodayFiltered = allCollectorDictatorStatsToday.filter((s) => {
+    // Ранги: allCollectorStatsToday / allCollectorDictatorStatsToday / allCheckerStatsToday загружены одним батчем выше
+    const collectorDictatorStatsTodayFiltered = allCollectorDictatorStatsToday.filter(
+      (s: (typeof allCollectorDictatorStatsToday)[number]) => {
       const t = s.task as { dictatorId?: string; checkerId?: string };
       if (s.userId !== t?.dictatorId) return false;
       const isSelfCheck = t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId;
       return !isSelfCheck;
-    });
-
-    const allCheckerStatsToday = await prisma.taskStatistics.findMany({
-      where: {
-        roleType: 'checker',
-        task: {
-          confirmedAt: {
-            gte: today,
-            lte: todayEnd,
-          },
-        },
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            role: true,
-          },
-        },
-      },
-    });
+    }
+    );
 
     // Группируем по пользователям и рассчитываем ранги для сборщиков за сегодня (сборка + баллы диктовщика)
     const collectorMapToday = new Map<string, number>();
@@ -573,86 +630,14 @@ export async function GET(request: NextRequest) {
       dailyLevel = getAnimalLevel(rank);
     }
 
-    // Получаем достижения из DailyStats
-    try {
-      const dailyStatsForAchievements = await prisma.dailyStats.findUnique({
-        where: {
-          userId_date: {
-            userId: user.id,
-            date: today,
-          },
-        },
-        include: {
-          achievements: true,
-        },
-      });
-      if (dailyStatsForAchievements) {
-        dailyAchievements = dailyStatsForAchievements.achievements?.map((a: any) => ({
-          type: a.achievementType,
-          value: a.achievementValue,
-        })) || [];
+    const collectorDictatorStatsMonthFiltered = allCollectorDictatorStatsMonth.filter(
+      (s: (typeof allCollectorDictatorStatsMonth)[number]) => {
+        const t = s.task as { dictatorId?: string; checkerId?: string };
+        if (s.userId !== t?.dictatorId) return false;
+        const isSelfCheck = t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId;
+        return !isSelfCheck;
       }
-    } catch (error: any) {
-      console.error('[API Ranking Stats] Ошибка при получении достижений:', error.message);
-    }
-
-    // Получаем все TaskStatistics за месяц для расчета рангов (с информацией о пользователе)
-    const allCollectorStatsMonth = await prisma.taskStatistics.findMany({
-      where: {
-        roleType: 'collector',
-        task: {
-          completedAt: {
-            gte: monthStart,
-            lte: monthEnd,
-          },
-        },
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            role: true,
-          },
-        },
-      },
-    });
-
-    const allCollectorDictatorStatsMonth = await prisma.taskStatistics.findMany({
-      where: {
-        roleType: 'collector',
-        task: {
-          dictatorId: { not: null },
-          confirmedAt: { gte: monthStart, lte: monthEnd },
-        },
-      },
-      include: { user: { select: { id: true, role: true } }, task: { select: { dictatorId: true, checkerId: true } } },
-    });
-    const collectorDictatorStatsMonthFiltered = allCollectorDictatorStatsMonth.filter((s) => {
-      const t = s.task as { dictatorId?: string; checkerId?: string };
-      if (s.userId !== t?.dictatorId) return false;
-      const isSelfCheck = t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId;
-      return !isSelfCheck;
-    });
-
-    const allCheckerStatsMonth = await prisma.taskStatistics.findMany({
-      where: {
-        roleType: 'checker',
-        task: {
-          confirmedAt: {
-            gte: monthStart,
-            lte: monthEnd,
-          },
-        },
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            role: true,
-          },
-        },
-      },
-    });
+    );
 
     // Группируем по пользователям и рассчитываем ранги для сборщиков за месяц (сборка + баллы диктовщика)
     const collectorMapMonth = new Map<string, number>();

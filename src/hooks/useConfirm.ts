@@ -5,6 +5,7 @@ import { shipmentsApi } from '@/lib/api/shipments';
 import type { Shipment, ConfirmChecklistState } from '@/types';
 import { useToast } from './useToast';
 import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
+import { formatErrorForLog } from '@/lib/formatErrorForLog';
 
 interface UseConfirmOptions {
   onClose?: () => void | Promise<void>;
@@ -91,13 +92,13 @@ export function useConfirm(options?: UseConfirmOptions) {
                 });
               }
             } catch (error) {
-              console.error(`[useConfirm] Ошибка при сохранении места для позиции ${lineIndex}:`, error);
+              console.error(`[useConfirm] Ошибка при сохранении места для позиции ${lineIndex}:`, formatErrorForLog(error));
             }
           }
         });
         await Promise.all(savePromises);
       } catch (error) {
-        console.error('[useConfirm] Ошибка при сохранении измененных мест:', error);
+        console.error('[useConfirm] Ошибка при сохранении измененных мест:', formatErrorForLog(error));
       }
     }
     
@@ -113,7 +114,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       try {
         await onClose();
       } catch (error) {
-        console.error('Ошибка при обновлении данных после закрытия:', error);
+        console.error('Ошибка при обновлении данных после закрытия:', formatErrorForLog(error));
       }
     }
   }, [onClose, currentShipment, changedLocations, polling]);
@@ -161,7 +162,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
         .then(() => polling?.triggerRefetch())
         .catch((error) => {
-          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ:', error);
+          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ:', formatErrorForLog(error));
         });
 
       return newState;
@@ -211,7 +212,7 @@ export function useConfirm(options?: UseConfirmOptions) {
       shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
         .then(() => polling?.triggerRefetch())
         .catch((error) => {
-          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после редактирования:', error);
+          console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после редактирования:', formatErrorForLog(error));
         });
 
       return newState;
@@ -303,7 +304,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         throw new Error(`Ошибка при сохранении места: ${errorMsg}`);
       }
     } catch (error) {
-      console.error('[useConfirm] Ошибка при сохранении места:', error);
+      console.error('[useConfirm] Ошибка при сохранении места:', formatErrorForLog(error));
       showError('Не удалось сохранить место');
       // Не удаляем из changedLocations, чтобы попытаться сохранить при закрытии
     }
@@ -351,7 +352,7 @@ export function useConfirm(options?: UseConfirmOptions) {
           shipmentsApi.saveConfirmationProgress(taskId, { lines: linesData })
             .then(() => polling?.triggerRefetch())
             .catch((error) => {
-              console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после подтверждения:', error);
+              console.error('[useConfirm] Ошибка при сохранении прогресса ПРОВЕРКИ после подтверждения:', formatErrorForLog(error));
             });
         }
         
@@ -449,7 +450,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         return { completed: false };
       }
     } catch (error: any) {
-      console.error('[useConfirm] Ошибка подтверждения заказа:', error);
+      console.error('[useConfirm] Ошибка подтверждения заказа:', formatErrorForLog(error));
       showError('Не удалось подтвердить заказ: ' + (error?.message || 'Неизвестная ошибка'));
       throw error;
     }
@@ -557,7 +558,7 @@ export function useConfirm(options?: UseConfirmOptions) {
         return { completed: false, response };
       }
     } catch (error: any) {
-      console.error('[useConfirm] Ошибка при подтверждении всех позиций:', error);
+      console.error('[useConfirm] Ошибка при подтверждении всех позиций:', formatErrorForLog(error));
       showError(error.message || 'Не удалось подтвердить все позиции');
       throw error;
     }

@@ -5,6 +5,7 @@ import { shipmentsApi } from '@/lib/api/shipments';
 import type { Shipment, ShipmentLine, CollectChecklistState } from '@/types';
 import { useToast } from './useToast';
 import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
+import { formatApiClientErrorMessage, formatErrorForLog } from '@/lib/formatErrorForLog';
 
 interface UseCollectOptions {
   onClose?: () => void | Promise<void>;
@@ -46,7 +47,7 @@ export function useCollect(options?: UseCollectOptions) {
           heartbeatFailuresRef.current = 0;
         })
         .catch((error) => {
-          console.error('[useCollect] Ошибка heartbeat:', error);
+          console.error('[useCollect] Ошибка heartbeat:', formatErrorForLog(error));
           heartbeatFailuresRef.current += 1;
           if (heartbeatFailuresRef.current >= HEARTBEAT_FAILURES_TO_EXIT) {
             if (heartbeatIntervalRef.current) {
@@ -91,13 +92,13 @@ export function useCollect(options?: UseCollectOptions) {
                 console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, { status: response.status, error: errorText });
               }
             } catch (error) {
-              console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, error);
+                console.error(`[useCollect] Ошибка при сохранении места для позиции ${lineIndex}:`, formatErrorForLog(error));
             }
           }
         });
         await Promise.all(savePromises);
       } catch (error) {
-        console.error('[useCollect] Ошибка при сохранении измененных мест:', error);
+        console.error('[useCollect] Ошибка при сохранении измененных мест:', formatErrorForLog(error));
       }
     }
 
@@ -125,7 +126,7 @@ export function useCollect(options?: UseCollectOptions) {
       try {
         await onClose();
       } catch (error) {
-        console.error('Ошибка при обновлении данных после закрытия:', error);
+        console.error('Ошибка при обновлении данных после закрытия:', formatErrorForLog(error));
       }
     }
   }, [lockedShipmentId, onClose, stopHeartbeat, currentShipment, changedLocations, polling]);
@@ -144,21 +145,23 @@ export function useCollect(options?: UseCollectOptions) {
       let lockResponse;
       try {
         lockResponse = await shipmentsApi.lock(shipment.id, options);
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const code =
+          error && typeof error === 'object' && 'code' in error
+            ? String((error as { code?: unknown }).code)
+            : '';
         // CAN_TAKE_OVER — перехват возможен, нужен алерт «Вы точно уверены?»; пробрасываем наверх
-        if (error?.code === 'CAN_TAKE_OVER') {
+        if (code === 'CAN_TAKE_OVER') {
           setIsLocking(false);
           setLockingShipmentId(null);
           throw error;
         }
         // Остальные ошибки блокировки (409 LOCKED_BY_OTHER и др.)
-        console.error('[useCollect] Ошибка блокировки:', error);
-        let message = 'Задание уже начато другим сборщиком. Только администратор может вмешаться в сборку.';
-        if (error?.message) {
-          message = error.message;
-        } else if (typeof error === 'string') {
-          message = error;
-        }
+        console.error('[useCollect] Ошибка блокировки:', formatErrorForLog(error));
+        const fromApi = formatApiClientErrorMessage(error);
+        let message =
+          fromApi ??
+          'Задание уже начато другим сборщиком. Только администратор может вмешаться в сборку.';
         showError(message);
         setIsLocking(false);
         setLockingShipmentId(null);
@@ -231,9 +234,12 @@ export function useCollect(options?: UseCollectOptions) {
       };
       connectionLostCallbackRef.current = onLost;
       startHeartbeat(actualShipment.id, onLost);
-    } catch (error: any) {
-      console.error('[useCollect] Ошибка блокировки заказа:', error);
-      const errorMessage = error?.message || 'Не удалось заблокировать заказ';
+    } catch (error: unknown) {
+      console.error('[useCollect] Ошибка блокировки заказа:', formatErrorForLog(error));
+      const errorMessage =
+        formatApiClientErrorMessage(error) ||
+        (error instanceof Error ? error.message : null) ||
+        'Не удалось заблокировать заказ';
       showError(errorMessage);
     } finally {
       setIsLocking(false);
@@ -299,7 +305,7 @@ export function useCollect(options?: UseCollectOptions) {
             shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
               .then(() => polling?.triggerRefetch())
               .catch((error) => {
-                console.error('[useCollect] Ошибка при сохранении прогресса:', error);
+                console.error('[useCollect] Ошибка при сохранении прогресса:', formatErrorForLog(error));
               });
           }
           
@@ -356,7 +362,7 @@ export function useCollect(options?: UseCollectOptions) {
           shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
             .then(() => polling?.triggerRefetch())
             .catch((error) => {
-              console.error('[useCollect] Ошибка при сохранении прогресса:', error);
+              console.error('[useCollect] Ошибка при сохранении прогресса:', formatErrorForLog(error));
             });
         }
         
@@ -443,7 +449,7 @@ export function useCollect(options?: UseCollectOptions) {
       shipmentsApi.saveProgress(currentShipment.id, { lines: linesData })
         .then(() => polling?.triggerRefetch())
         .catch((error) => {
-          console.error('[useCollect] Ошибка при сохранении прогресса после редактирования:', error);
+          console.error('[useCollect] Ошибка при сохранении прогресса после редактирования:', formatErrorForLog(error));
         });
       
       return newState;
@@ -524,7 +530,7 @@ export function useCollect(options?: UseCollectOptions) {
         throw new Error(`Ошибка при сохранении места: ${errorMsg}`);
       }
     } catch (error) {
-      console.error('[useCollect] Ошибка при сохранении места:', error);
+      console.error('[useCollect] Ошибка при сохранении места:', formatErrorForLog(error));
       showError('Не удалось сохранить место');
       // Не удаляем из changedLocations, чтобы попытаться сохранить при закрытии
     }
@@ -591,7 +597,7 @@ export function useCollect(options?: UseCollectOptions) {
         tasks_progress: (response as any)?.tasks_progress || currentShipment.tasks_progress,
       };
     } catch (error) {
-      console.error('[useCollect] Ошибка подтверждения обработки:', error);
+      console.error('[useCollect] Ошибка подтверждения обработки:', formatErrorForLog(error));
       showError('Не удалось подтвердить обработку заказа');
       throw error;
     }
@@ -645,9 +651,9 @@ export function useCollect(options?: UseCollectOptions) {
 
       showSuccess('Все позиции собраны и задание переведено в подтверждение');
       return response;
-    } catch (error: any) {
-      console.error('Ошибка при автоматической сборке всех позиций:', error);
-      showError(error.message || 'Не удалось собрать все позиции');
+    } catch (error: unknown) {
+      console.error('Ошибка при автоматической сборке всех позиций:', formatErrorForLog(error));
+      showError(formatApiClientErrorMessage(error) || (error instanceof Error ? error.message : null) || 'Не удалось собрать все позиции');
       throw error;
     }
   }, [showError, showSuccess]);
@@ -671,10 +677,10 @@ export function useCollect(options?: UseCollectOptions) {
             body: JSON.stringify({}),
             keepalive: true, // Позволяет запросу завершиться даже после закрытия страницы
           }).catch((error) => {
-            console.error('[useCollect] Ошибка при разблокировке через fetch:', error);
+            console.error('[useCollect] Ошибка при разблокировке через fetch:', formatErrorForLog(error));
           });
         } catch (error) {
-          console.error('[useCollect] Ошибка при разблокировке:', error);
+          console.error('[useCollect] Ошибка при разблокировке:', formatErrorForLog(error));
         }
       }
     };

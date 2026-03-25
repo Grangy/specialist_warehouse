@@ -105,7 +105,7 @@ export async function aggregateRankings(
     user: { select: statUserSel },
   } as const;
 
-  const [collectorByCompleted, collectorByConfirmed, collectorByDropped, checkerTaskStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessions, extraWorkSessionsMonth, activeSessions, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
+  const [collectorByCompleted, collectorByConfirmed, collectorByDropped, checkerTaskStats, dictatorCollectorStats, dictatorRoleStats, extraWorkSessionsMonth, activeSessions, manualAdjustmentsSetting, errorPenaltiesSetting, callsWithErrors] = await Promise.all([
     prisma.taskStatistics.findMany({
       where: { roleType: 'collector', task: completedWhere },
       select: {
@@ -157,13 +157,6 @@ export async function aggregateRankings(
     prisma.extraWorkSession.findMany({
       where: {
         status: 'stopped',
-        stoppedAt: { gte: startDate, lte: endDate },
-      },
-      select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true, user: { select: { id: true, name: true, role: true } } },
-    }),
-    prisma.extraWorkSession.findMany({
-      where: {
-        status: 'stopped',
         stoppedAt: { gte: monthStart, lte: monthEnd },
       },
       select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true, user: { select: { id: true, name: true, role: true } } },
@@ -174,6 +167,15 @@ export async function aggregateRankings(
     }),
     prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
     prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
+    prisma.collectorCall.findMany({
+      where: {
+        status: 'done',
+        confirmedAt: { gte: startDate, lte: endDate },
+        OR: [{ errorCount: { gt: 0 } }, { checkerErrorCount: { gt: 0 } }],
+        ...(warehouseFilter && { task: { warehouse: warehouseFilter } }),
+      },
+      select: { collectorId: true, checkerId: true, errorCount: true, checkerErrorCount: true },
+    }),
   ]);
 
   const collectorByDroppedFiltered = collectorByDropped.filter((s) => {
@@ -202,15 +204,6 @@ export async function aggregateRankings(
     }),
   ];
 
-  const callsWithErrors = await prisma.collectorCall.findMany({
-    where: {
-      status: 'done',
-      confirmedAt: { gte: startDate, lte: endDate },
-      OR: [{ errorCount: { gt: 0 } }, { checkerErrorCount: { gt: 0 } }],
-      ...(warehouseFilter && { task: { warehouse: warehouseFilter } }),
-    },
-    select: { collectorId: true, checkerId: true, errorCount: true, checkerErrorCount: true },
-  });
   const errorsByCollector = new Map<string, number>();
   const errorsByChecker = new Map<string, number>();
   for (const c of callsWithErrors) {

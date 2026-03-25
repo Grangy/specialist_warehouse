@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserStats } from '@/lib/statistics/getUserStats';
+import { getUserStats, peekUserStatsCache } from '@/lib/statistics/getUserStats';
 import { checkRateLimit, getClientIdentifier } from '@/lib/security/rateLimiter';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +15,21 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
+    const { userId } = await params;
+    const { searchParams } = new URL(request.url);
+    const periodParam = searchParams.get('period') || '';
+    const period = periodParam === 'week' || periodParam === 'month' ? periodParam : periodParam === 'today' ? 'today' : undefined;
+
+    const cached = peekUserStatsCache(userId, period);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: {
+          'X-Cache': 'HIT',
+          'Cache-Control': 'private, max-age=30',
+        },
+      });
+    }
+
     const identifier = getClientIdentifier(request);
     const { allowed, remaining, resetTime } = checkRateLimit(identifier, 'publicStats');
 
@@ -33,11 +48,6 @@ export async function GET(
         }
       );
     }
-
-    const { userId } = await params;
-    const { searchParams } = new URL(request.url);
-    const periodParam = searchParams.get('period') || '';
-    const period = periodParam === 'week' || periodParam === 'month' ? periodParam : periodParam === 'today' ? 'today' : undefined;
 
     const data = await getUserStats(userId, period);
     if (!data) {
