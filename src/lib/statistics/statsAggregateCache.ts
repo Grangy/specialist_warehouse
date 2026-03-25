@@ -404,12 +404,22 @@ export async function warmAggregateSnapshots(): Promise<void> {
   if (aggregateWarming) return;
   aggregateWarming = true;
   try {
+    const now = Date.now();
     for (const { period, warehouse } of SNAPSHOT_WARM_KEYS) {
       const k = cacheKey(period, warehouse);
       try {
         const row = await loadStatsSnapshotFromDb(k);
         if (row) {
-          memory.set(k, { data: row.data, freshUntil: Date.now() + AGGREGATE_CACHE_TTL_MS });
+          // Не перезатирай результаты "свежего" пересчёта, чтобы /top не откатывался
+          // обратно в старый снимок из stats_snapshots.
+          const existing = memory.get(k);
+          if (existing && existing.freshUntil > now) continue;
+
+          const computedAtTs = row.computedAt.getTime();
+          memory.set(k, {
+            data: row.data,
+            freshUntil: Number.isNaN(computedAtTs) ? now + AGGREGATE_CACHE_TTL_MS : computedAtTs + AGGREGATE_CACHE_TTL_MS,
+          });
         }
       } catch (e) {
         console.error('[statsAggregateCache] warm from DB', k, e);
