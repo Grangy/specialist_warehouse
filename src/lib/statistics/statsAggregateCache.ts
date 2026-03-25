@@ -285,11 +285,14 @@ export async function getAggregateSnapshotWithDebug(
 
   if (opts?.force) {
     const tCompute0 = Date.now();
-    const computed = await aggregateRankings(period, warehouseFilter);
+    await computeAndStore(key, period, warehouseFilter);
     const legacyComputeMs = Date.now() - tCompute0;
 
+    const after = memory.get(key);
+    if (!after) throw new Error('[statsAggregateCache] force compute did not populate memory');
+
     return {
-      data: cloneSnapshot(computed),
+      data: cloneSnapshot(after.data),
       debug: {
         freshness: 'cold',
         source: 'compute',
