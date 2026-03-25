@@ -117,7 +117,9 @@ export default function TopPage() {
   useEffect(() => {
     const refreshMs = period === 'today' ? 3 * 60 * 1000 : period === 'week' ? 10 * 60 * 1000 : 20 * 60 * 1000;
     load();
-    const id = setInterval(() => load(true), refreshMs);
+    // forceReload=true: добиваемся nocache=1 на API, чтобы топ пересчитался/перекешировался,
+    // а не просто отдавался из in-memory top cache.
+    const id = setInterval(() => load(true, true), refreshMs);
     return () => clearInterval(id);
   }, [load, period]);
 
