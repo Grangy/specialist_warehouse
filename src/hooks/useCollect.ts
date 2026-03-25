@@ -30,15 +30,18 @@ export function useCollect(options?: UseCollectOptions) {
   const heartbeatFailuresRef = useRef(0);
   const onConnectionLostRef = useRef<(() => void) | null>(null);
   const connectionLostCallbackRef = useRef<(() => void) | null>(null);
+  const onLockedByOtherRef = useRef<((lockedByName?: string) => void) | null>(null);
 
   // Функция для запуска heartbeat
-  const startHeartbeat = useCallback((shipmentId: string, onConnectionLost?: () => void) => {
+  const startHeartbeat = useCallback(
+    (shipmentId: string, onConnectionLost?: () => void, onLockedByOther?: (lockedByName?: string) => void) => {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
     }
     heartbeatFailuresRef.current = 0;
     onConnectionLostRef.current = onConnectionLost ?? null;
+    onLockedByOtherRef.current = onLockedByOther ?? null;
 
     const doHeartbeat = () => {
       shipmentsApi
@@ -48,6 +51,20 @@ export function useCollect(options?: UseCollectOptions) {
         })
         .catch((error) => {
           console.error('[useCollect] Ошибка heartbeat:', formatErrorForLog(error));
+          const err = error as any;
+          if (err?.code === 'LOCKED_BY_OTHER') {
+            // Сразу закрываем попап: другой пользователь реально держит lock.
+            if (heartbeatIntervalRef.current) {
+              clearInterval(heartbeatIntervalRef.current);
+              heartbeatIntervalRef.current = null;
+            }
+            heartbeatFailuresRef.current = 0;
+            const lockedByName = err.lockedByName as string | undefined;
+            onLockedByOtherRef.current?.(lockedByName);
+            onLockedByOtherRef.current = null;
+            return;
+          }
+
           heartbeatFailuresRef.current += 1;
           if (heartbeatFailuresRef.current >= HEARTBEAT_FAILURES_TO_EXIT) {
             if (heartbeatIntervalRef.current) {
@@ -62,7 +79,9 @@ export function useCollect(options?: UseCollectOptions) {
 
     doHeartbeat();
     heartbeatIntervalRef.current = setInterval(doHeartbeat, HEARTBEAT_INTERVAL);
-  }, []);
+    },
+    []
+  );
 
   // Функция для остановки heartbeat
   const stopHeartbeat = useCallback(() => {
@@ -233,7 +252,11 @@ export function useCollect(options?: UseCollectOptions) {
         closeModal();
       };
       connectionLostCallbackRef.current = onLost;
-      startHeartbeat(actualShipment.id, onLost);
+      const onLockedByOther = (lockedByName?: string) => {
+        showError(`Заказ уже взят другим сборщиком (${lockedByName ?? 'другой сборщик'}). Попап закрыт.`);
+        void closeModal();
+      };
+      startHeartbeat(actualShipment.id, onLost, onLockedByOther);
     } catch (error: unknown) {
       console.error('[useCollect] Ошибка блокировки заказа:', formatErrorForLog(error));
       const errorMessage =
@@ -694,7 +717,7 @@ export function useCollect(options?: UseCollectOptions) {
       } else if (lockedShipmentId && currentShipment) {
         // Вкладка снова видима - возобновляем heartbeat
         console.log('[useCollect] Вкладка снова видима, возобновляем heartbeat');
-        startHeartbeat(lockedShipmentId, connectionLostCallbackRef.current ?? undefined);
+        startHeartbeat(lockedShipmentId, connectionLostCallbackRef.current ?? undefined, onLockedByOtherRef.current ?? undefined);
       }
     };
 

@@ -35,8 +35,17 @@ export async function POST(
 
     // Проверяем, что блокировка принадлежит текущему пользователю
     if (lock.userId !== user.id) {
+      const lockUser = await prisma.user.findUnique({
+        where: { id: lock.userId },
+        select: { name: true },
+      });
       return NextResponse.json(
-        { error: 'Блокировка принадлежит другому пользователю' },
+        {
+          error: 'Блокировка принадлежит другому пользователю',
+          code: 'LOCKED_BY_OTHER',
+          lockedByUserId: lock.userId,
+          lockedByName: lockUser?.name ?? 'другой сборщик',
+        },
         { status: 403 }
       );
     }
