@@ -115,10 +115,11 @@ export default function TopPage() {
   }, [period]);
 
   useEffect(() => {
+    const refreshMs = period === 'today' ? 3 * 60 * 1000 : period === 'week' ? 10 * 60 * 1000 : 20 * 60 * 1000;
     load();
-    const id = setInterval(() => load(true), 45000);
+    const id = setInterval(() => load(true), refreshMs);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, period]);
 
   const formatPointsNum = (p: number) => Math.round(p * 100) / 100;
   const formatPPH = (pph: number | null) =>
