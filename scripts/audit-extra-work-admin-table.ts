@@ -2,11 +2,9 @@
  * Аудит таблицы «Доп. работа» в админке.
  * Объясняет колонки и проверяет расчёты.
  *
- * Формула: баллы/мин = (темп склада за 15 мин ÷ 15 ÷ активные) × полезность.
- * Полезность в формуле: clamp(баллы_пользователя / баллы_эталона, 0.5, 1.5).
- * Польз.% на экране: сырой % без clamp.
- *
- * Произв. = баллов/час (rate × 60). Одинаковая у многих — если полезность < 50%, clamp даёт 0.5.
+ * Формула «Произв.» (как в админ-таблице после правки):
+ * Произв. сегодня = (баллы месяца / (8 * раб. дней)) × 0.9 × коэф.дня.
+ * «раб. дни» считаются как дни (пн–пт), где у пользователя есть dayPoints > 0.
  *
  * Запуск: npx tsx scripts/audit-extra-work-admin-table.ts
  */
@@ -15,13 +13,13 @@ import 'dotenv/config';
 import path from 'path';
 import { PrismaClient } from '../src/generated/prisma/client';
 import {
-  getExtraWorkRatePerHour,
   computeExtraWorkPointsForSession,
   getUsefulnessPctMap,
   getBaselineUserName,
 } from '../src/lib/ranking/extraWorkPoints';
 import { getStatisticsDateRange } from '../src/lib/utils/moscowDate';
 import { aggregateRankings } from '../src/lib/statistics/aggregateRankings';
+import { getWeekdayCoefficientForDate } from '../src/lib/ranking/weekdayCoefficients';
 
 const databaseUrl = process.env.DATABASE_URL;
 let finalDatabaseUrl = databaseUrl;
@@ -87,12 +85,36 @@ async function main() {
   const usefulnessPctMap = await getUsefulnessPctMap(prisma, userIds, now);
 
   console.log('--- Производительность (баллов/час) по пользователям ---');
-  console.log('  Формула: (темп_15мин / 15 / активные) × clamp(полезность, 0.5, 1.5) × 60\n');
+  const todayCoef = await getWeekdayCoefficientForDate(prisma, now);
+  console.log('  Формула: (баллы_месяца / (8 * раб.дней)) × 0.9 × коэф.дня\n');
 
   const productivityByUser = new Map<string, number>();
+  const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+  const dailyStatsRows = await prisma.dailyStats.findMany({
+    where: {
+      userId: { in: userIds },
+      date: { gte: startDate, lte: endDate },
+      dayPoints: { gt: 0 },
+    },
+    select: { userId: true, dayPoints: true, date: true },
+  });
+
+  const pointsByUser = new Map<string, number>();
+  const workingDaysByUser = new Map<string, number>();
+  for (const ds of dailyStatsRows) {
+    const moscow = new Date(ds.date.getTime() + MSK_OFFSET_MS);
+    const dow = moscow.getUTCDay(); // 0=вс ... 6=сб
+    const isWeekday = dow >= 1 && dow <= 5;
+    if (!isWeekday) continue;
+    pointsByUser.set(ds.userId, (pointsByUser.get(ds.userId) ?? 0) + (ds.dayPoints ?? 0));
+    workingDaysByUser.set(ds.userId, (workingDaysByUser.get(ds.userId) ?? 0) + 1);
+  }
+
   for (const w of workers) {
-    const rate = await getExtraWorkRatePerHour(prisma, w.id, now);
-    productivityByUser.set(w.id, Math.round(rate * 100) / 100);
+    const ptsMonth = pointsByUser.get(w.id) ?? 0;
+    const workingDays = workingDaysByUser.get(w.id) ?? 0;
+    const base = workingDays > 0 && ptsMonth > 0 ? (ptsMonth / (8 * workingDays)) * 0.9 : 0.5;
+    productivityByUser.set(w.id, Math.round(base * todayCoef * 100) / 100);
   }
 
   const byProd = new Map<number, string[]>();
@@ -174,9 +196,8 @@ async function main() {
   }
 
   console.log('\n--- Итог ---');
-  console.log('  • Произв. одинакова (38.69) у тех, у кого Польз.% < 50% — clamp даёт 0.5.');
-  console.log('  • Базовый темп (при 100%): ~77.37 б/час. Эрнес = 100%, Албанец 67.8% → 52.48.');
-  console.log('  • Доп.баллы считаются по минутам: каждая минута × ставка в тот момент (09:00–09:15 — фикс.).');
+  console.log('  • «Произв.» теперь считается как среднее по месяцу и рабочим дням (без скачков из-за последних 15 минут).');
+  console.log('  • «Доп.баллы» по-прежнему считаются по минутам с распределением по темпу склада за 15 минут.');
   console.log('\n=== Конец аудита ===\n');
   await prisma.$disconnect();
 }

@@ -33,7 +33,7 @@ function parseKey(key: string): { period: StatsPeriod; warehouse?: string } {
   return { period, warehouse: rest === '' ? undefined : rest };
 }
 
-type Entry = { data: AggregateSnapshotResult; freshUntil: number };
+type Entry = { data: AggregateSnapshotResult; freshUntil: number; computedAtMs: number };
 
 const memory = new Map<string, Entry>();
 const refreshing = new Set<string>();
@@ -78,10 +78,11 @@ function loadDiskIntoMemory(): void {
     if (parsed.v !== 1 || !parsed.snapshots) return;
     const now = Date.now();
     const restoredFreshUntil = now + AGGREGATE_CACHE_TTL_MS;
+    const diskComputedAtMs = parsed.savedAt ?? now;
     for (const [k, ser] of Object.entries(parsed.snapshots)) {
       try {
         const data = deserializeEntry(ser);
-        memory.set(k, { data, freshUntil: restoredFreshUntil });
+        memory.set(k, { data, freshUntil: restoredFreshUntil, computedAtMs: diskComputedAtMs });
       } catch {
         /* skip */
       }
@@ -142,7 +143,8 @@ function allowLegacyCompute(): boolean {
 
 async function computeAndStore(key: string, period: StatsPeriod, warehouse?: string): Promise<void> {
   const data = await aggregateRankings(period, warehouse);
-  memory.set(key, { data, freshUntil: Date.now() + AGGREGATE_CACHE_TTL_MS });
+  const computedAtMs = Date.now();
+  memory.set(key, { data, freshUntil: computedAtMs + AGGREGATE_CACHE_TTL_MS, computedAtMs });
   schedulePersist();
   // Write-through: чтобы background warm loop мог подхватить новое snapshot-значение
   // из БД и обновить уже top-кэш (и другие процессы/инстансы).
@@ -156,7 +158,12 @@ function scheduleRefresh(key: string): void {
     try {
       const fromDb = await loadStatsSnapshotFromDb(key);
       if (fromDb) {
-        memory.set(key, { data: fromDb.data, freshUntil: Date.now() + AGGREGATE_CACHE_TTL_MS });
+        const existing = memory.get(key);
+        const fromDbMs = fromDb.computedAt.getTime();
+        // Не перезатирай более "молодые" данные в памяти более старым snapshot из БД.
+        if (existing && existing.computedAtMs > fromDbMs) return;
+        const computedAtMs = fromDbMs;
+        memory.set(key, { data: fromDb.data, freshUntil: computedAtMs + AGGREGATE_CACHE_TTL_MS, computedAtMs });
         return;
       }
       if (allowLegacyCompute()) {
@@ -196,7 +203,8 @@ export async function getAggregateSnapshot(
 
   const fromDb = await loadStatsSnapshotFromDb(key);
   if (fromDb) {
-    memory.set(key, { data: fromDb.data, freshUntil: now + AGGREGATE_CACHE_TTL_MS });
+    const computedAtMs = fromDb.computedAt.getTime();
+    memory.set(key, { data: fromDb.data, freshUntil: now + AGGREGATE_CACHE_TTL_MS, computedAtMs });
     const ageMs = now - fromDb.computedAt.getTime();
     const freshness: AggregateFreshness = ageMs < AGGREGATE_CACHE_TTL_MS ? 'fresh' : 'stale';
     return { data: cloneSnapshot(fromDb.data), freshness };
@@ -208,7 +216,7 @@ export async function getAggregateSnapshot(
     const ser = parsed.snapshots?.[key];
     if (ser) {
       const data = deserializeEntry(ser);
-      memory.set(key, { data, freshUntil: now + AGGREGATE_CACHE_TTL_MS });
+      memory.set(key, { data, freshUntil: now + AGGREGATE_CACHE_TTL_MS, computedAtMs: parsed.savedAt ?? now });
       return { data: cloneSnapshot(data), freshness: 'stale' };
     }
   } catch {
@@ -332,7 +340,8 @@ export async function getAggregateSnapshotWithDebug(
   const fromDb = await loadStatsSnapshotFromDb(key);
   timings.dbLoad = Date.now() - tDb0;
   if (fromDb) {
-    memory.set(key, { data: fromDb.data, freshUntil: now + AGGREGATE_CACHE_TTL_MS });
+    const computedAtMs = fromDb.computedAt.getTime();
+    memory.set(key, { data: fromDb.data, freshUntil: now + AGGREGATE_CACHE_TTL_MS, computedAtMs });
     const ageMs = now - fromDb.computedAt.getTime();
     const freshness: AggregateFreshness = ageMs < AGGREGATE_CACHE_TTL_MS ? 'fresh' : 'stale';
     return {
@@ -353,7 +362,7 @@ export async function getAggregateSnapshotWithDebug(
     const ser = parsed.snapshots?.[key];
     if (ser) {
       const data = deserializeEntry(ser);
-      memory.set(key, { data, freshUntil: now + AGGREGATE_CACHE_TTL_MS });
+      memory.set(key, { data, freshUntil: now + AGGREGATE_CACHE_TTL_MS, computedAtMs: parsed.savedAt ?? now });
       return {
         data: cloneSnapshot(data),
         debug: {
@@ -413,12 +422,14 @@ export async function warmAggregateSnapshots(): Promise<void> {
           // Не перезатирай результаты "свежего" пересчёта, чтобы /top не откатывался
           // обратно в старый снимок из stats_snapshots.
           const existing = memory.get(k);
-          if (existing && existing.freshUntil > now) continue;
+          const fromDbMs = row.computedAt.getTime();
+          if (existing && existing.computedAtMs >= fromDbMs) continue;
 
-          const computedAtTs = row.computedAt.getTime();
+          const computedAtTs = fromDbMs;
           memory.set(k, {
             data: row.data,
             freshUntil: Number.isNaN(computedAtTs) ? now + AGGREGATE_CACHE_TTL_MS : computedAtTs + AGGREGATE_CACHE_TTL_MS,
+            computedAtMs: computedAtTs,
           });
         }
       } catch (e) {

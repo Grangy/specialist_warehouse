@@ -6,7 +6,6 @@ import { getStatisticsDateRange, isLunchTimeMoscow } from '@/lib/utils/moscowDat
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 import {
-  getExtraWorkRatePerHour,
   computeExtraWorkPointsForSession,
   getUsefulnessPctMap,
 } from '@/lib/ranking/extraWorkPoints';
@@ -21,7 +20,7 @@ export interface ExtraWorkEntry {
   extraWorkHours: number;
   /** Баллы за доп. работу (завершённые сессии) */
   extraWorkPoints: number;
-  /** Производительность базовая: (баллы за 5 раб.дней/40)*0.9 — ставка за час */
+  /** Средняя производительность за месяц (баллы/час) с нормировкой по рабочим дням */
   productivity: number;
   /** Производительность сегодня = productivity × weekdayCoefficient (учитывает загрузку склада) */
   productivityToday: number;
@@ -197,19 +196,41 @@ export async function GET(request: NextRequest) {
     for (const r of weekRankings.allRankings) {
       if ((r.extraWorkPoints ?? 0) > 0) extraWorkByUser.set(r.userId, r.extraWorkPoints);
     }
-    const [productivityByUser, usefulnessPctMap] = await Promise.all([
-      (async () => {
-        const m = new Map<string, number>();
-        await Promise.all(
-          [...allUserIds].map(async (userId) => {
-            const rate = await getExtraWorkRatePerHour(prisma, userId, now, extraWorkByUser);
-            m.set(userId, Math.round(rate * 100) / 100);
-          })
-        );
-        return m;
-      })(),
-      getUsefulnessPctMap(prisma, [...allUserIds], now, extraWorkByUser, errorPenaltiesMonth),
-    ]);
+    const usefulnessPctMap = await getUsefulnessPctMap(prisma, [...allUserIds], now, extraWorkByUser, errorPenaltiesMonth);
+    // "Произв." для админ-таблицы: средняя по месяцу производительность,
+    // нормированная по рабочим дням (5 раб. дней в неделе, 8 часов на день).
+    // Это убирает скачки из-за текущего темпа последних 15 минут.
+    const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+    const dailyStats = await prisma.dailyStats.findMany({
+      where: {
+        userId: { in: [...allUserIds] },
+        date: { gte: monthStart, lte: monthEnd },
+        dayPoints: { gt: 0 },
+      },
+      select: { userId: true, dayPoints: true, date: true },
+    });
+
+    const pointsByUser = new Map<string, number>();
+    const workingDaysByUser = new Map<string, number>();
+    for (const ds of dailyStats) {
+      // `dailyStats.date` хранится как начало дня по Москве в UTC.
+      // Для определения буднего/выходного корректируем обратно в московское время.
+      const moscow = new Date(ds.date.getTime() + MSK_OFFSET_MS);
+      const dow = moscow.getUTCDay(); // 0=вс ... 6=сб
+      const isWeekday = dow >= 1 && dow <= 5;
+      if (!isWeekday) continue;
+
+      pointsByUser.set(ds.userId, (pointsByUser.get(ds.userId) ?? 0) + (ds.dayPoints ?? 0));
+      workingDaysByUser.set(ds.userId, (workingDaysByUser.get(ds.userId) ?? 0) + 1);
+    }
+
+    const productivityByUser = new Map<string, number>();
+    for (const userId of allUserIds) {
+      const ptsMonth = pointsByUser.get(userId) ?? 0;
+      const workingDays = workingDaysByUser.get(userId) ?? 0;
+      const base = workingDays > 0 && ptsMonth > 0 ? (ptsMonth / (8 * workingDays)) * 0.9 : 0.5;
+      productivityByUser.set(userId, Math.round(base * 100) / 100);
+    }
     const baselineUserName = weekRankings.baselineUserName ?? null;
     const todayCoeff = await getWeekdayCoefficientForDate(prisma, now);
     const weekdayCoefficients = await getWeekdayWorkloadCoefficients(prisma);

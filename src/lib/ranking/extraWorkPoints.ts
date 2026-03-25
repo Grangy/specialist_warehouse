@@ -431,6 +431,91 @@ export async function getExtraWorkRatePerHour(
   return perMin * 60;
 }
 
+export type ExtraWorkRateDebug = {
+  atUtc: string;
+  isStartupWindow: boolean;
+  startupRatePerMin?: number;
+  warehousePacePoints15m: number;
+  activeUserIds: string[];
+  weightMap: Record<string, number>;
+  weightSumActive: number;
+  wUser: number;
+  denom: number;
+  ratePerMin: number;
+  ratePerHour: number;
+};
+
+/**
+ * Отладка «Произв.» (баллов/час) для одной доп. работы.
+ * Печатает входные параметры именно из getExtraWorkPointsPerMinute:
+ * - pace склада за последние 15 мин (points/15)
+ * - active userIds в этом окне
+ * - efficiency weights (вес= max(30%, k/эталон)) и их сумма
+ */
+export async function getExtraWorkRateDebug(
+  prisma: PrismaLike,
+  userId: string,
+  atUtc: Date,
+  extraWorkByUser?: Map<string, number>
+): Promise<ExtraWorkRateDebug> {
+  if (isInStartupWindow(atUtc)) {
+    const startupRatePerMin = await getStartupRatePerMin(prisma);
+    return {
+      atUtc: atUtc.toISOString(),
+      isStartupWindow: true,
+      startupRatePerMin,
+      warehousePacePoints15m: 0,
+      activeUserIds: [],
+      weightMap: {},
+      weightSumActive: 0,
+      wUser: 0,
+      denom: 0,
+      ratePerMin: startupRatePerMin,
+      ratePerHour: startupRatePerMin * 60,
+    };
+  }
+
+  const { points, activeUserIds } = await getWarehousePaceLast15Min(prisma, atUtc);
+  if (activeUserIds.length === 0) {
+    return {
+      atUtc: atUtc.toISOString(),
+      isStartupWindow: false,
+      warehousePacePoints15m: points,
+      activeUserIds,
+      weightMap: {},
+      weightSumActive: 0,
+      wUser: 0,
+      denom: 0,
+      ratePerMin: 0,
+      ratePerHour: 0,
+    };
+  }
+
+  const idsForWeights = [...new Set([...activeUserIds, userId])];
+  const weightMap = await getEfficiencyWeightsForUsers(prisma, idsForWeights, atUtc, extraWorkByUser);
+
+  const weightSumActive = activeUserIds.reduce((s, id) => s + (weightMap.get(id) ?? 1), 0);
+  const wUser = weightMap.get(userId) ?? MIN_EFFICIENCY_WEIGHT;
+  const denom = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
+  const ratePerMin = (points / 15) * (wUser / denom);
+
+  const weightMapObj: Record<string, number> = {};
+  for (const [k, v] of weightMap.entries()) weightMapObj[k] = v;
+
+  return {
+    atUtc: atUtc.toISOString(),
+    isStartupWindow: false,
+    warehousePacePoints15m: points,
+    activeUserIds,
+    weightMap: weightMapObj,
+    weightSumActive,
+    wUser,
+    denom,
+    ratePerMin: Math.max(0, ratePerMin),
+    ratePerHour: Math.max(0, ratePerMin) * 60,
+  };
+}
+
 /**
  * Баллы за elapsedSec по ставке баллов/мин.
  */
