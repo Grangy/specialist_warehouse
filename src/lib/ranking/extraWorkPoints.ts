@@ -28,18 +28,23 @@ const MIN_EFFICIENCY_WEIGHT = 0.3;
 
 /**
  * Нивелирование влияния "меньше активных => каждому улетает больше".
- * Когда активных работников меньше целевого порога, масштабируем effective denom вверх.
  *
- * В результате при 15 активных и при 1 активном разница ставки становится сильно меньше,
- * а не линейной (как было раньше).
+ * Было: ставка ~ 1/activeCount (через denom), поэтому при 15 -> 1 разница огромная.
+ * Сейчас: деном масштабируется степенно:
+ *   denomAdjusted = denomRaw * (target/activeCount)^DAMPING_EXP
+ * Тогда multiplier к ставке относительно прежнего становится (activeCount/target)^DAMPING_EXP.
+ *
+ * DAMPING_EXP=1 => слишком агрессивно (почти x15 при активCount=1).
+ * DAMPING_EXP<1 => более мягкое нивелирование, чтобы не “обнулять” начисления.
  */
 const ACTIVE_USERS_DAMPING_TARGET = 15;
+const DAMPING_EXP = 0.5;
 
 export function getEffectiveDenomByActiveCount(denom: number, activeCount: number): number {
   if (!Number.isFinite(denom) || denom <= 0) return denom;
   if (!Number.isFinite(activeCount) || activeCount <= 0) return denom;
   if (activeCount >= ACTIVE_USERS_DAMPING_TARGET) return denom;
-  return denom * (ACTIVE_USERS_DAMPING_TARGET / activeCount);
+  return denom * Math.pow(ACTIVE_USERS_DAMPING_TARGET / activeCount, DAMPING_EXP);
 }
 
 /** Дефолтная фиксированная ставка (баллов/мин) для 09:00–09:15. ~3 б/час = 0.05 б/мин */
