@@ -152,20 +152,20 @@ async function main() {
   lines.push(``);
   lines.push(`## Термины`);
   lines.push(`- \`Доп.баллы\` / \`extraWorkPoints\` — баллы доп.работы, которые накапливаются по сессиям и добавляются к итогам через \`computeExtraWorkPointsForSession\` и manual adjustments.`);
-  lines.push(`- \`extraWorkByUser\` — карта (userId -> extraWorkPoints за месяц) используется как часть веса эффективности: чем больше у пользователя доп.баллов в этом месяце, тем выше его вес при распределении текущего темпа склада.`);
+  lines.push(`- \`extraWorkByUser\` — карта (userId -> extraWorkPoints за месяц), используется для итоговой суммы \`extraWorkPoints\` (ручные корректировки + доп.баллы по сессиям). Веса распределения ставки не зависят от \`extraWorkByUser\` (чтобы убрать self-feedback).`);
   lines.push(``);
   lines.push(`## Пошаговый алгоритм (как считается extraWorkPoints)`);
   lines.push(`1. В начале месяца создаём \`extraWorkByUser\` и заполняем его manual adjustments за месяц.`);
   lines.push(`2. Берём все сессии доп.работы \`status=stopped\` за месяц и сортируем их по \`stoppedAt\` (хронологически).`);
   lines.push(`3. Для каждой сессии \`sess\` вызываем:`);
   lines.push(`   - \`computeExtraWorkPointsForSession(prisma, { userId, elapsedSecBeforeLunch, startedAt, stoppedAt }, extraWorkByUser)\``);
-  lines.push(`   - вычисленные points прибавляем в \`extraWorkByUser[userId]\` (поэтому вес следующей сессии того же пользователя уже учитывает его предыдущие доп.баллы).`);
+  lines.push(`   - вычисленные points прибавляем в \`extraWorkByUser[userId]\` (для итоговой суммы \`extraWorkPoints\`); распределение темпа зависит только от продуктивности, а не от уже накопленного extra.`);
   lines.push(`4. Итоговые \`extraWorkByUser\` соответствуют \`extraWorkPoints\` из \`aggregateRankings\` (без учёта штрафов за ошибки — штрафы добавляются отдельно в другие поля рейтинга).`);
   lines.push(``);
   lines.push(`## Внутренняя формула ставки (упрощённо, на понимание)`);
   lines.push(`- Если момент времени попадает в окно \`09:00–09:15 МСК\`: ставка фиксированная (\`points/min\`).`);
   lines.push(`- Иначе: ставка зависит от темпа склада за последние 15 минут (\`points/15\`) и распределяется между активными пользователями пропорционально весам эффективности.`);
-  lines.push(`- Вес эффективности: \`weight = max(0.3, (taskPts + extraWorkByUser)/baselinePtsMax)\`.`);
+  lines.push(`- Вес эффективности: \`weight = max(0.3, baseProd(uid) / baseProdTop1)\`, где baseProd(uid) = (pts_month_weekdays / (8 * workingDays_weekdays)) * 0.9.`);
   lines.push(``);
   lines.push(`## Сводка по пользователям`);
 

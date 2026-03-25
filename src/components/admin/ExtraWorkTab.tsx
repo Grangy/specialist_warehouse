@@ -11,8 +11,9 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight, History, HelpCircle } from 'lucide-react';
+import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight, History, HelpCircle, SlidersHorizontal } from 'lucide-react';
 import ExtraWorkHistoryTab from './ExtraWorkHistoryTab';
+import { ExtraWorkCurrentIndicatorsModal } from './ExtraWorkCurrentIndicatorsModal';
 
 interface ActiveSession {
   id: string;
@@ -32,6 +33,7 @@ interface ExtraWorkEntry {
   extraWorkPoints: number;
   productivity: number;
   productivityToday?: number;
+  ratePerHour?: number;
   weekdayCoefficient?: number;
   lunchSlot: string | null;
   usefulnessPct?: number | null;
@@ -79,6 +81,7 @@ export default function ExtraWorkTab() {
   const [todayCoeff, setTodayCoeff] = useState<number | null>(null);
   const [showFormulaHelp, setShowFormulaHelp] = useState(false);
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
+  const [showCurrentIndicators, setShowCurrentIndicators] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -272,8 +275,10 @@ export default function ExtraWorkTab() {
           <div>
             <h2 className="text-xl font-bold text-slate-100">Дополнительная работа</h2>
             <p className="text-sm text-slate-400">
-              В колонке «Баллы/мин» показана средняя производительность: (баллы за месяц ÷ (8 × раб. дней)) × 0.9 × коэф.дня ÷ 60.
-              «Доп.баллы» (ниже) считаются по минутам через темп последних 15 минут по формуле в блоке «Как считаются баллы».
+              «Доп.баллы» начисляются по текущей ставке: сначала определяется темп склада за последние 15 минут, затем он распределяется между активными
+              кладовщиками пропорционально их весу.
+              Вес зависит от месячной продуктивности (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9, нормированной на топ-1 месяца (минимум 30%).
+              Начисления идут только пн–пт в 09:00–18:00, а в обед (13:00–15:00) ставка = 0. В окне 09:00–09:15 ставка фиксированная.
             </p>
             <button
               type="button"
@@ -282,6 +287,14 @@ export default function ExtraWorkTab() {
             >
               <HelpCircle className="w-3.5 h-3.5" />
               {showFormulaHelp ? 'Скрыть формулу' : 'Как считаются баллы'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCurrentIndicators(true)}
+              className="inline-flex items-center gap-1.5 mt-2 text-xs text-teal-400/90 hover:text-teal-400"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Текущие показатели
             </button>
             {showFormulaHelp && (
               <div className="mt-3 p-4 rounded-lg bg-slate-800/80 border border-slate-600/50 text-xs text-slate-300 space-y-2">
@@ -292,10 +305,13 @@ export default function ExtraWorkTab() {
                   <strong className="text-amber-400">Распределение:</strong> баллы/мин сотрудника = темп × (его вес ÷ сумма весов активных за окно).
                 </p>
                 <p>
-                  <strong className="text-amber-400">Вес:</strong> вес = max(30%, к/эталон), где к = (сборка + проверка + диктовка + доп.работа) за месяц.
+                  <strong className="text-amber-400">Вес:</strong> вес = max(30%, baseProd(uid) / baseProdTop1), где baseProd(uid) = (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9.
                 </p>
                 <p>
                   <strong className="text-amber-400">09:00–09:15 МСК:</strong> фиксированная ставка (без истории 15 минут).
+                </p>
+                <p>
+                  <strong className="text-amber-400">Рабочее время:</strong> начисления только пн–пт и только в интервале 09:00–18:00 МСК (в обед — 0).
                 </p>
               </div>
             )}
@@ -305,6 +321,25 @@ export default function ExtraWorkTab() {
               </p>
             )}
           </div>
+
+        <ExtraWorkCurrentIndicatorsModal
+          isOpen={showCurrentIndicators}
+          onClose={() => setShowCurrentIndicators(false)}
+          users={data.map((d) => ({ id: d.userId, name: d.userName })) ?? []}
+          initialUserId={data[0]?.userId ?? null}
+          activeSessionByUserId={(data ?? []).reduce((acc, d) => {
+            if (!d.activeSession) return acc;
+            acc[d.userId] = {
+              status: d.activeSession.status,
+              elapsedSecBeforeLunch: d.activeSession.elapsedSecBeforeLunch,
+            };
+            return acc;
+          }, {} as Record<string, { status: string; elapsedSecBeforeLunch: number }>)}
+          extraWorkPointsByUserId={(data ?? []).reduce((acc, d) => {
+            acc[d.userId] = d.extraWorkPoints ?? 0;
+            return acc;
+          }, {} as Record<string, number>)}
+        />
         </div>
         <div className="flex items-center gap-4">
           <div className="flex rounded-lg bg-slate-800/80 p-1">
@@ -382,13 +417,13 @@ export default function ExtraWorkTab() {
             <thead>
               <tr className="text-left text-slate-400 border-b border-slate-700">
                 <th className="py-2 pr-4">Сотрудник</th>
-                <th className="py-2 pr-4">Баллы/мин</th>
+              <th className="py-2 pr-4">Баллы/час</th>
                 <th className="py-2 pr-4">Часы доп. работы</th>
                 <th className="py-2 pr-4">Доп.баллы</th>
                 <th className="py-2 pr-4">Вес, %</th>
                 <th className="py-2 pr-4 hidden sm:table-cell">Обед</th>
                 <th className="py-2 pr-4 hidden sm:table-cell">Статус</th>
-                <th className="py-2 hidden sm:table-cell">Действия</th>
+                <th className="py-2 pr-4">Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -399,7 +434,7 @@ export default function ExtraWorkTab() {
                   <tr key={d.userId} className="border-b border-slate-700/50">
                     <td className="py-3 pr-4 font-medium text-slate-200">{d.userName}</td>
                     <td className="py-3 pr-4 text-slate-300">
-                      {(((d.productivityToday ?? d.productivity) ?? 0) / 60).toFixed(2)}
+                      {(d.ratePerHour ?? 0).toFixed(2)}
                     </td>
                     <td className="py-3 pr-4 text-slate-300">{formatHours(d.extraWorkHours)}</td>
                     <td className="py-3 pr-4 text-amber-400">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
@@ -434,8 +469,8 @@ export default function ExtraWorkTab() {
                         <span className="text-slate-500">—</span>
                       )}
                     </td>
-                    <td className="py-3 hidden sm:table-cell">
-                      <div className="flex flex-wrap gap-2">
+                    <td className="py-3 pr-4">
+                      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                         {canAssign && (
                           <button
                             type="button"
@@ -517,7 +552,7 @@ export default function ExtraWorkTab() {
                         <tr key={d.userId} className="hidden border-b border-slate-700/50 bg-slate-800/30">
                           <td className="py-3 pr-4 font-medium text-slate-400">{d.userName}</td>
                           <td className="py-3 pr-4 text-slate-500">
-                            {(((d.productivityToday ?? d.productivity) ?? 0) / 60).toFixed(2)}
+                            {(d.ratePerHour ?? 0).toFixed(2)}
                           </td>
                           <td className="py-3 pr-4 text-slate-500">{formatHours(d.extraWorkHours)}</td>
                           <td className="py-3 pr-4 text-amber-500/80">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
@@ -552,8 +587,8 @@ export default function ExtraWorkTab() {
                               <span className="text-slate-600">—</span>
                             )}
                           </td>
-                          <td className="py-3 hidden sm:table-cell">
-                            <div className="flex flex-wrap gap-2">
+                          <td className="py-3 pr-4">
+                            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                               <button
                                 type="button"
                                 onClick={() => handleToggleHidden(d.userId)}

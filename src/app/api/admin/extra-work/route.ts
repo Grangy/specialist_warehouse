@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
-import { getStatisticsDateRange, isLunchTimeMoscow } from '@/lib/utils/moscowDate';
+import { getStatisticsDateRange, getStartupWindow09MoscowUTC, isLunchTimeMoscow } from '@/lib/utils/moscowDate';
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 import {
   computeExtraWorkPointsForSession,
   getUsefulnessPctMap,
+  isWorkingTimeMoscow,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 
@@ -24,6 +25,8 @@ export interface ExtraWorkEntry {
   productivity: number;
   /** Производительность сегодня = productivity × weekdayCoefficient (учитывает загрузку склада) */
   productivityToday: number;
+  /** Инстантная ставка (баллы/час) по текущей формуле из последних 15 минут */
+  ratePerHour: number;
   /** Коэффициент дня (по загрузке прошлой недели). Пик=1.0 */
   weekdayCoefficient: number;
   /** Обед пользователя (настройка раз навсегда) */
@@ -141,6 +144,7 @@ export async function GET(request: NextRequest) {
     }
 
     const now = new Date();
+    const elapsedSecBeforeLunchCurrentByUserId = new Map<string, number>();
     for (const sess of activeSessions) {
       let currentElapsedSec = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
       let virtualStartedAt = sess.startedAt;
@@ -158,6 +162,7 @@ export async function GET(request: NextRequest) {
         currentElapsedSec += Math.max(0, addSec);
         virtualStartedAt = new Date(now.getTime() - currentElapsedSec * 1000);
       }
+      elapsedSecBeforeLunchCurrentByUserId.set(sess.userId, currentElapsedSec);
       const hours = currentElapsedSec / 3600;
       if (!extraWorkHoursByUser.has(sess.userId)) {
         extraWorkHoursByUser.set(sess.userId, {
@@ -231,6 +236,75 @@ export async function GET(request: NextRequest) {
       const base = workingDays > 0 && ptsMonth > 0 ? (ptsMonth / (8 * workingDays)) * 0.9 : 0.5;
       productivityByUser.set(userId, Math.round(base * 100) / 100);
     }
+
+    // Инстантная ставка (баллы/час) для колонки «Баллы/час» в таблице.
+    // Считается по последним 15 минутам: points/15 × (вес/Σвесов активных).
+    const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+    const rateNow = now;
+    const rateIsWorkingNow = isWorkingTimeMoscow(rateNow) && !isLunchTimeMoscow(rateNow);
+    const { start: startupStart, end: startupEnd } = getStartupWindow09MoscowUTC(rateNow);
+    const inStartupWindow = rateNow.getTime() >= startupStart.getTime() && rateNow.getTime() < startupEnd.getTime();
+
+    const startupRatePerMinRow = await prisma.systemSettings.findUnique({
+      where: { key: 'extra_work_startup_rate_points_per_min' },
+    });
+    const startupRatePerMinRaw = startupRatePerMinRow?.value ? parseFloat(startupRatePerMinRow.value) : NaN;
+    const startupRatePerMin = Number.isFinite(startupRatePerMinRaw) && startupRatePerMinRaw >= 0 ? startupRatePerMinRaw : 0.05;
+
+    const start15m = new Date(rateNow.getTime() - FIFTEEN_MIN_MS);
+    const grouped = await prisma.taskStatistics.groupBy({
+      by: ['userId'],
+      where: {
+        OR: [
+          { roleType: 'collector', task: { completedAt: { gte: start15m, lte: rateNow } } },
+          { roleType: 'checker', task: { confirmedAt: { gte: start15m, lte: rateNow } } },
+          { roleType: 'dictator', task: { confirmedAt: { gte: start15m, lte: rateNow } } },
+        ],
+      },
+      _sum: { orderPoints: true },
+    });
+
+    const points15m = grouped.reduce((s, x) => s + (x._sum.orderPoints ?? 0), 0);
+    const activeUserIds = grouped.map((x) => x.userId);
+
+    const baseProdByUser = new Map<string, number>();
+    let baseProdTop1 = 0;
+    for (const userId of allUserIds) {
+      const ptsMonth = pointsByUser.get(userId) ?? 0;
+      const workingDays = workingDaysByUser.get(userId) ?? 0;
+      const base = workingDays > 0 && ptsMonth > 0 ? (ptsMonth / (8 * workingDays)) * 0.9 : 0.5;
+      baseProdByUser.set(userId, base);
+      if (base > baseProdTop1) baseProdTop1 = base;
+    }
+
+    const MIN_EFFICIENCY_WEIGHT = 0.3;
+    const calcWeight = (uid: string): number => {
+      const base = baseProdByUser.get(uid) ?? 0.5;
+      if (baseProdTop1 <= 0) return 1;
+      const raw = base / baseProdTop1;
+      return Math.max(MIN_EFFICIENCY_WEIGHT, raw);
+    };
+
+    const denom = activeUserIds.reduce((s, uid) => s + calcWeight(uid), 0);
+    const pointsPerMin = points15m / 15;
+
+    const ratePerHourByUser = new Map<string, number>();
+    for (const userId of allUserIds) {
+      let ratePerHour = 0;
+      if (rateIsWorkingNow) {
+        if (inStartupWindow) {
+          ratePerHour = startupRatePerMin * 60;
+        } else if (points15m > 0 && denom > 0) {
+          const wUser = calcWeight(userId);
+          const ratePerMin = pointsPerMin * (wUser / denom);
+          ratePerHour = ratePerMin * 60;
+        }
+      }
+      // Для отображения в админ-таблице: минимум 40 б/час независимо от текущего темпа.
+      const displayed = Math.max(40, ratePerHour);
+      ratePerHourByUser.set(userId, Math.round(displayed * 100) / 100);
+    }
+
     const baselineUserName = weekRankings.baselineUserName ?? null;
     const todayCoeff = await getWeekdayCoefficientForDate(prisma, now);
     const weekdayCoefficients = await getWeekdayWorkloadCoefficients(prisma);
@@ -248,6 +322,7 @@ export async function GET(request: NextRequest) {
           extraWorkPoints,
           productivity,
           productivityToday,
+          ratePerHour: ratePerHourByUser.get(u.userId) ?? 0,
           weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(u.userId) ?? null,
           usefulnessPct: usefulnessPctMap.get(u.userId) ?? null,
@@ -262,7 +337,7 @@ export async function GET(request: NextRequest) {
             lunchScheduledFor: sess.lunchScheduledFor,
             lunchStartedAt: sess.lunchStartedAt,
             lunchEndsAt: sess.lunchEndsAt,
-            elapsedSecBeforeLunch: sess.elapsedSecBeforeLunch,
+            elapsedSecBeforeLunch: elapsedSecBeforeLunchCurrentByUserId.get(sess.userId) ?? sess.elapsedSecBeforeLunch,
           };
         }
         return entry;
@@ -282,6 +357,7 @@ export async function GET(request: NextRequest) {
           extraWorkPoints: Math.max(0, extraWorkPointsByUser.get(sess.userId) ?? 0),
           productivity: prod,
           productivityToday: Math.round(prod * todayCoeff * 100) / 100,
+          ratePerHour: ratePerHourByUser.get(sess.userId) ?? 0,
           weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(sess.userId) ?? null,
           usefulnessPct: usefulnessPctMap.get(sess.userId) ?? null,
@@ -293,7 +369,7 @@ export async function GET(request: NextRequest) {
             lunchScheduledFor: sess.lunchScheduledFor,
             lunchStartedAt: sess.lunchStartedAt,
             lunchEndsAt: sess.lunchEndsAt,
-            elapsedSecBeforeLunch: sess.elapsedSecBeforeLunch,
+            elapsedSecBeforeLunch: elapsedSecBeforeLunchCurrentByUserId.get(sess.userId) ?? sess.elapsedSecBeforeLunch,
           },
         });
       }
@@ -309,6 +385,7 @@ export async function GET(request: NextRequest) {
           extraWorkPoints: Math.max(0, extraWorkPointsByUser.get(w.id) ?? 0),
           productivity: prod,
           productivityToday: Math.round(prod * todayCoeff * 100) / 100,
+          ratePerHour: ratePerHourByUser.get(w.id) ?? 0,
           weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(w.id) ?? null,
           usefulnessPct: usefulnessPctMap.get(w.id) ?? null,

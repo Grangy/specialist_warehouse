@@ -1,0 +1,223 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/middleware';
+import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
+import { getMonthStartMoscowUTC, getStartupWindow09MoscowUTC } from '@/lib/utils/moscowDate';
+import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
+import { computeExtraWorkPointsForSession, isLunchTimeMoscow, isWorkingTimeMoscow } from '@/lib/ranking/extraWorkPoints';
+
+const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+const DEFAULT_STARTUP_RATE_PER_MIN = 0.05;
+
+function isInStartupWindow(nowUtc: Date): boolean {
+  const { start, end } = getStartupWindow09MoscowUTC(nowUtc);
+  return nowUtc.getTime() >= start.getTime() && nowUtc.getTime() < end.getTime();
+}
+
+async function getStartupRatePerMinFromSystemSettings(): Promise<number> {
+  const row = await prisma.systemSettings.findUnique({
+    where: { key: 'extra_work_startup_rate_points_per_min' },
+  });
+  if (!row?.value) return DEFAULT_STARTUP_RATE_PER_MIN;
+  const parsed = parseFloat(row.value);
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_STARTUP_RATE_PER_MIN;
+  return parsed;
+}
+
+async function getWarehousePaceLast15Min(nowUtc: Date): Promise<{ points15m: number; activeUserIds: string[] }> {
+  const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+  const start = new Date(nowUtc.getTime() - FIFTEEN_MIN_MS);
+
+  const grouped = await prisma.taskStatistics.groupBy({
+    by: ['userId'],
+    where: {
+      OR: [
+        { roleType: 'collector', task: { completedAt: { gte: start, lte: nowUtc } } },
+        { roleType: 'checker', task: { confirmedAt: { gte: start, lte: nowUtc } } },
+        { roleType: 'dictator', task: { confirmedAt: { gte: start, lte: nowUtc } } },
+      ],
+    },
+    _sum: { orderPoints: true },
+  });
+
+  const points15m = grouped.reduce((s, x) => s + (x._sum.orderPoints ?? 0), 0);
+  const activeUserIds = grouped.map((x) => x.userId);
+  return { points15m, activeUserIds };
+}
+
+function baseProdFromMonthStats(ptsMonthWeekdays: number, workingDaysWeekdays: number): number {
+  return workingDaysWeekdays > 0 && ptsMonthWeekdays > 0 ? (ptsMonthWeekdays / (8 * workingDaysWeekdays)) * 0.9 : 0.5;
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const authResult = await requireAuth(request, ['admin', 'checker']);
+    if (authResult instanceof NextResponse) return authResult;
+    const { user } = authResult;
+    if (!canAccessExtraWorkByUser(user)) {
+      return NextResponse.json({ error: 'Недостаточно прав доступа' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    if (!userId) {
+      return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
+    }
+
+    const nowUtc = new Date();
+    const isWorking = isWorkingTimeMoscow(nowUtc);
+    const isLunch = isLunchTimeMoscow(nowUtc);
+    const inStartupWindow = isInStartupWindow(nowUtc);
+
+    const [warehousePace, startupRatePerMin, targetUser, todayCoeff] = await Promise.all([
+      getWarehousePaceLast15Min(nowUtc),
+      getStartupRatePerMinFromSystemSettings(),
+      prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+      getWeekdayCoefficientForDate(prisma, nowUtc),
+    ]);
+
+    // Продуктивность (baseProd) считается из dailyStats за месяц по рабочим дням (пн–пт).
+    // Именно это влияет на веса распределения ставки доп.работы.
+    const monthStart = getMonthStartMoscowUTC(nowUtc);
+    const dailyStatsRows = await prisma.dailyStats.findMany({
+      where: {
+        date: { gte: monthStart, lte: nowUtc },
+        dayPoints: { gt: 0 },
+      },
+      select: { userId: true, dayPoints: true, date: true },
+    });
+
+    const ptsByUid = new Map<string, number>();
+    const workingDaysByUid = new Map<string, number>();
+    for (const ds of dailyStatsRows) {
+      const moscow = new Date(ds.date.getTime() + MSK_OFFSET_MS);
+      const dow = moscow.getUTCDay(); // 0=вс ... 6=сб
+      const isWeekday = dow >= 1 && dow <= 5;
+      if (!isWeekday) continue;
+      ptsByUid.set(ds.userId, (ptsByUid.get(ds.userId) ?? 0) + (ds.dayPoints ?? 0));
+      workingDaysByUid.set(ds.userId, (workingDaysByUid.get(ds.userId) ?? 0) + 1);
+    }
+
+    // Топ-1 для базовой нормировки веса.
+    let baseProdTop1 = 0;
+    let baseProdTop1UserId: string | null = null;
+    for (const [uid, ptsMonthWeekdays] of ptsByUid.entries()) {
+      const workingDaysWeekdays = workingDaysByUid.get(uid) ?? 0;
+      const baseProd = baseProdFromMonthStats(ptsMonthWeekdays, workingDaysWeekdays);
+      if (baseProd > baseProdTop1) {
+        baseProdTop1 = baseProd;
+        baseProdTop1UserId = uid;
+      }
+    }
+
+    const baselineTop1Name =
+      baseProdTop1UserId == null
+        ? null
+        : (await prisma.user.findUnique({ where: { id: baseProdTop1UserId }, select: { name: true } }))?.name ?? null;
+
+    const ptsSelected = ptsByUid.get(userId) ?? 0;
+    const workingDaysSelected = workingDaysByUid.get(userId) ?? 0;
+    const baseProdSelected = baseProdFromMonthStats(ptsSelected, workingDaysSelected);
+
+    const MIN_EFFICIENCY_WEIGHT = 0.3;
+    const calcWeight = (baseProd: number): number => {
+      if (baseProdTop1 <= 0) return 1;
+      const raw = baseProd / baseProdTop1;
+      return Math.max(MIN_EFFICIENCY_WEIGHT, raw);
+    };
+
+    const weightUser = calcWeight(baseProdSelected);
+    const weightPct = Math.round(weightUser * 1000) / 10;
+
+    // denom = сумма весов активных за последние 15 минут
+    const denom = warehousePace.activeUserIds.length
+      ? warehousePace.activeUserIds.reduce((s, uid) => {
+          const ptsMonthWeekdays = ptsByUid.get(uid) ?? 0;
+          const workingDaysWeekdays = workingDaysByUid.get(uid) ?? 0;
+          const baseProd = baseProdFromMonthStats(ptsMonthWeekdays, workingDaysWeekdays);
+          return s + calcWeight(baseProd);
+        }, 0)
+      : 0;
+
+    const pointsPerMin = warehousePace.points15m > 0 ? warehousePace.points15m / 15 : 0;
+
+    let ratePerMin = 0;
+    if (isWorking && !isLunch) {
+      if (inStartupWindow) {
+        ratePerMin = startupRatePerMin;
+      } else if (warehousePace.activeUserIds.length > 0 && warehousePace.points15m > 0 && denom > 0) {
+        ratePerMin = pointsPerMin * (weightUser / denom);
+      }
+    }
+
+    const ratePerHour = ratePerMin * 60;
+    const displayedRatePerHour = Math.max(40, ratePerHour);
+
+    // Если фронт передал длительность текущей доп.работы (elapsedSecBeforeLunch),
+    // считаем итоговые баллы для выбранного пользователя "как в формуле".
+    const elapsedSecBeforeLunchRaw = searchParams.get('elapsedSecBeforeLunch');
+    const elapsedSecBeforeLunch =
+      elapsedSecBeforeLunchRaw != null ? Number.parseFloat(elapsedSecBeforeLunchRaw) : 0;
+
+    let totalExtraWorkPoints: number | null = null;
+    if (Number.isFinite(elapsedSecBeforeLunch) && elapsedSecBeforeLunch > 0) {
+      totalExtraWorkPoints = await computeExtraWorkPointsForSession(prisma as any, {
+        userId,
+        elapsedSecBeforeLunch,
+        stoppedAt: nowUtc,
+      });
+    }
+
+    return NextResponse.json({
+      atUtc: nowUtc.toISOString(),
+      target: {
+        userId,
+        userName: targetUser?.name ?? null,
+      },
+      isWorkingTimeMoscow: isWorking,
+      isLunchTimeMoscow: isLunch,
+      inStartupWindow,
+      startupRatePerMin: Math.round(startupRatePerMin * 100000) / 100000,
+      todayCoeff: Math.round(todayCoeff * 100) / 100,
+      productivity: Math.round(baseProdSelected * 100) / 100,
+      productivityToday: Math.round(baseProdSelected * todayCoeff * 100) / 100,
+      baseProd: {
+        ptsMonthWeekdays: Math.round(ptsSelected * 10) / 10,
+        workingDaysWeekdays: workingDaysSelected,
+        baseProd: Math.round(baseProdSelected * 1000) / 1000,
+        baseProdTop1: Math.round(baseProdTop1 * 1000) / 1000,
+        baseProdTop1UserId,
+        baseProdTop1UserName: baselineTop1Name,
+      },
+      warehousePace: {
+        points15m: Math.round(warehousePace.points15m * 100) / 100,
+        pointsPerMin: Math.round(pointsPerMin * 100000) / 100000,
+        activeUserIds: warehousePace.activeUserIds,
+      },
+      distribution: {
+        weightUser: Math.round(weightUser * 1000) / 1000,
+        weightUserPct: weightPct,
+        denom: Math.round(denom * 1000) / 1000,
+        formula: inStartupWindow
+          ? 'в окне 09:00–09:15 ставка фиксированная'
+          : 'ratePerMin = (points15m/15) × (weightUser/denom)',
+        minWeight: MIN_EFFICIENCY_WEIGHT,
+      },
+      rate: {
+        ratePerMin: Math.round(ratePerMin * 100000) / 100000,
+        ratePerHour: Math.round(displayedRatePerHour * 100) / 100,
+      },
+      total: {
+        elapsedSecBeforeLunch: Number.isFinite(elapsedSecBeforeLunch) ? elapsedSecBeforeLunch : 0,
+        elapsedMinBeforeLunch:
+          Number.isFinite(elapsedSecBeforeLunch) && elapsedSecBeforeLunch > 0 ? Math.round((elapsedSecBeforeLunch / 60) * 10) / 10 : 0,
+        totalExtraWorkPoints: totalExtraWorkPoints != null ? Math.round(totalExtraWorkPoints * 10) / 10 : null,
+      },
+    });
+  } catch (e) {
+    console.error('[extra-work/current]', e);
+    return NextResponse.json({ error: 'Ошибка расчёта текущих показателей' }, { status: 500 });
+  }
+}
+

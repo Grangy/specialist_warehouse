@@ -49,12 +49,11 @@ async function main() {
   console.log('  Произв.     = баллов/час (текущая ставка «если бы работал сейчас»). Зависит от темпa склада и полезности.');
   console.log('  Часы доп.   = сумма elapsedSecBeforeLunch по сессиям за неделю.');
   console.log('  Доп.баллы   = сумма по формуле: каждая минута × ставка в тот момент (09:00–09:15 — фикс., иначе динамика).');
-  console.log('  Польз.%     = баллы с начала месяца (МСК) ÷ баллы эталона × 100 (сырой %, без clamp).');
-  console.log('  В формуле   = полезность clamp(0.5–1.5): если < 50% → 0.5, если > 150% → 1.5.');
-  console.log('  Поэтому     = у многих Произв. одинакова (38.69) — все с полезностью < 50% получают clamp 0.5.\n');
+  console.log('  Польз.%     = вес распределения ставки: baseProd(uid) / baseProdTop1 × 100 (clamp min 30%).');
+  console.log('  baseProd(uid)= (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9.\n');
 
   const baselineName = await getBaselineUserName(prisma);
-  console.log(`Эталон (100%): ${baselineName ?? 'Эрнес'}\n`);
+  console.log(`Эталон (100%): топ-1 по продуктивности (системный baseline user: ${baselineName ?? 'Эрнес'}). \n`);
 
   const workers = await prisma.user.findMany({
     where: { role: { in: ['collector', 'checker', 'admin'] } },

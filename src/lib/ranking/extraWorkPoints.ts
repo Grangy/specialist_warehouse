@@ -2,13 +2,20 @@
  * Баллы за доп. работу: новая формула.
  *
  * Темп за минуту = баллы склада за последние 15 мин ÷ 15.
- * Эту величину делим между активными за это окно работниками пропорционально
- * коэффициенту эффективности (баллы человека с начала месяца / эталон); если ниже 30%, берётся 30%.
+ * Эту величину делим между активными работниками пропорционально весу продуктивности:
+ * weight = max(30%, baseProd(uid) / baseProdTop1),
+ * где baseProd(uid) = (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9.
  * Баллы/мин для сотрудника = темп_за_мин × (вес_сотрудника / сумма_весов_активных).
+ * Начисления только в рабочее время: пн–пт, 09:00–18:00 МСК (в обед начисления = 0).
  * 09:00–09:15 МСК: фиксированная ставка (нет истории за 15 мин).
  */
 
-import { getMoscowHour, getMonthStartMoscowUTC, getStartupWindow09MoscowUTC } from '@/lib/utils/moscowDate';
+import {
+  getMoscowDayStartUTC,
+  getMoscowHour,
+  getMonthStartMoscowUTC,
+  getStartupWindow09MoscowUTC,
+} from '@/lib/utils/moscowDate';
 import type { prisma } from '@/lib/prisma';
 
 type PrismaLike = typeof prisma;
@@ -33,6 +40,54 @@ function isInStartupWindow(utcDate: Date): boolean {
   const h = getMoscowHour(utcDate);
   const m = getMoscowMinute(utcDate);
   return h === 9 && m < 15;
+}
+
+/** Рабочее время для начисления доп.работы: пн–пт, 09:00–18:00 МСК. */
+export function isWorkingTimeMoscow(utcDate: Date): boolean {
+  const hour = getMoscowHour(utcDate);
+  const moscow = new Date(utcDate.getTime() + MSK_OFFSET_MS);
+  const dow = moscow.getUTCDay(); // 0=Вс ... 6=Сб
+  const isWeekday = dow >= 1 && dow <= 5;
+  return isWeekday && hour >= 9 && hour < 18;
+}
+
+/** Обед по Москве: 13:00–15:00 (ровно как isLunchTimeMoscow в UI/сервере по логике). */
+export function isLunchTimeMoscow(utcDate: Date): boolean {
+  const hour = getMoscowHour(utcDate);
+  return hour >= 13 && hour < 15;
+}
+
+/** Сколько секунд до следующего рабочего старта (09:00 МСК) от utcDate; 0 если уже в рабочее время. */
+export function getSecondsUntilNextWorkingStartMoscow(utcDate: Date): number {
+  if (isWorkingTimeMoscow(utcDate)) return 0;
+
+  const t = utcDate.getTime();
+  // На практике хватит 1 недели, чтобы дойти до следующего рабочего дня.
+  for (let i = 0; i < 8; i++) {
+    const dayStart = getMoscowDayStartUTC(utcDate);
+    const moscow = new Date(utcDate.getTime() + MSK_OFFSET_MS);
+    const dow = moscow.getUTCDay();
+    const isWeekday = dow >= 1 && dow <= 5;
+    const start = new Date(dayStart.getTime() + 9 * 60 * 60 * 1000);
+
+    if (isWeekday && t < start.getTime()) {
+      return Math.ceil((start.getTime() - t) / 1000);
+    }
+
+    // Переходим на следующий день (по Москве).
+    utcDate = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 + 1);
+  }
+
+  return 0;
+}
+
+/** Сколько секунд осталось до конца рабочего дня (18:00 МСК) от utcDate; 0 если вне рабочего времени. */
+export function getSecondsUntilWorkingEndMoscow(utcDate: Date): number {
+  if (!isWorkingTimeMoscow(utcDate)) return 0;
+  const dayStart = getMoscowDayStartUTC(utcDate);
+  const end = new Date(dayStart.getTime() + 18 * 60 * 60 * 1000);
+  const sec = Math.ceil((end.getTime() - utcDate.getTime()) / 1000);
+  return sec > 0 ? sec : 0;
 }
 
 function secondsRemainingInStartupWindow(utc: Date): number {
@@ -97,93 +152,95 @@ export function clearWarehousePaceSessionCache(): void {
   warehousePaceSessionCache.clear();
 }
 
-const MAX_EFFICIENCY_TASKSUM_CACHE_ENTRIES = 12_000;
-const efficiencyUserTaskPtsCache = new Map<string, number>();
-
-function ensureCacheSize(cache: Map<string, number>): void {
-  if (cache.size <= MAX_EFFICIENCY_TASKSUM_CACHE_ENTRIES) return;
-  const k0 = cache.keys().next().value;
-  if (k0 !== undefined) cache.delete(k0);
-}
+const PRODUCTIVITY_WEIGHTS_CACHE_TTL_MS = 30_000;
+const productivityWeightsCache = new Map<
+  string,
+  { baselineProdMax: number; baseByUid: Map<string, number>; expires: number }
+>();
 
 export function clearEfficiencyWeightsSessionCache(): void {
-  efficiencyUserTaskPtsCache.clear();
+  productivityWeightsCache.clear();
 }
 
 /**
- * Вес эффективности для распределения доп. работы: max(30%, баллы_с_начала_месяца / эталон).
- * Баллы месяца = сборка + проверка + диктовка + накопленная доп.работа (extraWorkByUser).
+ * Вес эффективности для распределения доп.работы:
+ * - нагрузка: темп склада за последние 15 минут (points/15)
+ * - распределение: вес = max(30%, baseProd(uid) / baseProdTop1)
+ * - baseProd(uid) = (pts_month_weekdays / (8 * workingDays_weekdays)) * 0.9
+ *
+ * extraWorkByUser намеренно не учитываем: иначе возникает самоподкрутка и перекосы.
  */
 async function getEfficiencyWeightsForUsers(
   prisma: PrismaLike,
   userIds: string[],
   beforeDate: Date,
-  extraWorkByUser?: Map<string, number>
+  _extraWorkByUser?: Map<string, number>
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   if (userIds.length === 0) return result;
 
-  const monthStart = getMonthStartMoscowUTC(beforeDate);
-  // Важно для корректности формулы: используем точный `beforeDate`,
-  // как и в исходной логике.
-  const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
   const unique = [...new Set(userIds)].sort((a, b) => a.localeCompare(b));
+  const monthStart = getMonthStartMoscowUTC(beforeDate);
+  const bucket = Math.floor(beforeDate.getTime() / FIFTEEN_MIN_MS);
+  // Базовая productivity-top-1 зависит от состава userIds (мы считаем baseline в пределах переданных пользователей),
+  // поэтому cacheKey включает список userIds.
+  const cacheKey = `${monthStart.getTime()}|${bucket}|${unique.join(',')}`;
 
-  // Предварительно достаём taskStatistics сумму по каждому uid (без extra), чтобы затем быстро пересчитать веса.
-  const taskSumEntries: Array<{ uid: string; key: string; taskPts?: number }> = unique.map((uid) => ({
-    uid,
-    key: `${uid}|${monthStart.getTime()}|${beforeDate.getTime()}`,
-  }));
-
-  const missingUids: string[] = [];
-  for (const e of taskSumEntries) {
-    const cached = efficiencyUserTaskPtsCache.get(e.key);
-    if (cached === undefined) missingUids.push(e.uid);
-  }
-
-  if (missingUids.length > 0) {
-    // Один groupBy вместо N отдельных aggregate — резко сокращает количество DB round-trip'ов.
-    const grouped = await prisma.taskStatistics.groupBy({
-      by: ['userId'],
-      where: { userId: { in: missingUids }, OR: taskFilterOr },
-      _sum: { orderPoints: true },
-    });
-
-    const byUid = new Map<string, number>();
-    for (const r of grouped) {
-      byUid.set(r.userId, r._sum.orderPoints ?? 0);
+  const cached = productivityWeightsCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    for (const uid of unique) {
+      const base = cached.baseByUid.get(uid) ?? 0.5;
+      const raw = cached.baselineProdMax > 0 ? base / cached.baselineProdMax : 1;
+      result.set(uid, Math.max(MIN_EFFICIENCY_WEIGHT, raw));
     }
-
-    missingUids.forEach((uid) => {
-      const k = `${uid}|${monthStart.getTime()}|${beforeDate.getTime()}`;
-      efficiencyUserTaskPtsCache.set(k, byUid.get(uid) ?? 0);
-    });
-    ensureCacheSize(efficiencyUserTaskPtsCache);
-  }
-
-  const measureByUid = new Map<string, number>();
-  let baselinePtsMax = 0;
-
-  unique.forEach((uid) => {
-    // Ключ только для кеша. Значения taskPts считаются по точному `beforeDate` (формула не меняется).
-    const key = `${uid}|${monthStart.getTime()}|${beforeDate.getTime()}`;
-    const taskPts = efficiencyUserTaskPtsCache.get(key) ?? 0;
-    const extra = extraWorkByUser?.get(uid) ?? 0;
-    const measure = taskPts + extra;
-    measureByUid.set(uid, measure);
-    if (measure > baselinePtsMax) baselinePtsMax = measure;
-  });
-
-  if (baselinePtsMax <= 0) {
-    unique.forEach((id) => result.set(id, 1));
     return result;
   }
 
-  unique.forEach((uid) => {
-    const measure = measureByUid.get(uid) ?? 0;
-    const raw = measure / baselinePtsMax;
-    result.set(uid, Math.max(MIN_EFFICIENCY_WEIGHT, raw));
+  // На производительность: выбираем dailyStats только по переданным userIds,
+  // а будни/выходные фильтруем по dow после MSK-сдвига.
+  const rows = await prisma.dailyStats.findMany({
+    where: {
+      userId: { in: unique },
+      date: { gte: monthStart, lte: beforeDate },
+      dayPoints: { gt: 0 },
+    },
+    select: { userId: true, dayPoints: true, date: true },
   });
+
+  const taskPtsByUid = new Map<string, number>();
+  const workingDaysByUid = new Map<string, number>();
+
+  for (const ds of rows) {
+    const moscow = new Date(ds.date.getTime() + MSK_OFFSET_MS);
+    const dow = moscow.getUTCDay(); // 0=Вс ... 6=Сб
+    const isWeekday = dow >= 1 && dow <= 5;
+    if (!isWeekday) continue;
+
+    taskPtsByUid.set(ds.userId, (taskPtsByUid.get(ds.userId) ?? 0) + (ds.dayPoints ?? 0));
+    workingDaysByUid.set(ds.userId, (workingDaysByUid.get(ds.userId) ?? 0) + 1);
+  }
+
+  const baseByUid = new Map<string, number>();
+  let baselineProdMax = 0;
+  for (const uid of unique) {
+    const ptsMonth = taskPtsByUid.get(uid) ?? 0;
+    const workingDays = workingDaysByUid.get(uid) ?? 0;
+    const base = workingDays > 0 && ptsMonth > 0 ? (ptsMonth / (8 * workingDays)) * 0.9 : 0.5;
+    baseByUid.set(uid, base);
+    if (base > baselineProdMax) baselineProdMax = base;
+  }
+
+  productivityWeightsCache.set(cacheKey, {
+    baselineProdMax,
+    baseByUid,
+    expires: Date.now() + PRODUCTIVITY_WEIGHTS_CACHE_TTL_MS,
+  });
+
+  for (const uid of unique) {
+    const base = baseByUid.get(uid) ?? 0.5;
+    const raw = baselineProdMax > 0 ? base / baselineProdMax : 1;
+    result.set(uid, Math.max(MIN_EFFICIENCY_WEIGHT, raw));
+  }
 
   return result;
 }
@@ -327,46 +384,24 @@ export async function getUsefulnessPctMap(
   prisma: PrismaLike,
   userIds: string[],
   beforeDate: Date,
-  extraWorkByUser?: Map<string, number>,
-  errorPenaltiesByUser?: Map<string, number>
+  _extraWorkByUser?: Map<string, number>,
+  _errorPenaltiesByUser?: Map<string, number>
 ): Promise<Map<string, number>> {
+  // В UI этот «Вес, %» используется как вес распределения текущего темпа.
+  // Теперь он соответствует productivity по месяцу и рабочим дням (как в админке «Произв.»),
+  // поэтому считаем его через ту же базу, что и getEfficiencyWeightsForUsers.
   const result = new Map<string, number>();
   if (userIds.length === 0) return result;
-  const monthStart = getMonthStartMoscowUTC(beforeDate);
-  const taskFilterOr = TASK_FILTER_OR_MONTH(monthStart, beforeDate);
-
-  // Эталон 100%: топ-1 по (taskPts + extra + penalties) среди ВСЕХ пользователей в month-окне,
-  // а не только среди userIds, пришедших из админки.
-  // Это убирает ситуацию, когда «Эрнес» оставался 100%, потому что он был в списке, а топ-1 — нет.
-  const allUserTaskSums = await prisma.taskStatistics.groupBy({
-    by: ['userId'],
-    where: { OR: taskFilterOr },
-    _sum: { orderPoints: true },
-  });
-
-  let baselinePtsMax = 0;
-  const taskPtsByUid = new Map<string, number>();
-  for (const r of allUserTaskSums) {
-    const uid = r.userId;
-    const taskPts = r._sum.orderPoints ?? 0;
-    taskPtsByUid.set(uid, taskPts);
-    const extra = extraWorkByUser?.get(uid) ?? 0;
-    const pen = errorPenaltiesByUser?.get(uid) ?? 0;
-    const measure = taskPts + extra + pen;
-    if (measure > baselinePtsMax) baselinePtsMax = measure;
-  }
-
-  if (baselinePtsMax <= 0) return result;
 
   const unique = [...new Set(userIds)];
+  const weightRatioByUid = await getEfficiencyWeightsForUsers(prisma, unique, beforeDate);
+
   for (const uid of unique) {
-    const taskPts = taskPtsByUid.get(uid) ?? 0;
-    const extra = extraWorkByUser?.get(uid) ?? 0;
-    const pen = errorPenaltiesByUser?.get(uid) ?? 0;
-    const userPts = taskPts + extra + pen;
-    const pct = (userPts / baselinePtsMax) * 100;
+    const w = weightRatioByUid.get(uid) ?? MIN_EFFICIENCY_WEIGHT;
+    const pct = w * 100;
     result.set(uid, Math.round(pct * 10) / 10);
   }
+
   return result;
 }
 
@@ -401,6 +436,7 @@ export async function getExtraWorkPointsPerMinute(
   atUtc: Date,
   extraWorkByUser?: Map<string, number>
 ): Promise<number> {
+  if (!isWorkingTimeMoscow(atUtc) || isLunchTimeMoscow(atUtc)) return 0;
   if (isInStartupWindow(atUtc)) {
     return getStartupRatePerMin(prisma);
   }
@@ -458,6 +494,21 @@ export async function getExtraWorkRateDebug(
   atUtc: Date,
   extraWorkByUser?: Map<string, number>
 ): Promise<ExtraWorkRateDebug> {
+  if (!isWorkingTimeMoscow(atUtc) || isLunchTimeMoscow(atUtc)) {
+    return {
+      atUtc: atUtc.toISOString(),
+      isStartupWindow: false,
+      warehousePacePoints15m: 0,
+      activeUserIds: [],
+      weightMap: {},
+      weightSumActive: 0,
+      wUser: 0,
+      denom: 0,
+      ratePerMin: 0,
+      ratePerHour: 0,
+    };
+  }
+
   if (isInStartupWindow(atUtc)) {
     const startupRatePerMin = await getStartupRatePerMin(prisma);
     return {
@@ -547,7 +598,7 @@ const MAX_ELAPSED_SEC_EXTRA_WORK_SESSION = 14 * 24 * 60 * 60;
 export async function computeExtraWorkPointsForSession(
   prisma: PrismaLike,
   session: ExtraWorkSessionForPoints,
-  extraWorkByUser?: Map<string, number>
+  _extraWorkByUser?: Map<string, number>
 ): Promise<number> {
   const rawElapsed = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
   const elapsedSec = Number.isFinite(rawElapsed)
@@ -616,6 +667,16 @@ export async function computeExtraWorkPointsForSession(
   let paceTotalPoints = 0;
   const paceCountByUser = new Map<string, number>(); // presence для activeUserIds
   const monthSumByUser = new Map<string, number>(); // taskPts для weights
+  const monthWorkingDaysByUser = new Map<string, number>(); // рабочие дни (пн–пт) по taskStatistics
+  const monthDayPresence = new Map<string, number>(); // uid|dayKey -> count tasks
+
+  function getMoscowDayKey(utcTsMs: number): string {
+    const m = new Date(utcTsMs + MSK_OFFSET_MS);
+    const y = m.getUTCFullYear();
+    const mo = String(m.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(m.getUTCDate()).padStart(2, '0');
+    return `${y}-${mo}-${d}`;
+  }
 
   const updateWindowsTo = (momentTs: number): void => {
     // Add tasks up to momentTs (<= momentTs).
@@ -624,6 +685,23 @@ export async function computeExtraWorkPointsForSession(
       paceTotalPoints += tt.orderPoints;
       paceCountByUser.set(tt.userId, (paceCountByUser.get(tt.userId) ?? 0) + 1);
       monthSumByUser.set(tt.userId, (monthSumByUser.get(tt.userId) ?? 0) + tt.orderPoints);
+
+      // WorkingDays для baseProd считаем как количество пн–пт дней, где у пользователя есть task pts.
+      if (tt.orderPoints > 0) {
+        const moscow = new Date(tt.effectiveTs + MSK_OFFSET_MS);
+        const dow = moscow.getUTCDay(); // 0=Вс ... 6=Сб
+        const isWeekday = dow >= 1 && dow <= 5;
+        if (isWeekday) {
+          const dayKey = getMoscowDayKey(tt.effectiveTs);
+          const presenceKey = `${tt.userId}|${dayKey}`;
+          const prev = monthDayPresence.get(presenceKey) ?? 0;
+          const next = prev + 1;
+          monthDayPresence.set(presenceKey, next);
+          if (prev === 0) {
+            monthWorkingDaysByUser.set(tt.userId, (monthWorkingDaysByUser.get(tt.userId) ?? 0) + 1);
+          }
+        }
+      }
       addIdx++;
     }
 
@@ -645,6 +723,27 @@ export async function computeExtraWorkPointsForSession(
       const prev = (monthSumByUser.get(tt.userId) ?? 0) - tt.orderPoints;
       if (prev === 0) monthSumByUser.delete(tt.userId);
       else monthSumByUser.set(tt.userId, prev);
+
+      // Корректируем workingDays при смене месяца.
+      if (tt.orderPoints > 0) {
+        const moscow = new Date(tt.effectiveTs + MSK_OFFSET_MS);
+        const dow = moscow.getUTCDay(); // 0=Вс ... 6=Сб
+        const isWeekday = dow >= 1 && dow <= 5;
+        if (isWeekday) {
+          const dayKey = getMoscowDayKey(tt.effectiveTs);
+          const presenceKey = `${tt.userId}|${dayKey}`;
+          const prevCount = monthDayPresence.get(presenceKey) ?? 0;
+          const nextCount = prevCount - 1;
+          if (nextCount <= 0) {
+            monthDayPresence.delete(presenceKey);
+            const wdPrev = monthWorkingDaysByUser.get(tt.userId) ?? 0;
+            if (wdPrev <= 1) monthWorkingDaysByUser.delete(tt.userId);
+            else monthWorkingDaysByUser.set(tt.userId, wdPrev - 1);
+          } else {
+            monthDayPresence.set(presenceKey, nextCount);
+          }
+        }
+      }
       monthRemoveIdx++;
     }
   };
@@ -668,20 +767,23 @@ export async function computeExtraWorkPointsForSession(
       return 0;
     }
 
-    // Эталон (100%): топ-1 по (taskPts + extra) среди всех, кто имеет taskPts
-    // в текущем "весовом" окне (monthSumByUser), а не только среди активных 15-мин.
-    let baselinePtsMax = 0;
-    for (const [uid, taskPts] of monthSumByUser.entries()) {
-      const extra = extraWorkByUser?.get(uid) ?? 0;
-      const measure = taskPts + extra;
-      if (measure > baselinePtsMax) baselinePtsMax = measure;
+    // Эталон (100%): топ-1 по productivity (как в админке «Произв.»),
+    // где baseProd = (pts_month_weekdays / (8 * workingDays_weekdays)) * 0.9.
+    const calcBaseProd = (uid: string): number => {
+      const taskPts = monthSumByUser.get(uid) ?? 0;
+      const workingDays = monthWorkingDaysByUser.get(uid) ?? 0;
+      return workingDays > 0 && taskPts > 0 ? (taskPts / (8 * workingDays)) * 0.9 : 0.5;
+    };
+
+    let baselineProdMax = 0;
+    for (const uid of monthSumByUser.keys()) {
+      const base = calcBaseProd(uid);
+      if (base > baselineProdMax) baselineProdMax = base;
     }
 
     const calcWeight = (uid: string): number => {
-      if (baselinePtsMax <= 0) return 1;
-      const taskPts = monthSumByUser.get(uid) ?? 0;
-      const extra = extraWorkByUser?.get(uid) ?? 0;
-      const raw = (taskPts + extra) / baselinePtsMax;
+      if (baselineProdMax <= 0) return 1;
+      const raw = calcBaseProd(uid) / baselineProdMax;
       return Math.max(MIN_EFFICIENCY_WEIGHT, raw);
     };
 
@@ -702,6 +804,15 @@ export async function computeExtraWorkPointsForSession(
     const cur = new Date(startedAt.getTime() + t * 1000);
     const rem = elapsedSec - t;
 
+    // Начисления только в рабочее время (пн–пт, 09:00–18:00 МСК) и не во время обеда.
+    if (!isWorkingTimeMoscow(cur) || isLunchTimeMoscow(cur)) {
+      const secToStart = getSecondsUntilNextWorkingStartMoscow(cur);
+      const chunk = Math.min(rem, secToStart);
+      if (chunk <= 0) t += 1;
+      else t += chunk;
+      continue;
+    }
+
     if (isInStartupWindow(cur)) {
       const secLeft = secondsRemainingInStartupWindow(cur);
       const chunk = secLeft > 0 ? Math.min(rem, secLeft) : Math.min(rem, 1);
@@ -712,7 +823,8 @@ export async function computeExtraWorkPointsForSession(
 
     const toNextStartup = secondsUntilNextStartupWindowStart(cur);
     const capByStartup = toNextStartup > 0 ? Math.min(rem, toNextStartup) : rem;
-    const chunk = Math.max(1, Math.min(rem, 900, capByStartup));
+    const capByEnd = getSecondsUntilWorkingEndMoscow(cur);
+    const chunk = Math.max(1, Math.min(rem, 900, capByStartup, capByEnd));
     if (!(chunk > 0)) {
       t += 1;
       continue;
