@@ -116,12 +116,10 @@ export default function TopPage() {
 
   useEffect(() => {
     const refreshMs = period === 'today' ? 3 * 60 * 1000 : period === 'week' ? 10 * 60 * 1000 : 20 * 60 * 1000;
-    // На смену периода/первый показ — принудительно берём свежий снапшот, иначе UI может показывать
-    // "пусто" из-за старого top-кэша.
-    load(false, true);
-    // forceReload=true: добиваемся nocache=1 на API, чтобы топ пересчитался/перекешировался,
-    // а не просто отдавался из in-memory top cache.
-    const id = setInterval(() => load(true, true), refreshMs);
+    // По умолчанию показываем кэшированную версию /top (без nocache),
+    // чтобы не перегружать сервер при каждом заходе и автообновлении.
+    load();
+    const id = setInterval(() => load(true), refreshMs);
     return () => clearInterval(id);
   }, [load, period]);
 
