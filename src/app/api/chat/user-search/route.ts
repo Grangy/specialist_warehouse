@@ -40,9 +40,14 @@ export async function GET(request: NextRequest) {
           WHERE lower(login) LIKE ${`%${qLower}%`} OR lower(name) LIKE ${`%${qLower}%`}
           ORDER BY
             CASE WHEN role = 'admin' THEN 0 ELSE 1 END,
+            -- similarity ranking: exact > prefix > earlier substring position
             CASE WHEN lower(login) = ${qLower} THEN 0 ELSE 1 END,
+            CASE WHEN lower(name) = ${qLower} THEN 0 ELSE 1 END,
             CASE WHEN lower(login) LIKE ${qLower + '%'} THEN 0 ELSE 1 END,
             CASE WHEN lower(name) LIKE ${qLower + '%'} THEN 0 ELSE 1 END,
+            -- position (instr is 1-based; 0 means not found)
+            CASE WHEN instr(lower(login), ${qLower}) > 0 THEN instr(lower(login), ${qLower}) ELSE 999 END,
+            CASE WHEN instr(lower(name), ${qLower}) > 0 THEN instr(lower(name), ${qLower}) ELSE 999 END,
             name ASC
           LIMIT 8
         `
