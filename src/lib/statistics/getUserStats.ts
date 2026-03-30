@@ -4,7 +4,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
+import { getMoscowDateString, getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
 import {
   calculateCheckPoints,
   calculateCollectPoints,
@@ -207,6 +207,10 @@ async function getUserStatsUncached(
     prisma.dailyStats.findMany({
       where: {
         userId: user.id,
+        // В UI /top показываем "дни", когда человек реально работал.
+        // В dailyStats могут существовать строки с нулями (служебные/исторические пересчёты),
+        // из-за чего в списке появляются даты вроде 1/8 числа при отсутствии работы.
+        dayPoints: { gt: 0 },
         ...(dateRange && {
           date: {
             gte: dateRange.startDate,
@@ -492,7 +496,9 @@ async function getUserStatsUncached(
       }),
     },
     dailyStats: dailyStats.map((stat) => ({
-      date: stat.date.toISOString().split('T')[0],
+      // stat.date в БД хранится как "начало московского дня в UTC" (часто 21:00Z предыдущего дня),
+      // поэтому ISO(UTC) дата визуально выглядит как "выходной день работал".
+      date: getMoscowDateString(stat.date),
       positions: stat.positions,
       units: stat.units,
       orders: stat.orders,
