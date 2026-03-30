@@ -45,6 +45,7 @@ model User {
   userSettings  UserSettings?
   extraWorkSessionsAsWorker ExtraWorkSession[] @relation("ExtraWorkSessionWorker")
   extraWorkSessionsAsAssigner ExtraWorkSession[] @relation("ExtraWorkSessionAssigner")
+  chatMessages  ChatMessage[]     @relation("ChatMessageAuthor")
 
   @@map("users")
 }
@@ -466,6 +467,52 @@ model DailyAchievement {
   dailyStats DailyStats @relation(fields: [dailyStatsId], references: [id], onDelete: Cascade)
 
   @@map("daily_achievements")
+}
+
+model ChatRoom {
+  id        String        @id @default(cuid())
+  key       String        @unique // e.g. "general"
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  messages  ChatMessage[]
+
+  @@map("chat_rooms")
+}
+
+model ChatMessage {
+  id               String          @id @default(cuid())
+  roomId           String          @map("room_id")
+  authorId         String          @map("author_id")
+  text             String          @default("")
+  replyToMessageId String?         @map("reply_to_message_id")
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  room             ChatRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author           User            @relation("ChatMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  replyToMessage   ChatMessage?    @relation("ChatMessageReply", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies          ChatMessage[]   @relation("ChatMessageReply")
+  attachments      ChatAttachment[]
+
+  @@index([roomId, createdAt])
+  @@index([authorId, createdAt])
+  @@map("chat_messages")
+}
+
+model ChatAttachment {
+  id        String      @id @default(cuid())
+  messageId String?     @map("message_id") // null пока файл загружен, но не привязан к сообщению
+  type      String      @default("image")
+  mime      String
+  size      Int
+  relPath   String      @map("rel_path") // relative to project root, e.g. uploads/chat/...
+  width     Int?
+  height    Int?
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  message   ChatMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([messageId])
+  @@map("chat_attachments")
 }
 
 // Системные настройки

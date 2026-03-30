@@ -5,6 +5,8 @@ import { Trophy, RefreshCw, Calendar, Clock, HelpCircle, AlertTriangle, Package,
 import Link from 'next/link';
 import UserStatsModal from '@/components/admin/UserStatsModal';
 import { PointsHelpModal } from '@/components/PointsHelpModal';
+import { ChatModal } from '@/components/chat/ChatModal';
+import { useChatUnread } from '@/components/chat/useChatUnread';
 
 type Period = 'today' | 'week' | 'month';
 
@@ -80,6 +82,8 @@ export default function TopPage() {
   const [expandedErrorRow, setExpandedErrorRow] = useState<number | null>(null);
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const { unread, markSeen } = useChatUnread(isChatOpen);
 
   const load = useCallback(async (silent = false, forceReload = false) => {
     if (!silent) {
@@ -232,6 +236,22 @@ export default function TopPage() {
             >
               <RefreshCw className="w-4 h-4 inline-block mr-2 align-[-2px]" />
               Обновить сейчас
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                markSeen();
+                setIsChatOpen(true);
+              }}
+              className="relative ml-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors border bg-slate-800/80 text-slate-200 border-slate-600 hover:bg-slate-700/80 hover:text-slate-100"
+              title="Открыть общий чат"
+            >
+              Чат
+              {unread > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
             </button>
           </div>
           {date && (
@@ -729,6 +749,14 @@ export default function TopPage() {
           onClose={() => {
             setSelectedUserId(null);
             setSelectedUserName('');
+          }}
+        />
+
+        <ChatModal
+          isOpen={isChatOpen}
+          onClose={() => {
+            setIsChatOpen(false);
+            markSeen();
           }}
         />
       </div>

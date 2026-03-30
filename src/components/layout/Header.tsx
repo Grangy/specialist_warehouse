@@ -8,6 +8,8 @@ import { getAchievementName, getAchievementEmoji } from '@/lib/ranking/achieveme
 import { DictatorSelector } from './DictatorSelector';
 import { useExtraWork } from '@/contexts/ExtraWorkContext';
 import { SettingsModal } from '@/components/modals/SettingsModal';
+import { ChatModal } from '@/components/chat/ChatModal';
+import { useChatUnread } from '@/components/chat/useChatUnread';
 
 interface HeaderProps {
   newCount: number;
@@ -103,6 +105,8 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const [showProfile, setShowProfile] = useState(false);
   const [profilePosition, setProfilePosition] = useState({ top: 80, right: 16, width: 420 });
   const [showSettings, setShowSettings] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const { unread, markSeen } = useChatUnread(isChatOpen);
   const router = useRouter();
 
   useEffect(() => {
@@ -410,6 +414,25 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                           <span className="text-sm font-medium">Общий топ</span>
                         </button>
 
+                        {/* Кнопка «Чат» (общий для всех пользователей) */}
+                        <button
+                          onClick={() => {
+                            setShowProfile(false);
+                            markSeen();
+                            setIsChatOpen(true);
+                          }}
+                          className="relative w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-slate-700/80 hover:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/60 text-slate-200 hover:text-slate-100 transition-all duration-200"
+                          title="Открыть общий чат"
+                        >
+                          <Bell className="w-4 h-4" />
+                          <span className="text-sm font-medium">Чат</span>
+                          {unread > 0 && (
+                            <span className="absolute top-2 right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center">
+                              {unread > 99 ? '99+' : unread}
+                            </span>
+                          )}
+                        </button>
+
                         {/* Достижения (если есть) */}
                         {rankingStats?.daily?.achievements && rankingStats.daily.achievements.length > 0 && (
                           <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 rounded-lg p-3 border border-purple-500/30">
@@ -505,6 +528,13 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
       </div>
     </header>
     <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} userRole={user?.role} />
+    <ChatModal
+      isOpen={isChatOpen}
+      onClose={() => {
+        setIsChatOpen(false);
+        markSeen();
+      }}
+    />
     </>
   );
 }
