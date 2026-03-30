@@ -75,16 +75,58 @@ function parseLimit(v: string | null): number {
   return Math.min(100, Math.max(10, Math.floor(n)));
 }
 
-function extractMentionLogins(text: string): string[] {
-  // Mention syntax: @login (login is unique)
-  const re = /(^|[\s(])@([a-zA-Z0-9._-]{2,32})\b/g;
+function extractMentionTokens(text: string): string[] {
+  // Mention syntax: @token, token can be login or a name prefix (v1)
+  // Keep it conservative to avoid eating punctuation.
+  const re = /(^|[\s(])@([^\s@]{1,32})/g;
   const out = new Set<string>();
   let m: RegExpExecArray | null = null;
   while ((m = re.exec(text)) !== null) {
-    const login = m[2]?.trim();
-    if (login) out.add(login);
+    const token = (m[2] || '').trim().replace(/[.,;:!?]+$/g, '');
+    if (token) out.add(token);
   }
   return Array.from(out.values());
+}
+
+async function resolveMentionedUserIds(tokens: string[]): Promise<string[]> {
+  if (!tokens.length) return [];
+  const ids = new Set<string>();
+  for (const raw of tokens.slice(0, 8)) {
+    const token = raw.trim().slice(0, 32);
+    if (!token) continue;
+    const lower = token.toLowerCase();
+
+    // 1) exact login
+    const exactLogin = await prisma.user.findFirst({
+      where: { login: token },
+      select: { id: true },
+    });
+    if (exactLogin?.id) {
+      ids.add(exactLogin.id);
+      continue;
+    }
+
+    // 2) exact name (case-insensitive via SQLite lower())
+    const exactName = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM users WHERE lower(name) = ${lower} LIMIT 1
+    `;
+    if (exactName[0]?.id) {
+      ids.add(exactName[0].id);
+      continue;
+    }
+
+    // 3) prefix match by login/name
+    const prefix = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM users
+      WHERE lower(login) LIKE ${lower + '%'} OR lower(name) LIKE ${lower + '%'}
+      ORDER BY
+        CASE WHEN role = 'admin' THEN 0 ELSE 1 END,
+        name ASC
+      LIMIT 1
+    `;
+    if (prefix[0]?.id) ids.add(prefix[0].id);
+  }
+  return Array.from(ids.values());
 }
 
 export async function GET(request: NextRequest) {
@@ -164,14 +206,8 @@ export async function POST(request: NextRequest) {
       create: { key: roomKey },
     });
 
-    const mentionLogins = extractMentionLogins(text);
-    const mentionedUsers = mentionLogins.length
-      ? await prisma.user.findMany({
-          where: { login: { in: mentionLogins } },
-          select: { id: true, login: true },
-        })
-      : [];
-    const mentionedUserIds = mentionedUsers.map((u) => u.id).filter((id) => id !== user.id);
+    const mentionTokens = extractMentionTokens(text);
+    const mentionedUserIds = (await resolveMentionedUserIds(mentionTokens)).filter((id) => id !== user.id);
 
     const created = await prisma.$transaction(async (tx) => {
       const msg = await tx.chatMessage.create({
