@@ -47,6 +47,14 @@ type MessagesResponse = {
 
 type SessionResponse = { user?: { id: string; role: string; name: string } };
 
+type MentionUser = {
+  id: string;
+  login: string;
+  name: string;
+  role: string;
+  avatarEmoji: string | null;
+};
+
 interface ChatModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -74,7 +82,15 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
   const [pendingUploads, setPendingUploads] = useState<{ localUrl: string; name: string; uploading: boolean }[]>([]);
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [viewer, setViewer] = useState<{ items: ChatAttachmentDto[]; index: number } | null>(null);
+
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionItems, setMentionItems] = useState<MentionUser[]>([]);
+  const [mentionActiveIdx, setMentionActiveIdx] = useState(0);
+  const mentionRangeRef = useRef<{ start: number; end: number } | null>(null);
+  const mentionTimerRef = useRef<number | null>(null);
 
   const listEndRef = useRef<HTMLDivElement | null>(null);
   const lastSeenIdRef = useRef<string | null>(null);
@@ -95,6 +111,78 @@ const storageKey = 'chat.general.lastSeenMessageId';
       setSession(null);
     }
   }, []);
+
+  const scheduleMentionSearch = useCallback((q: string) => {
+    if (mentionTimerRef.current) {
+      window.clearTimeout(mentionTimerRef.current);
+      mentionTimerRef.current = null;
+    }
+    mentionTimerRef.current = window.setTimeout(async () => {
+      try {
+        const url = new URL('/api/chat/user-search', window.location.origin);
+        url.searchParams.set('q', q);
+        const res = await fetch(url.toString(), { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const users = Array.isArray(data?.users) ? (data.users as MentionUser[]) : [];
+        setMentionItems(users);
+        setMentionActiveIdx(0);
+        setMentionOpen(true);
+      } catch {
+        // ignore
+      }
+    }, 150);
+  }, []);
+
+  const updateMentionFromText = useCallback(
+    (nextText: string, cursorPos: number) => {
+      // find last @token before cursor
+      const left = nextText.slice(0, cursorPos);
+      const at = left.lastIndexOf('@');
+      if (at < 0) {
+        setMentionOpen(false);
+        mentionRangeRef.current = null;
+        return;
+      }
+      // do not trigger if there's whitespace between @ and cursor via another @, etc.
+      const between = left.slice(at + 1);
+      if (/\s/.test(between)) {
+        setMentionOpen(false);
+        mentionRangeRef.current = null;
+        return;
+      }
+      const q = between.slice(0, 32);
+      if (!q) {
+        // show no popup until at least 1 char
+        setMentionOpen(false);
+        mentionRangeRef.current = { start: at, end: cursorPos };
+        return;
+      }
+      setMentionQuery(q);
+      mentionRangeRef.current = { start: at, end: cursorPos };
+      scheduleMentionSearch(q);
+    },
+    [scheduleMentionSearch]
+  );
+
+  const pickMention = useCallback((u: MentionUser) => {
+    const el = textareaRef.current;
+    const range = mentionRangeRef.current;
+    if (!el || !range) return;
+    const before = text.slice(0, range.start);
+    const after = text.slice(range.end);
+    const insert = `@${u.login} `;
+    const next = `${before}${insert}${after}`;
+    const nextCursor = (before + insert).length;
+    setText(next);
+    setMentionOpen(false);
+    setMentionItems([]);
+    mentionRangeRef.current = null;
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(nextCursor, nextCursor);
+    });
+  }, [text]);
 
   const fetchPage = useCallback(async (opts?: { cursorId?: string | null; limit?: number }) => {
     const url = new URL('/api/chat/messages', window.location.origin);
@@ -362,19 +450,75 @@ const storageKey = 'chat.general.lastSeenMessageId';
           }}
         />
 
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
+        <div className="flex-1 relative">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => {
+              const v = e.target.value;
+              setText(v);
+              updateMentionFromText(v, e.target.selectionStart ?? v.length);
+            }}
           placeholder="Напишите сообщение…"
           rows={1}
           onKeyDown={(e) => {
+            if (mentionOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+              e.preventDefault();
+              setMentionActiveIdx((idx) => {
+                const n = mentionItems.length || 1;
+                const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+                return (next + n) % n;
+              });
+              return;
+            }
+            if (mentionOpen && e.key === 'Enter') {
+              const u = mentionItems[mentionActiveIdx];
+              if (u) {
+                e.preventDefault();
+                pickMention(u);
+                return;
+              }
+            }
+            if (mentionOpen && e.key === 'Escape') {
+              e.preventDefault();
+              setMentionOpen(false);
+              return;
+            }
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               void sendMessage();
             }
           }}
           className="flex-1 resize-none min-h-[42px] max-h-[140px] px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-sm outline-none focus:border-blue-500/60"
-        />
+          />
+
+          {mentionOpen && mentionItems.length > 0 && (
+            <div className="absolute bottom-[calc(100%+8px)] left-0 right-0 max-h-56 overflow-auto rounded-xl border border-slate-700 bg-slate-950 shadow-2xl z-50">
+              {mentionItems.map((u, idx) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onMouseDown={(ev) => {
+                    // keep focus in textarea
+                    ev.preventDefault();
+                    pickMention(u);
+                  }}
+                  className={`w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-slate-900 ${
+                    idx === mentionActiveIdx ? 'bg-slate-900' : ''
+                  }`}
+                >
+                  <span className="text-lg leading-none" aria-hidden>
+                    {u.avatarEmoji || '🙂'}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-sm text-slate-100 truncate">{u.name}</div>
+                    <div className="text-[11px] text-slate-400 truncate">@{u.login}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => void sendMessage()}
