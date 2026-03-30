@@ -347,7 +347,10 @@ const storageKey = 'chat.general.lastSeenMessageId';
       });
 
       await refreshTail();
-      scrollToBottom();
+      // всегда доводим до своего сообщения, даже если пользователь был пролистан вверх
+      atBottomRef.current = true;
+      setNewMsgCount(0);
+      requestAnimationFrame(() => scrollToBottom());
     } catch (e: any) {
       setError(String(e?.message || 'Ошибка'));
     }
@@ -779,7 +782,7 @@ const storageKey = 'chat.general.lastSeenMessageId';
             return (
               <div
                 key={m.id}
-                className={`group rounded-2xl border px-3 py-2 ${
+                className={`group rounded-2xl border px-3 py-2 animate-fadeIn ${
                   isMine ? 'bg-blue-950/30 border-blue-800/50' : 'bg-slate-900 border-slate-800'
                 }`}
               >

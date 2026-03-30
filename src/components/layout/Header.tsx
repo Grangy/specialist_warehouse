@@ -465,6 +465,11 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                   title="Профиль и статистика"
                 >
                   <UserIcon className="w-4 h-4 text-slate-200" />
+                  {newMessagesCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-orange-500 text-white text-[11px] leading-[18px] text-center shadow-lg">
+                      {newMessagesCount > 99 ? '99+' : newMessagesCount}
+                    </span>
+                  )}
                   {rankingStats?.daily?.levelEmoji && rankingStats.daily.levelName ? (
                     <span className={`hidden md:inline text-xs font-bold px-1.5 py-0.5 rounded ${rankingStats.daily.levelColor || 'text-yellow-400'} ${rankingStats.daily.levelColor?.replace('text-', 'bg-') || 'bg-yellow-400'}/10`}>
                       {rankingStats.daily.levelEmoji} {rankingStats.daily.levelName}
@@ -557,11 +562,6 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                         >
                           <Bell className="w-4 h-4" />
                           <span className="text-sm font-medium">Чат</span>
-                          {newMessagesCount > 0 && (
-                            <span className="absolute top-2 right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center">
-                              {newMessagesCount > 99 ? '99+' : newMessagesCount}
-                            </span>
-                          )}
                         </button>
 
                         {/* Достижения (если есть) */}
