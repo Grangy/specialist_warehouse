@@ -430,14 +430,24 @@ const storageKey = 'chat.general.lastSeenMessageId';
         </div>
       )}
 
-      <div className="flex items-end gap-2">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="px-3 py-2 rounded-xl bg-slate-700/70 hover:bg-slate-700 text-slate-100 text-sm"
-        >
-          Фото
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="h-11 sm:h-10 px-3 rounded-xl bg-slate-700/70 hover:bg-slate-700 text-slate-100 text-sm font-medium whitespace-nowrap"
+          >
+            Фото
+          </button>
+          <button
+            type="button"
+            onClick={() => void sendMessage()}
+            className="sm:hidden flex-1 h-11 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50"
+            disabled={isLoading}
+          >
+            Отправить
+          </button>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -459,8 +469,8 @@ const storageKey = 'chat.general.lastSeenMessageId';
               setText(v);
               updateMentionFromText(v, e.target.selectionStart ?? v.length);
             }}
-          placeholder="Напишите сообщение…"
-          rows={1}
+            placeholder="Напишите сообщение…"
+            rows={2}
           onKeyDown={(e) => {
             if (mentionOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
               e.preventDefault();
@@ -489,7 +499,7 @@ const storageKey = 'chat.general.lastSeenMessageId';
               void sendMessage();
             }
           }}
-          className="flex-1 resize-none min-h-[42px] max-h-[140px] px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-sm outline-none focus:border-blue-500/60"
+            className="w-full resize-none min-h-[44px] max-h-[140px] px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-sm outline-none focus:border-blue-500/60"
           />
 
           {mentionOpen && mentionItems.length > 0 && (
@@ -522,7 +532,7 @@ const storageKey = 'chat.general.lastSeenMessageId';
         <button
           type="button"
           onClick={() => void sendMessage()}
-          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50"
+          className="hidden sm:inline-flex h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 whitespace-nowrap"
           disabled={isLoading}
         >
           Отправить
@@ -545,7 +555,7 @@ const storageKey = 'chat.general.lastSeenMessageId';
     >
       {viewer && (
         <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
           style={{ zIndex: 100000 }}
           role="dialog"
           aria-modal="true"
@@ -561,22 +571,23 @@ const storageKey = 'chat.general.lastSeenMessageId';
               <button
                 type="button"
                 onClick={() => setViewer(null)}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 text-sm"
+                className="h-10 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-sm"
               >
                 Закрыть
               </button>
             </div>
 
-            <div className="flex items-center justify-center gap-3">
+            <div className="grid grid-cols-[44px_1fr_44px] sm:grid-cols-[52px_1fr_52px] items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={() => setViewer((v) => (v ? { ...v, index: Math.max(0, v.index - 1) } : v))}
                 disabled={viewer.index === 0}
-                className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-100 disabled:opacity-40"
+                className="h-11 w-11 sm:h-12 sm:w-12 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-100 disabled:opacity-40 text-2xl leading-none"
+                aria-label="Предыдущее фото"
               >
                 ‹
               </button>
-              <div className="flex-1 flex items-center justify-center">
+              <div className="flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={viewer.items[viewer.index]?.url}
@@ -588,25 +599,26 @@ const storageKey = 'chat.general.lastSeenMessageId';
                 type="button"
                 onClick={() => setViewer((v) => (v ? { ...v, index: Math.min(v.items.length - 1, v.index + 1) } : v))}
                 disabled={viewer.index >= viewer.items.length - 1}
-                className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-100 disabled:opacity-40"
+                className="h-11 w-11 sm:h-12 sm:w-12 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-100 disabled:opacity-40 text-2xl leading-none"
+                aria-label="Следующее фото"
               >
                 ›
               </button>
             </div>
 
-            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-slate-400">
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400">
               <a
                 href={viewer.items[viewer.index]?.url}
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200"
+                className="h-10 px-3 inline-flex items-center rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200"
               >
                 Открыть в новой вкладке
               </a>
               <a
                 href={viewer.items[viewer.index]?.url}
                 download
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200"
+                className="h-10 px-3 inline-flex items-center rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200"
               >
                 Скачать
               </a>
