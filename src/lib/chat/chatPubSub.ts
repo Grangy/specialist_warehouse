@@ -1,5 +1,26 @@
 type ChatEvent =
-  | { type: 'message.created'; roomKey: string; messageId: string; mentionedUserIds: string[] }
+  | {
+      type: 'message.created';
+      roomKey: string;
+      messageId: string;
+      mentionedUserIds: string[];
+      message?: {
+        id: string;
+        roomId: string;
+        author: { id: string; name: string; login: string; avatarEmoji: string | null };
+        text: string;
+        replyToMessageId: string | null;
+        replyToMessage: null | {
+          id: string;
+          author: { id: string; name: string; login: string; avatarEmoji: string | null };
+          text: string;
+          createdAt: string;
+          attachments: Array<{ id: string; type: string; mime: string; size: number; width: number | null; height: number | null; url: string }>;
+        };
+        createdAt: string;
+        attachments: Array<{ id: string; type: string; mime: string; size: number; width: number | null; height: number | null; url: string }>;
+      };
+    }
   | { type: 'avatar.updated'; userId: string };
 
 type Subscriber = {

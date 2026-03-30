@@ -32,17 +32,17 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const q = normalizeQuery(searchParams.get('q') || '');
-    if (!q) return NextResponse.json({ users: [] });
-
-    const like = `%${q.toLowerCase()}%`;
+    const qLower = q.toLowerCase();
+    const like = q ? `%${qLower}%` : null;
     const users = await prisma.$queryRaw<Array<{ id: string; login: string; name: string; role: string }>>`
       SELECT id, login, name, role
       FROM users
-      WHERE lower(login) LIKE ${like} OR lower(name) LIKE ${like}
+      WHERE ${q ? prisma.$queryRaw`(lower(login) LIKE ${like} OR lower(name) LIKE ${like})` : prisma.$queryRaw`1=1`}
       ORDER BY
-        CASE WHEN lower(login) = ${q.toLowerCase()} THEN 0 ELSE 1 END,
-        CASE WHEN lower(login) LIKE ${q.toLowerCase() + '%'} THEN 0 ELSE 1 END,
-        CASE WHEN lower(name) LIKE ${q.toLowerCase() + '%'} THEN 0 ELSE 1 END,
+        CASE WHEN role = 'admin' THEN 0 ELSE 1 END,
+        CASE WHEN ${q ? prisma.$queryRaw`lower(login) = ${qLower}` : prisma.$queryRaw`0`} THEN 0 ELSE 1 END,
+        CASE WHEN ${q ? prisma.$queryRaw`lower(login) LIKE ${qLower + '%'}` : prisma.$queryRaw`0`} THEN 0 ELSE 1 END,
+        CASE WHEN ${q ? prisma.$queryRaw`lower(name) LIKE ${qLower + '%'}` : prisma.$queryRaw`0`} THEN 0 ELSE 1 END,
         name ASC
       LIMIT 8
     `;

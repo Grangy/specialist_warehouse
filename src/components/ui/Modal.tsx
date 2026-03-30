@@ -170,7 +170,7 @@ export function Modal({
             <XIcon className="w-6 h-6" />
           </button>
         </div>
-        <div className="p-3 md:p-6 overflow-y-auto flex-1 overscroll-contain" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
+        <div className="p-3 md:p-6 overflow-y-auto flex-1 overscroll-contain" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }} data-modal-scroll>
           {children}
         </div>
         {footer && (

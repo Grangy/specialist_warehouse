@@ -91,6 +91,10 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
   const [mentionActiveIdx, setMentionActiveIdx] = useState(0);
   const mentionRangeRef = useRef<{ start: number; end: number } | null>(null);
   const mentionTimerRef = useRef<number | null>(null);
+  const [newMsgCount, setNewMsgCount] = useState(0);
+  const atBottomRef = useRef(true);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [sseStatus, setSseStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
 
   const listEndRef = useRef<HTMLDivElement | null>(null);
   const lastSeenIdRef = useRef<string | null>(null);
@@ -100,6 +104,35 @@ const storageKey = 'chat.general.lastSeenMessageId';
 
   const scrollToBottom = useCallback(() => {
     listEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const el = document.querySelector('[data-modal-scroll]') as HTMLDivElement | null;
+    if (!el) return;
+    scrollContainerRef.current = el;
+    const onScroll = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const atBottom = distance < 120;
+      atBottomRef.current = atBottom;
+      if (atBottom) setNewMsgCount(0);
+    };
+    onScroll();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [isOpen]);
+
+  const mergeIncoming = useCallback((incoming: ChatMessageDto) => {
+    setMessages((prev) => {
+      const map = new Map(prev.map((m) => [m.id, m]));
+      map.set(incoming.id, incoming);
+      return Array.from(map.values()).sort((a, b) => {
+        const da = new Date(a.createdAt).getTime();
+        const db = new Date(b.createdAt).getTime();
+        if (da !== db) return da - db;
+        return a.id.localeCompare(b.id);
+      });
+    });
   }, []);
 
   const loadSession = useCallback(async () => {
@@ -153,9 +186,9 @@ const storageKey = 'chat.general.lastSeenMessageId';
       }
       const q = between.slice(0, 32);
       if (!q) {
-        // show no popup until at least 1 char
-        setMentionOpen(false);
+        setMentionQuery('');
         mentionRangeRef.current = { start: at, end: cursorPos };
+        scheduleMentionSearch('');
         return;
       }
       setMentionQuery(q);
@@ -320,6 +353,8 @@ const storageKey = 'chat.general.lastSeenMessageId';
     }
   }, [attachmentIds, refreshTail, replyTo, roomKey, scrollToBottom, text]);
 
+  const canSend = (text.trim().length > 0) || attachmentIds.length > 0;
+
   const openViewer = useCallback((items: ChatAttachmentDto[], index: number) => {
     setViewer({ items, index: Math.max(0, Math.min(items.length - 1, index)) });
   }, []);
@@ -349,10 +384,31 @@ const storageKey = 'chat.general.lastSeenMessageId';
     void initialLoad();
   }, [initialLoad, isOpen, loadSession]);
 
+  // UX #5/#6: хоткеи для просмотрщика фото (Esc/стрелки)
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!viewer) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setViewer(null);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setViewer((v) => (v ? { ...v, index: Math.max(0, v.index - 1) } : v));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setViewer((v) => (v ? { ...v, index: Math.min(v.items.length - 1, v.index + 1) } : v));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, viewer]);
+
   // SSE subscribe
   useEffect(() => {
     if (!isOpen) return;
     const es = new EventSource('/api/chat/stream');
+    setSseStatus('connecting');
     const onChat = (e: MessageEvent) => {
       try {
         const evt = JSON.parse(e.data);
@@ -376,7 +432,17 @@ const storageKey = 'chat.general.lastSeenMessageId';
             lastSeenIdRef.current = messageId;
           }
 
-          void refreshTail().then(() => scrollToBottom());
+          if (evt?.message && typeof evt.message === 'object' && typeof evt.message.id === 'string') {
+            mergeIncoming(evt.message as ChatMessageDto);
+            if (atBottomRef.current) {
+              setNewMsgCount(0);
+              requestAnimationFrame(() => scrollToBottom());
+            } else {
+              setNewMsgCount((c) => Math.min(99, c + 1));
+            }
+          } else {
+            void refreshTail().then(() => scrollToBottom());
+          }
         }
         if (evt?.type === 'avatar.updated') {
           void refreshTail();
@@ -386,13 +452,31 @@ const storageKey = 'chat.general.lastSeenMessageId';
       }
     };
     es.addEventListener('chat', onChat);
+    es.addEventListener('open', () => setSseStatus('open'));
+    es.addEventListener('error', () => setSseStatus('connecting'));
     return () => {
       es.removeEventListener('chat', onChat as any);
       es.close();
+      setSseStatus('closed');
     };
-  }, [isOpen, playIncomingSoundIfNeeded, refreshTail, roomKey, scrollToBottom]);
+  }, [isOpen, mergeIncoming, playIncomingSoundIfNeeded, refreshTail, roomKey, scrollToBottom]);
 
   const title = useMemo(() => 'Общий чат', []);
+
+  const renderMessageText = useCallback((value: string) => {
+    // UX #1: подсветка @mentions
+    const parts = value.split(/(@[^\s@]{2,32})/g);
+    return parts.map((p, idx) => {
+      if (p.startsWith('@') && p.length >= 3) {
+        return (
+          <span key={idx} className="text-amber-200 font-semibold">
+            {p}
+          </span>
+        );
+      }
+      return <span key={idx}>{p}</span>;
+    });
+  }, []);
 
   const footer = (
     <div className="space-y-2">
@@ -443,7 +527,7 @@ const storageKey = 'chat.general.lastSeenMessageId';
             type="button"
             onClick={() => void sendMessage()}
             className="sm:hidden flex-1 h-11 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50"
-            disabled={isLoading}
+            disabled={isLoading || !canSend}
           >
             Отправить
           </button>
@@ -533,13 +617,14 @@ const storageKey = 'chat.general.lastSeenMessageId';
           type="button"
           onClick={() => void sendMessage()}
           className="hidden sm:inline-flex h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 whitespace-nowrap"
-          disabled={isLoading}
+          disabled={isLoading || !canSend}
         >
           Отправить
         </button>
       </div>
       <div className="text-[11px] text-slate-500">
-        Фото: ≤5MB, jpg/png/webp. Реалтайм через SSE.
+        {/* UX #4: подсказка по хоткею */}
+        Cmd/Ctrl+Enter — отправить. Фото: ≤5MB, jpg/png/webp.
       </div>
     </div>
   );
@@ -631,13 +716,41 @@ const storageKey = 'chat.general.lastSeenMessageId';
         <div className="text-xs text-slate-400">
           {myUserId ? 'Вы в сети' : 'Нет сессии'}
         </div>
+        <div className="flex items-center gap-2">
+          {/* UX #2: индикатор соединения SSE */}
+          <div className="text-[11px] text-slate-500">
+            <span
+              className={`inline-block w-2 h-2 rounded-full mr-1 ${
+                sseStatus === 'open' ? 'bg-green-500' : sseStatus === 'connecting' ? 'bg-amber-500' : 'bg-slate-600'
+              }`}
+              aria-hidden
+            />
+            {sseStatus === 'open' ? 'онлайн' : sseStatus === 'connecting' ? 'подключение…' : 'оффлайн'}
+          </div>
         <EmojiAvatarPicker
           current={messages.length && myUserId ? messages.find((m) => m.author.id === myUserId)?.author.avatarEmoji : null}
           onChanged={() => void refreshTail()}
         />
+        </div>
       </div>
 
       {error && <div className="mb-3 text-sm text-red-400">{error}</div>}
+
+      {/* UX #3: кнопка "Новые сообщения" если пользователь пролистал вверх */}
+      {newMsgCount > 0 && (
+        <div className="sticky top-2 z-10 flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              setNewMsgCount(0);
+              scrollToBottom();
+            }}
+            className="px-3 py-1.5 rounded-full bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-semibold shadow-lg"
+          >
+            Новые сообщения: {newMsgCount}
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center justify-between mb-2">
         <button
@@ -689,7 +802,11 @@ const storageKey = 'chat.general.lastSeenMessageId';
                         <span className="truncate">{m.replyToMessage.text || '(без текста)'}</span>
                       </div>
                     )}
-                    {m.text && <div className="mt-1 text-sm text-slate-100 whitespace-pre-wrap break-words">{m.text}</div>}
+                    {m.text && (
+                      <div className="mt-1 text-sm text-slate-100 whitespace-pre-wrap break-words">
+                        {renderMessageText(m.text)}
+                      </div>
+                    )}
                     {m.attachments.length > 0 && (
                       <div className="mt-2 flex gap-2 overflow-x-auto">
                         {m.attachments.map((a, idx) => (

@@ -22,6 +22,53 @@ function pickAvatarEmoji(settings: string | null | undefined): string | null {
   return typeof v === 'string' && v.trim() ? v.trim().slice(0, 16) : null;
 }
 
+function mapMessage(m: any) {
+  return {
+    id: m.id,
+    roomId: m.roomId,
+    author: {
+      id: m.author.id,
+      name: m.author.name,
+      login: m.author.login,
+      avatarEmoji: pickAvatarEmoji(m.author.userSettings?.settings),
+    },
+    text: m.text,
+    replyToMessageId: m.replyToMessageId,
+    replyToMessage: m.replyToMessage
+      ? {
+          id: m.replyToMessage.id,
+          author: {
+            id: m.replyToMessage.author.id,
+            name: m.replyToMessage.author.name,
+            login: m.replyToMessage.author.login,
+            avatarEmoji: pickAvatarEmoji(m.replyToMessage.author.userSettings?.settings),
+          },
+          text: m.replyToMessage.text,
+          createdAt: m.replyToMessage.createdAt,
+          attachments: m.replyToMessage.attachments.map((a: any) => ({
+            id: a.id,
+            type: a.type,
+            mime: a.mime,
+            size: a.size,
+            width: a.width,
+            height: a.height,
+            url: `/api/chat/file/${a.id}`,
+          })),
+        }
+      : null,
+    createdAt: m.createdAt,
+    attachments: m.attachments.map((a: any) => ({
+      id: a.id,
+      type: a.type,
+      mime: a.mime,
+      size: a.size,
+      width: a.width,
+      height: a.height,
+      url: `/api/chat/file/${a.id}`,
+    })),
+  };
+}
+
 function parseLimit(v: string | null): number {
   const n = Number(v);
   if (!Number.isFinite(n)) return 50;
@@ -80,50 +127,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       room: { id: room.id, key: room.key },
-      messages: messages.map((m) => ({
-        id: m.id,
-        roomId: m.roomId,
-        author: {
-          id: m.author.id,
-          name: m.author.name,
-          login: m.author.login,
-          avatarEmoji: pickAvatarEmoji(m.author.userSettings?.settings),
-        },
-        text: m.text,
-        replyToMessageId: m.replyToMessageId,
-        replyToMessage: m.replyToMessage
-          ? {
-              id: m.replyToMessage.id,
-              author: {
-                id: m.replyToMessage.author.id,
-                name: m.replyToMessage.author.name,
-                login: m.replyToMessage.author.login,
-                avatarEmoji: pickAvatarEmoji(m.replyToMessage.author.userSettings?.settings),
-              },
-              text: m.replyToMessage.text,
-              createdAt: m.replyToMessage.createdAt,
-              attachments: m.replyToMessage.attachments.map((a) => ({
-                id: a.id,
-                type: a.type,
-                mime: a.mime,
-                size: a.size,
-                width: a.width,
-                height: a.height,
-                url: `/api/chat/file/${a.id}`,
-              })),
-            }
-          : null,
-        createdAt: m.createdAt,
-        attachments: m.attachments.map((a) => ({
-          id: a.id,
-          type: a.type,
-          mime: a.mime,
-          size: a.size,
-          width: a.width,
-          height: a.height,
-          url: `/api/chat/file/${a.id}`,
-        })),
-      })),
+      messages: messages.map(mapMessage),
       nextCursorId: messages.length ? messages[messages.length - 1].id : null,
     });
   } catch (error) {
@@ -198,11 +202,26 @@ export async function POST(request: NextRequest) {
       return msg;
     });
 
+    const full = await prisma.chatMessage.findUnique({
+      where: { id: created.id },
+      include: {
+        attachments: true,
+        author: { include: { userSettings: true } },
+        replyToMessage: {
+          include: {
+            author: { include: { userSettings: true } },
+            attachments: true,
+          },
+        },
+      },
+    });
+
     chatPubSub.publish({
       type: 'message.created',
       roomKey: room.key,
       messageId: created.id,
       mentionedUserIds,
+      message: full ? mapMessage(full) : undefined,
     });
 
     return NextResponse.json({ ok: true, messageId: created.id });
