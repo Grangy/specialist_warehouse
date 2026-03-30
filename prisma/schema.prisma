@@ -46,6 +46,7 @@ model User {
   extraWorkSessionsAsWorker ExtraWorkSession[] @relation("ExtraWorkSessionWorker")
   extraWorkSessionsAsAssigner ExtraWorkSession[] @relation("ExtraWorkSessionAssigner")
   chatMessages  ChatMessage[]     @relation("ChatMessageAuthor")
+  chatMentions  ChatMention[]
 
   @@map("users")
 }
@@ -492,10 +493,26 @@ model ChatMessage {
   replyToMessage   ChatMessage?    @relation("ChatMessageReply", fields: [replyToMessageId], references: [id], onDelete: SetNull)
   replies          ChatMessage[]   @relation("ChatMessageReply")
   attachments      ChatAttachment[]
+  mentions         ChatMention[]
 
   @@index([roomId, createdAt])
   @@index([authorId, createdAt])
   @@map("chat_messages")
+}
+
+model ChatMention {
+  id        String      @id @default(cuid())
+  messageId String      @map("message_id")
+  userId    String      @map("user_id")
+  createdAt DateTime    @default(now()) @map("created_at")
+  seenAt    DateTime?   @map("seen_at")
+
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, seenAt, createdAt])
+  @@map("chat_mentions")
 }
 
 model ChatAttachment {

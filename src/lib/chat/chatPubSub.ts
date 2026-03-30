@@ -1,5 +1,5 @@
 type ChatEvent =
-  | { type: 'message.created'; roomKey: string; messageId: string }
+  | { type: 'message.created'; roomKey: string; messageId: string; mentionedUserIds: string[] }
   | { type: 'avatar.updated'; userId: string };
 
 type Subscriber = {

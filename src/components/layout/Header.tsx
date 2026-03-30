@@ -106,7 +106,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const [profilePosition, setProfilePosition] = useState({ top: 80, right: 16, width: 420 });
   const [showSettings, setShowSettings] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const { unread, markSeen } = useChatUnread(isChatOpen);
+  const { unread, markSeen } = useChatUnread(isChatOpen, user?.id ?? null);
   const router = useRouter();
 
   useEffect(() => {
@@ -418,7 +418,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                         <button
                           onClick={() => {
                             setShowProfile(false);
-                            markSeen();
+                            void markSeen();
                             setIsChatOpen(true);
                           }}
                           className="relative w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-slate-700/80 hover:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/60 text-slate-200 hover:text-slate-100 transition-all duration-200"
@@ -532,7 +532,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
       isOpen={isChatOpen}
       onClose={() => {
         setIsChatOpen(false);
-        markSeen();
+        void markSeen();
       }}
     />
     </>

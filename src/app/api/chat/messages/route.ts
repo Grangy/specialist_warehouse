@@ -28,6 +28,18 @@ function parseLimit(v: string | null): number {
   return Math.min(100, Math.max(10, Math.floor(n)));
 }
 
+function extractMentionLogins(text: string): string[] {
+  // Mention syntax: @login (login is unique)
+  const re = /(^|[\s(])@([a-zA-Z0-9._-]{2,32})\b/g;
+  const out = new Set<string>();
+  let m: RegExpExecArray | null = null;
+  while ((m = re.exec(text)) !== null) {
+    const login = m[2]?.trim();
+    if (login) out.add(login);
+  }
+  return Array.from(out.values());
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authResult = await requireAuth(request);
@@ -148,6 +160,15 @@ export async function POST(request: NextRequest) {
       create: { key: roomKey },
     });
 
+    const mentionLogins = extractMentionLogins(text);
+    const mentionedUsers = mentionLogins.length
+      ? await prisma.user.findMany({
+          where: { login: { in: mentionLogins } },
+          select: { id: true, login: true },
+        })
+      : [];
+    const mentionedUserIds = mentionedUsers.map((u) => u.id).filter((id) => id !== user.id);
+
     const created = await prisma.$transaction(async (tx) => {
       const msg = await tx.chatMessage.create({
         data: {
@@ -165,10 +186,24 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      if (mentionedUserIds.length) {
+        await tx.chatMention.createMany({
+          data: mentionedUserIds.map((uid) => ({
+            messageId: msg.id,
+            userId: uid,
+          })),
+        });
+      }
+
       return msg;
     });
 
-    chatPubSub.publish({ type: 'message.created', roomKey: room.key, messageId: created.id });
+    chatPubSub.publish({
+      type: 'message.created',
+      roomKey: room.key,
+      messageId: created.id,
+      mentionedUserIds,
+    });
 
     return NextResponse.json({ ok: true, messageId: created.id });
   } catch (error) {

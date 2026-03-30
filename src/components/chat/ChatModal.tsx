@@ -74,6 +74,7 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
   const [pendingUploads, setPendingUploads] = useState<{ localUrl: string; name: string; uploading: boolean }[]>([]);
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [viewer, setViewer] = useState<{ items: ChatAttachmentDto[]; index: number } | null>(null);
 
   const listEndRef = useRef<HTMLDivElement | null>(null);
   const lastSeenIdRef = useRef<string | null>(null);
@@ -231,6 +232,10 @@ const storageKey = 'chat.general.lastSeenMessageId';
     }
   }, [attachmentIds, refreshTail, replyTo, roomKey, scrollToBottom, text]);
 
+  const openViewer = useCallback((items: ChatAttachmentDto[], index: number) => {
+    setViewer({ items, index: Math.max(0, Math.min(items.length - 1, index)) });
+  }, []);
+
   const onPickFile = useCallback(async (file: File) => {
     const localUrl = URL.createObjectURL(file);
     setPendingUploads((prev) => [...prev, { localUrl, name: file.name, uploading: true }]);
@@ -362,6 +367,12 @@ const storageKey = 'chat.general.lastSeenMessageId';
           onChange={(e) => setText(e.target.value)}
           placeholder="Напишите сообщение…"
           rows={1}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              void sendMessage();
+            }
+          }}
           className="flex-1 resize-none min-h-[42px] max-h-[140px] px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-sm outline-none focus:border-blue-500/60"
         />
         <button
@@ -388,6 +399,78 @@ const storageKey = 'chat.general.lastSeenMessageId';
       className="max-w-4xl"
       footer={footer}
     >
+      {viewer && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+          style={{ zIndex: 100000 }}
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setViewer(null);
+          }}
+        >
+          <div className="w-full max-w-5xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-slate-200">
+                Фото {viewer.index + 1}/{viewer.items.length}
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewer(null)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 text-sm"
+              >
+                Закрыть
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setViewer((v) => (v ? { ...v, index: Math.max(0, v.index - 1) } : v))}
+                disabled={viewer.index === 0}
+                className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-100 disabled:opacity-40"
+              >
+                ‹
+              </button>
+              <div className="flex-1 flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={viewer.items[viewer.index]?.url}
+                  alt={viewer.items[viewer.index]?.id}
+                  className="max-h-[75vh] w-auto max-w-full rounded-2xl border border-slate-800 shadow-2xl object-contain bg-slate-950"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewer((v) => (v ? { ...v, index: Math.min(v.items.length - 1, v.index + 1) } : v))}
+                disabled={viewer.index >= viewer.items.length - 1}
+                className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-100 disabled:opacity-40"
+              >
+                ›
+              </button>
+            </div>
+
+            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-slate-400">
+              <a
+                href={viewer.items[viewer.index]?.url}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200"
+              >
+                Открыть в новой вкладке
+              </a>
+              <a
+                href={viewer.items[viewer.index]?.url}
+                download
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200"
+              >
+                Скачать
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="text-xs text-slate-400">
           {myUserId ? 'Вы в сети' : 'Нет сессии'}
@@ -453,17 +536,17 @@ const storageKey = 'chat.general.lastSeenMessageId';
                     {m.text && <div className="mt-1 text-sm text-slate-100 whitespace-pre-wrap break-words">{m.text}</div>}
                     {m.attachments.length > 0 && (
                       <div className="mt-2 flex gap-2 overflow-x-auto">
-                        {m.attachments.map((a) => (
-                          <a
+                        {m.attachments.map((a, idx) => (
+                          <button
                             key={a.id}
-                            href={a.url}
-                            target="_blank"
-                            rel="noreferrer"
+                            type="button"
+                            onClick={() => openViewer(m.attachments, idx)}
                             className="block w-28 h-28 flex-shrink-0 rounded-xl overflow-hidden border border-slate-800 hover:border-blue-500/40"
+                            title="Открыть фото"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={a.url} alt={a.id} className="w-full h-full object-cover" />
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}

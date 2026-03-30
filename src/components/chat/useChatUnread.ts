@@ -1,43 +1,54 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
-const STORAGE_KEY = 'chat.general.lastSeenMessageId';
-
-export function useChatUnread(isChatOpen: boolean) {
+export function useChatUnread(isChatOpen: boolean, userId: string | null) {
   const [unread, setUnread] = useState(0);
-  const lastSeenRef = useRef<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!userId) {
+      setUnread(0);
+      return;
+    }
+    try {
+      const res = await fetch('/api/chat/mentions', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const n = Number(data?.unreadCount);
+      setUnread(Number.isFinite(n) ? Math.min(999, Math.max(0, Math.floor(n))) : 0);
+    } catch {
+      // ignore
+    }
+  }, [userId]);
+
+  const markSeen = useCallback(async () => {
+    setUnread(0);
+    if (!userId) return;
+    try {
+      await fetch('/api/chat/mentions', { method: 'POST' });
+    } catch {
+      // ignore
+    }
+  }, [userId]);
 
   useEffect(() => {
-    try {
-      lastSeenRef.current = localStorage.getItem(STORAGE_KEY);
-    } catch {
-      lastSeenRef.current = null;
-    }
-  }, []);
-
-  const markSeen = useCallback((messageId?: string | null) => {
-    setUnread(0);
-    if (messageId && typeof messageId === 'string') {
-      lastSeenRef.current = messageId;
-      try {
-        localStorage.setItem(STORAGE_KEY, messageId);
-      } catch {
-        // ignore
-      }
-    }
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
     if (isChatOpen) return;
+    if (!userId) return;
     const es = new EventSource('/api/chat/stream');
     const onChat = (e: MessageEvent) => {
       try {
         const evt = JSON.parse(e.data);
         if (evt?.type === 'message.created' && evt.roomKey === 'general') {
-          const msgId = typeof evt.messageId === 'string' ? evt.messageId : null;
-          if (msgId && lastSeenRef.current === msgId) return;
-          setUnread((u) => Math.min(999, u + 1));
+          const ids: unknown = evt.mentionedUserIds;
+          if (!Array.isArray(ids)) return;
+          if (ids.includes(userId)) {
+            setUnread((u) => Math.min(999, u + 1));
+          }
         }
       } catch {
         // ignore
@@ -48,8 +59,8 @@ export function useChatUnread(isChatOpen: boolean) {
       es.removeEventListener('chat', onChat as any);
       es.close();
     };
-  }, [isChatOpen]);
+  }, [isChatOpen, userId]);
 
-  return { unread, markSeen };
+  return { unread, markSeen, refresh };
 }
 
