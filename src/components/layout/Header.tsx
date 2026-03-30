@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { PackageIcon } from '@/components/icons/PackageIcon';
 import { RefreshCw, Settings, LogOut, Bell, ChevronUp, ChevronDown, User as UserIcon, Trophy, TrendingUp, Award, Target, Clock, Package as PackageIconLucide, Zap, BarChart3, Star, X, Calendar, SlidersHorizontal, Briefcase } from 'lucide-react';
@@ -9,7 +9,7 @@ import { DictatorSelector } from './DictatorSelector';
 import { useExtraWork } from '@/contexts/ExtraWorkContext';
 import { SettingsModal } from '@/components/modals/SettingsModal';
 import { ChatModal } from '@/components/chat/ChatModal';
-import { useChatUnread } from '@/components/chat/useChatUnread';
+import { useChatNewMessagesBadge } from '@/components/chat/useChatNewMessagesBadge';
 
 interface HeaderProps {
   newCount: number;
@@ -106,13 +106,47 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const [profilePosition, setProfilePosition] = useState({ top: 80, right: 16, width: 420 });
   const [showSettings, setShowSettings] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const { unread, markSeen } = useChatUnread(isChatOpen, user?.id ?? null);
+  const { count: newMessagesCount, markSeenNow } = useChatNewMessagesBadge(isChatOpen, user?.id ?? null);
+  const [mentionToastOpen, setMentionToastOpen] = useState(false);
+  const mentionToastCountRef = useRef(0);
+  const toastHideTimerRef = useRef<number | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     loadUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (isChatOpen) return;
+    const es = new EventSource('/api/chat/stream');
+    const onChat = (e: MessageEvent) => {
+      try {
+        const evt = JSON.parse(e.data);
+        if (evt?.type === 'message.created' && evt.roomKey === 'general') {
+          const ids: unknown = evt.mentionedUserIds;
+          if (!Array.isArray(ids)) return;
+          if (!ids.includes(user.id)) return;
+
+          mentionToastCountRef.current += 1;
+          setMentionToastOpen(true);
+          if (toastHideTimerRef.current) window.clearTimeout(toastHideTimerRef.current);
+          // Плашка держится, но на всякий случай авто-скрытие через 60с (бейдж остаётся)
+          toastHideTimerRef.current = window.setTimeout(() => setMentionToastOpen(false), 60000);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    es.addEventListener('chat', onChat);
+    return () => {
+      es.removeEventListener('chat', onChat as any);
+      es.close();
+      if (toastHideTimerRef.current) window.clearTimeout(toastHideTimerRef.current);
+      toastHideTimerRef.current = null;
+    };
+  }, [isChatOpen, user?.id]);
 
   useEffect(() => {
     if (user) {
@@ -244,6 +278,44 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
 
   return (
     <>
+      {mentionToastOpen && newMessagesCount > 0 && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 top-3 md:top-4 z-[99997] w-[calc(100%-24px)] max-w-xl"
+          style={{ pointerEvents: 'none' }}
+        >
+          <div
+            className="pointer-events-auto rounded-2xl border border-amber-500/40 bg-slate-900/95 backdrop-blur-md shadow-2xl px-4 py-3 flex items-center justify-between gap-3"
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-100">Вас упомянули в чате</div>
+              <div className="text-xs text-slate-400 truncate">
+                Новых сообщений: <span className="text-amber-300 font-semibold">{newMessagesCount > 99 ? '99+' : newMessagesCount}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setMentionToastOpen(false);
+                  markSeenNow();
+                  setIsChatOpen(true);
+                }}
+                className="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-sm font-semibold"
+              >
+                Открыть чат
+              </button>
+              <button
+                type="button"
+                onClick={() => setMentionToastOpen(false)}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm"
+              >
+                Скрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Кнопка показа хедера (только на мобильных, когда скрыт) */}
       {isHidden && (
         <button
@@ -418,7 +490,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                         <button
                           onClick={() => {
                             setShowProfile(false);
-                            void markSeen();
+                            markSeenNow();
                             setIsChatOpen(true);
                           }}
                           className="relative w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-slate-700/80 hover:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/60 text-slate-200 hover:text-slate-100 transition-all duration-200"
@@ -426,9 +498,9 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                         >
                           <Bell className="w-4 h-4" />
                           <span className="text-sm font-medium">Чат</span>
-                          {unread > 0 && (
+                          {newMessagesCount > 0 && (
                             <span className="absolute top-2 right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center">
-                              {unread > 99 ? '99+' : unread}
+                              {newMessagesCount > 99 ? '99+' : newMessagesCount}
                             </span>
                           )}
                         </button>
@@ -532,7 +604,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
       isOpen={isChatOpen}
       onClose={() => {
         setIsChatOpen(false);
-        void markSeen();
+        markSeenNow();
       }}
     />
     </>
