@@ -10,6 +10,7 @@ import { useExtraWork } from '@/contexts/ExtraWorkContext';
 import { SettingsModal } from '@/components/modals/SettingsModal';
 import { ChatModal } from '@/components/chat/ChatModal';
 import { useChatNewMessagesBadge } from '@/components/chat/useChatNewMessagesBadge';
+import { getRandomNotificationSound } from '@/lib/notificationSounds';
 
 interface HeaderProps {
   newCount: number;
@@ -110,6 +111,8 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const [mentionToastOpen, setMentionToastOpen] = useState(false);
   const mentionToastCountRef = useRef(0);
   const toastHideTimerRef = useRef<number | null>(null);
+  const toastAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [mentionToastPreview, setMentionToastPreview] = useState<{ from: string; text: string } | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -130,10 +133,42 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
           if (!ids.includes(user.id)) return;
 
           mentionToastCountRef.current += 1;
+          const fromName =
+            typeof evt?.message?.author?.name === 'string' && evt.message.author.name.trim()
+              ? evt.message.author.name.trim()
+              : 'Кто-то';
+          const txt =
+            typeof evt?.message?.text === 'string' && evt.message.text.trim()
+              ? evt.message.text.trim().slice(0, 160)
+              : 'Вас упомянули';
+          setMentionToastPreview({ from: fromName, text: txt });
           setMentionToastOpen(true);
           if (toastHideTimerRef.current) window.clearTimeout(toastHideTimerRef.current);
           // Плашка держится, но на всякий случай авто-скрытие через 60с (бейдж остаётся)
           toastHideTimerRef.current = window.setTimeout(() => setMentionToastOpen(false), 60000);
+
+          // звук как вызов сотрудника
+          try {
+            if (toastAudioRef.current) {
+              toastAudioRef.current.pause();
+              toastAudioRef.current.currentTime = 0;
+              toastAudioRef.current = null;
+            }
+            const audio = new Audio(getRandomNotificationSound());
+            audio.loop = true;
+            audio.volume = 0.85;
+            toastAudioRef.current = audio;
+            audio.play().catch(() => {});
+            window.setTimeout(() => {
+              if (toastAudioRef.current === audio) {
+                audio.pause();
+                audio.currentTime = 0;
+                toastAudioRef.current = null;
+              }
+            }, 8000);
+          } catch {
+            // ignore
+          }
         }
       } catch {
         // ignore
@@ -145,6 +180,11 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
       es.close();
       if (toastHideTimerRef.current) window.clearTimeout(toastHideTimerRef.current);
       toastHideTimerRef.current = null;
+      if (toastAudioRef.current) {
+        toastAudioRef.current.pause();
+        toastAudioRef.current.currentTime = 0;
+        toastAudioRef.current = null;
+      }
     };
   }, [isChatOpen, user?.id]);
 
@@ -278,7 +318,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
 
   return (
     <>
-      {mentionToastOpen && newMessagesCount > 0 && (
+      {mentionToastOpen && (
         <div
           className="fixed left-1/2 -translate-x-1/2 top-3 md:top-4 z-[99997] w-[calc(100%-24px)] max-w-xl"
           style={{ pointerEvents: 'none' }}
@@ -288,15 +328,27 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
           >
             <div className="min-w-0">
               <div className="text-sm font-semibold text-slate-100">Вас упомянули в чате</div>
-              <div className="text-xs text-slate-400 truncate">
-                Новых сообщений: <span className="text-amber-300 font-semibold">{newMessagesCount > 99 ? '99+' : newMessagesCount}</span>
-              </div>
+              {mentionToastPreview ? (
+                <>
+                  <div className="text-xs text-slate-400 truncate">
+                    От: <span className="text-slate-200 font-semibold">{mentionToastPreview.from}</span>
+                  </div>
+                  <div className="text-xs text-slate-400 truncate">{mentionToastPreview.text}</div>
+                </>
+              ) : (
+                <div className="text-xs text-slate-400 truncate">Откройте чат, чтобы посмотреть.</div>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   setMentionToastOpen(false);
+                  if (toastAudioRef.current) {
+                    toastAudioRef.current.pause();
+                    toastAudioRef.current.currentTime = 0;
+                    toastAudioRef.current = null;
+                  }
                   markSeenNow();
                   setIsChatOpen(true);
                 }}
@@ -306,7 +358,14 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
               </button>
               <button
                 type="button"
-                onClick={() => setMentionToastOpen(false)}
+                onClick={() => {
+                  setMentionToastOpen(false);
+                  if (toastAudioRef.current) {
+                    toastAudioRef.current.pause();
+                    toastAudioRef.current.currentTime = 0;
+                    toastAudioRef.current = null;
+                  }
+                }}
                 className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm"
               >
                 Скрыть
