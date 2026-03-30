@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, Package, Clock, CheckCircle, User, Calendar, BarChart3, AlertCircle, Mic, Briefcase, Plus, Minus, AlertTriangle } from 'lucide-react';
-import { ChatModal } from '@/components/chat/ChatModal';
-import { useChatUnread } from '@/components/chat/useChatUnread';
 
 const PERIOD_LABELS: Record<'today' | 'week' | 'month', string> = {
   today: 'День (с утра)',
@@ -136,8 +134,6 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
   const [activeTab, setActiveTab] = useState<'checker' | 'dictator' | 'collector' | 'daily' | 'monthly' | 'errors'>('checker');
   const [showAdjustModal, setShowAdjustModal] = useState<{ add: boolean } | null>(null);
   const [adjustingPoints, setAdjustingPoints] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const { unread, markSeen } = useChatUnread(isChatOpen);
   const usePublicApiRef = useRef(usePublicApi);
   usePublicApiRef.current = usePublicApi;
 
@@ -256,29 +252,12 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                markSeen();
-                setIsChatOpen(true);
-              }}
-              className="relative px-3 h-10 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-100 text-sm font-semibold"
-            >
-              Чат
-              {unread > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] leading-[18px] text-center">
-                  {unread > 99 ? '99+' : unread}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={onClose}
-              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-slate-700 active:bg-slate-600 text-slate-400 hover:text-slate-200 transition-colors touch-manipulation"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-slate-700 active:bg-slate-600 text-slate-400 hover:text-slate-200 transition-colors shrink-0 touch-manipulation"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {showAdjustModal && userId && (
@@ -808,13 +787,6 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
         </div>
         </div>
       </div>
-      <ChatModal
-        isOpen={isChatOpen}
-        onClose={() => {
-          setIsChatOpen(false);
-          markSeen();
-        }}
-      />
     </div>
   );
 }
