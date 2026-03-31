@@ -4,7 +4,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
+import { getStatisticsDateRange, getStatisticsDateRangeForDate, getStatisticsMonthRangeForMonth } from '@/lib/utils/moscowDate';
 import {
   clearEfficiencyWeightsSessionCache,
   clearWarehousePaceSessionCache,
@@ -60,7 +60,8 @@ type UserAgg = {
 export async function aggregateRankings(
   period: 'today' | 'week' | 'month',
   warehouseFilter?: string,
-  dateOverride?: string
+  dateOverride?: string,
+  monthOverride?: string
 ): Promise<{
   allRankings: RankingEntry[];
   errorsByCollector: Map<string, number>;
@@ -70,10 +71,14 @@ export async function aggregateRankings(
 }> {
   clearEfficiencyWeightsSessionCache();
   clearWarehousePaceSessionCache();
-  const { startDate, endDate } = dateOverride
-    ? getStatisticsDateRangeForDate(dateOverride)
-    : getStatisticsDateRange(period);
-  const { startDate: monthStart, endDate: monthEnd } = getStatisticsDateRange('month');
+  const { startDate, endDate } = monthOverride
+    ? getStatisticsMonthRangeForMonth(monthOverride)
+    : dateOverride
+      ? getStatisticsDateRangeForDate(dateOverride)
+      : getStatisticsDateRange(period);
+  const { startDate: monthStart, endDate: monthEnd } = monthOverride
+    ? getStatisticsMonthRangeForMonth(monthOverride)
+    : getStatisticsDateRange('month');
 
   const taskWhere = {
     ...(warehouseFilter && { warehouse: warehouseFilter }),

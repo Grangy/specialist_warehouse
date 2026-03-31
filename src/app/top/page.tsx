@@ -66,6 +66,7 @@ export default function TopPage() {
   const [totalCollectorErrors, setTotalCollectorErrors] = useState(0);
   const [totalCheckerErrors, setTotalCheckerErrors] = useState(0);
   const [period, setPeriod] = useState<Period>('week');
+  const [monthArchive, setMonthArchive] = useState<string>(''); // YYYY-MM, empty = current month
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -81,6 +82,18 @@ export default function TopPage() {
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
 
+  const getLastMonths = useCallback((count: number) => {
+    const out: string[] = [];
+    const d = new Date();
+    // take Moscow-ish month by local JS month; good enough for selector
+    for (let i = 0; i < count; i++) {
+      const dd = new Date(d.getFullYear(), d.getMonth() - i, 1);
+      const mm = String(dd.getMonth() + 1).padStart(2, '0');
+      out.push(`${dd.getFullYear()}-${mm}`);
+    }
+    return out;
+  }, []);
+
   const load = useCallback(async (silent = false, forceReload = false) => {
     if (!silent) {
       setIsLoading(true);
@@ -88,7 +101,8 @@ export default function TopPage() {
     }
     try {
       const nocachePart = forceReload ? '&nocache=1' : '';
-      const res = await fetch(`/api/statistics/top?period=${period}&_t=${Date.now()}${nocachePart}`, { cache: 'no-store' });
+      const archivePart = period === 'month' && monthArchive ? `&month=${encodeURIComponent(monthArchive)}` : '';
+      const res = await fetch(`/api/statistics/top?period=${period}${archivePart}&_t=${Date.now()}${nocachePart}`, { cache: 'no-store' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || data.details || `Ошибка ${res.status}`);
@@ -112,7 +126,7 @@ export default function TopPage() {
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, [period]);
+  }, [monthArchive, period]);
 
   useEffect(() => {
     const refreshMs = period === 'today' ? 3 * 60 * 1000 : period === 'week' ? 10 * 60 * 1000 : 20 * 60 * 1000;
@@ -219,6 +233,21 @@ export default function TopPage() {
                 {PERIOD_LABELS[p]}
               </button>
             ))}
+            {period === 'month' && (
+              <select
+                value={monthArchive}
+                onChange={(e) => setMonthArchive(e.target.value)}
+                className="ml-1 px-3 py-2 rounded-lg text-sm font-medium border bg-slate-800/80 text-slate-200 border-slate-600 hover:bg-slate-700/80"
+                title="Архив итогов месяцев"
+              >
+                <option value="">Текущий месяц</option>
+                {getLastMonths(18).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
               onClick={() => load(false, true)}

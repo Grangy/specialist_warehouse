@@ -83,6 +83,34 @@ export function getStatisticsDateRangeForDate(dateStr: string): StatisticsDateRa
 }
 
 /**
+ * Границы месяца по Москве (YYYY-MM).
+ * startDate/endDate — в UTC, для фильтрации completedAt/confirmedAt.
+ *
+ * Если monthStr = текущий месяц по Москве — endDate = конец сегодняшнего дня (как обычный period=month).
+ * Иначе endDate = конец последнего дня указанного месяца.
+ */
+export function getStatisticsMonthRangeForMonth(monthStr: string): StatisticsDateRange {
+  const m = monthStr.match(/^(\d{4})-(\d{1,2})$/);
+  if (!m) return getStatisticsDateRange('month');
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10) - 1;
+  const startDate = startOfDayMoscowUTC(year, month, 1);
+
+  // last day of month
+  const last = new Date(Date.UTC(year, month + 1, 0));
+  const endFull = endOfDayMoscowUTC(year, month, last.getUTCDate());
+
+  // if current moscow month, cap by today end (same semantics as existing 'month')
+  const now = new Date();
+  const cur = getMoscowDateParts(now);
+  const isCurrentMonth = cur.year === year && cur.month === month;
+  const todayEnd = endOfDayMoscowUTC(cur.year, cur.month, cur.date);
+  const endDate = isCurrentMonth ? todayEnd : endFull;
+
+  return { startDate, endDate };
+}
+
+/**
  * Для overview: «сегодня» по Москве (начало дня) — для фильтра DailyStats.date >= today.
  */
 export function getMoscowTodayStart(): Date {
