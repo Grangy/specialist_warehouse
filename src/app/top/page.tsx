@@ -36,6 +36,51 @@ interface RankingEntry {
   usefulnessPct?: number | null;
 }
 
+const APRIL_FOOLS_ENABLED = true;
+const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+function isMoscowAprilFoolsDay(nowUtc: Date = new Date()): boolean {
+  const moscow = new Date(nowUtc.getTime() + MSK_OFFSET_MS);
+  return moscow.getUTCMonth() === 3 && moscow.getUTCDate() === 1; // Apr=3
+}
+
+function isAprilFoolsOverrideDisabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const v = new URLSearchParams(window.location.search).get('af');
+    return v === '0' || v === 'false';
+  } catch {
+    return false;
+  }
+}
+
+function applyAprilFoolsInversion(list: RankingEntry[]): RankingEntry[] {
+  const reversedUsers = [...list].reverse();
+  const stats = list.map((e) => ({
+    positions: e.positions,
+    units: e.units,
+    orders: e.orders,
+    points: e.points,
+    collectorPoints: e.collectorPoints,
+    checkerPoints: e.checkerPoints,
+    dictatorPoints: e.dictatorPoints,
+    extraWorkPoints: e.extraWorkPoints,
+    errorPenalty: e.errorPenalty,
+    errors: e.errors,
+    checkerErrors: e.checkerErrors,
+    rank: e.rank,
+    level: e.level,
+    pph: e.pph,
+    uph: e.uph,
+    efficiency: e.efficiency,
+    usefulnessPct: e.usefulnessPct,
+  }));
+  return reversedUsers.map((u, idx) => ({
+    ...u,
+    ...stats[idx],
+  }));
+}
+
 interface UserStatsDetail {
   extraWorkPoints?: number;
   errorPenalty?: number;
@@ -108,7 +153,13 @@ export default function TopPage() {
         throw new Error(data.error || data.details || `Ошибка ${res.status}`);
       }
       const data = await res.json();
-      setList(data.all || []);
+      const rawList: RankingEntry[] = data.all || [];
+      const shouldAprilFools =
+        APRIL_FOOLS_ENABLED &&
+        period === 'today' &&
+        isMoscowAprilFoolsDay() &&
+        !isAprilFoolsOverrideDisabled();
+      setList(shouldAprilFools ? applyAprilFoolsInversion(rawList) : rawList);
       setDate(data.date || new Date().toISOString().split('T')[0]);
       setTopErrorsMerged(data.topErrorsMerged || []);
       setTotalCollectorErrors(data.totalCollectorErrors ?? 0);
