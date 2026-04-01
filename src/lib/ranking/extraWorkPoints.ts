@@ -74,11 +74,11 @@ export function isWorkingTimeMoscow(utcDate: Date): boolean {
   return isWeekday && hour >= 9 && hour < 18;
 }
 
-/** Обед по Москве: 13:00–15:00 (ровно как isLunchTimeMoscow в UI/сервере по логике). */
-export function isLunchTimeMoscow(utcDate: Date): boolean {
-  const hour = getMoscowHour(utcDate);
-  return hour >= 13 && hour < 15;
-}
+/**
+ * ВАЖНО: обед в доп.работе теперь персональный (по слоту пользователя),
+ * поэтому "глобального" обеда 13:00–15:00 в формуле нет.
+ * Пауза начислений определяется статусом сессии (lunch) и границами lunchStartedAt/lunchEndsAt.
+ */
 
 /** Сколько секунд до следующего рабочего старта (09:00 МСК) от utcDate; 0 если уже в рабочее время. */
 export function getSecondsUntilNextWorkingStartMoscow(utcDate: Date): number {
@@ -459,7 +459,7 @@ export async function getExtraWorkPointsPerMinute(
   atUtc: Date,
   extraWorkByUser?: Map<string, number>
 ): Promise<number> {
-  if (!isWorkingTimeMoscow(atUtc) || isLunchTimeMoscow(atUtc)) return 0;
+  if (!isWorkingTimeMoscow(atUtc)) return 0;
   if (isInStartupWindow(atUtc)) {
     return getStartupRatePerMin(prisma);
   }
@@ -518,7 +518,7 @@ export async function getExtraWorkRateDebug(
   atUtc: Date,
   extraWorkByUser?: Map<string, number>
 ): Promise<ExtraWorkRateDebug> {
-  if (!isWorkingTimeMoscow(atUtc) || isLunchTimeMoscow(atUtc)) {
+  if (!isWorkingTimeMoscow(atUtc)) {
     return {
       atUtc: atUtc.toISOString(),
       isStartupWindow: false,
@@ -831,7 +831,7 @@ export async function computeExtraWorkPointsForSession(
     const rem = elapsedSec - t;
 
     // Начисления только в рабочее время (пн–пт, 09:00–18:00 МСК) и не во время обеда.
-    if (!isWorkingTimeMoscow(cur) || isLunchTimeMoscow(cur)) {
+    if (!isWorkingTimeMoscow(cur)) {
       const secToStart = getSecondsUntilNextWorkingStartMoscow(cur);
       const chunk = Math.min(rem, secToStart);
       if (chunk <= 0) t += 1;

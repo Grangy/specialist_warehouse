@@ -4,7 +4,8 @@ import { requireAuth } from '@/lib/middleware';
 import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 import { getMonthStartMoscowUTC, getStartupWindow09MoscowUTC } from '@/lib/utils/moscowDate';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
-import { computeExtraWorkPointsForSession, getEffectiveDenomByActiveCount, isLunchTimeMoscow, isWorkingTimeMoscow } from '@/lib/ranking/extraWorkPoints';
+import { computeExtraWorkPointsForSession, getEffectiveDenomByActiveCount, isWorkingTimeMoscow } from '@/lib/ranking/extraWorkPoints';
+import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 
@@ -67,15 +68,27 @@ export async function GET(request: NextRequest) {
 
     const nowUtc = new Date();
     const isWorking = isWorkingTimeMoscow(nowUtc);
-    const isLunch = isLunchTimeMoscow(nowUtc);
     const inStartupWindow = isInStartupWindow(nowUtc);
 
-    const [warehousePace, startupRatePerMin, targetUser, todayCoeff] = await Promise.all([
+    const [warehousePace, startupRatePerMin, targetUser, todayCoeff, activeSession] = await Promise.all([
       getWarehousePaceLast15Min(nowUtc),
       getStartupRatePerMinFromSystemSettings(),
       prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
       getWeekdayCoefficientForDate(prisma, nowUtc),
+      prisma.extraWorkSession.findFirst({
+        where: { userId, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+        orderBy: { startedAt: 'desc' },
+      }),
     ]);
+
+    if (activeSession) {
+      await syncExtraWorkSessionLunchState(prisma, activeSession as any, nowUtc);
+    }
+    const refreshedSession = await prisma.extraWorkSession.findFirst({
+      where: { userId, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+      orderBy: { startedAt: 'desc' },
+    });
+    const isLunch = refreshedSession?.status === 'lunch';
 
     // Продуктивность (baseProd) считается из dailyStats за месяц по рабочим дням (пн–пт).
     // Именно это влияет на веса распределения ставки доп.работы.

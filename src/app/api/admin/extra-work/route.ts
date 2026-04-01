@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
-import { getStatisticsDateRange, getStartupWindow09MoscowUTC, isLunchTimeMoscow } from '@/lib/utils/moscowDate';
+import { getStatisticsDateRange, getStartupWindow09MoscowUTC } from '@/lib/utils/moscowDate';
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 import {
@@ -12,6 +12,7 @@ import {
   isWorkingTimeMoscow,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
+import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,29 +78,9 @@ export async function GET(request: NextRequest) {
       prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
     ]);
 
-    // Строгая проверка: снимаем «Обед»/«Обед запланирован», если НЕ время обеда по Москве (13:00–14:59)
     const nowCheck = new Date();
-    const notLunchTime = !isLunchTimeMoscow(nowCheck);
     for (const sess of activeSessionsRaw) {
-      if (sess.status === 'lunch') {
-        const lunchEndsPassed = sess.lunchEndsAt && nowCheck.getTime() >= sess.lunchEndsAt.getTime();
-        if (lunchEndsPassed || notLunchTime) {
-          await prisma.extraWorkSession.update({
-            where: { id: sess.id },
-            data: {
-              status: 'running',
-              postLunchStartedAt: sess.lunchEndsAt ?? nowCheck,
-              lunchStartedAt: null,
-              lunchEndsAt: null,
-            },
-          });
-        }
-      } else if (sess.status === 'lunch_scheduled' && notLunchTime) {
-        await prisma.extraWorkSession.update({
-          where: { id: sess.id },
-          data: { status: 'running', lunchSlot: null, lunchScheduledFor: null },
-        });
-      }
+      await syncExtraWorkSessionLunchState(prisma, sess as any, nowCheck);
     }
     const activeSessions = await prisma.extraWorkSession.findMany({
       where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
@@ -242,7 +223,7 @@ export async function GET(request: NextRequest) {
     // Считается по последним 15 минутам: points/15 × (вес/Σвесов активных).
     const FIFTEEN_MIN_MS = 15 * 60 * 1000;
     const rateNow = now;
-    const rateIsWorkingNow = isWorkingTimeMoscow(rateNow) && !isLunchTimeMoscow(rateNow);
+    const rateIsWorkingNow = isWorkingTimeMoscow(rateNow);
     const { start: startupStart, end: startupEnd } = getStartupWindow09MoscowUTC(rateNow);
     const inStartupWindow = rateNow.getTime() >= startupStart.getTime() && rateNow.getTime() < startupEnd.getTime();
 
@@ -325,7 +306,7 @@ export async function GET(request: NextRequest) {
           extraWorkPoints,
           productivity,
           productivityToday,
-          ratePerHour: ratePerHourByUser.get(u.userId) ?? 0,
+          ratePerHour: (sessionsByUser.get(u.userId)?.status === 'lunch') ? 0 : (ratePerHourByUser.get(u.userId) ?? 0),
           weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(u.userId) ?? null,
           usefulnessPct: usefulnessPctMap.get(u.userId) ?? null,
@@ -360,7 +341,7 @@ export async function GET(request: NextRequest) {
           extraWorkPoints: Math.max(0, extraWorkPointsByUser.get(sess.userId) ?? 0),
           productivity: prod,
           productivityToday: Math.round(prod * todayCoeff * 100) / 100,
-          ratePerHour: ratePerHourByUser.get(sess.userId) ?? 0,
+          ratePerHour: sess.status === 'lunch' ? 0 : (ratePerHourByUser.get(sess.userId) ?? 0),
           weekdayCoefficient: todayCoeff,
           lunchSlot: lunchSlotByUser.get(sess.userId) ?? null,
           usefulnessPct: usefulnessPctMap.get(sess.userId) ?? null,

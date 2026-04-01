@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
-import { getMoscowHour, isLunchTimeMoscow } from '@/lib/utils/moscowDate';
+import { getMoscowHour } from '@/lib/utils/moscowDate';
 import { getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 import { autoStopExtraWorkAt18 } from '@/lib/extraWorkAutoStop';
+import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,31 +38,9 @@ export async function GET(request: NextRequest) {
       orderBy: { startedAt: 'desc' },
     });
 
-    // Строгая проверка: снимаем «Обед»/«Обед запланирован», если не время обеда по Москве (13:00–14:59)
     const now = new Date();
-    const notLunchTime = !isLunchTimeMoscow(now);
-    if (session?.status === 'lunch') {
-      const lunchEndsPassed = session.lunchEndsAt && now.getTime() >= session.lunchEndsAt.getTime();
-      if (lunchEndsPassed || notLunchTime) {
-        await prisma.extraWorkSession.update({
-          where: { id: session.id },
-          data: {
-            status: 'running',
-            postLunchStartedAt: session.lunchEndsAt ?? now,
-            lunchStartedAt: null,
-            lunchEndsAt: null,
-          },
-        });
-        session = await prisma.extraWorkSession.findFirst({
-          where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
-          orderBy: { startedAt: 'desc' },
-        });
-      }
-    } else if (session?.status === 'lunch_scheduled' && notLunchTime) {
-      await prisma.extraWorkSession.update({
-        where: { id: session.id },
-        data: { status: 'running', lunchSlot: null, lunchScheduledFor: null },
-      });
+    if (session) {
+      await syncExtraWorkSessionLunchState(prisma, session as any, now);
       session = await prisma.extraWorkSession.findFirst({
         where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
         orderBy: { startedAt: 'desc' },
@@ -91,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       ...session,
-      ratePerHour: Math.round(ratePerHour * 100) / 100,
+      ratePerHour: session.status === 'lunch' ? 0 : Math.round(ratePerHour * 100) / 100,
       dayCoefficient: Math.round(dayCoefficient * 100) / 100,
     });
   } catch (e) {
