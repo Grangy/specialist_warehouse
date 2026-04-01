@@ -53,9 +53,13 @@ export async function POST(request: NextRequest) {
         where: { id: sessionId },
         data: {
           status: 'running',
+          // ВАЖНО: если оставить lunchSlot, то автоматическая синхронизация
+          // снова переведёт в lunch во время окна обеда. Отмена = игнорировать обед в этой сессии.
+          lunchSlot: null,
           lunchStartedAt: null,
           lunchEndsAt: null,
           lunchScheduledFor: null,
+          postLunchStartedAt: new Date(),
         },
       });
       return NextResponse.json({ ok: true });

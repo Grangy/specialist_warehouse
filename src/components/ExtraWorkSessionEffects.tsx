@@ -47,7 +47,15 @@ export function ExtraWorkSessionEffects() {
 
   useEffect(() => {
     if (!session || session.status === 'lunch' || !session.durationMinutes) return;
-    const endAt = new Date(session.startedAt).getTime() + session.durationMinutes * 60 * 1000;
+    const baseSec = session.elapsedSecBeforeLunch ?? 0;
+    const segStart = session.postLunchStartedAt
+      ? new Date(session.postLunchStartedAt).getTime()
+      : new Date(session.startedAt).getTime();
+    const currentElapsedSec =
+      session.status === 'running'
+        ? baseSec + Math.max(0, (Date.now() - segStart) / 1000)
+        : baseSec;
+    const endAt = Date.now() + Math.max(0, session.durationMinutes * 60 - currentElapsedSec) * 1000;
     const check = () => {
       if (Date.now() >= endAt) {
         fetch('/api/admin/extra-work/stop', {
