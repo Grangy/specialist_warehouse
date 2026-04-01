@@ -2,6 +2,7 @@
 
 import { formatDate } from '@/lib/utils/helpers';
 import type { Shipment } from '@/types';
+import { sanitizeShipmentComment } from '@/lib/shipmentComment';
 import { 
   Package, 
   Clock, 
@@ -29,6 +30,7 @@ export function WaitingShipmentCard({
   userRole
 }: WaitingShipmentCardProps) {
   const isNotVisibleToCollector = userRole !== 'collector' && shipment.collector_visible === false;
+  const cleanComment = sanitizeShipmentComment(shipment.comment);
   const cardBorderClass = isNotVisibleToCollector 
     ? 'border-orange-500 border-dashed' 
     : 'border-orange-500';
@@ -159,9 +161,19 @@ export function WaitingShipmentCard({
         })}
       </div>
 
-      {shipment.comment && shipment.comment.trim() !== '' && shipment.comment.trim() !== 'Запрос из УТ' && (
+      {cleanComment && (
         <div className="mb-4 rounded-lg bg-emerald-600/95 px-3 py-2.5 shadow-md border border-emerald-500/40">
-          <div className="text-sm font-medium text-white break-words">{shipment.comment}</div>
+          <div className="flex items-start gap-2">
+            {cleanComment.isSite && (
+              <span
+                className="inline-flex items-center justify-center w-6 h-6 rounded bg-emerald-700/60 border border-emerald-400/30 text-white text-xs flex-shrink-0"
+                title="Комментарий с сайта"
+              >
+                🌐
+              </span>
+            )}
+            <div className="text-sm font-medium text-white break-words">{cleanComment.text}</div>
+          </div>
         </div>
       )}
     </div>

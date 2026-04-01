@@ -231,13 +231,17 @@ async function getUserStatsUncached(
       ? prisma.collectorCall.findMany({
           where: {
             status: 'done',
-            errorCount: { gt: 0 },
-            OR: [{ checkerId: user.id }, { collectorId: user.id }],
-            task: {
-              shipment: {
-                confirmedAt: { gte: dateRange.startDate, lte: dateRange.endDate },
+            OR: [{ errorCount: { gt: 0 } }, { checkerErrorCount: { gt: 0 } }],
+            AND: [
+              { OR: [{ checkerId: user.id }, { collectorId: user.id }] },
+              {
+                task: {
+                  shipment: {
+                    confirmedAt: { gte: dateRange.startDate, lte: dateRange.endDate },
+                  },
+                },
               },
-            },
+            ],
           },
           include: {
             task: { include: { shipment: { select: { number: true } } } },
@@ -356,17 +360,29 @@ async function getUserStatsUncached(
   const collectorTotalOrders = new Set(collectorOnlyStats.map((s) => s.shipmentId)).size;
 
   const errorDetails: Array<{ shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number }> =
-    errorCallsForDetails.map((c) => {
-      const errCount = c.errorCount ?? 1;
-      const isChecker = c.checkerId === user.id;
-      const pts = isChecker ? errCount : -errCount;
-      return {
-        shipmentNumber: c.task?.shipment?.number ?? '?',
-        role: isChecker ? 'checker' : 'collector',
-        points: pts,
-        errorCount: errCount,
-      };
-    });
+    errorCallsForDetails
+      .map((c) => {
+        const isChecker = c.checkerId === user.id;
+        if (isChecker) {
+          const cnt = c.checkerErrorCount ?? 0;
+          if (cnt <= 0) return null;
+          return {
+            shipmentNumber: c.task?.shipment?.number ?? '?',
+            role: 'checker' as const,
+            points: -5 * cnt,
+            errorCount: cnt,
+          };
+        }
+        const cnt = c.errorCount ?? 0;
+        if (cnt <= 0) return null;
+        return {
+          shipmentNumber: c.task?.shipment?.number ?? '?',
+          role: 'collector' as const,
+          points: -1 * cnt,
+          errorCount: cnt,
+        };
+      })
+      .filter((x): x is { shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number } => x != null);
 
   return {
     period: dateOverride ? null : (period ?? null),

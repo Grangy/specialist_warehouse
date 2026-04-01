@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import type { Shipment } from '@/types';
 import ShipmentDetailsModal from './ShipmentDetailsModal';
+import { sanitizeShipmentComment } from '@/lib/shipmentComment';
 
 interface ShipmentStats {
   total: number;
@@ -522,6 +523,23 @@ export default function CompletedShipmentsTab({ canDelete = true, canReassign = 
                       >
                         {shipment.customer_name}
                       </button>
+                      {(() => {
+                        const c = sanitizeShipmentComment((shipment as unknown as { comment?: string | null }).comment);
+                        if (!c) return null;
+                        return (
+                          <div className="mt-1 text-xs text-slate-400 flex items-start gap-2">
+                            {c.isSite && (
+                              <span
+                                className="inline-flex items-center justify-center w-5 h-5 rounded bg-emerald-700/30 border border-emerald-500/30 text-emerald-200 text-[10px] flex-shrink-0"
+                                title="Комментарий с сайта"
+                              >
+                                🌐
+                              </span>
+                            )}
+                            <span className="line-clamp-2 break-words">{c.text}</span>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-4 text-center">
                       {(() => {

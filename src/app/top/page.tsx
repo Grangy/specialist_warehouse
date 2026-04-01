@@ -189,8 +189,6 @@ export default function TopPage() {
   }, [load, period]);
 
   const formatPointsNum = (p: number) => Math.round(p * 100) / 100;
-  const formatPPH = (pph: number | null) =>
-    pph != null && !isNaN(pph) ? Math.round(pph).toLocaleString('ru-RU') : '—';
   const formatDate = (d: string) => {
     if (!d) return '';
     const [y, m, day] = d.split('-');
@@ -631,11 +629,7 @@ export default function TopPage() {
                           <div className="text-xs"><span className="text-slate-400">За ошибки</span> {(user.errorPenalty ?? 0) >= 0 ? '+' : ''}{formatPointsNum(user.errorPenalty ?? 0)}</div>
                         )}
                       </div>
-                      {user.pph != null && (
-                        <div className="text-xs text-slate-500 mt-0.5">
-                          {formatPPH(user.pph)} PPH
-                        </div>
-                      )}
+                      {/* PPH скрыли из /top */}
                     </div>
                   </div>
                   </div>

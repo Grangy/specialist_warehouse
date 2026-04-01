@@ -37,9 +37,7 @@ export function ExtraWorkBanner() {
     session.lunchSlot === '13-14' ? 'Обед с 13:00' : session.lunchSlot === '14-15' ? 'Обед с 14:00' : 'Обед запланирован';
 
   const rate = session.ratePerHour ?? 0.5;
-  const dayCoef = session.dayCoefficient ?? 1;
-  const points = (elapsedSec / 3600) * rate * dayCoef;
-  const remainingSec = session.durationMinutes ? Math.max(0, session.durationMinutes * 60 - elapsedSec) : null;
+  const points = (elapsedSec / 3600) * rate;
 
   return (
     <button
@@ -60,10 +58,7 @@ export function ExtraWorkBanner() {
         ) : (
           <>
             <span className="font-mono text-sm tabular-nums">{fmt(elapsedSec)}</span>
-            <span className="text-xs text-amber-900/80">{points.toFixed(1)} б.</span>
-            {remainingSec != null && (
-              <span className="text-xs text-amber-900/70">осталось {fmt(remainingSec)}</span>
-            )}
+            <span className="text-xs text-amber-900/80">нафармлено {points.toFixed(1)} б.</span>
           </>
         )}
       </div>

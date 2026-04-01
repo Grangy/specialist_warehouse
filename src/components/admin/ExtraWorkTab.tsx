@@ -363,11 +363,7 @@ export default function ExtraWorkTab() {
                 </p>
               </div>
             )}
-            {todayCoeff != null && coeffPeriod && (
-              <p className="text-xs text-amber-400/90 mt-1">
-                Сегодня коэф. ×{todayCoeff.toFixed(2)} (данные за {coeffPeriod.start} — {coeffPeriod.end})
-              </p>
-            )}
+            {/* todayCoeff убрали из UI — чтобы не путать пользователя */}
           </div>
 
         <ExtraWorkCurrentIndicatorsModal

@@ -89,11 +89,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 1 ошибка: сборщик −1, проверяльщик −1, админ +2 (нашёл ошибку проверяльщика)
+    // 1 ошибка: сборщик −1, проверяльщик −5, админ +6 (нашёл ошибку проверки)
     const today = new Date();
     await addErrorPenalty(task.collectorId, -1, today);
-    await addErrorPenalty(task.checkerId, -1, today);
-    await addErrorPenalty(admin.id, 2, today);
+    await addErrorPenalty(task.checkerId, -5, today);
+    await addErrorPenalty(admin.id, 6, today);
 
     const msgText = dateStr
       ? `⚠️ Ошибка со сборки от ${dateStr}\n\nЗаказ ${num}, позиция: ${productName}\n\nАдминистратор зафиксировал ошибку.`
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       callId: call.id,
-      message: `Ошибка зафиксирована: сборщику +1, проверяльщику +1. Уведомления отправлены.`,
+      message: `Ошибка зафиксирована: сборщику +1 ошибка (−1 балл), проверяльщику +1 ошибка (−5 баллов).`,
     });
   } catch (error) {
     console.error('[API admin/assembly-error]', error);

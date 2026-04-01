@@ -9,6 +9,7 @@ import { useUserSettings } from '@/contexts/UserSettingsContext';
 import { useToast } from '@/hooks/useToast';
 import { truncateArt } from '@/lib/utils/helpers';
 import type { Shipment, ConfirmChecklistState } from '@/types';
+import { sanitizeShipmentComment } from '@/lib/shipmentComment';
 
 interface ConfirmModalProps {
   currentShipment: Shipment | null;
@@ -96,7 +97,8 @@ export function ConfirmModal({
   }, [viewMode]);
 
   const handleClientInfoClick = () => {
-    if (!currentShipment?.comment || currentShipment.comment.trim() === '' || currentShipment.comment === 'Запрос из УТ') {
+    const c = sanitizeShipmentComment(currentShipment?.comment);
+    if (!c) {
       return;
     }
 
@@ -219,6 +221,7 @@ export function ConfirmModal({
 
   const progress = getProgress();
   const warnings = getWarnings();
+  const cleanComment = sanitizeShipmentComment(currentShipment.comment);
 
   const handleInfoClick = (line: any, index: number) => {
     const state = checklistState[index] || {
@@ -372,14 +375,12 @@ export function ConfirmModal({
         {/* Sticky блок с клиентом и переключателем режима - внутри скроллируемого контейнера */}
         <div 
           className={`sticky top-0 z-20 bg-slate-900/98 backdrop-blur-sm flex items-center justify-between text-xs gap-2 py-1.5 px-3 border-b border-slate-700/50 shadow-sm relative ${
-            currentShipment.comment && 
-            currentShipment.comment.trim() !== '' && 
-            currentShipment.comment !== 'Запрос из УТ'
+            cleanComment
               ? 'cursor-pointer hover:bg-slate-800/98 transition-colors animate-pulse' 
               : ''
           }`}
           onClick={handleClientInfoClick}
-          title={currentShipment.comment && currentShipment.comment.trim() !== '' && currentShipment.comment !== 'Запрос из УТ' ? 'Нажмите, чтобы увидеть комментарий' : ''}
+          title={cleanComment ? 'Нажмите, чтобы увидеть комментарий' : ''}
         >
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {/* Информация о клиенте и локации (регионе) без префиксов */}
@@ -400,13 +401,18 @@ export function ConfirmModal({
             )}
           </div>
           {/* Комментарий - показывается при клике на 4 секунды */}
-          {showComment && currentShipment.comment && currentShipment.comment.trim() !== '' && currentShipment.comment !== 'Запрос из УТ' && (
+          {showComment && cleanComment && (
             <div className="absolute top-full left-0 right-0 bg-emerald-600/95 text-white text-xs font-medium px-3 py-2 rounded-b-lg shadow-lg z-30 animate-fadeIn border-t border-emerald-500/50">
               <div className="flex items-center gap-2">
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                 </svg>
-                <span className="break-words">{currentShipment.comment}</span>
+                {cleanComment.isSite && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-emerald-700/60 border border-emerald-400/30 text-white text-[10px] flex-shrink-0" title="Комментарий с сайта">
+                    🌐
+                  </span>
+                )}
+                <span className="break-words">{cleanComment.text}</span>
               </div>
             </div>
           )}

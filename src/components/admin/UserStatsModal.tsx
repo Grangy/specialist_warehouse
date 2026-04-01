@@ -705,7 +705,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
                     За какие сборки ошибки
                   </h3>
                   <p className="text-xs text-slate-400 mb-3">
-                    {(data.errorPenalty ?? 0) >= 0 ? 'Найденные ошибки: +1 за каждую' : 'Допущенные ошибки: −1 за каждую'}
+                    Ошибки сборки: −1 за каждую. Ошибки проверки (фиксирует админ): −5 за каждую.
                   </p>
                   {(data.errorDetails?.length ?? 0) === 0 ? (
                     <div className="text-center py-8 text-slate-400">Нет данных за период</div>

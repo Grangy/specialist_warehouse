@@ -178,7 +178,7 @@ export async function POST(
         },
       });
 
-      // Штрафы за ошибки при «Отправить в офис»: 1 ошибка = сборщик −1, проверяльщик +1
+      // Штрафы за ошибки при «Отправить в офис»: 1 ошибка = сборщик −1
       const allTaskIds = (await prisma.shipmentTask.findMany({
         where: { shipmentId: task.shipmentId },
         select: { id: true },
@@ -195,7 +195,6 @@ export async function POST(
       for (const call of callsWithErrors) {
         const errCount = call.errorCount ?? 1;
         await addErrorPenalty(call.collectorId, -1 * errCount, today);
-        await addErrorPenalty(call.checkerId, 1 * errCount, today);
       }
 
       // Отправляем событие об обновлении заказа через SSE

@@ -2,6 +2,7 @@
 
 import { formatDate, isUrgent, escapeHtml } from '@/lib/utils/helpers';
 import type { Shipment } from '@/types';
+import { sanitizeShipmentComment } from '@/lib/shipmentComment';
 import { 
   Package, 
   Clock, 
@@ -50,6 +51,7 @@ export function ShipmentCard({
   const isProcessed = shipment.status === 'processed';
   const isPendingConfirmation = shipment.status === 'pending_confirmation';
   const urgent = isUrgent(shipment.comment);
+  const cleanComment = sanitizeShipmentComment(shipment.comment);
   
   const borderClass = isProcessed
     ? 'border-green-500 border-2'
@@ -271,9 +273,19 @@ export function ShipmentCard({
         </div>
       )}
 
-      {shipment.comment && shipment.comment.trim() !== '' && shipment.comment.trim() !== 'Запрос из УТ' && (
+      {cleanComment && (
         <div className="mb-4 rounded-lg bg-emerald-600/95 px-3 py-2.5 shadow-md border border-emerald-500/40">
-          <div className="text-sm font-medium text-white break-words">{shipment.comment}</div>
+          <div className="flex items-start gap-2">
+            {cleanComment.isSite && (
+              <span
+                className="inline-flex items-center justify-center w-6 h-6 rounded bg-emerald-700/60 border border-emerald-400/30 text-white text-xs flex-shrink-0"
+                title="Комментарий с сайта"
+              >
+                🌐
+              </span>
+            )}
+            <div className="text-sm font-medium text-white break-words">{cleanComment.text}</div>
+          </div>
         </div>
       )}
 

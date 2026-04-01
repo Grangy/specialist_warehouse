@@ -293,9 +293,6 @@ export function ExtraWorkCurrentIndicatorsModal({
               </div>
               <div className="space-y-1">
                 <div>
-                  todayCoeff: <span className="text-slate-200 font-semibold">{data.todayCoeff.toFixed(2)}</span>
-                </div>
-                <div>
                   productivity (baseProd): <span className="text-slate-200 font-semibold">{data.productivity.toFixed(2)}</span>
                 </div>
                 <div>

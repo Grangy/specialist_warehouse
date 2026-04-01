@@ -39,9 +39,7 @@ export function ExtraWorkPopup() {
     session.lunchSlot === '13-14' ? 'Обед с 13:00' : session.lunchSlot === '14-15' ? 'Обед с 14:00' : 'Обед запланирован';
 
   const rate = session.ratePerHour ?? 0.5;
-  const dayCoef = session.dayCoefficient ?? 1;
-  const points = (elapsedSec / 3600) * rate * dayCoef;
-  const remainingSec = session.durationMinutes ? Math.max(0, session.durationMinutes * 60 - elapsedSec) : null;
+  const points = (elapsedSec / 3600) * rate;
 
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setPopupOpen(false)}>
@@ -73,17 +71,14 @@ export function ExtraWorkPopup() {
           <>
             <p className="text-xs text-slate-400 mb-0.5">На выполнении</p>
             <p className="text-3xl font-mono font-bold text-amber-400 mb-1 tabular-nums">{fmt(elapsedSec)}</p>
-            <p className="text-amber-400/90 text-sm mb-1">{points.toFixed(1)} баллов</p>
+            <p className="text-amber-400/90 text-sm mb-1">нафармлено {points.toFixed(1)} баллов</p>
             <p className="text-amber-400 text-sm mb-4">{lunchScheduledLabel}. Ожидание...</p>
           </>
         ) : (
           <>
             <p className="text-xs text-slate-400 mb-0.5">На выполнении</p>
             <p className="text-3xl font-mono font-bold text-amber-400 mb-1 tabular-nums">{fmt(elapsedSec)}</p>
-            <p className="text-amber-400/90 text-sm mb-1">{points.toFixed(1)} баллов</p>
-            {remainingSec != null && (
-              <p className="text-slate-400 text-sm mb-1">Осталось: {fmt(remainingSec)}</p>
-            )}
+            <p className="text-amber-400/90 text-sm mb-1">нафармлено {points.toFixed(1)} баллов</p>
             {session.durationMinutes && (
               <p className="text-xs text-slate-500 mb-4">
                 {session.completionType === 'timer'
