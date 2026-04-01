@@ -3,6 +3,7 @@
 import { Modal } from '@/components/ui/Modal';
 import type { Shipment } from '@/types';
 import { formatDate } from '@/lib/utils/helpers';
+import { sanitizeShipmentComment } from '@/lib/shipmentComment';
 
 interface DetailsModalProps {
   isOpen: boolean;
@@ -12,6 +13,8 @@ interface DetailsModalProps {
 
 export function DetailsModal({ isOpen, onClose, shipment }: DetailsModalProps) {
   if (!shipment) return null;
+
+  const cleanComment = sanitizeShipmentComment(shipment.comment);
 
   return (
     <Modal 
@@ -44,10 +47,12 @@ export function DetailsModal({ isOpen, onClose, shipment }: DetailsModalProps) {
             </div>
           </div>
         </div>
-        {shipment.comment && (
+        {cleanComment && (
           <div>
             <div className="text-sm text-slate-400 mb-1">Комментарий</div>
-            <div className="text-base text-white italic bg-emerald-600/90 rounded px-2 py-1 border border-emerald-500/40">{shipment.comment}</div>
+            <div className="text-base text-white italic bg-emerald-600/90 rounded px-2 py-1 border border-emerald-500/40">
+              {cleanComment.text}
+            </div>
           </div>
         )}
         <div>
