@@ -6,6 +6,7 @@ import { getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 import { autoStopExtraWorkAt18 } from '@/lib/extraWorkAutoStop';
 import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
+import { maybeHealElapsedSecBeforeLunch } from '@/lib/extraWorkElapsed';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,13 @@ export async function GET(request: NextRequest) {
         where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
         orderBy: { startedAt: 'desc' },
       });
+      if (session) {
+        await maybeHealElapsedSecBeforeLunch(prisma, session as any, now);
+        session = await prisma.extraWorkSession.findFirst({
+          where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
+          orderBy: { startedAt: 'desc' },
+        });
+      }
     }
 
     if (!session) return NextResponse.json(null);

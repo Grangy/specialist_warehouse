@@ -13,6 +13,7 @@ import {
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
+import { computeExtraWorkElapsedSecNow, maybeHealElapsedSecBeforeLunch } from '@/lib/extraWorkElapsed';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
     const nowCheck = new Date();
     for (const sess of activeSessionsRaw) {
       await syncExtraWorkSessionLunchState(prisma, sess as any, nowCheck);
+      await maybeHealElapsedSecBeforeLunch(prisma, sess as any, nowCheck);
     }
     const activeSessions = await prisma.extraWorkSession.findMany({
       where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
@@ -128,22 +130,8 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     const elapsedSecBeforeLunchCurrentByUserId = new Map<string, number>();
     for (const sess of activeSessions) {
-      let currentElapsedSec = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
-      let virtualStartedAt = sess.startedAt;
-      if (sess.status === 'running') {
-        let segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
-        let addSec = (now.getTime() - segStart.getTime()) / 1000;
-        if (addSec < 0) {
-          await prisma.extraWorkSession.update({
-            where: { id: sess.id },
-            data: { postLunchStartedAt: now },
-          });
-          segStart = now;
-          addSec = 0;
-        }
-        currentElapsedSec += Math.max(0, addSec);
-        virtualStartedAt = new Date(now.getTime() - currentElapsedSec * 1000);
-      }
+      const currentElapsedSec = computeExtraWorkElapsedSecNow(sess as any, now);
+      const virtualStartedAt = new Date(now.getTime() - currentElapsedSec * 1000);
       elapsedSecBeforeLunchCurrentByUserId.set(sess.userId, currentElapsedSec);
       const hours = currentElapsedSec / 3600;
       if (!extraWorkHoursByUser.has(sess.userId)) {

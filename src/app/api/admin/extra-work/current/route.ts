@@ -6,6 +6,7 @@ import { getMonthStartMoscowUTC, getStartupWindow09MoscowUTC } from '@/lib/utils
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 import { computeExtraWorkPointsForSession, getEffectiveDenomByActiveCount, isWorkingTimeMoscow } from '@/lib/ranking/extraWorkPoints';
 import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
+import { computeExtraWorkElapsedSecNow, maybeHealElapsedSecBeforeLunch } from '@/lib/extraWorkElapsed';
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
 
     if (activeSession) {
       await syncExtraWorkSessionLunchState(prisma, activeSession as any, nowUtc);
+      await maybeHealElapsedSecBeforeLunch(prisma, activeSession as any, nowUtc);
     }
     const refreshedSession = await prisma.extraWorkSession.findFirst({
       where: { userId, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
@@ -173,8 +175,13 @@ export async function GET(request: NextRequest) {
     // Если фронт передал длительность текущей доп.работы (elapsedSecBeforeLunch),
     // считаем итоговые баллы для выбранного пользователя "как в формуле".
     const elapsedSecBeforeLunchRaw = searchParams.get('elapsedSecBeforeLunch');
-    const elapsedSecBeforeLunch =
+    let elapsedSecBeforeLunch =
       elapsedSecBeforeLunchRaw != null ? Number.parseFloat(elapsedSecBeforeLunchRaw) : 0;
+    if (refreshedSession) {
+      const safe = computeExtraWorkElapsedSecNow(refreshedSession as any, nowUtc);
+      // prefer DB-derived elapsed for correctness if front sends garbage
+      elapsedSecBeforeLunch = safe;
+    }
 
     let totalExtraWorkPoints: number | null = null;
     if (Number.isFinite(elapsedSecBeforeLunch) && elapsedSecBeforeLunch > 0) {
