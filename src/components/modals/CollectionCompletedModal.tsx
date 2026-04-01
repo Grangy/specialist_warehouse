@@ -41,7 +41,7 @@ export function CollectionCompletedModal({
   const customerName = shipment.customer_name || 'Не указан';
   const businessRegion = shipment.business_region || 'Не указан';
   const cleanComment = sanitizeShipmentComment(shipment.comment);
-  const comment = cleanComment?.text || 'Нет комментария';
+  const comment = cleanComment?.text || '';
 
   return (
     <Modal
@@ -79,10 +79,14 @@ export function CollectionCompletedModal({
             <span className="text-sm font-medium text-slate-400">Регион:</span>
             <p className="text-slate-200 mt-1">{businessRegion}</p>
           </div>
-          <div>
-            <span className="text-sm font-medium text-slate-400">Комментарий:</span>
-            <p className="mt-1 text-sm text-white bg-emerald-600/90 rounded px-2 py-1 border border-emerald-500/40">{comment}</p>
-          </div>
+          {!!comment && (
+            <div>
+              <span className="text-sm font-medium text-slate-400">Комментарий:</span>
+              <p className="mt-1 text-sm text-white bg-emerald-600/90 rounded px-2 py-1 border border-emerald-500/40">
+                {comment}
+              </p>
+            </div>
+          )}
           {taskNumber && totalTasks && (
             <div>
               <span className="text-sm font-medium text-slate-400">Прогресс заданий:</span>
