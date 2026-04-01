@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { getLunchScheduledForMoscow } from '@/lib/utils/moscowDate';
+import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,21 +67,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, scheduled: true, lunchScheduledFor });
     }
 
-    // Уже наступило время — стартуем обед сразу
-    const elapsedBeforeLunch = (now.getTime() - session.startedAt.getTime()) / 1000;
-    const lunchEndsAt = new Date(now.getTime() + LUNCH_DURATION_MS);
-
+    // Уже наступило время — стартуем обед сейчас, без двойного учёта времени.
     await prisma.extraWorkSession.update({
       where: { id: sessionId },
       data: {
-        status: 'lunch',
+        status: 'running',
         lunchSlot,
-        lunchScheduledFor: null,
-        lunchStartedAt: now,
-        lunchEndsAt,
-        elapsedSecBeforeLunch: session.elapsedSecBeforeLunch + elapsedBeforeLunch,
+        lunchScheduledFor: lunchScheduledFor,
       },
     });
+    const refreshed = await prisma.extraWorkSession.findUnique({
+      where: { id: sessionId },
+    });
+    if (refreshed) {
+      await syncExtraWorkSessionLunchState(prisma, refreshed as any, now);
+    }
+    const after = await prisma.extraWorkSession.findUnique({ where: { id: sessionId } });
+    const lunchEndsAt = after?.lunchEndsAt ?? new Date(now.getTime() + LUNCH_DURATION_MS);
 
     return NextResponse.json({ ok: true, lunchEndsAt });
   } catch (e) {

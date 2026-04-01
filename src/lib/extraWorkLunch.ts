@@ -82,16 +82,20 @@ export async function syncExtraWorkSessionLunchState(
     }
 
     if (inWindow) {
-      // Pause timer: add elapsed time up to lunch start, freeze during lunch
+      // Pause timer: add elapsed time up to lunch start, freeze during lunch.
+      // Guard against double-counting: elapsedSecBeforeLunch must never exceed (lunchStart - startedAt).
       const segStart = session.postLunchStartedAt ?? session.startedAt;
       const addSec = Math.max(0, (window.start.getTime() - segStart.getTime()) / 1000);
+      const maxPossible = Math.max(0, (window.start.getTime() - session.startedAt.getTime()) / 1000);
+      const nextElapsedRaw = (session.elapsedSecBeforeLunch ?? 0) + addSec;
+      const nextElapsed = Math.min(Math.max(0, nextElapsedRaw), maxPossible);
       await prisma.extraWorkSession.update({
         where: { id: session.id },
         data: {
           status: 'lunch',
           lunchStartedAt: window.start,
           lunchEndsAt: window.end,
-          elapsedSecBeforeLunch: session.elapsedSecBeforeLunch + addSec,
+          elapsedSecBeforeLunch: nextElapsed,
           postLunchStartedAt: null,
         },
       });

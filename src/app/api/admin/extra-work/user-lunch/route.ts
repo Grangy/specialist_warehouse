@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 import { getLunchScheduledForMoscow } from '@/lib/utils/moscowDate';
+import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,17 +59,18 @@ export async function POST(request: NextRequest) {
             data: { status: 'lunch_scheduled', lunchSlot: validSlot, lunchScheduledFor },
           });
         } else {
-          const elapsedBeforeLunch = (now.getTime() - sess.startedAt.getTime()) / 1000;
           await prisma.extraWorkSession.update({
             where: { id: sess.id },
             data: {
-              status: 'lunch',
+              status: 'running',
               lunchSlot: validSlot,
-              lunchStartedAt: now,
-              lunchEndsAt: new Date(now.getTime() + LUNCH_DURATION_MS),
-              elapsedSecBeforeLunch: sess.elapsedSecBeforeLunch + elapsedBeforeLunch,
+              lunchScheduledFor: lunchScheduledFor,
             },
           });
+          const refreshed = await prisma.extraWorkSession.findUnique({ where: { id: sess.id } });
+          if (refreshed) {
+            await syncExtraWorkSessionLunchState(prisma, refreshed as any, now);
+          }
         }
       }
 
