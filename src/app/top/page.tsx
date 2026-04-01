@@ -36,7 +36,7 @@ interface RankingEntry {
   usefulnessPct?: number | null;
 }
 
-const APRIL_FOOLS_ENABLED = true;
+const APRIL_FOOLS_ENABLED = false;
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 function isMoscowAprilFoolsDay(nowUtc: Date = new Date()): boolean {
