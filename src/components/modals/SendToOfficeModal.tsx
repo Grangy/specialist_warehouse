@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Modal } from '@/components/ui/Modal';
+import { sanitizeShipmentComment } from '@/lib/shipmentComment';
 import type { Shipment } from '@/types';
 
 interface CollectorCall {
@@ -206,7 +207,8 @@ export function SendToOfficeModal({
     || customerNameFromDetails
     || 'Не указан';
   const businessRegion = shipment.business_region || 'Не указан';
-  const comment = shipment.comment || 'Нет комментария';
+  const cleanComment = sanitizeShipmentComment(shipment.comment);
+  const comment = cleanComment?.text || 'Нет комментария';
 
   return (
     <Modal

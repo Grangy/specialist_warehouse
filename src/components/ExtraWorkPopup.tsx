@@ -12,16 +12,21 @@ export function ExtraWorkPopup() {
 
   // Таймер отображения (POST — в ExtraWorkSessionEffects)
   useEffect(() => {
-    if (!session || session.status === 'lunch') return;
-    const baseSec = session.elapsedSecBeforeLunch;
-    const startOfCurrentSegment = session.postLunchStartedAt
+    if (!session) return;
+    const baseSec = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
+    const segStart = session.postLunchStartedAt
       ? new Date(session.postLunchStartedAt).getTime()
       : new Date(session.startedAt).getTime();
-    const update = () => {
-      setElapsedSec(baseSec + (Date.now() - startOfCurrentSegment) / 1000);
+
+    const computeNow = () => {
+      if (session.status !== 'running' && session.status !== 'lunch_scheduled') return baseSec;
+      const delta = Math.max(0, (Date.now() - segStart) / 1000);
+      return baseSec + delta;
     };
-    update();
-    const id = setInterval(update, 1000);
+
+    setElapsedSec(computeNow());
+    if (session.status !== 'running' && session.status !== 'lunch_scheduled') return;
+    const id = setInterval(() => setElapsedSec(computeNow()), 1000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for timer logic
   }, [session?.id, session?.status, session?.startedAt, session?.postLunchStartedAt, session?.elapsedSecBeforeLunch]);
@@ -38,8 +43,8 @@ export function ExtraWorkPopup() {
   const lunchScheduledLabel =
     session.lunchSlot === '13-14' ? 'Обед с 13:00' : session.lunchSlot === '14-15' ? 'Обед с 14:00' : 'Обед запланирован';
 
-  const rate = session.ratePerHour ?? 0.5;
-  const points = (elapsedSec / 3600) * rate;
+  const rate = Math.max(0, session.ratePerHour ?? 0);
+  const points = (Math.max(0, elapsedSec) / 3600) * rate;
 
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setPopupOpen(false)}>
@@ -66,7 +71,12 @@ export function ExtraWorkPopup() {
         )}
 
         {session.status === 'lunch' ? (
-          <p className="text-slate-400 text-sm mb-4">Обед. Таймер приостановлен.</p>
+          <>
+            <p className="text-xs text-slate-400 mb-0.5">На выполнении</p>
+            <p className="text-3xl font-mono font-bold text-amber-400 mb-1 tabular-nums">{fmt(elapsedSec)}</p>
+            <p className="text-amber-400/90 text-sm mb-1">нафармлено {points.toFixed(1)} баллов</p>
+            <p className="text-slate-400 text-sm mb-4">Обед. Таймер приостановлен.</p>
+          </>
         ) : session.status === 'lunch_scheduled' ? (
           <>
             <p className="text-xs text-slate-400 mb-0.5">На выполнении</p>

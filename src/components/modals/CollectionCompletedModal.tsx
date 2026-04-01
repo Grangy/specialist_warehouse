@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import type { Shipment } from '@/types';
+import { sanitizeShipmentComment } from '@/lib/shipmentComment';
 
 interface CollectionCompletedModalProps {
   isOpen: boolean;
@@ -39,7 +40,8 @@ export function CollectionCompletedModal({
   const shipmentNumber = shipment.number || shipment.shipment_number || 'N/A';
   const customerName = shipment.customer_name || 'Не указан';
   const businessRegion = shipment.business_region || 'Не указан';
-  const comment = shipment.comment || 'Нет комментария';
+  const cleanComment = sanitizeShipmentComment(shipment.comment);
+  const comment = cleanComment?.text || 'Нет комментария';
 
   return (
     <Modal

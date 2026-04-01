@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui/Modal';
+import { sanitizeShipmentComment } from '@/lib/shipmentComment';
 
 interface OrderCompletedModalProps {
   isOpen: boolean;
@@ -30,6 +31,8 @@ export function OrderCompletedModal({ isOpen, onClose, orderData }: OrderComplet
   if (!isOpen || !orderData) {
     return null;
   }
+
+  const cleanComment = sanitizeShipmentComment(orderData.finalData?.comment);
 
   return (
     <Modal
@@ -68,8 +71,13 @@ export function OrderCompletedModal({ isOpen, onClose, orderData }: OrderComplet
             {orderData.finalData?.places && (
               <p>• Количество мест: <span className="font-semibold">{orderData.finalData.places}</span></p>
             )}
-            {orderData.finalData?.comment && (
-              <p>• Комментарий: <span className="italic text-white bg-emerald-600/90 rounded px-2 py-0.5 border border-emerald-500/40">{orderData.finalData.comment}</span></p>
+            {cleanComment && (
+              <p>
+                • Комментарий:{' '}
+                <span className="italic text-white bg-emerald-600/90 rounded px-2 py-0.5 border border-emerald-500/40">
+                  {cleanComment.text}
+                </span>
+              </p>
             )}
           </div>
         </div>
