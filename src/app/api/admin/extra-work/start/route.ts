@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { getLunchScheduledForMoscow } from '@/lib/utils/moscowDate';
+import { computeLunchWindowUtc } from '@/lib/extraWorkLunch';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,6 +72,10 @@ export async function POST(request: NextRequest) {
 
     if (lunchSlot && (lunchSlot === '13-14' || lunchSlot === '14-15')) {
       const scheduledFor = getLunchScheduledForMoscow(lunchSlot);
+      const window = computeLunchWindowUtc(now, lunchSlot);
+      const inWindow =
+        !!window && now.getTime() >= window.start.getTime() && now.getTime() < window.end.getTime();
+
       if (now.getTime() < scheduledFor.getTime()) {
         createData = {
           ...createData,
@@ -78,13 +83,22 @@ export async function POST(request: NextRequest) {
           lunchSlot,
           lunchScheduledFor: scheduledFor,
         };
-      } else {
+      } else if (inWindow) {
         createData = {
           ...createData,
           status: 'lunch',
           lunchSlot,
           lunchStartedAt: now,
-          lunchEndsAt: new Date(now.getTime() + LUNCH_DURATION_MS),
+          lunchEndsAt: window?.end ?? new Date(now.getTime() + LUNCH_DURATION_MS),
+        };
+      } else {
+        // Уже прошло окно обеда на сегодня — НЕ стартуем обед "в любое время".
+        // Оставляем слоты на будущее (завтра sync запланирует lunch_scheduled).
+        createData = {
+          ...createData,
+          status: 'running',
+          lunchSlot,
+          lunchScheduledFor: null,
         };
       }
     }
