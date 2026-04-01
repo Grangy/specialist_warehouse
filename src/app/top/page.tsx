@@ -110,7 +110,7 @@ export default function TopPage() {
   const [topErrorsMerged, setTopErrorsMerged] = useState<{ userId: string; userName: string; errors: number; checkerErrors: number; total: number }[]>([]);
   const [totalCollectorErrors, setTotalCollectorErrors] = useState(0);
   const [totalCheckerErrors, setTotalCheckerErrors] = useState(0);
-  const [period, setPeriod] = useState<Period>('week');
+  const [period, setPeriod] = useState<Period>('today');
   const [monthArchive, setMonthArchive] = useState<string>(''); // YYYY-MM, empty = current month
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
