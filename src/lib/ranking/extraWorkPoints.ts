@@ -607,9 +607,13 @@ export function calculateExtraWorkPointsFromRate(
 /** Сессия доп. работы для расчёта баллов */
 export type ExtraWorkSessionForPoints = {
   userId: string;
-  elapsedSecBeforeLunch: number;
+  /** Накопленное «рабочее» время (сек); для устаревших записей без окна обеда — fallback-таймлайн */
+  elapsedSecBeforeLunch?: number;
   stoppedAt: Date | null;
   startedAt?: Date | null;
+  /** Персональный обед: не начисляем в [lunchStartedAt, lunchEndsAt) */
+  lunchStartedAt?: Date | null;
+  lunchEndsAt?: Date | null;
 };
 
 /** Защита от битых данных и чрезмерного числа итераций в цикле. */
@@ -620,19 +624,54 @@ const MAX_ELAPSED_SEC_EXTRA_WORK_SESSION = 14 * 24 * 60 * 60;
  * Учитывает split 09:00–09:15 (фикс.) и после (динамика).
  * extraWorkByUser — накопленные доп.баллы до этой сессии (для полезности).
  */
+function isInsidePersonalLunchUtc(
+  cur: Date,
+  lunchStartedAt: Date | null | undefined,
+  lunchEndsAt: Date | null | undefined
+): boolean {
+  if (!lunchStartedAt || !lunchEndsAt) return false;
+  const t = cur.getTime();
+  return t >= lunchStartedAt.getTime() && t < lunchEndsAt.getTime();
+}
+
 export async function computeExtraWorkPointsForSession(
   prisma: PrismaLike,
   session: ExtraWorkSessionForPoints,
   _extraWorkByUser?: Map<string, number>
 ): Promise<number> {
+  const stoppedAt = session.stoppedAt ?? new Date();
   const rawElapsed = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
-  const elapsedSec = Number.isFinite(rawElapsed)
+  const elapsedWorkSec = Number.isFinite(rawElapsed)
     ? Math.min(rawElapsed, MAX_ELAPSED_SEC_EXTRA_WORK_SESSION)
     : 0;
-  if (elapsedSec <= 0) return 0;
 
-  const stoppedAt = session.stoppedAt ?? new Date();
-  const startedAt = session.startedAt ?? new Date(stoppedAt.getTime() - elapsedSec * 1000);
+  const hasLunchWindow =
+    !!session.lunchStartedAt &&
+    !!session.lunchEndsAt &&
+    session.lunchEndsAt.getTime() > session.lunchStartedAt.getTime();
+
+  let startedAt: Date;
+  let wallSec: number;
+  let skipLunchInLoop: boolean;
+
+  if (hasLunchWindow && session.startedAt) {
+    // Реальный таймлайн сессии + пропуск персонального обеда (как в проде после фикса обеда).
+    startedAt = new Date(session.startedAt);
+    wallSec = Math.min(
+      Math.max(0, Math.floor((stoppedAt.getTime() - startedAt.getTime()) / 1000)),
+      MAX_ELAPSED_SEC_EXTRA_WORK_SESSION
+    );
+    skipLunchInLoop = true;
+  } else if (elapsedWorkSec > 0) {
+    // Fallback / старые данные: сжатый таймлайн «только рабочее время» без координат обеда в БД.
+    startedAt = new Date(stoppedAt.getTime() - elapsedWorkSec * 1000);
+    wallSec = elapsedWorkSec;
+    skipLunchInLoop = false;
+  } else {
+    return 0;
+  }
+
+  if (wallSec <= 0) return 0;
 
   const startupRate = await getStartupRatePerMin(prisma);
 
@@ -826,11 +865,24 @@ export async function computeExtraWorkPointsForSession(
 
   let total = 0;
   let t = 0;
-  while (t < elapsedSec) {
+  while (t < wallSec) {
     const cur = new Date(startedAt.getTime() + t * 1000);
-    const rem = elapsedSec - t;
+    const rem = wallSec - t;
 
-    // Начисления только в рабочее время (пн–пт, 09:00–18:00 МСК) и не во время обеда.
+    // Персональный обед: баллы не капают (таймлайн реальный, не сжатый).
+    if (
+      skipLunchInLoop &&
+      session.lunchStartedAt &&
+      session.lunchEndsAt &&
+      isInsidePersonalLunchUtc(cur, session.lunchStartedAt, session.lunchEndsAt)
+    ) {
+      const secToEnd = Math.ceil((session.lunchEndsAt.getTime() - cur.getTime()) / 1000);
+      const chunk = Math.min(rem, Math.max(1, secToEnd));
+      t += chunk;
+      continue;
+    }
+
+    // Начисления только в рабочее время (пн–пт, 09:00–18:00 МСК).
     if (!isWorkingTimeMoscow(cur)) {
       const secToStart = getSecondsUntilNextWorkingStartMoscow(cur);
       const chunk = Math.min(rem, secToStart);
@@ -869,7 +921,7 @@ export async function computeExtraWorkPointsForSession(
  */
 export async function computeExtraWorkPointsForSessions(
   prisma: PrismaLike,
-  sessions: Array<{ userId: string; elapsedSecBeforeLunch: number; stoppedAt: Date | null; startedAt?: Date | null }>
+  sessions: ExtraWorkSessionForPoints[]
 ): Promise<number> {
   if (sessions.length === 0) return 0;
   let total = 0;

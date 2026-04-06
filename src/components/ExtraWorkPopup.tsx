@@ -43,8 +43,10 @@ export function ExtraWorkPopup() {
   const lunchScheduledLabel =
     session.lunchSlot === '13-14' ? 'Обед с 13:00' : session.lunchSlot === '14-15' ? 'Обед с 14:00' : 'Обед запланирован';
 
-  const rate = Math.max(0, session.ratePerHour ?? 0);
-  const points = (Math.max(0, elapsedSec) / 3600) * rate;
+  const points =
+    typeof session.farmedPoints === 'number'
+      ? session.farmedPoints
+      : (Math.max(0, elapsedSec) / 3600) * Math.max(0, session.ratePerHour ?? 0);
 
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setPopupOpen(false)}>

@@ -131,7 +131,6 @@ export async function GET(request: NextRequest) {
     const elapsedSecBeforeLunchCurrentByUserId = new Map<string, number>();
     for (const sess of activeSessions) {
       const currentElapsedSec = computeExtraWorkElapsedSecNow(sess as any, now);
-      const virtualStartedAt = new Date(now.getTime() - currentElapsedSec * 1000);
       elapsedSecBeforeLunchCurrentByUserId.set(sess.userId, currentElapsedSec);
       const hours = currentElapsedSec / 3600;
       if (!extraWorkHoursByUser.has(sess.userId)) {
@@ -146,7 +145,9 @@ export async function GET(request: NextRequest) {
         userId: sess.userId,
         elapsedSecBeforeLunch: currentElapsedSec,
         stoppedAt: now,
-        startedAt: virtualStartedAt,
+        startedAt: sess.startedAt,
+        lunchStartedAt: sess.lunchStartedAt,
+        lunchEndsAt: sess.lunchEndsAt,
       });
       const prevPts = Math.max(0, extraWorkPointsByUser.get(sess.userId) ?? 0);
       extraWorkPointsByUser.set(sess.userId, prevPts + activePts);

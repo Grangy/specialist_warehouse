@@ -184,11 +184,14 @@ export async function GET(request: NextRequest) {
     }
 
     let totalExtraWorkPoints: number | null = null;
-    if (Number.isFinite(elapsedSecBeforeLunch) && elapsedSecBeforeLunch > 0) {
+    if (Number.isFinite(elapsedSecBeforeLunch) && elapsedSecBeforeLunch > 0 && refreshedSession) {
       totalExtraWorkPoints = await computeExtraWorkPointsForSession(prisma as any, {
         userId,
         elapsedSecBeforeLunch,
         stoppedAt: nowUtc,
+        startedAt: refreshedSession.startedAt,
+        lunchStartedAt: refreshedSession.lunchStartedAt,
+        lunchEndsAt: refreshedSession.lunchEndsAt,
       });
     }
 

@@ -28,6 +28,8 @@ export interface ExtraWorkSession {
   elapsedSecBeforeLunch: number;
   ratePerHour?: number;
   dayCoefficient?: number;
+  /** Баллы по формуле сервера (как рейтинг / админка), не elapsed×rate */
+  farmedPoints?: number;
 }
 
 interface ExtraWorkContextType {

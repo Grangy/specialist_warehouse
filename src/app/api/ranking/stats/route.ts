@@ -10,6 +10,7 @@ import {
 import { getManualAdjustmentForPeriod, getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltyForPeriod, getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import { computeExtraWorkElapsedSecNow } from '@/lib/extraWorkElapsed';
 
 function inRange(d: Date | null | undefined, start: Date, end: Date): boolean {
   if (!d) return false;
@@ -123,6 +124,8 @@ export async function GET(request: NextRequest) {
       elapsedSecBeforeLunch: true,
       stoppedAt: true,
       startedAt: true,
+      lunchStartedAt: true,
+      lunchEndsAt: true,
     } as const;
 
     const [
@@ -305,28 +308,24 @@ export async function GET(request: NextRequest) {
       computeExtraWorkPointsMap(prisma, allExtraWorkMonth),
     ]);
 
-    // Добавляем баллы от активных сессий (real-time)
+    // Добавляем баллы от активных сессий (real-time) — тот же контракт, что aggregateRankings / my-session
     type ActiveEwSess = {
       elapsedSecBeforeLunch?: number | null;
       startedAt?: Date | null;
       status: string;
       postLunchStartedAt?: Date | null;
+      lunchStartedAt?: Date | null;
+      lunchEndsAt?: Date | null;
     };
     const activeSessionArgs = (sess: ActiveEwSess, uid: string) => {
-      let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
-      let virtualStartedAt = sess.startedAt;
-      if (sess.status === 'running') {
-        const segStart = sess.postLunchStartedAt ?? sess.startedAt;
-        if (segStart) {
-          elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
-        }
-        virtualStartedAt = new Date(now.getTime() - elapsed * 1000);
-      }
+      const elapsed = computeExtraWorkElapsedSecNow(sess as any, now);
       return {
         userId: uid,
         elapsedSecBeforeLunch: elapsed,
         stoppedAt: now,
-        startedAt: virtualStartedAt,
+        startedAt: sess.startedAt,
+        lunchStartedAt: sess.lunchStartedAt,
+        lunchEndsAt: sess.lunchEndsAt,
       };
     };
 

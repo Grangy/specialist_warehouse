@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { getMoscowHour } from '@/lib/utils/moscowDate';
-import { getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
+import { computeExtraWorkPointsForSession, getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 import { autoStopExtraWorkAt18 } from '@/lib/extraWorkAutoStop';
 import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
-import { maybeHealElapsedSecBeforeLunch } from '@/lib/extraWorkElapsed';
+import { computeExtraWorkElapsedSecNow, maybeHealElapsedSecBeforeLunch } from '@/lib/extraWorkElapsed';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,10 +76,22 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const elapsed = computeExtraWorkElapsedSecNow(session as any, now);
+    const farmedPointsRaw = await computeExtraWorkPointsForSession(prisma, {
+      userId: session.userId,
+      elapsedSecBeforeLunch: elapsed,
+      stoppedAt: now,
+      startedAt: session.startedAt,
+      lunchStartedAt: session.lunchStartedAt,
+      lunchEndsAt: session.lunchEndsAt,
+    });
+    const farmedPoints = Math.round(farmedPointsRaw * 10) / 10;
+
     return NextResponse.json({
       ...session,
       ratePerHour: session.status === 'lunch' ? 0 : Math.round(ratePerHour * 100) / 100,
       dayCoefficient: Math.round(dayCoefficient * 100) / 100,
+      farmedPoints,
     });
   } catch (e) {
     console.error('[extra-work/my-session]', e);

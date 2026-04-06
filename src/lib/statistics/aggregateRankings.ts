@@ -10,6 +10,7 @@ import {
   clearWarehousePaceSessionCache,
   computeExtraWorkPointsForSession,
 } from '@/lib/ranking/extraWorkPoints';
+import { computeExtraWorkElapsedSecNow } from '@/lib/extraWorkElapsed';
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 
@@ -166,7 +167,15 @@ export async function aggregateRankings(
         status: 'stopped',
         stoppedAt: { gte: monthStart, lte: monthEnd },
       },
-      select: { userId: true, elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true, user: { select: { id: true, name: true, role: true } } },
+      select: {
+        userId: true,
+        elapsedSecBeforeLunch: true,
+        stoppedAt: true,
+        startedAt: true,
+        lunchStartedAt: true,
+        lunchEndsAt: true,
+        user: { select: { id: true, name: true, role: true } },
+      },
     }),
     prisma.extraWorkSession.findMany({
       where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
@@ -267,6 +276,8 @@ export async function aggregateRankings(
       elapsedSecBeforeLunch: sess.elapsedSecBeforeLunch ?? 0,
       stoppedAt: sess.stoppedAt,
       startedAt: sess.startedAt,
+      lunchStartedAt: sess.lunchStartedAt,
+      lunchEndsAt: sess.lunchEndsAt,
     }, extraWorkByUser);
     extraWorkByUser.set(sess.userId, (extraWorkByUser.get(sess.userId) ?? 0) + pts);
     if (sess.stoppedAt && sess.stoppedAt >= startDate && sess.stoppedAt <= endDate) {
@@ -278,19 +289,14 @@ export async function aggregateRankings(
 
   const now = new Date();
   for (const sess of activeSessions) {
-    let currentElapsedSec = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
-    let virtualStartedAt = sess.startedAt;
-    if (sess.status === 'running') {
-      const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
-      const addSec = Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
-      currentElapsedSec += addSec;
-      virtualStartedAt = new Date(now.getTime() - currentElapsedSec * 1000);
-    }
+    const currentElapsedSec = computeExtraWorkElapsedSecNow(sess as any, now);
     const pts = await computeExtraWorkPointsForSession(prisma, {
       userId: sess.userId,
       elapsedSecBeforeLunch: currentElapsedSec,
       stoppedAt: now,
-      startedAt: virtualStartedAt,
+      startedAt: sess.startedAt,
+      lunchStartedAt: sess.lunchStartedAt,
+      lunchEndsAt: sess.lunchEndsAt,
     }, extraWorkByUser);
     const agg = ensureAgg(sess.user);
     agg.extraWorkPoints += pts;

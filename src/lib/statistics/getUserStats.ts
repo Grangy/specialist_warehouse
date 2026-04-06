@@ -14,6 +14,7 @@ import {
 } from '@/lib/ranking/pointsRates';
 import { getPointsRates } from '@/lib/ranking/getPointsRates';
 import { computeExtraWorkPointsForSession } from '@/lib/ranking/extraWorkPoints';
+import { computeExtraWorkElapsedSecNow } from '@/lib/extraWorkElapsed';
 import { getManualAdjustmentForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltyForPeriod } from '@/lib/ranking/errorPenalties';
 import { getUserStatsCacheKey } from '@/lib/statistics/userStatsCacheKey';
@@ -264,7 +265,13 @@ async function getUserStatsUncached(
           status: 'stopped',
           stoppedAt: { gte: dateRange.startDate, lte: dateRange.endDate },
         },
-        select: { elapsedSecBeforeLunch: true, stoppedAt: true, startedAt: true },
+        select: {
+          elapsedSecBeforeLunch: true,
+          stoppedAt: true,
+          startedAt: true,
+          lunchStartedAt: true,
+          lunchEndsAt: true,
+        },
       }),
       prisma.extraWorkSession.findMany({
         where: {
@@ -283,6 +290,8 @@ async function getUserStatsUncached(
           elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
           stoppedAt: s.stoppedAt,
           startedAt: s.startedAt,
+          lunchStartedAt: s.lunchStartedAt,
+          lunchEndsAt: s.lunchEndsAt,
         })
       )
     );
@@ -291,18 +300,14 @@ async function getUserStatsUncached(
     const now = new Date();
     const activePoints = await Promise.all(
       activeSessions.map(async (sess) => {
-        let elapsed = Math.max(0, sess.elapsedSecBeforeLunch ?? 0);
-        let virtualStartedAt = sess.startedAt;
-        if (sess.status === 'running') {
-          const segStart = (sess as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? sess.startedAt;
-          elapsed += Math.max(0, (now.getTime() - segStart.getTime()) / 1000);
-          virtualStartedAt = new Date(now.getTime() - elapsed * 1000);
-        }
+        const elapsed = computeExtraWorkElapsedSecNow(sess as any, now);
         return computeExtraWorkPointsForSession(prisma, {
           userId: user.id,
           elapsedSecBeforeLunch: elapsed,
           stoppedAt: now,
-          startedAt: virtualStartedAt,
+          startedAt: sess.startedAt,
+          lunchStartedAt: sess.lunchStartedAt,
+          lunchEndsAt: sess.lunchEndsAt,
         });
       })
     );

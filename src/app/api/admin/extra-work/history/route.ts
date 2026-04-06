@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
         startedAt: true,
         stoppedAt: true,
         elapsedSecBeforeLunch: true,
+        lunchStartedAt: true,
+        lunchEndsAt: true,
         completionType: true,
         durationMinutes: true,
         user: { select: { name: true } },
@@ -52,6 +54,8 @@ export async function GET(request: NextRequest) {
           elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
           stoppedAt: s.stoppedAt,
           startedAt: s.startedAt,
+          lunchStartedAt: s.lunchStartedAt,
+          lunchEndsAt: s.lunchEndsAt,
         });
         return {
           id: s.id,
