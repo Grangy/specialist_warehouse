@@ -58,6 +58,7 @@
     "test:extra-work-new-formula": "tsx scripts/test-extra-work-new-formula.ts",
     "test:extra-work-unified": "tsx scripts/test-extra-work-unified-formula.ts",
     "audit:extra-work-today-unified": "tsx scripts/audit-extra-work-today-unified.ts",
+    "recalc:extra-work-elapsed": "tsx scripts/recalc-extra-work-elapsed-from-timeline.ts",
     "recalc:extra-work-manual": "tsx scripts/recalc-extra-work-manual.ts",
     "recalc:error-penalties": "tsx scripts/recalc-error-penalties.ts",
     "audit:vitaly": "tsx scripts/audit-vitaly-extra-work.ts",

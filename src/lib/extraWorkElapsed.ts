@@ -31,6 +31,35 @@ export function computeExtraWorkElapsedSecNow(session: ExtraWorkSessionLike, now
   return Math.min(Math.max(0, total), maxPossible);
 }
 
+/**
+ * Завершённая сессия: «рабочие» секунды по часам startedAt→stoppedAt минус пересечение с [lunchStartedAt, lunchEndsAt).
+ * Используется для сверки/починки поля elapsedSecBeforeLunch, если оно разъехалось с таймлайном.
+ */
+export function computeStoppedExtraWorkWorkedSec(session: {
+  startedAt: Date;
+  stoppedAt: Date | null;
+  lunchStartedAt?: Date | null;
+  lunchEndsAt?: Date | null;
+}): number | null {
+  if (!session.stoppedAt) return null;
+  const t0 = session.startedAt.getTime();
+  const t1 = session.stoppedAt.getTime();
+  if (t1 <= t0) return 0;
+  const wallSec = Math.floor((t1 - t0) / 1000);
+
+  let lunchSec = 0;
+  if (session.lunchStartedAt && session.lunchEndsAt) {
+    const ls = session.lunchStartedAt.getTime();
+    const le = session.lunchEndsAt.getTime();
+    if (le > ls) {
+      const overlapMs = Math.max(0, Math.min(t1, le) - Math.max(t0, ls));
+      lunchSec = Math.floor(overlapMs / 1000);
+    }
+  }
+
+  return Math.max(0, wallSec - lunchSec);
+}
+
 export async function maybeHealElapsedSecBeforeLunch(
   prisma: PrismaLike,
   session: ExtraWorkSessionLike,

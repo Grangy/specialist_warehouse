@@ -24,10 +24,11 @@ interface Period {
 }
 
 function formatHours(h: number): string {
-  if (h < 0.01) return '0';
-  if (h < 1) return `${Math.round(h * 60)} мин`;
-  const hrs = Math.floor(h);
-  const mins = Math.round((h - hrs) * 60);
+  if (!Number.isFinite(h) || h < 0.01) return '0';
+  const totalMinutes = Math.round(h * 60);
+  if (totalMinutes < 60) return `${totalMinutes} мин`;
+  const hrs = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
   return mins > 0 ? `${hrs} ч ${mins} мин` : `${hrs} ч`;
 }
 
