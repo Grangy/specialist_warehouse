@@ -2,7 +2,8 @@
 export function getUserStatsCacheKey(
   userId: string,
   period?: 'today' | 'week' | 'month',
-  dateOverride?: string
+  dateOverride?: string,
+  monthOverride?: string
 ): string {
-  return `${userId}:${period ?? ''}:${dateOverride ?? ''}`;
+  return `${userId}:${period ?? ''}:${dateOverride ?? ''}:${monthOverride ?? ''}`;
 }

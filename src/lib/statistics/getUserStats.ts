@@ -4,7 +4,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { getMoscowDateString, getStatisticsDateRange, getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
+import { getMoscowDateString, getStatisticsDateRange, getStatisticsDateRangeForDate, getStatisticsMonthRangeForMonth } from '@/lib/utils/moscowDate';
 import {
   calculateCheckPoints,
   calculateCollectPoints,
@@ -28,9 +28,10 @@ const userStatsCache = new Map<string, { expires: number; data: UserStatsPayload
 export function peekUserStatsCache(
   userId: string,
   period?: 'today' | 'week' | 'month',
-  dateOverride?: string
+  dateOverride?: string,
+  monthOverride?: string
 ): UserStatsPayload | null {
-  const key = getUserStatsCacheKey(userId, period, dateOverride);
+  const key = getUserStatsCacheKey(userId, period, dateOverride, monthOverride);
   const hit = userStatsCache.get(key);
   if (hit && hit.expires > Date.now()) return hit.data;
   return null;
@@ -43,15 +44,16 @@ export function clearUserStatsCache(): void {
 export async function getUserStats(
   userId: string,
   period?: 'today' | 'week' | 'month',
-  dateOverride?: string
+  dateOverride?: string,
+  monthOverride?: string
 ) {
-  const key = getUserStatsCacheKey(userId, period, dateOverride);
+  const key = getUserStatsCacheKey(userId, period, dateOverride, monthOverride);
   const now = Date.now();
   const hit = userStatsCache.get(key);
   if (hit && hit.expires > now) {
     return hit.data;
   }
-  const data = await getUserStatsUncached(userId, period, dateOverride);
+  const data = await getUserStatsUncached(userId, period, dateOverride, monthOverride);
   if (data) {
     userStatsCache.set(key, { expires: now + USER_STATS_CACHE_TTL_MS, data });
   }
@@ -61,13 +63,16 @@ export async function getUserStats(
 async function getUserStatsUncached(
   userId: string,
   period?: 'today' | 'week' | 'month',
-  dateOverride?: string
+  dateOverride?: string,
+  monthOverride?: string
 ) {
-  const dateRange = dateOverride
-    ? getStatisticsDateRangeForDate(dateOverride)
-    : period
-      ? getStatisticsDateRange(period)
-      : null;
+  const dateRange = monthOverride && period === 'month'
+    ? getStatisticsMonthRangeForMonth(monthOverride)
+    : dateOverride
+      ? getStatisticsDateRangeForDate(dateOverride)
+      : period
+        ? getStatisticsDateRange(period)
+        : null;
 
   const user = await prisma.user.findUnique({
     where: { id: userId },

@@ -4,6 +4,12 @@ import { getUserStats } from '@/lib/statistics/getUserStats';
 
 export const dynamic = 'force-dynamic';
 
+function parseArchiveMonth(v: string | null): string | undefined {
+  if (!v) return undefined;
+  const m = v.trim().match(/^(\d{4})-(\d{2})$/);
+  return m ? `${m[1]}-${m[2]}` : undefined;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
@@ -18,8 +24,9 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const periodParam = searchParams.get('period') || '';
     const period = periodParam === 'week' || periodParam === 'month' ? periodParam : periodParam === 'today' ? 'today' : undefined;
+    const month = period === 'month' ? parseArchiveMonth(searchParams.get('month')) : undefined;
 
-    const data = await getUserStats(userId, period);
+    const data = await getUserStats(userId, period, undefined, month);
     if (!data) {
       return NextResponse.json(
         { error: 'Пользователь не найден' },

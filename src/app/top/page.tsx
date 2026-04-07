@@ -220,7 +220,9 @@ export default function TopPage() {
     setExpandedLoading(true);
     setExpandedStats(null);
     try {
-      const res = await fetch(`/api/statistics/user/${targetId}/public?period=${period}`, { cache: 'no-store' });
+      const qs = new URLSearchParams({ period });
+      if (period === 'month' && monthArchive) qs.set('month', monthArchive);
+      const res = await fetch(`/api/statistics/user/${targetId}/public?${qs.toString()}`, { cache: 'no-store' });
       const data = res.ok ? await res.json() : null;
       if (expandTargetRef.current === targetId) {
         setExpandedStats(data ? {
@@ -239,7 +241,7 @@ export default function TopPage() {
     } finally {
       setExpandedLoading(false);
     }
-  }, [expandedUserId, period]);
+  }, [expandedUserId, period, monthArchive]);
 
   const openFullStats = (userId: string, userName: string) => {
     setSelectedUserId(userId);
@@ -799,6 +801,7 @@ export default function TopPage() {
           userId={selectedUserId}
           userName={selectedUserName}
           period={period}
+          month={period === 'month' ? monthArchive : undefined}
           usePublicApi={true}
           onClose={() => {
             setSelectedUserId(null);

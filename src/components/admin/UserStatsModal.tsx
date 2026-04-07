@@ -118,6 +118,8 @@ interface UserStatsModalProps {
   userName: string;
   /** Период, выбранный на вкладке «Статистика» — детали показываются за этот период */
   period?: 'today' | 'week' | 'month';
+  /** Архивный месяц YYYY-MM для period=month (например на /top). */
+  month?: string;
   /** Использовать публичный API (без авторизации, с rate limit) — для страницы /top */
   usePublicApi?: boolean;
   /** Может редактировать доп.баллы (админ/checker) */
@@ -127,7 +129,7 @@ interface UserStatsModalProps {
   onClose: () => void;
 }
 
-export default function UserStatsModal({ userId, userName, period, usePublicApi = false, canAdjustPoints = false, onAdjustSuccess, onClose }: UserStatsModalProps) {
+export default function UserStatsModal({ userId, userName, period, month, usePublicApi = false, canAdjustPoints = false, onAdjustSuccess, onClose }: UserStatsModalProps) {
   const [data, setData] = useState<UserStatsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -143,7 +145,10 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
     try {
       setIsLoading(true);
       setError('');
-      const query = period ? `?period=${period}` : '';
+      const queryParams = new URLSearchParams();
+      if (period) queryParams.set('period', period);
+      if (period === 'month' && month) queryParams.set('month', month);
+      const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
       const base = usePublic ? `/api/statistics/user/${userId}/public` : `/api/statistics/user/${userId}`;
       const res = await fetch(`${base}${query}`, {
         credentials: usePublic ? 'omit' : 'include',
@@ -180,7 +185,7 @@ export default function UserStatsModal({ userId, userName, period, usePublicApi 
     void loadData(ac.signal);
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, period, usePublicApi]);
+  }, [userId, period, month, usePublicApi]);
 
   const formatDateTime = (dateStr: string | null) => {
     if (!dateStr) return '—';
