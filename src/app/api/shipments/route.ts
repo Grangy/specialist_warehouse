@@ -16,6 +16,14 @@ const IDLE_NO_PROGRESS_MS = 5 * 60 * 1000;
 /** 15 минут с момента последнего действия при начатой сборке — другой сборщик может перехватить */
 const IDLE_WITH_PROGRESS_MS = 15 * 60 * 1000;
 
+function isWholesaleCustomer(customerName: string): boolean {
+  const normalized = String(customerName || '')
+    .toUpperCase()
+    .replace(/Ё/g, 'Е')
+    .trim();
+  return normalized.includes('ОПТОВИК');
+}
+
 // Функция для проверки авторизации через заголовки, тело запроса или cookies
 async function authenticateRequest(request: NextRequest, body: any): Promise<{ user: any } | NextResponse> {
   let login: string | null = null;
@@ -258,6 +266,7 @@ export async function POST(request: NextRequest) {
     });
 
     let shipment: Awaited<ReturnType<typeof prisma.shipment.create>> & { lines: any[]; tasks: any[] };
+    const wholesaleAutoProcess = isWholesaleCustomer(customerName);
 
     if (existing) {
       // Заказ с таким номером есть и не активный (удалён или уже processed) — обновляем данными из 1С, склад по location
@@ -389,7 +398,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Получаем созданные задания для ответа и проверяем их статус
-    const createdTasks = await prisma.shipmentTask.findMany({
+    let createdTasks = await prisma.shipmentTask.findMany({
       where: { shipmentId: shipment.id },
       include: {
         lines: {
@@ -434,19 +443,117 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (wholesaleAutoProcess) {
+      const now = new Date();
+
+      // Для заявок от ОПТОВИК автоматически считаем, что сборка+проверка завершены:
+      // проставляем фактические количества = плановым qty и переводим заказ сразу в processed.
+      for (const task of createdTasks) {
+        await prisma.shipmentTask.update({
+          where: { id: task.id },
+          data: {
+            status: 'processed',
+            completedAt: now,
+            confirmedAt: now,
+          },
+        });
+      }
+
+      const refreshedTaskLines = await prisma.shipmentTaskLine.findMany({
+        where: { task: { shipmentId: shipment.id } },
+      });
+      for (const tl of refreshedTaskLines) {
+        await prisma.shipmentTaskLine.update({
+          where: { id: tl.id },
+          data: {
+            collectedQty: tl.qty,
+            checked: true,
+            confirmedQty: tl.qty,
+            confirmed: true,
+          },
+        });
+      }
+
+      for (const line of shipment.lines) {
+        await prisma.shipmentLine.update({
+          where: { id: line.id },
+          data: {
+            collectedQty: line.qty,
+            checked: true,
+          },
+        });
+      }
+
+      await prisma.shipment.update({
+        where: { id: shipment.id },
+        data: {
+          status: 'processed',
+          confirmedAt: now,
+        },
+      });
+
+      try {
+        const { emitShipmentEvent } = await import('@/lib/sseEvents');
+        emitShipmentEvent('shipment:status_changed', {
+          id: shipment.id,
+          status: 'processed',
+          confirmedAt: now.toISOString(),
+        });
+      } catch (error) {
+        console.error('[API CREATE] Ошибка при отправке SSE события (wholesale auto-process):', error);
+      }
+
+      append1cLog({
+        ts: now.toISOString(),
+        type: 'shipments-post',
+        direction: 'out',
+        endpoint: 'POST /api/shipments',
+        summary: `Автообработка ОПТОВИК: заказ ${number} переведён в processed и готов к отдаче в 1С`,
+        details: {
+          number,
+          shipmentId: shipment.id,
+          action: 'wholesale_auto_processed',
+          tasksCount: createdTasks.length,
+        },
+      });
+
+      shipment = await prisma.shipment.findUniqueOrThrow({
+        where: { id: shipment.id },
+        include: { lines: true, tasks: true },
+      });
+      createdTasks = await prisma.shipmentTask.findMany({
+        where: { shipmentId: shipment.id },
+        include: {
+          lines: {
+            include: {
+              shipmentLine: true,
+            },
+          },
+        },
+      });
+    }
+
     append1cLog({
       ts: new Date().toISOString(),
       type: 'shipments-post',
       direction: 'out',
       endpoint: 'POST /api/shipments',
-      summary: `Заказ ${number} принят: ${existing ? 'обновлён' : 'создан'}, заданий ${createdTasks.length}`,
-      details: { number, action: existing ? 'updated' : 'created', shipmentId: shipment.id, tasksCount: createdTasks.length },
+      summary: `Заказ ${number} принят: ${existing ? 'обновлён' : 'создан'}, заданий ${createdTasks.length}${wholesaleAutoProcess ? ', автообработка ОПТОВИК' : ''}`,
+      details: {
+        number,
+        action: existing ? 'updated' : 'created',
+        shipmentId: shipment.id,
+        tasksCount: createdTasks.length,
+        wholesaleAutoProcess,
+      },
     });
 
     return NextResponse.json(
       {
         success: true,
-        message: `Заказ успешно создан и разбит на ${createdTasks.length} заданий`,
+        message: wholesaleAutoProcess
+          ? `Заказ ОПТОВИК автоматически обработан и готов к выгрузке в 1С`
+          : `Заказ успешно создан и разбит на ${createdTasks.length} заданий`,
         shipment: {
           id: shipment.id,
           number: shipment.number,
@@ -461,7 +568,6 @@ export async function POST(request: NextRequest) {
           business_region: shipment.businessRegion,
           tasks_count: createdTasks.length,
           lines: shipment.lines.map((line) => {
-            // Явно проверяем и устанавливаем правильные значения
             const cleanLine = {
               id: line.id,
               sku: line.sku,
@@ -471,15 +577,15 @@ export async function POST(request: NextRequest) {
               uom: line.uom,
               location: line.location,
               warehouse: line.warehouse,
-              collected_qty: line.collectedQty || null, // Явно null если undefined
-              checked: line.checked === true ? true : false, // Явно false если не true
+              collected_qty: line.collectedQty || null,
+              checked: line.checked === true ? true : false,
             };
-            
-            // Логируем если что-то не так
-            if (cleanLine.checked || cleanLine.collected_qty !== null) {
+
+            // Для обычного заказа позиции не должны быть собраны при создании.
+            if (!wholesaleAutoProcess && (cleanLine.checked || cleanLine.collected_qty !== null)) {
               console.error(`[API CREATE] ⚠️ Позиция ${line.sku} в ответе имеет неправильный статус: checked=${cleanLine.checked}, collected_qty=${cleanLine.collected_qty}`);
             }
-            
+
             return cleanLine;
           }),
           tasks: createdTasks.map((task) => ({
