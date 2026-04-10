@@ -1,34 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Briefcase } from 'lucide-react';
 import { useExtraWork } from '@/contexts/ExtraWorkContext';
+import { useExtraWorkTimerDisplay } from '@/hooks/useExtraWorkTimerDisplay';
+import { MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
 
 export function ExtraWorkBanner() {
   const { session, popupOpen, setPopupOpen } = useExtraWork();
-  const [elapsedSec, setElapsedSec] = useState(0);
-
-  // Таймер отображения (POST на обед/стоп — в ExtraWorkSessionEffects)
-  useEffect(() => {
-    if (!session) return;
-    const baseSec = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
-    const segStart = session.postLunchStartedAt
-      ? new Date(session.postLunchStartedAt).getTime()
-      : new Date(session.startedAt).getTime();
-
-    const computeNow = () => {
-      if (session.status !== 'running' && session.status !== 'lunch_scheduled') return baseSec;
-      const delta = Math.max(0, (Date.now() - segStart) / 1000);
-      return baseSec + delta;
-    };
-
-    // важно: даже в обед/на паузе показываем накопленное время (без минусов)
-    setElapsedSec(computeNow());
-    if (session.status !== 'running' && session.status !== 'lunch_scheduled') return;
-    const id = setInterval(() => setElapsedSec(computeNow()), 1000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- timer deps
-  }, [session?.id, session?.status, session?.startedAt, session?.postLunchStartedAt, session?.elapsedSecBeforeLunch]);
+  const elapsedSec = useExtraWorkTimerDisplay(session);
 
   if (!session || popupOpen) return null;
 
@@ -45,7 +24,8 @@ export function ExtraWorkBanner() {
   const points =
     typeof session.farmedPoints === 'number'
       ? session.farmedPoints
-      : (Math.max(0, elapsedSec) / 3600) * Math.max(0, session.ratePerHour ?? 0);
+      : (Math.max(0, elapsedSec) / 3600) *
+        Math.max(MIN_EXTRA_WORK_RATE_PER_HOUR, session.ratePerHour ?? MIN_EXTRA_WORK_RATE_PER_HOUR);
 
   return (
     <button
@@ -66,7 +46,11 @@ export function ExtraWorkBanner() {
             <span className="text-xs text-amber-900/80">нафармлено {points.toFixed(1)} б.</span>
           </>
         ) : session.status === 'lunch_scheduled' ? (
-          <span className="text-xs">— {lunchScheduledLabel}</span>
+          <>
+            <span className="text-xs">— {lunchScheduledLabel}</span>
+            <span className="font-mono text-sm tabular-nums">{fmt(elapsedSec)}</span>
+            <span className="text-xs text-amber-900/80">нафармлено {points.toFixed(1)} б.</span>
+          </>
         ) : (
           <>
             <span className="font-mono text-sm tabular-nums">{fmt(elapsedSec)}</span>

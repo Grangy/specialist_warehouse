@@ -1,35 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Briefcase, X, Check } from 'lucide-react';
 import { useExtraWork } from '@/contexts/ExtraWorkContext';
+import { useExtraWorkTimerDisplay } from '@/hooks/useExtraWorkTimerDisplay';
+import { MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
+
+function ExtraWorkPointsHint() {
+  return (
+    <p className="text-slate-500 text-xs mb-1">
+      Начисление не ниже {MIN_EXTRA_WORK_RATE_PER_HOUR} б/ч в рабочее время; баллы с сервера, обновление ~5 с.
+    </p>
+  );
+}
 
 export function ExtraWorkPopup() {
   const { session, popupOpen, setPopupOpen, refetchSession } = useExtraWork();
   const [isCompleting, setIsCompleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [elapsedSec, setElapsedSec] = useState(0);
-
-  // Таймер отображения (POST — в ExtraWorkSessionEffects)
-  useEffect(() => {
-    if (!session) return;
-    const baseSec = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
-    const segStart = session.postLunchStartedAt
-      ? new Date(session.postLunchStartedAt).getTime()
-      : new Date(session.startedAt).getTime();
-
-    const computeNow = () => {
-      if (session.status !== 'running' && session.status !== 'lunch_scheduled') return baseSec;
-      const delta = Math.max(0, (Date.now() - segStart) / 1000);
-      return baseSec + delta;
-    };
-
-    setElapsedSec(computeNow());
-    if (session.status !== 'running' && session.status !== 'lunch_scheduled') return;
-    const id = setInterval(() => setElapsedSec(computeNow()), 1000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- session fields used for timer logic
-  }, [session?.id, session?.status, session?.startedAt, session?.postLunchStartedAt, session?.elapsedSecBeforeLunch]);
+  const elapsedSec = useExtraWorkTimerDisplay(session);
 
   if (!session || !popupOpen) return null;
 
@@ -46,7 +35,8 @@ export function ExtraWorkPopup() {
   const points =
     typeof session.farmedPoints === 'number'
       ? session.farmedPoints
-      : (Math.max(0, elapsedSec) / 3600) * Math.max(0, session.ratePerHour ?? 0);
+      : (Math.max(0, elapsedSec) / 3600) *
+        Math.max(MIN_EXTRA_WORK_RATE_PER_HOUR, session.ratePerHour ?? MIN_EXTRA_WORK_RATE_PER_HOUR);
 
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setPopupOpen(false)}>
@@ -77,6 +67,7 @@ export function ExtraWorkPopup() {
             <p className="text-xs text-slate-400 mb-0.5">На выполнении</p>
             <p className="text-3xl font-mono font-bold text-amber-400 mb-1 tabular-nums">{fmt(elapsedSec)}</p>
             <p className="text-amber-400/90 text-sm mb-1">нафармлено {points.toFixed(1)} баллов</p>
+            <ExtraWorkPointsHint />
             <p className="text-slate-400 text-sm mb-4">Обед. Таймер приостановлен.</p>
           </>
         ) : session.status === 'lunch_scheduled' ? (
@@ -84,6 +75,7 @@ export function ExtraWorkPopup() {
             <p className="text-xs text-slate-400 mb-0.5">На выполнении</p>
             <p className="text-3xl font-mono font-bold text-amber-400 mb-1 tabular-nums">{fmt(elapsedSec)}</p>
             <p className="text-amber-400/90 text-sm mb-1">нафармлено {points.toFixed(1)} баллов</p>
+            <ExtraWorkPointsHint />
             <p className="text-amber-400 text-sm mb-4">{lunchScheduledLabel}. Ожидание...</p>
           </>
         ) : (
@@ -91,6 +83,7 @@ export function ExtraWorkPopup() {
             <p className="text-xs text-slate-400 mb-0.5">На выполнении</p>
             <p className="text-3xl font-mono font-bold text-amber-400 mb-1 tabular-nums">{fmt(elapsedSec)}</p>
             <p className="text-amber-400/90 text-sm mb-1">нафармлено {points.toFixed(1)} баллов</p>
+            <ExtraWorkPointsHint />
             {session.durationMinutes && (
               <p className="text-xs text-slate-500 mb-4">
                 {session.completionType === 'timer'

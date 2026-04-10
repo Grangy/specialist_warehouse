@@ -9,6 +9,7 @@
  *   npx tsx --env-file=.env scripts/recalc-extra-work-elapsed-from-timeline.ts --apply
  *
  * Опции:
+ *   --days=7        только сессии с stoppedAt не старше N дней (для точечного прогона на проде)
  *   --min-diff=2     минимальная разница (сек) для попадания в отчёт
  *   --max-wall-hours=48   если стена длиннее — обрезать пересчитанные секунды до этого предела (аномалии)
  */
@@ -24,14 +25,26 @@ function argNum(name: string, def: number): number {
   return Number.isFinite(v) ? v : def;
 }
 
+function argDays(): number | null {
+  const a = process.argv.find((x) => x.startsWith('--days='));
+  if (!a) return null;
+  const n = Number.parseInt(a.slice('--days='.length), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 async function main() {
   const apply = process.argv.includes('--apply');
   const minDiff = argNum('--min-diff', 2);
   const maxWallHours = argNum('--max-wall-hours', 48);
   const maxWallSec = Math.max(3600, maxWallHours * 3600);
+  const days = argDays();
+  const stoppedSince = days != null ? new Date(Date.now() - days * 86400000) : null;
 
   const stopped = await prisma.extraWorkSession.findMany({
-    where: { status: 'stopped', stoppedAt: { not: null } },
+    where: {
+      status: 'stopped',
+      stoppedAt: stoppedSince ? { not: null, gte: stoppedSince } : { not: null },
+    },
     select: {
       id: true,
       userId: true,
@@ -92,6 +105,9 @@ async function main() {
     }
   }
 
+  if (stoppedSince) {
+    console.log(`Фильтр: stoppedAt >= ${stoppedSince.toISOString()} (--days=${days})\n`);
+  }
   console.log(`Завершённых сессий: ${stopped.length}, без изменений (diff < ${minDiff}s): ${unchanged}, к правке: ${wouldChange}\n`);
   console.log(lines.join('\n') || '(нет отличий от таймлайна)');
   if (!apply && wouldChange > 0) {

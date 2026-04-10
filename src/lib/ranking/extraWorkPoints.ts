@@ -16,6 +16,7 @@ import {
   getMonthStartMoscowUTC,
   getStartupWindow09MoscowUTC,
 } from '@/lib/utils/moscowDate';
+import { MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
 import type { prisma } from '@/lib/prisma';
 
 type PrismaLike = typeof prisma;
@@ -51,6 +52,16 @@ export function getEffectiveDenomByActiveCount(denom: number, activeCount: numbe
 
 /** Дефолтная фиксированная ставка (баллов/мин) для 09:00–09:15. ~3 б/час = 0.05 б/мин */
 const DEFAULT_STARTUP_RATE_PER_MIN = 0.05;
+
+/** re-export для вызовов из API/скриптов */
+export { MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
+
+const MIN_EXTRA_WORK_RATE_PER_MIN = MIN_EXTRA_WORK_RATE_PER_HOUR / 60;
+
+function floorExtraWorkRatePerMin(ratePerMin: number): number {
+  if (!Number.isFinite(ratePerMin) || ratePerMin <= 0) return MIN_EXTRA_WORK_RATE_PER_MIN;
+  return Math.max(ratePerMin, MIN_EXTRA_WORK_RATE_PER_MIN);
+}
 
 /** Минута по Москве (0–59) */
 function getMoscowMinute(utcDate: Date): number {
@@ -439,11 +450,13 @@ async function getStartupRatePerMin(prisma: PrismaLike): Promise<number> {
     where: { key: 'extra_work_startup_rate_points_per_min' },
   });
   if (!row?.value) {
-    startupRatePerMinMemo = { value: DEFAULT_STARTUP_RATE_PER_MIN, until: now + 60_000 };
-    return DEFAULT_STARTUP_RATE_PER_MIN;
+    const v = floorExtraWorkRatePerMin(DEFAULT_STARTUP_RATE_PER_MIN);
+    startupRatePerMinMemo = { value: v, until: now + 60_000 };
+    return v;
   }
   const parsed = parseFloat(row.value);
-  const v = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_STARTUP_RATE_PER_MIN;
+  const raw = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_STARTUP_RATE_PER_MIN;
+  const v = floorExtraWorkRatePerMin(raw);
   startupRatePerMinMemo = { value: v, until: now + 60_000 };
   return v;
 }
@@ -465,7 +478,7 @@ export async function getExtraWorkPointsPerMinute(
   }
   const { points, activeUserIds } = await getWarehousePaceLast15Min(prisma, atUtc);
   if (activeUserIds.length === 0) {
-    return 0;
+    return MIN_EXTRA_WORK_RATE_PER_MIN;
   }
   const idsForWeights = [...new Set([...activeUserIds, userId])];
   const weightMap = await getEfficiencyWeightsForUsers(prisma, idsForWeights, atUtc, extraWorkByUser);
@@ -474,7 +487,7 @@ export async function getExtraWorkPointsPerMinute(
   const denomRaw = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
   const denom = getEffectiveDenomByActiveCount(denomRaw, activeUserIds.length);
   const ratePerMin = (points / 15) * (wUser / denom);
-  return Math.max(0, ratePerMin);
+  return floorExtraWorkRatePerMin(ratePerMin);
 }
 
 /**
@@ -561,8 +574,8 @@ export async function getExtraWorkRateDebug(
       weightSumActive: 0,
       wUser: 0,
       denom: 0,
-      ratePerMin: 0,
-      ratePerHour: 0,
+      ratePerMin: MIN_EXTRA_WORK_RATE_PER_MIN,
+      ratePerHour: MIN_EXTRA_WORK_RATE_PER_HOUR,
     };
   }
 
@@ -600,7 +613,8 @@ export function calculateExtraWorkPointsFromRate(
   ratePerHour: number,
   _dayCoefficient?: number
 ): number {
-  const ratePerMin = ratePerHour / 60;
+  const ratePerMin =
+    !Number.isFinite(ratePerHour) || ratePerHour <= 0 ? 0 : floorExtraWorkRatePerMin(ratePerHour / 60);
   return (elapsedSec / 60) * ratePerMin;
 }
 
@@ -827,8 +841,8 @@ export async function computeExtraWorkPointsForSession(
     const activeUserIds = Array.from(paceCountByUser.keys());
     const points = paceTotalPoints;
     if (activeUserIds.length === 0 || points <= 0) {
-      rateBy15mBucket.set(bucket, 0);
-      return 0;
+      rateBy15mBucket.set(bucket, MIN_EXTRA_WORK_RATE_PER_MIN);
+      return MIN_EXTRA_WORK_RATE_PER_MIN;
     }
 
     // Эталон (100%): топ-1 по productivity (как в админке «Произв.»),
@@ -858,7 +872,7 @@ export async function computeExtraWorkPointsForSession(
     const denomRaw = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
     const denom = getEffectiveDenomByActiveCount(denomRaw, activeUserIds.length);
     const ratePerMin = (points / 15) * (wUser / denom);
-    const res = Math.max(0, ratePerMin);
+    const res = floorExtraWorkRatePerMin(ratePerMin);
     rateBy15mBucket.set(bucket, res);
     return res;
   };

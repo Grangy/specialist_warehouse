@@ -67,11 +67,25 @@ export async function maybeHealElapsedSecBeforeLunch(
 ): Promise<{ healed: boolean; nextElapsed: number }> {
   const nextElapsed = computeExtraWorkElapsedSecNow(session, now);
   const cur = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
-  // Heal if clearly broken (>= 2 sec difference).
-  if (Math.abs(cur - nextElapsed) >= 2) {
+
+  /**
+   * В БД поле — только «база» до текущего бегущего сегмента: для running/lunch_scheduled
+   * к ней в computeExtraWorkElapsedSecNow снова прибавляется (now - segStart).
+   * Раньше сюда писали полный nextElapsed → после обеда удваивался сегмент и время «прыгало».
+   */
+  let targetStored = nextElapsed;
+  if (session.status === 'running' || session.status === 'lunch_scheduled') {
+    const startedAtMs = new Date(session.startedAt).getTime();
+    const nowMs = now.getTime();
+    const segStart = session.postLunchStartedAt ? new Date(session.postLunchStartedAt).getTime() : startedAtMs;
+    const addSec = Math.max(0, (nowMs - segStart) / 1000);
+    targetStored = Math.max(0, nextElapsed - addSec);
+  }
+
+  if (Math.abs(cur - targetStored) >= 2) {
     await prisma.extraWorkSession.update({
       where: { id: session.id },
-      data: { elapsedSecBeforeLunch: nextElapsed },
+      data: { elapsedSecBeforeLunch: targetStored },
     });
     return { healed: true, nextElapsed };
   }

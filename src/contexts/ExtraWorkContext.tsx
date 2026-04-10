@@ -30,6 +30,9 @@ export interface ExtraWorkSession {
   dayCoefficient?: number;
   /** Баллы по формуле сервера (как рейтинг / админка), не elapsed×rate */
   farmedPoints?: number;
+  /** Рабочие секунды «сейчас» с сервера (для стабильного таймера) */
+  elapsedSecNow?: number;
+  pointsSyncedAt?: string;
 }
 
 interface ExtraWorkContextType {

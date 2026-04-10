@@ -86,12 +86,16 @@ export async function GET(request: NextRequest) {
       lunchEndsAt: session.lunchEndsAt,
     });
     const farmedPoints = Math.round(farmedPointsRaw * 10) / 10;
+    const elapsedSecNow = Math.round(elapsed * 10) / 10;
 
     return NextResponse.json({
       ...session,
       ratePerHour: session.status === 'lunch' ? 0 : Math.round(ratePerHour * 100) / 100,
       dayCoefficient: Math.round(dayCoefficient * 100) / 100,
       farmedPoints,
+      /** Для UI-таймера: одно значение с сервера, без двойного учёта сегмента */
+      elapsedSecNow,
+      pointsSyncedAt: now.toISOString(),
     });
   } catch (e) {
     console.error('[extra-work/my-session]', e);
