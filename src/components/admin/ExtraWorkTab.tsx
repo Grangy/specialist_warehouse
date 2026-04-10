@@ -14,6 +14,7 @@ import {
 import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight, History, HelpCircle, SlidersHorizontal } from 'lucide-react';
 import ExtraWorkHistoryTab from './ExtraWorkHistoryTab';
 import { ExtraWorkCurrentIndicatorsModal } from './ExtraWorkCurrentIndicatorsModal';
+import { EXTRA_WORK_WEIGHT_FLOOR } from '@/lib/extraWorkPublicConstants';
 
 interface ActiveSession {
   id: string;
@@ -326,7 +327,7 @@ export default function ExtraWorkTab() {
             <p className="text-sm text-slate-400">
               «Доп.баллы» начисляются по текущей ставке: сначала определяется темп склада за последние 15 минут, затем он распределяется между активными
               кладовщиками пропорционально их весу.
-              Вес зависит от месячной продуктивности (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9, нормированной на топ-1 месяца (минимум 30%).
+              Вес зависит от месячной продуктивности (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9, нормированной на топ-1 месяца: не ниже 50%, через √(доля), в окне 15 мин разброс весов не больше 1.6×.
               Начисления идут только пн–пт в 09:00–18:00, а в обед (13:00–15:00) ставка = 0. В окне 09:00–09:15 ставка фиксированная.
             </p>
             <button
@@ -354,7 +355,7 @@ export default function ExtraWorkTab() {
                   <strong className="text-amber-400">Распределение:</strong> баллы/мин сотрудника = темп × (его вес ÷ сумма весов активных за окно).
                 </p>
                 <p>
-                  <strong className="text-amber-400">Вес:</strong> вес = max(30%, baseProd(uid) / baseProdTop1), где baseProd(uid) = (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9.
+                  <strong className="text-amber-400">Вес:</strong> max(50%, √(baseProd/baseProdTop1)), затем в окне max/min ≤ 1.6; baseProd(uid) = (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9.
                 </p>
                 <p>
                   <strong className="text-amber-400">09:00–09:15 МСК:</strong> фиксированная ставка (без истории 15 минут).
@@ -484,7 +485,7 @@ export default function ExtraWorkTab() {
                     <td className="py-3 pr-4 text-slate-300">{formatHours(d.extraWorkHours)}</td>
                     <td className="py-3 pr-4 text-amber-400">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
                     <td className="py-3 pr-4 text-slate-400 text-xs">
-                      {d.usefulnessPct != null ? `${Math.max(30, d.usefulnessPct).toFixed(1)}%` : '—'}
+                      {d.usefulnessPct != null ? `${Math.max(EXTRA_WORK_WEIGHT_FLOOR * 100, d.usefulnessPct).toFixed(1)}%` : '—'}
                     </td>
                     <td className="py-3 pr-4 hidden sm:table-cell">
                       {canAssign ? (
@@ -602,7 +603,7 @@ export default function ExtraWorkTab() {
                           <td className="py-3 pr-4 text-slate-500">{formatHours(d.extraWorkHours)}</td>
                           <td className="py-3 pr-4 text-amber-500/80">{(d.extraWorkPoints ?? 0).toFixed(1)}</td>
                           <td className="py-3 pr-4 text-slate-600 text-xs">
-                            {d.usefulnessPct != null ? `${Math.max(30, d.usefulnessPct).toFixed(1)}%` : '—'}
+                            {d.usefulnessPct != null ? `${Math.max(EXTRA_WORK_WEIGHT_FLOOR * 100, d.usefulnessPct).toFixed(1)}%` : '—'}
                           </td>
                           <td className="py-3 pr-4 hidden sm:table-cell">
                             {canAssign ? (

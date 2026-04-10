@@ -646,7 +646,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
                     {(user.extraWorkPoints ?? 0) > 0 && (
                       <div
                         className="text-xs text-amber-500/90"
-                        title="темп/15×(вес/∑весов); вес=max(30%, baseProd/ baseProdTop1); 09:00–09:15 — фикс.; начисления только пн–пт 09:00–18:00, в обед — 0."
+                        title="темп/15×(вес/∑весов); вес=max(50%, √(baseProd/baseProdTop1)), в окне max/min≤1.6; 09:00–09:15 — фикс.; начисления только пн–пт 09:00–18:00, в обед — 0."
                       >
                         доп.работа {formatPoints(user.extraWorkPoints ?? 0)}
                         {user.usefulnessPct != null && (

@@ -10,6 +10,10 @@ import {
   getUsefulnessPctMap,
   getEffectiveDenomByActiveCount,
   isWorkingTimeMoscow,
+  productivityRatioToExtraWorkWeight,
+  capExtraWorkWeightSpread,
+  EXTRA_WORK_WEIGHT_FLOOR,
+  EXTRA_WORK_WEIGHT_SPREAD_MAX,
 } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
@@ -248,16 +252,17 @@ export async function GET(request: NextRequest) {
       if (base > baseProdTop1) baseProdTop1 = base;
     }
 
-    const MIN_EFFICIENCY_WEIGHT = 0.3;
-    const calcWeight = (uid: string): number => {
+    const uniqueCap = [...new Set([...activeUserIds, ...allUserIds])];
+    const weightByUid = new Map<string, number>();
+    for (const uid of uniqueCap) {
       const base = baseProdByUser.get(uid) ?? 0.5;
-      if (baseProdTop1 <= 0) return 1;
-      const raw = base / baseProdTop1;
-      return Math.max(MIN_EFFICIENCY_WEIGHT, raw);
-    };
+      const raw = baseProdTop1 > 0 ? base / baseProdTop1 : 1;
+      weightByUid.set(uid, productivityRatioToExtraWorkWeight(raw));
+    }
+    capExtraWorkWeightSpread(weightByUid, EXTRA_WORK_WEIGHT_SPREAD_MAX);
 
     const activeCount = activeUserIds.length;
-    const denomRaw = activeUserIds.reduce((s, uid) => s + calcWeight(uid), 0);
+    const denomRaw = activeUserIds.reduce((s, uid) => s + (weightByUid.get(uid) ?? EXTRA_WORK_WEIGHT_FLOOR), 0);
     const denom = getEffectiveDenomByActiveCount(denomRaw, activeCount);
     const pointsPerMin = points15m / 15;
 
@@ -268,7 +273,7 @@ export async function GET(request: NextRequest) {
         if (inStartupWindow) {
           ratePerHour = startupRatePerMin * 60;
         } else if (points15m > 0 && denom > 0) {
-          const wUser = calcWeight(userId);
+          const wUser = weightByUid.get(userId) ?? EXTRA_WORK_WEIGHT_FLOOR;
           const ratePerMin = pointsPerMin * (wUser / denom);
           ratePerHour = ratePerMin * 60;
         }

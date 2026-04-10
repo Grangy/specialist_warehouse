@@ -390,7 +390,7 @@ export default function UserStatsModal({ userId, userName, period, month, usePub
                 {(period && ((data.extraWorkPoints ?? 0) > 0 || canAdjustPoints)) && (
                   <div
                     className="bg-gradient-to-br from-amber-600/20 to-amber-500/10 rounded-lg p-3 sm:p-4 border border-amber-500/30"
-                    title="темп/15×(вес/∑весов); вес=max(30%, baseProd/baseProdTop1); 09:00–09:15 — фикс.; начисления только пн–пт 09:00–18:00 и в обед — 0."
+                    title="темп/15×(вес/∑весов); вес=max(50%, √(baseProd/baseProdTop1)), в окне max/min≤1.6; 09:00–09:15 — фикс.; начисления только пн–пт 09:00–18:00 и в обед — 0."
                   >
                     <div className="text-xs sm:text-sm text-slate-400 mb-0.5 sm:mb-1 flex items-center gap-1">
                       <Briefcase className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />

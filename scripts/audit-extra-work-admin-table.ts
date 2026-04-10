@@ -49,7 +49,7 @@ async function main() {
   console.log('  Произв.     = баллов/час (текущая ставка «если бы работал сейчас»). Зависит от темпa склада и полезности.');
   console.log('  Часы доп.   = сумма elapsedSecBeforeLunch по сессиям за неделю.');
   console.log('  Доп.баллы   = сумма по формуле: каждая минута × ставка в тот момент (09:00–09:15 — фикс., иначе динамика).');
-  console.log('  Польз.%     = вес распределения ставки: baseProd(uid) / baseProdTop1 × 100 (clamp min 30%).');
+  console.log('  Польз.%     = вес распределения ставки: max(50%, √(baseProd/baseProdTop1)) × 100 (в окне max/min ≤ 1.6).');
   console.log('  baseProd(uid)= (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9.\n');
 
   const baselineName = await getBaselineUserName(prisma);

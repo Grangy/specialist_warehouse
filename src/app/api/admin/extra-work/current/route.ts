@@ -4,7 +4,15 @@ import { requireAuth } from '@/lib/middleware';
 import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 import { getMonthStartMoscowUTC, getStartupWindow09MoscowUTC } from '@/lib/utils/moscowDate';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
-import { computeExtraWorkPointsForSession, getEffectiveDenomByActiveCount, isWorkingTimeMoscow } from '@/lib/ranking/extraWorkPoints';
+import {
+  computeExtraWorkPointsForSession,
+  getEffectiveDenomByActiveCount,
+  isWorkingTimeMoscow,
+  productivityRatioToExtraWorkWeight,
+  capExtraWorkWeightSpread,
+  EXTRA_WORK_WEIGHT_FLOOR,
+  EXTRA_WORK_WEIGHT_SPREAD_MAX,
+} from '@/lib/ranking/extraWorkPoints';
 import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
 import { computeExtraWorkElapsedSecNow, maybeHealElapsedSecBeforeLunch } from '@/lib/extraWorkElapsed';
 
@@ -135,26 +143,25 @@ export async function GET(request: NextRequest) {
     const workingDaysSelected = workingDaysByUid.get(userId) ?? 0;
     const baseProdSelected = baseProdFromMonthStats(ptsSelected, workingDaysSelected);
 
-    const MIN_EFFICIENCY_WEIGHT = 0.3;
-    const calcWeight = (baseProd: number): number => {
-      if (baseProdTop1 <= 0) return 1;
-      const raw = baseProd / baseProdTop1;
-      return Math.max(MIN_EFFICIENCY_WEIGHT, raw);
-    };
+    const idsForWeights = [...new Set([...warehousePace.activeUserIds, userId])];
+    const weightByUid = new Map<string, number>();
+    for (const uid of idsForWeights) {
+      const ptsMonthWeekdays = ptsByUid.get(uid) ?? 0;
+      const workingDaysWeekdays = workingDaysByUid.get(uid) ?? 0;
+      const baseProd = baseProdFromMonthStats(ptsMonthWeekdays, workingDaysWeekdays);
+      const raw = baseProdTop1 > 0 ? baseProd / baseProdTop1 : 1;
+      weightByUid.set(uid, productivityRatioToExtraWorkWeight(raw));
+    }
+    capExtraWorkWeightSpread(weightByUid, EXTRA_WORK_WEIGHT_SPREAD_MAX);
 
-    const weightUser = calcWeight(baseProdSelected);
+    const weightUser = weightByUid.get(userId) ?? EXTRA_WORK_WEIGHT_FLOOR;
     const weightPct = Math.round(weightUser * 1000) / 10;
 
     // denom = сумма весов активных за последние 15 минут,
     // но дополнительно нормализуется по числу activeUserIds, чтобы при резком падении активных не разгоняло ставку.
     const activeCount = warehousePace.activeUserIds.length;
     const denomRaw = activeCount
-      ? warehousePace.activeUserIds.reduce((s, uid) => {
-          const ptsMonthWeekdays = ptsByUid.get(uid) ?? 0;
-          const workingDaysWeekdays = workingDaysByUid.get(uid) ?? 0;
-          const baseProd = baseProdFromMonthStats(ptsMonthWeekdays, workingDaysWeekdays);
-          return s + calcWeight(baseProd);
-        }, 0)
+      ? warehousePace.activeUserIds.reduce((s, uid) => s + (weightByUid.get(uid) ?? EXTRA_WORK_WEIGHT_FLOOR), 0)
       : 0;
     const denom = getEffectiveDenomByActiveCount(denomRaw, activeCount);
 
@@ -228,7 +235,8 @@ export async function GET(request: NextRequest) {
         formula: inStartupWindow
           ? 'в окне 09:00–09:15 ставка фиксированная'
           : 'ratePerMin = (points15m/15) × (weightUser/denomAdjusted), где denomAdjusted нормализован по числу activeUserIds',
-        minWeight: MIN_EFFICIENCY_WEIGHT,
+        minWeight: EXTRA_WORK_WEIGHT_FLOOR,
+        weightSpreadMax: EXTRA_WORK_WEIGHT_SPREAD_MAX,
       },
       rate: {
         ratePerMin: Math.round(ratePerMin * 100000) / 100000,

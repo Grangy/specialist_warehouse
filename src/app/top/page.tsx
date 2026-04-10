@@ -342,7 +342,7 @@ export default function TopPage() {
             <span><span className="text-purple-400">Проверка</span> сам 0.78 / с диктовщ. 0.39</span>
             <span><span className="text-amber-400">Диктовка</span> 0.36 (С1) / 0.61 (С2-3)</span>
             <span>
-              <span className="text-amber-500">Доп.работа</span> темп/15×(вес/∑весов); вес=max(30%, baseProd/baseProdTop1);
+              <span className="text-amber-500">Доп.работа</span> темп/15×(вес/∑весов); вес=max(50%, √(baseProd/baseProdTop1)), в окне max/min≤1.6;
               09:00–09:15 — фикс.; начисления только пн–пт 09:00–18:00 и в обед — 0.
               {baselineUserName && `(100%=${baselineUserName})`}
             </span>
@@ -677,7 +677,7 @@ export default function TopPage() {
                               <span><span className="text-purple-400">Проверка</span> {expandedStats.checker.totalPoints.toFixed(2)} ({expandedStats.checker.totalTasks} зак.)</span>
                               <span><span className="text-amber-400">Диктовка</span> {(expandedStats.dictator?.totalPoints ?? 0).toFixed(2)} ({(expandedStats.dictator?.totalTasks ?? 0)} зак.)</span>
                               {(expandedStats.extraWorkPoints ?? 0) > 0 && (
-                                <span title="темп/15×(вес/∑весов активных за 15 мин); вес=max(30%, к/эталон); 09:00–09:15 — фикс."><span className="text-amber-500">Доп.работа</span> {(expandedStats.extraWorkPoints ?? 0).toFixed(2)}</span>
+                                <span title="темп/15×(вес/∑весов активных за 15 мин); вес=max(50%, √(к/топ)); в окне max/min≤1.6; 09:00–09:15 — фикс."><span className="text-amber-500">Доп.работа</span> {(expandedStats.extraWorkPoints ?? 0).toFixed(2)}</span>
                               )}
                               {(expandedStats.errorPenalty ?? 0) !== 0 && (
                                 <span><span className="text-slate-400">За ошибки</span> {(expandedStats.errorPenalty ?? 0) >= 0 ? '+' : ''}{(expandedStats.errorPenalty ?? 0).toFixed(2)}</span>

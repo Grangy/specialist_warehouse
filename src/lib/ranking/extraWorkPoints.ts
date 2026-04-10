@@ -3,7 +3,7 @@
  *
  * Темп за минуту = баллы склада за последние 15 мин ÷ 15.
  * Эту величину делим между активными работниками пропорционально весу продуктивности:
- * weight = max(30%, baseProd(uid) / baseProdTop1),
+ * weight = max(50%, sqrt(baseProd(uid) / baseProdTop1)), затем в окне 15 мин max(weight)/min(weight) ≤ 1.6,
  * где baseProd(uid) = (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9.
  * Баллы/мин для сотрудника = темп_за_мин × (вес_сотрудника / сумма_весов_активных).
  * Начисления только в рабочее время: пн–пт, 09:00–18:00 МСК (в обед начисления = 0).
@@ -16,7 +16,7 @@ import {
   getMonthStartMoscowUTC,
   getStartupWindow09MoscowUTC,
 } from '@/lib/utils/moscowDate';
-import { MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
+import { EXTRA_WORK_WEIGHT_FLOOR, MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
 import type { prisma } from '@/lib/prisma';
 
 type PrismaLike = typeof prisma;
@@ -24,8 +24,35 @@ type PrismaLike = typeof prisma;
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 
-/** Нижняя граница веса при распределении темпа доп. работы (доля от эталона) */
-const MIN_EFFICIENCY_WEIGHT = 0.3;
+export { EXTRA_WORK_WEIGHT_FLOOR };
+
+/**
+ * В одном 15-мин окне: отношение максимального веса к минимальному среди участников не больше этого * (между 1.5 и 1.7 по ТЗ — берём 1.6).
+ */
+export const EXTRA_WORK_WEIGHT_SPREAD_MAX = 1.6;
+
+/** Мягкий вес по отношению к топ-1 за месяц: ratio ∈ [0,1] */
+export function productivityRatioToExtraWorkWeight(ratio: number): number {
+  const r = Math.min(1, Math.max(0, ratio));
+  return Math.max(EXTRA_WORK_WEIGHT_FLOOR, Math.sqrt(r));
+}
+
+/** Сжимает разброс весов в одном окне: max/min ≤ maxSpread (линейно от min до min×maxSpread). */
+export function capExtraWorkWeightSpread(weightByUid: Map<string, number>, maxSpread: number): void {
+  if (weightByUid.size === 0) return;
+  let mn = Infinity;
+  let mx = -Infinity;
+  for (const w of weightByUid.values()) {
+    if (w < mn) mn = w;
+    if (w > mx) mx = w;
+  }
+  if (!(mn > 0) || !(mx > mn) || mx / mn <= maxSpread) return;
+  const targetMax = mn * maxSpread;
+  for (const [uid, old] of [...weightByUid.entries()]) {
+    const nw = mn + ((old - mn) / (mx - mn)) * (targetMax - mn);
+    weightByUid.set(uid, nw);
+  }
+}
 
 /**
  * Нивелирование влияния "меньше активных => каждому улетает больше".
@@ -199,7 +226,7 @@ export function clearEfficiencyWeightsSessionCache(): void {
 /**
  * Вес эффективности для распределения доп.работы:
  * - нагрузка: темп склада за последние 15 минут (points/15)
- * - распределение: вес = max(30%, baseProd(uid) / baseProdTop1)
+ * - распределение: вес = max(50%, sqrt(baseProd/baseTop1)), затем сжатие разброса max/min ≤ 1.6 в этом наборе userIds
  * - baseProd(uid) = (pts_month_weekdays / (8 * workingDays_weekdays)) * 0.9
  *
  * extraWorkByUser намеренно не учитываем: иначе возникает самоподкрутка и перекосы.
@@ -225,8 +252,9 @@ async function getEfficiencyWeightsForUsers(
     for (const uid of unique) {
       const base = cached.baseByUid.get(uid) ?? 0.5;
       const raw = cached.baselineProdMax > 0 ? base / cached.baselineProdMax : 1;
-      result.set(uid, Math.max(MIN_EFFICIENCY_WEIGHT, raw));
+      result.set(uid, productivityRatioToExtraWorkWeight(raw));
     }
+    capExtraWorkWeightSpread(result, EXTRA_WORK_WEIGHT_SPREAD_MAX);
     return result;
   }
 
@@ -273,9 +301,10 @@ async function getEfficiencyWeightsForUsers(
   for (const uid of unique) {
     const base = baseByUid.get(uid) ?? 0.5;
     const raw = baselineProdMax > 0 ? base / baselineProdMax : 1;
-    result.set(uid, Math.max(MIN_EFFICIENCY_WEIGHT, raw));
+    result.set(uid, productivityRatioToExtraWorkWeight(raw));
   }
 
+  capExtraWorkWeightSpread(result, EXTRA_WORK_WEIGHT_SPREAD_MAX);
   return result;
 }
 
@@ -431,7 +460,7 @@ export async function getUsefulnessPctMap(
   const weightRatioByUid = await getEfficiencyWeightsForUsers(prisma, unique, beforeDate);
 
   for (const uid of unique) {
-    const w = weightRatioByUid.get(uid) ?? MIN_EFFICIENCY_WEIGHT;
+    const w = weightRatioByUid.get(uid) ?? EXTRA_WORK_WEIGHT_FLOOR;
     const pct = w * 100;
     result.set(uid, Math.round(pct * 10) / 10);
   }
@@ -484,7 +513,7 @@ export async function getExtraWorkPointsPerMinute(
   const idsForWeights = [...new Set([...activeUserIds, userId])];
   const weightMap = await getEfficiencyWeightsForUsers(prisma, idsForWeights, atUtc, extraWorkByUser);
   const weightSumActive = activeUserIds.reduce((s, id) => s + (weightMap.get(id) ?? 1), 0);
-  const wUser = weightMap.get(userId) ?? MIN_EFFICIENCY_WEIGHT;
+  const wUser = weightMap.get(userId) ?? EXTRA_WORK_WEIGHT_FLOOR;
   const denomRaw = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
   const denom = getEffectiveDenomByActiveCount(denomRaw, activeUserIds.length);
   const ratePerMin = (points / 15) * (wUser / denom);
@@ -524,7 +553,7 @@ export type ExtraWorkRateDebug = {
  * Печатает входные параметры именно из getExtraWorkPointsPerMinute:
  * - pace склада за последние 15 мин (points/15)
  * - active userIds в этом окне
- * - efficiency weights (вес= max(30%, k/эталон)) и их сумма
+ * - efficiency weights (вес после sqrt+spread cap) и их сумма
  */
 export async function getExtraWorkRateDebug(
   prisma: PrismaLike,
@@ -584,7 +613,7 @@ export async function getExtraWorkRateDebug(
   const weightMap = await getEfficiencyWeightsForUsers(prisma, idsForWeights, atUtc, extraWorkByUser);
 
   const weightSumActive = activeUserIds.reduce((s, id) => s + (weightMap.get(id) ?? 1), 0);
-  const wUser = weightMap.get(userId) ?? MIN_EFFICIENCY_WEIGHT;
+  const wUser = weightMap.get(userId) ?? EXTRA_WORK_WEIGHT_FLOOR;
   const denomRaw = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
   const denom = getEffectiveDenomByActiveCount(denomRaw, activeUserIds.length);
   const ratePerMin = (points / 15) * (wUser / denom);
@@ -867,15 +896,17 @@ export async function computeExtraWorkPointsForSession(
       if (base > baselineProdMax) baselineProdMax = base;
     }
 
-    const calcWeight = (uid: string): number => {
-      if (baselineProdMax <= 0) return 1;
-      const raw = calcBaseProd(uid) / baselineProdMax;
-      return Math.max(MIN_EFFICIENCY_WEIGHT, raw);
-    };
+    const idsForWeights = [...new Set([...activeUserIds, session.userId])];
+    const weightByUid = new Map<string, number>();
+    for (const uid of idsForWeights) {
+      const raw = baselineProdMax > 0 ? calcBaseProd(uid) / baselineProdMax : 1;
+      weightByUid.set(uid, productivityRatioToExtraWorkWeight(raw));
+    }
+    capExtraWorkWeightSpread(weightByUid, EXTRA_WORK_WEIGHT_SPREAD_MAX);
 
-    const wUser = calcWeight(session.userId);
+    const wUser = weightByUid.get(session.userId) ?? EXTRA_WORK_WEIGHT_FLOOR;
     let weightSumActive = 0;
-    for (const id of activeUserIds) weightSumActive += calcWeight(id);
+    for (const id of activeUserIds) weightSumActive += weightByUid.get(id) ?? EXTRA_WORK_WEIGHT_FLOOR;
 
     const denomRaw = weightSumActive > 0 ? weightSumActive : activeUserIds.length;
     const denom = getEffectiveDenomByActiveCount(denomRaw, activeUserIds.length);

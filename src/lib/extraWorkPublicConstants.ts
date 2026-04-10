@@ -3,3 +3,9 @@
  * Используется в формуле (сервер) и в UI без тяжёлых импортов.
  */
 export const MIN_EXTRA_WORK_RATE_PER_HOUR = 40;
+
+/**
+ * Нижняя граница веса распределения доп.работы (доля от топ-1 месяца): max(FLOOR, √(baseProd/baseTop1)).
+ * Вынесено сюда, чтобы клиентский UI мог импортировать без prisma.
+ */
+export const EXTRA_WORK_WEIGHT_FLOOR = 0.5;
