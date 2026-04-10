@@ -477,8 +477,9 @@ export async function getExtraWorkPointsPerMinute(
     return getStartupRatePerMin(prisma);
   }
   const { points, activeUserIds } = await getWarehousePaceLast15Min(prisma, atUtc);
-  if (activeUserIds.length === 0) {
-    return MIN_EXTRA_WORK_RATE_PER_MIN;
+  /** Нет ни одной отметки за 15 мин — не капаем «минимумом»: иначе длинная доп.работа в простое набирает сотни баллов. */
+  if (activeUserIds.length === 0 || points <= 0) {
+    return 0;
   }
   const idsForWeights = [...new Set([...activeUserIds, userId])];
   const weightMap = await getEfficiencyWeightsForUsers(prisma, idsForWeights, atUtc, extraWorkByUser);
@@ -564,7 +565,7 @@ export async function getExtraWorkRateDebug(
   }
 
   const { points, activeUserIds } = await getWarehousePaceLast15Min(prisma, atUtc);
-  if (activeUserIds.length === 0) {
+  if (activeUserIds.length === 0 || points <= 0) {
     return {
       atUtc: atUtc.toISOString(),
       isStartupWindow: false,
@@ -574,8 +575,8 @@ export async function getExtraWorkRateDebug(
       weightSumActive: 0,
       wUser: 0,
       denom: 0,
-      ratePerMin: MIN_EXTRA_WORK_RATE_PER_MIN,
-      ratePerHour: MIN_EXTRA_WORK_RATE_PER_HOUR,
+      ratePerMin: 0,
+      ratePerHour: 0,
     };
   }
 
@@ -841,8 +842,8 @@ export async function computeExtraWorkPointsForSession(
     const activeUserIds = Array.from(paceCountByUser.keys());
     const points = paceTotalPoints;
     if (activeUserIds.length === 0 || points <= 0) {
-      rateBy15mBucket.set(bucket, MIN_EXTRA_WORK_RATE_PER_MIN);
-      return MIN_EXTRA_WORK_RATE_PER_MIN;
+      rateBy15mBucket.set(bucket, 0);
+      return 0;
     }
 
     // Эталон (100%): топ-1 по productivity (как в админке «Произв.»),

@@ -9,7 +9,7 @@ import { MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
 function ExtraWorkPointsHint() {
   return (
     <p className="text-slate-500 text-xs mb-1">
-      Начисление не ниже {MIN_EXTRA_WORK_RATE_PER_HOUR} б/ч в рабочее время; баллы с сервера, обновление ~5 с.
+      При движении склада (есть баллы за 15 мин) — не ниже {MIN_EXTRA_WORK_RATE_PER_HOUR} б/ч; в полном простое 0; баллы с сервера ~5 с.
     </p>
   );
 }

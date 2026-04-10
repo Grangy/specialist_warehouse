@@ -60,6 +60,7 @@
     "audit:extra-work-today-unified": "tsx scripts/audit-extra-work-today-unified.ts",
     "recalc:extra-work-elapsed": "tsx scripts/recalc-extra-work-elapsed-from-timeline.ts",
     "recalc:extra-work-week": "tsx scripts/recalculate-extra-work-week.ts",
+    "fix:extra-work-april-2026-sessions": "tsx scripts/fix-extra-work-sessions-april-2026.ts",
     "recalc:extra-work-manual": "tsx scripts/recalc-extra-work-manual.ts",
     "recalc:error-penalties": "tsx scripts/recalc-error-penalties.ts",
     "audit:vitaly": "tsx scripts/audit-vitaly-extra-work.ts",
