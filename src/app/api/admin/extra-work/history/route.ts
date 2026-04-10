@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
         startedAt: true,
         stoppedAt: true,
         elapsedSecBeforeLunch: true,
+        pointsOverride: true,
         lunchStartedAt: true,
         lunchEndsAt: true,
         completionType: true,
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest) {
         const pts = await computeExtraWorkPointsForSession(prisma, {
           userId: s.userId,
           elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
+          pointsOverride: s.pointsOverride,
           stoppedAt: s.stoppedAt,
           startedAt: s.startedAt,
           lunchStartedAt: s.lunchStartedAt,

@@ -170,6 +170,7 @@ export async function aggregateRankings(
       select: {
         userId: true,
         elapsedSecBeforeLunch: true,
+        pointsOverride: true,
         stoppedAt: true,
         startedAt: true,
         lunchStartedAt: true,
@@ -274,6 +275,7 @@ export async function aggregateRankings(
     const pts = await computeExtraWorkPointsForSession(prisma, {
       userId: sess.userId,
       elapsedSecBeforeLunch: sess.elapsedSecBeforeLunch ?? 0,
+      pointsOverride: sess.pointsOverride,
       stoppedAt: sess.stoppedAt,
       startedAt: sess.startedAt,
       lunchStartedAt: sess.lunchStartedAt,

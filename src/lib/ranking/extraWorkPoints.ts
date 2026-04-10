@@ -629,6 +629,8 @@ export type ExtraWorkSessionForPoints = {
   /** Персональный обед: не начисляем в [lunchStartedAt, lunchEndsAt) */
   lunchStartedAt?: Date | null;
   lunchEndsAt?: Date | null;
+  /** Заданное начисление за сессию (баллы), вместо формулы */
+  pointsOverride?: number | null;
 };
 
 /** Защита от битых данных и чрезмерного числа итераций в цикле. */
@@ -654,6 +656,11 @@ export async function computeExtraWorkPointsForSession(
   session: ExtraWorkSessionForPoints,
   _extraWorkByUser?: Map<string, number>
 ): Promise<number> {
+  const ov = session.pointsOverride;
+  if (ov != null && Number.isFinite(ov) && ov >= 0) {
+    return Math.round(ov * 10) / 10;
+  }
+
   const stoppedAt = session.stoppedAt ?? new Date();
   const rawElapsed = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
   const elapsedWorkSec = Number.isFinite(rawElapsed)

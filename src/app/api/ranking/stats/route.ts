@@ -122,6 +122,7 @@ export async function GET(request: NextRequest) {
     const extraWorkSelect = {
       userId: true,
       elapsedSecBeforeLunch: true,
+      pointsOverride: true,
       stoppedAt: true,
       startedAt: true,
       lunchStartedAt: true,

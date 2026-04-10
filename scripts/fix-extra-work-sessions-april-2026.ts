@@ -1,12 +1,19 @@
 /**
- * Точечная починка доп.работ (7–8.04.2026): elapsedSecBeforeLunch = факт по таймлайну
- * (стена минус пересечение с обедом), чтобы часы в таблице совпадали с startedAt/stoppedAt
- * и fallback-расчёт баллов не раздувался от битого поля.
+ * Точечная починка доп.работ (7–8.04.2026):
+ * - elapsedSecBeforeLunch = факт по таймлайну (стена минус обед);
+ * - опционально pointsOverride = (отработанные часы) × ставка б/ч (например 65).
  *
  * Сухой прогон:
  *   npx tsx --env-file=.env scripts/fix-extra-work-sessions-april-2026.ts
+ *   npx tsx --env-file=.env scripts/fix-extra-work-sessions-april-2026.ts --rate=65
  * Запись:
- *   npx tsx --env-file=.env scripts/fix-extra-work-sessions-april-2026.ts --apply
+ *   npx tsx --env-file=.env scripts/fix-extra-work-sessions-april-2026.ts --apply --rate=65
+ *
+ * Сбросить только override (снова формула):
+ *   npx tsx --env-file=.env scripts/fix-extra-work-sessions-april-2026.ts --apply --clear-override
+ *
+ * На проде, если npx не в PATH:
+ *   bash -lc 'cd /var/www/specialist_warehouse && . ~/.nvm/nvm.sh && npx tsx --env-file=.env scripts/fix-extra-work-sessions-april-2026.ts --apply --rate=65'
  */
 
 import 'dotenv/config';
@@ -16,6 +23,16 @@ import { computeExtraWorkPointsForSession } from '../src/lib/ranking/extraWorkPo
 import { clearUserStatsCache } from '../src/lib/statistics/getUserStats';
 
 const APPLY = process.argv.includes('--apply');
+const CLEAR_OVERRIDE = process.argv.includes('--clear-override');
+
+function argRate(): number | null {
+  const a = process.argv.find((x) => x.startsWith('--rate='));
+  if (!a) return null;
+  const n = Number.parseFloat(a.slice('--rate='.length));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const RATE_PER_HOUR = argRate();
 
 type Preset = {
   label: string;
@@ -70,6 +87,11 @@ function matchesPreset(
 }
 
 async function main() {
+  if (CLEAR_OVERRIDE && RATE_PER_HOUR != null) {
+    console.error('Нельзя одновременно --clear-override и --rate=');
+    process.exit(1);
+  }
+
   const candidates = await prisma.extraWorkSession.findMany({
     where: {
       status: 'stopped',
@@ -105,9 +127,14 @@ async function main() {
     });
     if (target === null) continue;
 
+    const workedHours = target / 3600;
+    const overridePts =
+      RATE_PER_HOUR != null ? Math.round(workedHours * RATE_PER_HOUR * 10) / 10 : null;
+
     const ptsBefore = await computeExtraWorkPointsForSession(prisma, {
       userId: s.userId,
       elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
+      pointsOverride: s.pointsOverride,
       stoppedAt: s.stoppedAt,
       startedAt: s.startedAt,
       lunchStartedAt: s.lunchStartedAt,
@@ -115,34 +142,57 @@ async function main() {
     });
 
     const cur = Number(s.elapsedSecBeforeLunch ?? 0);
+    const curOv = s.pointsOverride != null ? Number(s.pointsOverride) : null;
     console.log(
       `session=${s.id} user=${s.user.name} assigner=${s.assignedBy.name}\n` +
-        `  было elapsedSec=${cur.toFixed(0)} (${(cur / 3600).toFixed(2)} ч), баллы ${ptsBefore.toFixed(1)}\n` +
-        `  будет elapsedSec=${target.toFixed(0)} (${(target / 3600).toFixed(2)} ч)`
+        `  было elapsedSec=${cur.toFixed(0)} (${(cur / 3600).toFixed(2)} ч), override=${curOv ?? '—'}, баллы ${ptsBefore.toFixed(1)}\n` +
+        `  будет elapsedSec=${target.toFixed(0)} (${workedHours.toFixed(2)} ч)` +
+        (overridePts != null ? `, override=${overridePts} (${RATE_PER_HOUR} б/ч)` : '')
     );
 
     if (APPLY) {
-      await prisma.extraWorkSession.update({
-        where: { id: s.id },
-        data: { elapsedSecBeforeLunch: target },
-      });
-      const ptsAfter = await computeExtraWorkPointsForSession(prisma, {
-        userId: s.userId,
-        elapsedSecBeforeLunch: target,
-        stoppedAt: s.stoppedAt,
-        startedAt: s.startedAt,
-        lunchStartedAt: s.lunchStartedAt,
-        lunchEndsAt: s.lunchEndsAt,
-      });
-      console.log(`  записано; баллы после правки формулы: ${ptsAfter.toFixed(1)}`);
+      if (CLEAR_OVERRIDE) {
+        await prisma.extraWorkSession.update({
+          where: { id: s.id },
+          data: { elapsedSecBeforeLunch: target, pointsOverride: null },
+        });
+        const ptsAfterClear = await computeExtraWorkPointsForSession(prisma, {
+          userId: s.userId,
+          elapsedSecBeforeLunch: target,
+          pointsOverride: null,
+          stoppedAt: s.stoppedAt,
+          startedAt: s.startedAt,
+          lunchStartedAt: s.lunchStartedAt,
+          lunchEndsAt: s.lunchEndsAt,
+        });
+        console.log(`  записано (override сброшен); баллы по формуле: ${ptsAfterClear.toFixed(1)}`);
+      } else {
+        await prisma.extraWorkSession.update({
+          where: { id: s.id },
+          data: {
+            elapsedSecBeforeLunch: target,
+            ...(overridePts != null ? { pointsOverride: overridePts } : {}),
+          },
+        });
+        const ptsAfter = await computeExtraWorkPointsForSession(prisma, {
+          userId: s.userId,
+          elapsedSecBeforeLunch: target,
+          pointsOverride: overridePts ?? s.pointsOverride,
+          stoppedAt: s.stoppedAt,
+          startedAt: s.startedAt,
+          lunchStartedAt: s.lunchStartedAt,
+          lunchEndsAt: s.lunchEndsAt,
+        });
+        console.log(`  записано; итоговые баллы: ${ptsAfter.toFixed(1)}`);
+      }
     }
   }
 
   if (!APPLY) {
-    console.log('\nДобавьте --apply чтобы записать изменения в БД.\n');
+    console.log('\nДобавьте --apply чтобы записать. Для фикса 65 б/ч: --apply --rate=65\n');
   } else {
     clearUserStatsCache();
-    console.log('\nКэш детальной статистики пользователей сброшен.\n');
+    console.log('\nКэш детальной статистики пользователей сброшен. Пересчитайте снапшоты: npm run recalc:extra-work (или recalculate-extra-work-new-formula-all).\n');
   }
 }
 

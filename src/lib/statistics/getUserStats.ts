@@ -272,6 +272,7 @@ async function getUserStatsUncached(
         },
         select: {
           elapsedSecBeforeLunch: true,
+          pointsOverride: true,
           stoppedAt: true,
           startedAt: true,
           lunchStartedAt: true,
@@ -293,6 +294,7 @@ async function getUserStatsUncached(
         computeExtraWorkPointsForSession(prisma, {
           userId: user.id,
           elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
+          pointsOverride: s.pointsOverride,
           stoppedAt: s.stoppedAt,
           startedAt: s.startedAt,
           lunchStartedAt: s.lunchStartedAt,

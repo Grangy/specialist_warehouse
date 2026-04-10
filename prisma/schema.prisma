@@ -69,6 +69,8 @@ model ExtraWorkSession {
   lunchEndsAt   DateTime? @map("lunch_ends_at")   // Когда обед заканчивается (автовозобновление)
   postLunchStartedAt DateTime? @map("post_lunch_started_at") // Когда возобновили после обеда (для корректного подсчёта)
   elapsedSecBeforeLunch Float @default(0) @map("elapsed_sec_before_lunch") // Секунды до обеда
+  /** Если задано — баллы за сессию = это значение (игнор динамической формулы). Секунды по-прежнему из elapsed/timeline. */
+  pointsOverride Float? @map("points_override")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
