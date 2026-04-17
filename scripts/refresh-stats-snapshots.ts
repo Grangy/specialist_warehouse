@@ -11,19 +11,22 @@ import { prisma } from '../src/lib/prisma';
 import { SNAPSHOT_WARM_KEYS, statsSnapshotCacheKey } from '../src/lib/statistics/statsSnapshotStore';
 
 async function main() {
+  const rows = await prisma.$queryRaw<Array<{ name: string }>>`
+    SELECT name FROM sqlite_master WHERE type='table' AND name='stats_snapshots' LIMIT 1
+  `;
+  if (!rows?.length) {
+    console.log('refresh-stats-snapshots: таблицы stats_snapshots нет — пропуск (как на части продов).');
+    return;
+  }
   let n = 0;
   for (const k of SNAPSHOT_WARM_KEYS) {
     const key = statsSnapshotCacheKey(k.period, k.warehouse);
-    try {
-      const r = await prisma.$executeRaw`
-        DELETE FROM stats_snapshots WHERE cache_key = ${key}
-      `;
-      n += typeof r === 'number' ? r : 0;
-    } catch (e) {
-      console.warn(`skip ${key}:`, e);
-    }
+    const r = await prisma.$executeRaw`
+      DELETE FROM stats_snapshots WHERE cache_key = ${key}
+    `;
+    n += typeof r === 'number' ? r : 0;
   }
-  console.log(`refresh-stats-snapshots: удалено строк (где применимо): ${n}`);
+  console.log(`refresh-stats-snapshots: удалено строк: ${n}`);
 }
 
 main()
