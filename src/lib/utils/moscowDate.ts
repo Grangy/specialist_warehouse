@@ -178,6 +178,12 @@ export function getMoscowDayStartUTC(utcDate: Date): Date {
   return startOfDayMoscowUTC(m.year, m.month, m.date);
 }
 
+/** 18:00 МСК в тот же календарный день по Москве, что и utcDate (граница рабочего дня для доп.работы). */
+export function getMoscowWorkdayEndUTC(utcDate: Date): Date {
+  const dayStart = getMoscowDayStartUTC(utcDate);
+  return new Date(dayStart.getTime() + 18 * 60 * 60 * 1000);
+}
+
 /** Окно 09:00–09:15 МСК в UTC для того же календарного дня по Москве, что и utcDate. */
 export function getStartupWindow09MoscowUTC(utcDate: Date): { start: Date; end: Date } {
   const dayStart = getMoscowDayStartUTC(utcDate);

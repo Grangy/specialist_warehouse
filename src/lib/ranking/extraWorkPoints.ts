@@ -6,7 +6,8 @@
  * weight = max(50%, sqrt(baseProd(uid) / baseProdTop1)), затем в окне 15 мин max(weight)/min(weight) ≤ 1.6,
  * где baseProd(uid) = (баллы_месяца_пн-пт ÷ (8 × раб.дней)) × 0.9.
  * Баллы/мин для сотрудника = темп_за_мин × (вес_сотрудника / сумма_весов_активных).
- * Начисления только в рабочее время: пн–пт, 09:00–18:00 МСК (в обед начисления = 0).
+ * Начисления только в рабочее время: пн–пт, 09:00–18:00 МСК (в личный обед по сессии — 0).
+ * Если за 15 мин нет складского темпа — доля минимальной ставки (не обнуление).
  * 09:00–09:15 МСК: фиксированная ставка (нет истории за 15 мин).
  */
 
@@ -16,7 +17,11 @@ import {
   getMonthStartMoscowUTC,
   getStartupWindow09MoscowUTC,
 } from '@/lib/utils/moscowDate';
-import { EXTRA_WORK_WEIGHT_FLOOR, MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
+import {
+  EXTRA_WORK_PACE_EMPTY_RATE_FRACTION,
+  EXTRA_WORK_WEIGHT_FLOOR,
+  MIN_EXTRA_WORK_RATE_PER_HOUR,
+} from '@/lib/extraWorkPublicConstants';
 import type { prisma } from '@/lib/prisma';
 
 type PrismaLike = typeof prisma;
@@ -67,8 +72,8 @@ export function capExtraWorkWeightSpread(weightByUid: Map<string, number>, maxSp
  */
 const ACTIVE_USERS_DAMPING_TARGET = 15;
 // 0.5 было слишком режущим (у многих за день extraWorkPoints попадали в 0).
-// 0.35 — компромисс: разгон при малом activeCount сглаживаем, но не "обнуляем" начисления.
-const DAMPING_EXP = 0.35;
+// 0.30 — чуть меньше давления при малом числе активных в 15-мин окне.
+const DAMPING_EXP = 0.3;
 
 export function getEffectiveDenomByActiveCount(denom: number, activeCount: number): number {
   if (!Number.isFinite(denom) || denom <= 0) return denom;
@@ -84,6 +89,11 @@ const DEFAULT_STARTUP_RATE_PER_MIN = 0.05;
 export { MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
 
 const MIN_EXTRA_WORK_RATE_PER_MIN = MIN_EXTRA_WORK_RATE_PER_HOUR / 60;
+
+/** Ставка за минуту, когда в последнем 15-мин окне нет складского темпа (доля от мин. часовой ставки). */
+function paceEmptyRatePerMin(): number {
+  return MIN_EXTRA_WORK_RATE_PER_MIN * EXTRA_WORK_PACE_EMPTY_RATE_FRACTION;
+}
 
 function floorExtraWorkRatePerMin(ratePerMin: number): number {
   if (!Number.isFinite(ratePerMin) || ratePerMin <= 0) return MIN_EXTRA_WORK_RATE_PER_MIN;
@@ -506,9 +516,9 @@ export async function getExtraWorkPointsPerMinute(
     return getStartupRatePerMin(prisma);
   }
   const { points, activeUserIds } = await getWarehousePaceLast15Min(prisma, atUtc);
-  /** Нет ни одной отметки за 15 мин — не капаем «минимумом»: иначе длинная доп.работа в простое набирает сотни баллов. */
+  /** Нет темпа за 15 мин — доля мин. ставки (раньше было 0: смена «замирала» без баллов). */
   if (activeUserIds.length === 0 || points <= 0) {
-    return 0;
+    return paceEmptyRatePerMin();
   }
   const idsForWeights = [...new Set([...activeUserIds, userId])];
   const weightMap = await getEfficiencyWeightsForUsers(prisma, idsForWeights, atUtc, extraWorkByUser);
@@ -595,6 +605,7 @@ export async function getExtraWorkRateDebug(
 
   const { points, activeUserIds } = await getWarehousePaceLast15Min(prisma, atUtc);
   if (activeUserIds.length === 0 || points <= 0) {
+    const idle = paceEmptyRatePerMin();
     return {
       atUtc: atUtc.toISOString(),
       isStartupWindow: false,
@@ -604,8 +615,8 @@ export async function getExtraWorkRateDebug(
       weightSumActive: 0,
       wUser: 0,
       denom: 0,
-      ratePerMin: 0,
-      ratePerHour: 0,
+      ratePerMin: idle,
+      ratePerHour: idle * 60,
     };
   }
 
@@ -878,8 +889,9 @@ export async function computeExtraWorkPointsForSession(
     const activeUserIds = Array.from(paceCountByUser.keys());
     const points = paceTotalPoints;
     if (activeUserIds.length === 0 || points <= 0) {
-      rateBy15mBucket.set(bucket, 0);
-      return 0;
+      const idle = paceEmptyRatePerMin();
+      rateBy15mBucket.set(bucket, idle);
+      return idle;
     }
 
     // Эталон (100%): топ-1 по productivity (как в админке «Произв.»),
