@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
-import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
+import { computeMonthExtraWorkSummary } from '@/lib/ranking/computeMonthExtraWorkSummary';
 import { getStatisticsDateRange, getStartupWindow09MoscowUTC } from '@/lib/utils/moscowDate';
-import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
 import {
-  computeExtraWorkPointsForSession,
   getUsefulnessPctMap,
   getEffectiveDenomByActiveCount,
   isWorkingTimeMoscow,
@@ -15,6 +13,7 @@ import {
   EXTRA_WORK_WEIGHT_FLOOR,
   EXTRA_WORK_WEIGHT_SPREAD_MAX,
 } from '@/lib/ranking/extraWorkPoints';
+import { MIN_EXTRA_WORK_RATE_PER_HOUR } from '@/lib/extraWorkPublicConstants';
 import { getWeekdayCoefficientForDate, getWeekdayWorkloadCoefficients, getWeekdayCoefficientsPeriod } from '@/lib/ranking/weekdayCoefficients';
 import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
 import { computeExtraWorkElapsedSecNow, maybeHealElapsedSecBeforeLunch } from '@/lib/extraWorkElapsed';
@@ -58,17 +57,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Недостаточно прав доступа' }, { status: 403 });
     }
 
-    const { startDate, endDate } = getStatisticsDateRange('month');
+    const { startDate: monthStart, endDate: monthEnd } = getStatisticsDateRange('month');
 
-    const [stoppedSessions, weekRankings, activeSessionsRaw, allUserSettings, allWorkers, listConfigSetting, manualAdjustmentsSetting, errorPenaltiesSetting] = await Promise.all([
-      prisma.extraWorkSession.findMany({
-        where: {
-          status: 'stopped',
-          stoppedAt: { gte: startDate, lte: endDate },
-        },
-        select: { userId: true, elapsedSecBeforeLunch: true, user: { select: { id: true, name: true } } },
-      }),
-      aggregateRankings('month'),
+    const [activeSessionsRaw, allUserSettings, allWorkers, listConfigSetting, errorPenaltiesSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
         where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
         include: { user: { select: { id: true, name: true } } },
@@ -79,15 +70,18 @@ export async function GET(request: NextRequest) {
         select: { id: true, name: true },
       }),
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_list_config' } }),
-      prisma.systemSettings.findUnique({ where: { key: 'extra_work_manual_adjustments' } }),
       prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
     ]);
 
     const nowCheck = new Date();
-    for (const sess of activeSessionsRaw) {
-      await syncExtraWorkSessionLunchState(prisma, sess as any, nowCheck);
-      await maybeHealElapsedSecBeforeLunch(prisma, sess as any, nowCheck);
-    }
+    await Promise.all(
+      activeSessionsRaw.map((sess) =>
+        (async () => {
+          await syncExtraWorkSessionLunchState(prisma, sess as any, nowCheck);
+          await maybeHealElapsedSecBeforeLunch(prisma, sess as any, nowCheck);
+        })()
+      )
+    );
     const activeSessions = await prisma.extraWorkSession.findMany({
       where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
       include: { user: { select: { id: true, name: true } } },
@@ -112,23 +106,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const extraWorkHoursByUser = new Map<string, { userId: string; userName: string; extraWorkHours: number }>();
-    for (const s of stoppedSessions) {
-      const hours = (s.elapsedSecBeforeLunch || 0) / 3600;
-      if (!extraWorkHoursByUser.has(s.userId)) {
-        extraWorkHoursByUser.set(s.userId, {
-          userId: s.userId,
-          userName: s.user?.name ?? s.userId.slice(0, 8),
-          extraWorkHours: 0,
-        });
-      }
-      extraWorkHoursByUser.get(s.userId)!.extraWorkHours += hours;
-    }
+    const { pointsByUser: extraWorkPointsByUser, hoursFromStopped, baselineUserName: baselineFromExtra } =
+      await computeMonthExtraWorkSummary(activeSessions as any);
 
-    // weekRankings.allRankings уже включает ручные корректировки (из aggregateRankings)
-    const extraWorkPointsByUser = new Map<string, number>();
-    for (const r of weekRankings.allRankings) {
-      if (r.extraWorkPoints > 0) extraWorkPointsByUser.set(r.userId, r.extraWorkPoints);
+    const extraWorkHoursByUser = new Map<string, { userId: string; userName: string; extraWorkHours: number }>();
+    for (const [uid, row] of hoursFromStopped) {
+      extraWorkHoursByUser.set(uid, {
+        userId: uid,
+        userName: row.userName,
+        extraWorkHours: row.hours,
+      });
     }
 
     const now = new Date();
@@ -145,27 +132,9 @@ export async function GET(request: NextRequest) {
         });
       }
       extraWorkHoursByUser.get(sess.userId)!.extraWorkHours += hours;
-      const activePts = await computeExtraWorkPointsForSession(prisma, {
-        userId: sess.userId,
-        elapsedSecBeforeLunch: currentElapsedSec,
-        stoppedAt: now,
-        startedAt: sess.startedAt,
-        lunchStartedAt: sess.lunchStartedAt,
-        lunchEndsAt: sess.lunchEndsAt,
-      });
-      const prevPts = Math.max(0, extraWorkPointsByUser.get(sess.userId) ?? 0);
-      extraWorkPointsByUser.set(sess.userId, prevPts + activePts);
     }
 
-    // Ручные корректировки и штрафы за месяц (для полезности)
-    const { startDate: monthStart, endDate: monthEnd } = getStatisticsDateRange('month');
-    const manualAdjustmentsMonth = getManualAdjustmentsMapForPeriod(manualAdjustmentsSetting?.value ?? null, monthStart, monthEnd);
     const errorPenaltiesMonth = getErrorPenaltiesMapForPeriod(errorPenaltiesSetting?.value ?? null, monthStart, monthEnd);
-    for (const [uid, delta] of manualAdjustmentsMonth) {
-      if (!extraWorkPointsByUser.has(uid) && delta !== 0) {
-        extraWorkPointsByUser.set(uid, Math.max(0, delta));
-      }
-    }
 
     const allUserIds = new Set<string>();
     for (const u of extraWorkHoursByUser.values()) allUserIds.add(u.userId);
@@ -173,22 +142,52 @@ export async function GET(request: NextRequest) {
     for (const w of allWorkers) allUserIds.add(w.id);
 
     const extraWorkByUser = new Map<string, number>();
-    for (const r of weekRankings.allRankings) {
-      if ((r.extraWorkPoints ?? 0) > 0) extraWorkByUser.set(r.userId, r.extraWorkPoints);
+    for (const [uid, pts] of extraWorkPointsByUser) {
+      if (pts > 0) extraWorkByUser.set(uid, pts);
     }
-    const usefulnessPctMap = await getUsefulnessPctMap(prisma, [...allUserIds], now, extraWorkByUser, errorPenaltiesMonth);
+
+    const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+    const rateNow = now;
+    const start15m = new Date(rateNow.getTime() - FIFTEEN_MIN_MS);
+
+    const [
+      usefulnessPctMap,
+      dailyStats,
+      todayCoeff,
+      weekdayCoefficients,
+      startupRatePerMinRow,
+      grouped15m,
+    ] = await Promise.all([
+      getUsefulnessPctMap(prisma, [...allUserIds], now, extraWorkByUser, errorPenaltiesMonth),
+      prisma.dailyStats.findMany({
+        where: {
+          userId: { in: [...allUserIds] },
+          date: { gte: monthStart, lte: monthEnd },
+          dayPoints: { gt: 0 },
+        },
+        select: { userId: true, dayPoints: true, date: true },
+      }),
+      getWeekdayCoefficientForDate(prisma, now),
+      getWeekdayWorkloadCoefficients(prisma),
+      prisma.systemSettings.findUnique({ where: { key: 'extra_work_startup_rate_points_per_min' } }),
+      prisma.taskStatistics.groupBy({
+        by: ['userId'],
+        where: {
+          OR: [
+            { roleType: 'collector', task: { completedAt: { gte: start15m, lte: rateNow } } },
+            { roleType: 'checker', task: { confirmedAt: { gte: start15m, lte: rateNow } } },
+            { roleType: 'dictator', task: { confirmedAt: { gte: start15m, lte: rateNow } } },
+          ],
+        },
+        _sum: { orderPoints: true },
+      }),
+    ]);
+
+    const coeffPeriod = getWeekdayCoefficientsPeriod();
     // "Произв." для админ-таблицы: средняя по месяцу производительность,
     // нормированная по рабочим дням (5 раб. дней в неделе, 8 часов на день).
     // Это убирает скачки из-за текущего темпа последних 15 минут.
     const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
-    const dailyStats = await prisma.dailyStats.findMany({
-      where: {
-        userId: { in: [...allUserIds] },
-        date: { gte: monthStart, lte: monthEnd },
-        dayPoints: { gt: 0 },
-      },
-      select: { userId: true, dayPoints: true, date: true },
-    });
 
     const pointsByUser = new Map<string, number>();
     const workingDaysByUser = new Map<string, number>();
@@ -214,33 +213,15 @@ export async function GET(request: NextRequest) {
 
     // Инстантная ставка (баллы/час) для колонки «Баллы/час» в таблице.
     // Считается по последним 15 минутам: points/15 × (вес/Σвесов активных).
-    const FIFTEEN_MIN_MS = 15 * 60 * 1000;
-    const rateNow = now;
     const rateIsWorkingNow = isWorkingTimeMoscow(rateNow);
     const { start: startupStart, end: startupEnd } = getStartupWindow09MoscowUTC(rateNow);
     const inStartupWindow = rateNow.getTime() >= startupStart.getTime() && rateNow.getTime() < startupEnd.getTime();
 
-    const startupRatePerMinRow = await prisma.systemSettings.findUnique({
-      where: { key: 'extra_work_startup_rate_points_per_min' },
-    });
     const startupRatePerMinRaw = startupRatePerMinRow?.value ? parseFloat(startupRatePerMinRow.value) : NaN;
     const startupRatePerMin = Number.isFinite(startupRatePerMinRaw) && startupRatePerMinRaw >= 0 ? startupRatePerMinRaw : 0.05;
 
-    const start15m = new Date(rateNow.getTime() - FIFTEEN_MIN_MS);
-    const grouped = await prisma.taskStatistics.groupBy({
-      by: ['userId'],
-      where: {
-        OR: [
-          { roleType: 'collector', task: { completedAt: { gte: start15m, lte: rateNow } } },
-          { roleType: 'checker', task: { confirmedAt: { gte: start15m, lte: rateNow } } },
-          { roleType: 'dictator', task: { confirmedAt: { gte: start15m, lte: rateNow } } },
-        ],
-      },
-      _sum: { orderPoints: true },
-    });
-
-    const points15m = grouped.reduce((s, x) => s + (x._sum.orderPoints ?? 0), 0);
-    const activeUserIds = grouped.map((x) => x.userId);
+    const points15m = grouped15m.reduce((s, x) => s + (x._sum.orderPoints ?? 0), 0);
+    const activeUserIds = grouped15m.map((x) => x.userId);
 
     const baseProdByUser = new Map<string, number>();
     let baseProdTop1 = 0;
@@ -278,15 +259,12 @@ export async function GET(request: NextRequest) {
           ratePerHour = ratePerMin * 60;
         }
       }
-      // Для отображения в админ-таблице: минимум 40 б/час независимо от текущего темпа.
-      const displayed = Math.max(40, ratePerHour);
+      // Для отображения в админ-таблице: минимум как в формуле доп.работы.
+      const displayed = Math.max(MIN_EXTRA_WORK_RATE_PER_HOUR, ratePerHour);
       ratePerHourByUser.set(userId, Math.round(displayed * 100) / 100);
     }
 
-    const baselineUserName = weekRankings.baselineUserName ?? null;
-    const todayCoeff = await getWeekdayCoefficientForDate(prisma, now);
-    const weekdayCoefficients = await getWeekdayWorkloadCoefficients(prisma);
-    const coeffPeriod = getWeekdayCoefficientsPeriod();
+    const baselineUserName = baselineFromExtra ?? null;
 
     const sessionsByUser = new Map(activeSessions.map((s) => [s.userId, s]));
 
