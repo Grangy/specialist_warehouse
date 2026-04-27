@@ -40,6 +40,8 @@ async function main() {
   const dateStr = parseDateArg();
   const { startDate, endDate } = getStatisticsDateRangeForDate(dateStr);
   const applyFix = process.argv.includes('--fix-elapsed');
+  /** Сессия завершена по времени, но в БД не stopped — не попадает в месячные доп.баллы */
+  const applyStuckStop = process.argv.includes('--fix-stuck-stopped');
   const createArgs = (() => {
     const out: string[] = [];
     let i = 0;
@@ -123,6 +125,33 @@ async function main() {
         `  elapsedSecBeforeLunch: ${(s.elapsedSecBeforeLunch ?? 0).toFixed(1)}  → по таймлайну: ${w ?? 'n/a'}\n` +
         `  баллы (формула): ${pts.toFixed(1)}`
     );
+    if (applyStuckStop && s.stoppedAt && s.status !== 'stopped') {
+      const w2 = w ?? 0;
+      if (!process.argv.includes('--apply-stuck')) {
+        console.log(
+          `  [fix-stuck] нужно: status=stopped, elapsedSecBeforeLunch=${w2} (сейчас status=${s.status}) — запусти с --apply-stuck`
+        );
+      } else {
+        await prisma.extraWorkSession.update({
+          where: { id: s.id },
+          data: {
+            status: 'stopped',
+            elapsedSecBeforeLunch: w2,
+            stoppedAt: s.stoppedAt,
+          },
+        });
+        const pts2 = await computeExtraWorkPointsForSession(prisma, {
+          userId: s.userId,
+          elapsedSecBeforeLunch: w2,
+          stoppedAt: s.stoppedAt!,
+          startedAt: s.startedAt,
+          lunchStartedAt: s.lunchStartedAt,
+          lunchEndsAt: s.lunchEndsAt,
+          pointsOverride: s.pointsOverride,
+        });
+        console.log(`  [APPLIED stuck→stopped] баллы: ${pts2.toFixed(1)}`);
+      }
+    }
     if (s.status === 'stopped' && w != null && w > 0 && applyFix) {
       const cur = s.elapsedSecBeforeLunch ?? 0;
       if (Math.abs(cur - w) > 2) {
