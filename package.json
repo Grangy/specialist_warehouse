@@ -98,7 +98,8 @@
     "benchmark:api-latency": "tsx scripts/benchmark-api-latency.ts",
     "test:benchmark-api-latency": "tsx scripts/benchmark-api-latency.ts --self-test",
     "audit:http-latency": "npm run benchmark:api-latency",
-    "warm:statistics": "tsx scripts/warm-statistics-endpoints.ts"
+    "warm:statistics": "tsx scripts/warm-statistics-endpoints.ts",
+    "ssh:sklad3-key": "./scripts/ssh-copy-id-shared-to-sklad3.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

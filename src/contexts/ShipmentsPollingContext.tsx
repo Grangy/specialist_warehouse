@@ -5,11 +5,11 @@ import React, { createContext, useCallback, useRef, useState, useMemo, useEffect
 const POLL_URL = '/api/shipments/poll';
 
 /** Базовый интервал опроса (мс) — прогресс сборки/проверки у других пользователей */
-const POLL_INTERVAL_MS = 18_000;
+const POLL_INTERVAL_MS = 25_000;
 /** Максимальный интервал при backoff (мс) */
 const POLL_INTERVAL_MAX_MS = 120_000;
 /** После скольких ответов "нет изменений" подряд увеличивать интервал */
-const BACKOFF_AFTER_NO_UPDATES = 5;
+const BACKOFF_AFTER_NO_UPDATES = 3;
 /** Слияние вызовов подписчиков при hasUpdates (меньше дублей GET /api/shipments) */
 const NOTIFY_DEBOUNCE_MS = 400;
 
@@ -52,6 +52,7 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
   const currentIntervalMsRef = useRef(POLL_INTERVAL_MS);
   /** Не запускать второй poll, пока предыдущий не завершился (убирает дубли в nginx) */
   const pollInFlightRef = useRef(false);
+  const lastEtagRef = useRef<string | null>(null);
   const notifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [lastPollResult, setLastPollResult] = useState<LastPollResult | null>(null);
@@ -104,8 +105,25 @@ export function ShipmentsPollingProvider({ children }: { children: React.ReactNo
     const url = since ? `${POLL_URL}?since=${encodeURIComponent(since)}` : POLL_URL;
 
     try {
-      const res = await fetch(url, { credentials: 'include' });
+      const res = await fetch(url, {
+        credentials: 'include',
+        headers: lastEtagRef.current ? { 'If-None-Match': lastEtagRef.current } : undefined,
+      });
+      if (res.status === 304) {
+        // Ничего не поменялось (ETag). Считаем как "no updates".
+        noUpdatesCountRef.current += 1;
+        if (noUpdatesCountRef.current >= BACKOFF_AFTER_NO_UPDATES) {
+          noUpdatesCountRef.current = 0;
+          currentIntervalMsRef.current = Math.min(currentIntervalMsRef.current * 2, POLL_INTERVAL_MAX_MS);
+          stopPolling();
+          startPolling();
+        }
+        return;
+      }
       if (!res.ok) return;
+
+      const etag = res.headers.get('etag');
+      if (etag) lastEtagRef.current = etag;
       const data = await res.json();
       setLastPollResult({
         hasUpdates: Boolean(data.hasUpdates),

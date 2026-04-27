@@ -11,8 +11,8 @@ interface UseCollectOptions {
   onClose?: () => void | Promise<void>;
 }
 
-const HEARTBEAT_INTERVAL = 8000; // 8 с (блокировка снимается по 30 с без heartbeat)
-const HEARTBEAT_FAILURES_TO_EXIT = 4; // 4 сбоя подряд (~32 сек без связи) → выход с ошибкой
+const HEARTBEAT_INTERVAL = 12_000; // 12 с (блокировка снимается по 30 с без heartbeat)
+const HEARTBEAT_FAILURES_TO_EXIT = 3; // 3 сбоя подряд (~36 сек без связи) → выход с ошибкой
 
 export function useCollect(options?: UseCollectOptions) {
   const { onClose } = options || {};
