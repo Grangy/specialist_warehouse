@@ -3,6 +3,8 @@
 import { apiClient } from './client';
 import type { Shipment, LockResponse } from '@/types';
 
+const shipmentsListCache = new Map<string, { etag: string | null; data: Shipment[] }>();
+
 export const shipmentsApi = {
   /**
    * Получить все заказы
@@ -12,8 +14,45 @@ export const shipmentsApi = {
     if (params?.status) queryParams.append('status', params.status);
     
     const query = queryParams.toString();
-    // Используем относительный путь, так как baseURL уже содержит /api
-    return apiClient.get<Shipment[]>(`/shipments${query ? `?${query}` : ''}`);
+    const cacheKey = `shipments${query ? `?${query}` : ''}`;
+    const cached = shipmentsListCache.get(cacheKey) ?? null;
+
+    // Для списка заказов используем ETag/304 (сервер поддерживает If-None-Match).
+    // Это радикально снижает нагрузку при частых обновлениях списка.
+    const res = await fetch(`/api/${cacheKey}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        ...(cached?.etag ? { 'If-None-Match': cached.etag } : {}),
+        'Cache-Control': 'no-store',
+      },
+    });
+
+    if (res.status === 304 && cached) {
+      return cached.data;
+    }
+    if (!res.ok) {
+      let message = `HTTP error! status: ${res.status}`;
+      try {
+        const t = await res.text();
+        if (t) {
+          try {
+            const j = JSON.parse(t) as any;
+            message = j?.message || j?.error || message;
+          } catch {
+            message = t;
+          }
+        }
+      } catch {
+        // ignore
+      }
+      throw { message, status: res.status } as any;
+    }
+
+    const data = (await res.json()) as Shipment[];
+    const etag = res.headers.get('etag');
+    shipmentsListCache.set(cacheKey, { etag, data });
+    return data;
   },
 
   /**

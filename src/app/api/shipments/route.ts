@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, canAccessStatus } from '@/lib/middleware';
 import { cleanupExpiredSessionsIfDue, verifyPassword, getSessionUser } from '@/lib/auth';
@@ -15,6 +16,11 @@ export const dynamic = 'force-dynamic';
 const IDLE_NO_PROGRESS_MS = 5 * 60 * 1000;
 /** 15 минут с момента последнего действия при начатой сборке — другой сборщик может перехватить */
 const IDLE_WITH_PROGRESS_MS = 15 * 60 * 1000;
+
+function computeWeakEtag(input: string): string {
+  const hash = crypto.createHash('sha1').update(input).digest('hex');
+  return `W/"${hash}"`;
+}
 
 function isWholesaleCustomer(customerName: string): boolean {
   const normalized = String(customerName || '')
@@ -629,6 +635,29 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
 
+    // Условное кеширование: если данные не менялись (sync_touch), отдаём 304 и не выполняем тяжёлые запросы.
+    const syncRow = await prisma.syncTouch
+      .findUnique({ where: { id: 1 }, select: { touchedAt: true } })
+      .catch(() => null);
+    const touched = syncRow?.touchedAt?.getTime() ?? 0;
+    const now = new Date();
+    const todayStr = getMoscowDateString(now);
+    const dayOfWeekForEtag = (now.getDay() + 6) % 7;
+    const currentDayForEtag = Math.min(dayOfWeekForEtag, 4);
+    const isWorkdayWindow = isBeforeEndOfWorkingDay(now) ? 1 : 0;
+    const etagSeed = `shipments|t=${touched}|d=${todayStr}|wd=${currentDayForEtag}|work=${isWorkdayWindow}|status=${status ?? ''}|role=${user.role}`;
+    const etag = computeWeakEtag(etagSeed);
+    const inm = request.headers.get('if-none-match');
+    if (inm && inm === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      });
+    }
+
     let where: any = {};
 
     // Фильтрация по статусу с учетом прав доступа
@@ -844,7 +873,12 @@ export async function GET(request: NextRequest) {
         };
       });
 
-      return NextResponse.json(result);
+      return NextResponse.json(result, {
+        headers: {
+          ETag: etag,
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      });
     }
 
     // Используем уже созданные переменные priorityMap и collectorVisibleRegions
@@ -1325,11 +1359,21 @@ export async function GET(request: NextRequest) {
         return sortTaskByPriorityOnly(a, b);
       });
       
-      return NextResponse.json(filteredTasks);
+      return NextResponse.json(filteredTasks, {
+        headers: {
+          ETag: etag,
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      });
     }
 
     // Админ, проверяльщик, склад_3: возвращаем полный список заданий (без фильтра по collector_id)
-    return NextResponse.json(tasks);
+    return NextResponse.json(tasks, {
+      headers: {
+        ETag: etag,
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
+    });
   } catch (error: any) {
     console.error('Ошибка при получении заказов:', error);
     console.error('Детали ошибки:', {

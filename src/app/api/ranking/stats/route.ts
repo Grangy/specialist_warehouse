@@ -4,13 +4,14 @@ import { requireAuth } from '@/lib/middleware';
 import { getAnimalLevel } from '@/lib/ranking/levels';
 import {
   computeExtraWorkPointsForSessions,
-  computeExtraWorkPointsMap,
   computeExtraWorkPointsForSession,
 } from '@/lib/ranking/extraWorkPoints';
-import { getManualAdjustmentForPeriod, getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
-import { getErrorPenaltyForPeriod, getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
+import { getManualAdjustmentForPeriod } from '@/lib/ranking/manualAdjustments';
+import { getErrorPenaltyForPeriod } from '@/lib/ranking/errorPenalties';
 import { getStatisticsDateRange } from '@/lib/utils/moscowDate';
 import { computeExtraWorkElapsedSecNow } from '@/lib/extraWorkElapsed';
+import { loadStatsSnapshotFromDb, statsSnapshotCacheKey } from '@/lib/statistics/statsSnapshotStore';
+import crypto from 'crypto';
 
 function inRange(d: Date | null | undefined, start: Date, end: Date): boolean {
   if (!d) return false;
@@ -62,7 +63,12 @@ export const dynamic = 'force-dynamic';
 
 /** Кэш тяжёлого ответа в памяти процесса (снижает CPU от опроса в шапке раз в минуту) */
 const RANKING_STATS_CACHE_TTL_MS = 45_000;
-const rankingStatsResponseCache = new Map<string, { expiresAt: number; body: unknown }>();
+const rankingStatsResponseCache = new Map<string, { expiresAt: number; body: unknown; etag: string }>();
+
+function computeWeakEtag(input: string): string {
+  const hash = crypto.createHash('sha1').update(input).digest('hex');
+  return `W/"${hash}"`;
+}
 
 /**
  * GET /api/ranking/stats
@@ -78,7 +84,22 @@ export async function GET(request: NextRequest) {
 
     const cached = rankingStatsResponseCache.get(user.id);
     if (cached && cached.expiresAt > Date.now()) {
-      return NextResponse.json(cached.body);
+      const inm = request.headers.get('if-none-match');
+      if (inm && inm === cached.etag) {
+        return new NextResponse(null, {
+          status: 304,
+          headers: {
+            ETag: cached.etag,
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+          },
+        });
+      }
+      return NextResponse.json(cached.body, {
+        headers: {
+          ETag: cached.etag,
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      });
     }
 
     // Получаем текущую дату
@@ -91,6 +112,137 @@ export async function GET(request: NextRequest) {
     const currentMonth = now.getMonth() + 1;
     const monthStart = new Date(currentYear, currentMonth - 1, 1);
     const monthEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999);
+
+    // Fast path: берём уже агрегированные данные из снапшотов рейтинга (stats_snapshots).
+    // Это убирает тяжёлые findMany по task_statistics (главный источник OOM/502 под нагрузкой).
+    const [snapshotTodayFast, snapshotMonthFast, dailyStatsForAchievementsFast] = await Promise.all([
+      loadStatsSnapshotFromDb(statsSnapshotCacheKey('today')),
+      loadStatsSnapshotFromDb(statsSnapshotCacheKey('month')),
+      prisma.dailyStats
+        .findUnique({
+          where: {
+            userId_date: {
+              userId: user.id,
+              date: today,
+            },
+          },
+          include: { achievements: true },
+        })
+        .catch(() => null),
+    ]);
+
+    const entryTodayFast =
+      snapshotTodayFast?.data?.allRankings?.find((e) => e.userId === user.id) ?? null;
+    const entryMonthFast =
+      snapshotMonthFast?.data?.allRankings?.find((e) => e.userId === user.id) ?? null;
+
+    if (snapshotTodayFast && snapshotMonthFast) {
+      let dailyAchievements: { type: string; value: unknown }[] = [];
+      if (dailyStatsForAchievementsFast?.achievements?.length) {
+        dailyAchievements = dailyStatsForAchievementsFast.achievements.map(
+          (a: { achievementType: string; achievementValue: unknown }) => ({
+            type: a.achievementType,
+            value: a.achievementValue,
+          })
+        );
+      }
+
+      const buildRoleView = (
+        e: NonNullable<typeof entryTodayFast>,
+        view: 'collector' | 'checker'
+      ) => {
+        const basePoints =
+          view === 'collector' ? (e.collectorPoints + e.dictatorPoints) : e.checkerPoints;
+        const points = Math.max(0, basePoints + e.extraWorkPoints + e.errorPenalty);
+        return {
+          points,
+          dictatorPoints: view === 'collector' ? e.dictatorPoints : 0,
+          extraWorkPoints: e.extraWorkPoints,
+          positions: e.positions,
+          units: e.units,
+          orders: e.orders,
+          pph: e.pph,
+          uph: e.uph,
+          efficiency: e.efficiency,
+        };
+      };
+
+      const dailyRole = user.role === 'checker' ? 'checker' : 'collector';
+      const monthlyRole = user.role === 'checker' ? 'checker' : 'collector';
+
+      const responseBody = {
+        daily: entryTodayFast
+          ? (() => {
+              const dailyData = buildRoleView(entryTodayFast, dailyRole);
+              return {
+                points: dailyData.points,
+                dictatorPoints: dailyData.dictatorPoints,
+                extraWorkPoints: dailyData.extraWorkPoints,
+                rank: entryTodayFast.rank,
+                levelName: entryTodayFast.level?.name ?? null,
+                levelEmoji: entryTodayFast.level?.emoji ?? null,
+                levelDescription: null,
+                levelColor: entryTodayFast.level?.color ?? null,
+                positions: dailyData.positions,
+                units: dailyData.units,
+                orders: dailyData.orders,
+                pph: dailyData.pph,
+                uph: dailyData.uph,
+                efficiency: dailyData.efficiency,
+                achievements: dailyAchievements,
+                collector: user.role === 'admin' ? buildRoleView(entryTodayFast, 'collector') : null,
+                checker: user.role === 'admin' ? buildRoleView(entryTodayFast, 'checker') : null,
+              };
+            })()
+          : null,
+        monthly: entryMonthFast
+          ? (() => {
+              const monthlyData = buildRoleView(entryMonthFast, monthlyRole);
+              return {
+                points: monthlyData.points,
+                dictatorPoints: monthlyData.dictatorPoints,
+                extraWorkPoints: monthlyData.extraWorkPoints,
+                rank: entryMonthFast.rank,
+                levelName: entryMonthFast.level?.name ?? null,
+                levelEmoji: entryMonthFast.level?.emoji ?? null,
+                levelDescription: null,
+                levelColor: entryMonthFast.level?.color ?? null,
+                positions: monthlyData.positions,
+                units: monthlyData.units,
+                orders: monthlyData.orders,
+                pph: monthlyData.pph,
+                uph: monthlyData.uph,
+                efficiency: monthlyData.efficiency,
+                collector: user.role === 'admin' ? buildRoleView(entryMonthFast, 'collector') : null,
+                checker: user.role === 'admin' ? buildRoleView(entryMonthFast, 'checker') : null,
+              };
+            })()
+          : null,
+      };
+
+      const etag = computeWeakEtag(JSON.stringify(responseBody));
+      rankingStatsResponseCache.set(user.id, {
+        expiresAt: Date.now() + RANKING_STATS_CACHE_TTL_MS,
+        body: responseBody,
+        etag,
+      });
+      const inm = request.headers.get('if-none-match');
+      if (inm && inm === etag) {
+        return new NextResponse(null, {
+          status: 304,
+          headers: {
+            ETag: etag,
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+          },
+        });
+      }
+      return NextResponse.json(responseBody, {
+        headers: {
+          ETag: etag,
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      });
+    }
 
     const taskSelectUser = {
       checkerId: true,
@@ -132,20 +284,13 @@ export async function GET(request: NextRequest) {
     const [
       userStatsTodayRaw,
       userStatsMonthRaw,
-      allCollectorStatsToday,
-      allCollectorDictatorStatsToday,
-      allCheckerStatsToday,
-      allCollectorStatsMonth,
-      allCollectorDictatorStatsMonth,
-      allCheckerStatsMonth,
       extraWorkToday,
       extraWorkMonth,
       activeSessionsUser,
-      activeSessionsAll,
-      allExtraWorkToday,
-      allExtraWorkMonth,
       dailyStatsForAchievements,
       rankingSettingsRows,
+      snapshotToday,
+      snapshotMonth,
     ] = await Promise.all([
       prisma.taskStatistics.findMany({
         where: { userId: user.id, OR: userTaskOrToday },
@@ -154,60 +299,6 @@ export async function GET(request: NextRequest) {
       prisma.taskStatistics.findMany({
         where: { userId: user.id, OR: userTaskOrMonth },
         include: { task: { select: taskSelectUser } },
-      }),
-      prisma.taskStatistics.findMany({
-        where: {
-          roleType: 'collector',
-          task: { completedAt: { gte: today, lte: todayEnd } },
-        },
-        include: { user: { select: { id: true, role: true } } },
-      }),
-      prisma.taskStatistics.findMany({
-        where: {
-          roleType: 'collector',
-          task: {
-            dictatorId: { not: null },
-            confirmedAt: { gte: today, lte: todayEnd },
-          },
-        },
-        include: {
-          user: { select: { id: true, role: true } },
-          task: { select: { dictatorId: true, checkerId: true } },
-        },
-      }),
-      prisma.taskStatistics.findMany({
-        where: {
-          roleType: 'checker',
-          task: { confirmedAt: { gte: today, lte: todayEnd } },
-        },
-        include: { user: { select: { id: true, role: true } } },
-      }),
-      prisma.taskStatistics.findMany({
-        where: {
-          roleType: 'collector',
-          task: { completedAt: { gte: monthStart, lte: monthEnd } },
-        },
-        include: { user: { select: { id: true, role: true } } },
-      }),
-      prisma.taskStatistics.findMany({
-        where: {
-          roleType: 'collector',
-          task: {
-            dictatorId: { not: null },
-            confirmedAt: { gte: monthStart, lte: monthEnd },
-          },
-        },
-        include: {
-          user: { select: { id: true, role: true } },
-          task: { select: { dictatorId: true, checkerId: true } },
-        },
-      }),
-      prisma.taskStatistics.findMany({
-        where: {
-          roleType: 'checker',
-          task: { confirmedAt: { gte: monthStart, lte: monthEnd } },
-        },
-        include: { user: { select: { id: true, role: true } } },
       }),
       prisma.extraWorkSession.findMany({
         where: {
@@ -228,17 +319,6 @@ export async function GET(request: NextRequest) {
       prisma.extraWorkSession.findMany({
         where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
       }),
-      prisma.extraWorkSession.findMany({
-        where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
-      }),
-      prisma.extraWorkSession.findMany({
-        where: { status: 'stopped', stoppedAt: { gte: today, lte: todayEnd } },
-        select: extraWorkSelect,
-      }),
-      prisma.extraWorkSession.findMany({
-        where: { status: 'stopped', stoppedAt: { gte: monthStart, lte: monthEnd } },
-        select: extraWorkSelect,
-      }),
       prisma.dailyStats
         .findUnique({
           where: {
@@ -253,6 +333,8 @@ export async function GET(request: NextRequest) {
       prisma.systemSettings.findMany({
         where: { key: { in: ['extra_work_manual_adjustments', 'error_penalty_adjustments'] } },
       }),
+      loadStatsSnapshotFromDb(statsSnapshotCacheKey('today')),
+      loadStatsSnapshotFromDb(statsSnapshotCacheKey('month')),
     ]);
 
     const splitToday = splitUserTaskStatsForPeriod(userStatsTodayRaw, user.id, today, todayEnd);
@@ -302,11 +384,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const [dailyStopped, monthlyStopped, extraWorkTodayMap, extraWorkMonthMap] = await Promise.all([
+    const [dailyStopped, monthlyStopped] = await Promise.all([
       computeExtraWorkPointsForSessions(prisma, extraWorkToday),
       computeExtraWorkPointsForSessions(prisma, extraWorkMonth),
-      computeExtraWorkPointsMap(prisma, allExtraWorkToday),
-      computeExtraWorkPointsMap(prisma, allExtraWorkMonth),
     ]);
 
     // Добавляем баллы от активных сессий (real-time) — тот же контракт, что aggregateRankings / my-session
@@ -341,34 +421,12 @@ export async function GET(request: NextRequest) {
     const activePtsSum = userActivePtsList.reduce((a: number, b: number) => a + b, 0);
     let dailyExtraWorkPoints = dailyStopped + activePtsSum;
     let monthlyExtraWorkPoints = monthlyStopped + activePtsSum;
-
-    // Добавляем баллы активных сессий в карты для рангов (все пользователи)
-    const allActivePtsList = await Promise.all(
-      activeSessionsAll.map((sess: ActiveEwSess & { userId: string }) =>
-        computeExtraWorkPointsForSession(
-          prisma,
-          activeSessionArgs(sess, sess.userId)
-        )
-      )
-    );
-    for (let i = 0; i < activeSessionsAll.length; i++) {
-      const sess = activeSessionsAll[i];
-      const pts = allActivePtsList[i] ?? 0;
-      const curToday = extraWorkTodayMap.get(sess.userId) ?? 0;
-      extraWorkTodayMap.set(sess.userId, curToday + pts);
-      const curMonth = extraWorkMonthMap.get(sess.userId) ?? 0;
-      extraWorkMonthMap.set(sess.userId, curMonth + pts);
-    }
     const { startDate: todayStart, endDate: todayEndMsk } = getStatisticsDateRange('today');
     const { startDate: monthStartMsk, endDate: monthEndMsk } = getStatisticsDateRange('month');
     const manualDeltaToday = getManualAdjustmentForPeriod(manualAdjustmentsSetting?.value ?? null, user.id, todayStart, todayEndMsk);
     const manualDeltaMonth = getManualAdjustmentForPeriod(manualAdjustmentsSetting?.value ?? null, user.id, monthStartMsk, monthEndMsk);
     const errorPenaltyToday = getErrorPenaltyForPeriod(errorPenaltiesSetting?.value ?? null, user.id, todayStart, todayEndMsk);
     const errorPenaltyMonth = getErrorPenaltyForPeriod(errorPenaltiesSetting?.value ?? null, user.id, monthStartMsk, monthEndMsk);
-    const manualAdjustmentsToday = getManualAdjustmentsMapForPeriod(manualAdjustmentsSetting?.value ?? null, todayStart, todayEndMsk);
-    const manualAdjustmentsMonth = getManualAdjustmentsMapForPeriod(manualAdjustmentsSetting?.value ?? null, monthStartMsk, monthEndMsk);
-    const errorPenaltiesToday = getErrorPenaltiesMapForPeriod(errorPenaltiesSetting?.value ?? null, todayStart, todayEndMsk);
-    const errorPenaltiesMonth = getErrorPenaltiesMapForPeriod(errorPenaltiesSetting?.value ?? null, monthStartMsk, monthEndMsk);
     const dailyExtraWorkPointsWithManual = Math.max(0, dailyExtraWorkPoints + manualDeltaToday + errorPenaltyToday);
     const monthlyExtraWorkPointsWithManual = Math.max(0, monthlyExtraWorkPoints + manualDeltaMonth + errorPenaltyMonth);
 
@@ -508,248 +566,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Ранги: allCollectorStatsToday / allCollectorDictatorStatsToday / allCheckerStatsToday загружены одним батчем выше
-    const collectorDictatorStatsTodayFiltered = allCollectorDictatorStatsToday.filter(
-      (s: (typeof allCollectorDictatorStatsToday)[number]) => {
-      const t = s.task as { dictatorId?: string; checkerId?: string };
-      if (s.userId !== t?.dictatorId) return false;
-      const isSelfCheck = t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId;
-      return !isSelfCheck;
-    }
-    );
-
-    // Группируем по пользователям и рассчитываем ранги для сборщиков за сегодня (сборка + баллы диктовщика)
-    const collectorMapToday = new Map<string, number>();
-    for (const stat of allCollectorStatsToday) {
-      if (stat.orderPoints && stat.orderPoints > 0) {
-        const current = collectorMapToday.get(stat.userId) || 0;
-        collectorMapToday.set(stat.userId, current + stat.orderPoints);
-      }
-    }
-    for (const stat of collectorDictatorStatsTodayFiltered) {
-      if (stat.orderPoints && stat.orderPoints > 0) {
-        const current = collectorMapToday.get(stat.userId) || 0;
-        collectorMapToday.set(stat.userId, current + stat.orderPoints);
-      }
-    }
-    for (const [uid, pts] of extraWorkTodayMap) {
-      const cur = collectorMapToday.get(uid) || 0;
-      collectorMapToday.set(uid, cur + pts + (manualAdjustmentsToday.get(uid) ?? 0));
-    }
-    for (const [uid, delta] of manualAdjustmentsToday) {
-      if (!extraWorkTodayMap.has(uid)) {
-        const cur = collectorMapToday.get(uid) || 0;
-        collectorMapToday.set(uid, cur + delta);
-      }
-    }
-    for (const [uid, delta] of errorPenaltiesToday) {
-      const cur = collectorMapToday.get(uid) ?? 0;
-      collectorMapToday.set(uid, cur + delta);
-    }
-    const collectorPointsToday = Array.from(collectorMapToday.values()).filter(p => p > 0);
-    // Рассчитываем ранг для сборщика (если пользователь сборщик или админ с данными сборщика)
-    if (collectorPointsToday.length > 0 && dailyCollector && (user.role === 'collector' || user.role === 'admin')) {
-      const sorted = [...collectorPointsToday].sort((a, b) => a - b);
-      const percentiles = [
-        sorted[Math.floor(sorted.length * 0.1)],
-        sorted[Math.floor(sorted.length * 0.2)],
-        sorted[Math.floor(sorted.length * 0.3)],
-        sorted[Math.floor(sorted.length * 0.4)],
-        sorted[Math.floor(sorted.length * 0.5)],
-        sorted[Math.floor(sorted.length * 0.6)],
-        sorted[Math.floor(sorted.length * 0.7)],
-        sorted[Math.floor(sorted.length * 0.8)],
-        sorted[Math.floor(sorted.length * 0.9)],
-      ];
-      let rank = 10;
-      for (let i = 0; i < percentiles.length; i++) {
-        if (dailyCollector.points <= percentiles[i]) {
-          rank = i + 1;
-          break;
-        }
-      }
-      dailyRank = rank;
-      dailyLevel = getAnimalLevel(rank);
-    }
-
-    // Группируем по пользователям и рассчитываем ранги для проверяльщиков за сегодня
-    // Для проверяльщиков суммируем сборки + проверки
-    const checkerMapToday = new Map<string, number>();
-    // Добавляем баллы от проверок
-    for (const stat of allCheckerStatsToday) {
-      if (stat.orderPoints && stat.orderPoints > 0) {
-        const current = checkerMapToday.get(stat.userId) || 0;
-        checkerMapToday.set(stat.userId, current + stat.orderPoints);
-      }
-    }
-    // Добавляем баллы от сборок для проверяльщиков
-    for (const stat of allCollectorStatsToday) {
-      if (stat.user.role === 'checker' && stat.orderPoints && stat.orderPoints > 0) {
-        const current = checkerMapToday.get(stat.userId) || 0;
-        checkerMapToday.set(stat.userId, current + stat.orderPoints);
-      }
-    }
-    for (const [uid, pts] of extraWorkTodayMap) {
-      const cur = checkerMapToday.get(uid) || 0;
-      checkerMapToday.set(uid, cur + pts + (manualAdjustmentsToday.get(uid) ?? 0));
-    }
-    for (const [uid, delta] of manualAdjustmentsToday) {
-      if (!extraWorkTodayMap.has(uid)) {
-        const cur = checkerMapToday.get(uid) || 0;
-        checkerMapToday.set(uid, cur + delta);
-      }
-    }
-    for (const [uid, delta] of errorPenaltiesToday) {
-      const cur = checkerMapToday.get(uid) ?? 0;
-      checkerMapToday.set(uid, cur + delta);
-    }
-    const checkerPointsToday = Array.from(checkerMapToday.values()).filter(p => p > 0);
-    // Рассчитываем ранг для проверяльщика (если пользователь проверяльщик)
-    // Для админа показываем ранг сборщика по умолчанию (если есть данные сборщика)
-    if (checkerPointsToday.length > 0 && dailyChecker && user.role === 'checker') {
-      const sorted = [...checkerPointsToday].sort((a, b) => a - b);
-      const percentiles = [
-        sorted[Math.floor(sorted.length * 0.1)],
-        sorted[Math.floor(sorted.length * 0.2)],
-        sorted[Math.floor(sorted.length * 0.3)],
-        sorted[Math.floor(sorted.length * 0.4)],
-        sorted[Math.floor(sorted.length * 0.5)],
-        sorted[Math.floor(sorted.length * 0.6)],
-        sorted[Math.floor(sorted.length * 0.7)],
-        sorted[Math.floor(sorted.length * 0.8)],
-        sorted[Math.floor(sorted.length * 0.9)],
-      ];
-      let rank = 10;
-      for (let i = 0; i < percentiles.length; i++) {
-        if (dailyChecker.points <= percentiles[i]) {
-          rank = i + 1;
-          break;
-        }
-      }
-      dailyRank = rank;
-      dailyLevel = getAnimalLevel(rank);
-    }
-
-    const collectorDictatorStatsMonthFiltered = allCollectorDictatorStatsMonth.filter(
-      (s: (typeof allCollectorDictatorStatsMonth)[number]) => {
-        const t = s.task as { dictatorId?: string; checkerId?: string };
-        if (s.userId !== t?.dictatorId) return false;
-        const isSelfCheck = t?.checkerId && t?.dictatorId && t.checkerId === t.dictatorId;
-        return !isSelfCheck;
-      }
-    );
-
-    // Группируем по пользователям и рассчитываем ранги для сборщиков за месяц (сборка + баллы диктовщика)
-    const collectorMapMonth = new Map<string, number>();
-    for (const stat of allCollectorStatsMonth) {
-      if (stat.orderPoints && stat.orderPoints > 0) {
-        const current = collectorMapMonth.get(stat.userId) || 0;
-        collectorMapMonth.set(stat.userId, current + stat.orderPoints);
-      }
-    }
-    for (const stat of collectorDictatorStatsMonthFiltered) {
-      if (stat.orderPoints && stat.orderPoints > 0) {
-        const current = collectorMapMonth.get(stat.userId) || 0;
-        collectorMapMonth.set(stat.userId, current + stat.orderPoints);
-      }
-    }
-    for (const [uid, pts] of extraWorkMonthMap) {
-      const cur = collectorMapMonth.get(uid) || 0;
-      collectorMapMonth.set(uid, cur + pts + (manualAdjustmentsMonth.get(uid) ?? 0));
-    }
-    for (const [uid, delta] of manualAdjustmentsMonth) {
-      if (!extraWorkMonthMap.has(uid)) {
-        const cur = collectorMapMonth.get(uid) || 0;
-        collectorMapMonth.set(uid, cur + delta);
-      }
-    }
-    for (const [uid, delta] of errorPenaltiesMonth) {
-      const cur = collectorMapMonth.get(uid) ?? 0;
-      collectorMapMonth.set(uid, cur + delta);
-    }
-    const collectorPointsMonth = Array.from(collectorMapMonth.values()).filter(p => p > 0);
-    // Рассчитываем ранг для сборщика (если пользователь сборщик или админ с данными сборщика)
-    if (collectorPointsMonth.length > 0 && monthlyCollector && (user.role === 'collector' || user.role === 'admin')) {
-      const sorted = [...collectorPointsMonth].sort((a, b) => a - b);
-      const percentiles = [
-        sorted[Math.floor(sorted.length * 0.1)],
-        sorted[Math.floor(sorted.length * 0.2)],
-        sorted[Math.floor(sorted.length * 0.3)],
-        sorted[Math.floor(sorted.length * 0.4)],
-        sorted[Math.floor(sorted.length * 0.5)],
-        sorted[Math.floor(sorted.length * 0.6)],
-        sorted[Math.floor(sorted.length * 0.7)],
-        sorted[Math.floor(sorted.length * 0.8)],
-        sorted[Math.floor(sorted.length * 0.9)],
-      ];
-      let rank = 10;
-      for (let i = 0; i < percentiles.length; i++) {
-        if (monthlyCollector.points <= percentiles[i]) {
-          rank = i + 1;
-          break;
-        }
-      }
-      monthlyRank = rank;
-      monthlyLevel = getAnimalLevel(rank);
-    }
-
-    // Группируем по пользователям и рассчитываем ранги для проверяльщиков за месяц
-    // Для проверяльщиков суммируем сборки + проверки
-    const checkerMapMonth = new Map<string, number>();
-    // Добавляем баллы от проверок
-    for (const stat of allCheckerStatsMonth) {
-      if (stat.orderPoints && stat.orderPoints > 0) {
-        const current = checkerMapMonth.get(stat.userId) || 0;
-        checkerMapMonth.set(stat.userId, current + stat.orderPoints);
-      }
-    }
-    // Добавляем баллы от сборок для проверяльщиков
-    for (const stat of allCollectorStatsMonth) {
-      if (stat.user.role === 'checker' && stat.orderPoints && stat.orderPoints > 0) {
-        const current = checkerMapMonth.get(stat.userId) || 0;
-        checkerMapMonth.set(stat.userId, current + stat.orderPoints);
-      }
-    }
-    for (const [uid, pts] of extraWorkMonthMap) {
-      const cur = checkerMapMonth.get(uid) || 0;
-      checkerMapMonth.set(uid, cur + pts + (manualAdjustmentsMonth.get(uid) ?? 0));
-    }
-    for (const [uid, delta] of manualAdjustmentsMonth) {
-      if (!extraWorkMonthMap.has(uid)) {
-        const cur = checkerMapMonth.get(uid) || 0;
-        checkerMapMonth.set(uid, cur + delta);
-      }
-    }
-    for (const [uid, delta] of errorPenaltiesMonth) {
-      const cur = checkerMapMonth.get(uid) ?? 0;
-      checkerMapMonth.set(uid, cur + delta);
-    }
-    const checkerPointsMonth = Array.from(checkerMapMonth.values()).filter(p => p > 0);
-    // Рассчитываем ранг для проверяльщика (если пользователь проверяльщик)
-    // Для админа показываем ранг сборщика по умолчанию (если есть данные сборщика)
-    if (checkerPointsMonth.length > 0 && monthlyChecker && user.role === 'checker') {
-      const sorted = [...checkerPointsMonth].sort((a, b) => a - b);
-      const percentiles = [
-        sorted[Math.floor(sorted.length * 0.1)],
-        sorted[Math.floor(sorted.length * 0.2)],
-        sorted[Math.floor(sorted.length * 0.3)],
-        sorted[Math.floor(sorted.length * 0.4)],
-        sorted[Math.floor(sorted.length * 0.5)],
-        sorted[Math.floor(sorted.length * 0.6)],
-        sorted[Math.floor(sorted.length * 0.7)],
-        sorted[Math.floor(sorted.length * 0.8)],
-        sorted[Math.floor(sorted.length * 0.9)],
-      ];
-      let rank = 10;
-      for (let i = 0; i < percentiles.length; i++) {
-        if (monthlyChecker.points <= percentiles[i]) {
-          rank = i + 1;
-          break;
-        }
-      }
-      monthlyRank = rank;
-      monthlyLevel = getAnimalLevel(rank);
-    }
+    // Ранги/уровни: берём из снапшота aggregateRankings (таблица stats_snapshots),
+    // чтобы не пересчитывать «всех пользователей» в этом эндпоинте.
+    const entryToday = snapshotToday?.data?.allRankings?.find((e) => e.userId === user.id) ?? null;
+    const entryMonth = snapshotMonth?.data?.allRankings?.find((e) => e.userId === user.id) ?? null;
+    dailyRank = entryToday?.rank ?? null;
+    dailyLevel = dailyRank ? getAnimalLevel(dailyRank) : null;
+    monthlyRank = entryMonth?.rank ?? null;
+    monthlyLevel = monthlyRank ? getAnimalLevel(monthlyRank) : null;
 
     // Определяем какую статистику показывать (в зависимости от роли)
     const dailyData = user.role === 'checker' ? dailyChecker : dailyCollector;
@@ -801,12 +625,29 @@ export async function GET(request: NextRequest) {
         : null,
     };
 
+    const etag = computeWeakEtag(JSON.stringify(responseBody));
     rankingStatsResponseCache.set(user.id, {
       expiresAt: Date.now() + RANKING_STATS_CACHE_TTL_MS,
       body: responseBody,
+      etag,
     });
 
-    return NextResponse.json(responseBody);
+    const inm = request.headers.get('if-none-match');
+    if (inm && inm === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      });
+    }
+    return NextResponse.json(responseBody, {
+      headers: {
+        ETag: etag,
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
+    });
   } catch (error: unknown) {
     console.error('[API Ranking Stats] Ошибка:', error);
     return NextResponse.json(

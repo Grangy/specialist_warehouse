@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import {
   getTopCachedOrCompute,
   getTopCachedOrComputeWithDebug,
@@ -18,6 +19,11 @@ import {
 import { checkRateLimit, getClientIdentifier } from '@/lib/security/rateLimiter';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 import { getAnimalLevel } from '@/lib/ranking/levels';
+
+function computeWeakEtag(input: string): string {
+  const hash = crypto.createHash('sha1').update(input).digest('hex');
+  return `W/"${hash}"`;
+}
 
 function parseArchiveMonth(v: string | null): string | null {
   if (!v) return null;
@@ -150,20 +156,46 @@ export async function GET(request: NextRequest) {
     const nocache = searchParams.get('nocache') === '1' || searchParams.get('nocache') === 'true';
     if (nocache) {
       const { body } = await recomputeTopAndCache(period, warehouseFilter, { forceAggregateCompute: true });
+      const etag = computeWeakEtag(JSON.stringify(body));
+      const inm = request.headers.get('if-none-match');
+      if (inm && inm === etag) {
+        return new NextResponse(null, {
+          status: 304,
+          headers: new Headers({
+            etag,
+            'cache-control': 'no-store, no-cache, must-revalidate',
+            'x-top-cache': 'MISS',
+          }),
+        });
+      }
       return NextResponse.json(body, {
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate',
-          'X-Top-Cache': 'MISS',
-        },
+        headers: new Headers({
+          etag,
+          'cache-control': 'no-store, no-cache, must-revalidate',
+          'x-top-cache': 'MISS',
+        }),
       });
     }
 
     const { body, xTopCache } = await getTopCachedOrCompute(period, warehouseFilter);
+    const etag = computeWeakEtag(JSON.stringify(body));
+    const inm = request.headers.get('if-none-match');
+    if (inm && inm === etag) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: new Headers({
+          etag,
+          'cache-control': 'no-store, no-cache, must-revalidate',
+          'x-top-cache': xTopCache,
+        }),
+      });
+    }
     return NextResponse.json(body, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-        'X-Top-Cache': xTopCache,
-      },
+      headers: new Headers({
+        etag,
+        'cache-control': 'no-store, no-cache, must-revalidate',
+        'x-top-cache': xTopCache,
+      }),
     });
   } catch (error: unknown) {
     console.error('[API Statistics Top] Ошибка:', error);

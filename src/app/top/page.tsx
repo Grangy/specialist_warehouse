@@ -126,6 +126,8 @@ export default function TopPage() {
   const [expandedErrorRow, setExpandedErrorRow] = useState<number | null>(null);
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
+  const lastEtagRef = useRef<string | null>(null);
+  const lastPayloadRef = useRef<any | null>(null);
 
   const getLastMonths = useCallback((count: number) => {
     const out: string[] = [];
@@ -147,12 +149,42 @@ export default function TopPage() {
     try {
       const nocachePart = forceReload ? '&nocache=1' : '';
       const archivePart = period === 'month' && monthArchive ? `&month=${encodeURIComponent(monthArchive)}` : '';
-      const res = await fetch(`/api/statistics/top?period=${period}${archivePart}&_t=${Date.now()}${nocachePart}`, { cache: 'no-store' });
+      const ctrl = new AbortController();
+      const timeoutMs = 15_000;
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      const url = `/api/statistics/top?period=${period}${archivePart}${nocachePart}`;
+      const res = await fetch(url, {
+        cache: 'no-store',
+        signal: ctrl.signal,
+        headers: {
+          ...(lastEtagRef.current ? { 'If-None-Match': lastEtagRef.current } : {}),
+        },
+      }).finally(() => clearTimeout(t));
+
+      if (res.status === 304 && lastPayloadRef.current) {
+        const data = lastPayloadRef.current;
+        const rawList: RankingEntry[] = data.all || [];
+        const shouldAprilFools =
+          APRIL_FOOLS_ENABLED &&
+          period === 'today' &&
+          isMoscowAprilFoolsDay() &&
+          !isAprilFoolsOverrideDisabled();
+        setList(shouldAprilFools ? applyAprilFoolsInversion(rawList) : rawList);
+        setDate(data.date || new Date().toISOString().split('T')[0]);
+        setTopErrorsMerged(data.topErrorsMerged || []);
+        setTotalCollectorErrors(data.totalCollectorErrors ?? 0);
+        setTotalCheckerErrors(data.totalCheckerErrors ?? 0);
+        setBaselineUserName(data.baselineUserName ?? null);
+        setMounted(true);
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || data.details || `Ошибка ${res.status}`);
       }
       const data = await res.json();
+      lastPayloadRef.current = data;
+      lastEtagRef.current = res.headers.get('etag');
       const rawList: RankingEntry[] = data.all || [];
       const shouldAprilFools =
         APRIL_FOOLS_ENABLED &&
