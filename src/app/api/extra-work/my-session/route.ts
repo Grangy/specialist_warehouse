@@ -77,10 +77,10 @@ export async function GET(request: NextRequest) {
     const cacheKey = session.userId;
     let ratePerHour: number;
     let dayCoefficient: number;
-    const hit = rateCache.get(cacheKey);
-    if (hit && hit.expires > Date.now()) {
-      ratePerHour = hit.rate;
-      dayCoefficient = hit.dayCoef;
+    const rateHit = rateCache.get(cacheKey);
+    if (rateHit && rateHit.expires > Date.now()) {
+      ratePerHour = rateHit.rate;
+      dayCoefficient = rateHit.dayCoef;
     } else {
       [ratePerHour, dayCoefficient] = await Promise.all([
         getExtraWorkRatePerHour(prisma, session.userId, now),
