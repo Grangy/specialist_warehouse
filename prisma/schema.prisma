@@ -77,6 +77,7 @@ model ExtraWorkSession {
   user       User @relation("ExtraWorkSessionWorker", fields: [userId], references: [id], onDelete: Cascade)
   assignedBy User @relation("ExtraWorkSessionAssigner", fields: [assignedById], references: [id], onDelete: Cascade)
 
+  @@index([status, stoppedAt], map: "idx_extra_work_sessions_status_stopped_at")
   @@map("extra_work_sessions")
 }
 

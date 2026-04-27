@@ -43,10 +43,15 @@ export interface ExtraWorkEntry {
 
 import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 import { autoStopExtraWorkAt18 } from '@/lib/extraWorkAutoStop';
+import {
+  buildExtraWorkAdminCacheKey,
+  peekExtraWorkAdminCache,
+  setExtraWorkAdminCache,
+} from '@/lib/extraWorkAdminResponseCache';
 
 export async function GET(request: NextRequest) {
   try {
-    await autoStopExtraWorkAt18();
+    void autoStopExtraWorkAt18().catch((e) => console.error('[extra-work] autoStopExtraWorkAt18', e));
 
     const authResult = await requireAuth(request, ['admin', 'checker']);
     if (authResult instanceof NextResponse) {
@@ -58,13 +63,17 @@ export async function GET(request: NextRequest) {
     }
 
     const { startDate: monthStart, endDate: monthEnd } = getStatisticsDateRange('month');
+    const cacheKey = await buildExtraWorkAdminCacheKey(prisma, monthStart, monthEnd);
+    const cached = peekExtraWorkAdminCache(cacheKey);
+    if (cached != null) {
+      return NextResponse.json(cached as Record<string, unknown>);
+    }
 
-    const [activeSessionsRaw, allUserSettings, allWorkers, listConfigSetting, errorPenaltiesSetting] = await Promise.all([
+    const [activeSessionsRaw, allWorkers, listConfigSetting, errorPenaltiesSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
         where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
         include: { user: { select: { id: true, name: true } } },
       }),
-      prisma.userSettings.findMany({ select: { userId: true, settings: true } }),
       prisma.user.findMany({
         where: { role: { in: ['collector', 'checker', 'admin'] } },
         select: { id: true, name: true },
@@ -72,6 +81,15 @@ export async function GET(request: NextRequest) {
       prisma.systemSettings.findUnique({ where: { key: 'extra_work_list_config' } }),
       prisma.systemSettings.findUnique({ where: { key: 'error_penalty_adjustments' } }),
     ]);
+
+    const settingsUserIds = [...new Set([...allWorkers.map((w) => w.id), ...activeSessionsRaw.map((s) => s.userId)])];
+    const allUserSettings =
+      settingsUserIds.length > 0
+        ? await prisma.userSettings.findMany({
+            where: { userId: { in: settingsUserIds } },
+            select: { userId: true, settings: true },
+          })
+        : [];
 
     const nowCheck = new Date();
     await Promise.all(
@@ -357,7 +375,7 @@ export async function GET(request: NextRequest) {
       return a.extraWorkHours - b.extraWorkHours;
     });
 
-    return NextResponse.json({
+    const body = {
       entries: resultWithActive,
       hiddenUserIds: [...hiddenUserIds],
       baselineUserName,
@@ -365,7 +383,9 @@ export async function GET(request: NextRequest) {
       weekdayCoefficients: weekdayCoefficients,
       coeffPeriodStart: coeffPeriod.start.toISOString().slice(0, 10),
       coeffPeriodEnd: coeffPeriod.end.toISOString().slice(0, 10),
-    });
+    };
+    setExtraWorkAdminCache(cacheKey, body);
+    return NextResponse.json(body);
   } catch (e) {
     console.error('[extra-work]', e);
     return NextResponse.json(

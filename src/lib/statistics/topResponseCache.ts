@@ -7,7 +7,7 @@ import { getAnimalLevel } from '@/lib/ranking/levels';
 import { getMoscowDateString } from '@/lib/utils/moscowDate';
 import { getAggregateSnapshot, getAggregateSnapshotWithDebug } from '@/lib/statistics/statsAggregateCache';
 
-export const TOP_CACHE_TTL_MS = 45_000;
+export const TOP_CACHE_TTL_MS = 75_000;
 
 export function topCacheKey(period: string, warehouse?: string): string {
   return `${period}:${warehouse ?? ''}`;

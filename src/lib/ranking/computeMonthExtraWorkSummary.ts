@@ -12,6 +12,10 @@ import {
   clearWarehousePaceSessionCache,
   computeExtraWorkPointsForSession,
   getBaselineUserName,
+  getPaceTaskTimeBoundsForExtraWorkSession,
+  getStartupRatePerMin,
+  prefetchExtraWorkPaceTasks,
+  sliceExtraWorkPaceTasksForWindow,
 } from '@/lib/ranking/extraWorkPoints';
 import { computeExtraWorkElapsedSecNow } from '@/lib/extraWorkElapsed';
 
@@ -97,7 +101,62 @@ export async function computeMonthExtraWorkSummary(
     (a, b) => (a.stoppedAt?.getTime() ?? 0) - (b.stoppedAt?.getTime() ?? 0)
   );
 
+  const FIFTEEN_MS = 15 * 60 * 1000;
+  let gMin = startDate.getTime() - FIFTEEN_MS;
+  let gMax = Math.max(endDate.getTime(), now.getTime());
+  for (const s of stoppedSessions) {
+    const b = getPaceTaskTimeBoundsForExtraWorkSession({
+      userId: s.userId,
+      elapsedSecBeforeLunch: s.elapsedSecBeforeLunch ?? 0,
+      pointsOverride: s.pointsOverride,
+      stoppedAt: s.stoppedAt,
+      startedAt: s.startedAt,
+      lunchStartedAt: s.lunchStartedAt,
+      lunchEndsAt: s.lunchEndsAt,
+    });
+    if (b) {
+      gMin = Math.min(gMin, b.tMin);
+      gMax = Math.max(gMax, b.tMax);
+    }
+  }
+  for (const s of activeSessions) {
+    const el = computeExtraWorkElapsedSecNow(s as any, now);
+    const b = getPaceTaskTimeBoundsForExtraWorkSession({
+      userId: s.userId,
+      elapsedSecBeforeLunch: el,
+      pointsOverride: s.pointsOverride,
+      stoppedAt: now,
+      startedAt: s.startedAt,
+      lunchStartedAt: s.lunchStartedAt,
+      lunchEndsAt: s.lunchEndsAt,
+    });
+    if (b) {
+      gMin = Math.min(gMin, b.tMin);
+      gMax = Math.max(gMax, b.tMax);
+    }
+  }
+
+  const [monthPaceTasks, startupRatePerMin] = await Promise.all([
+    prefetchExtraWorkPaceTasks(prisma, new Date(gMin), new Date(gMax)),
+    getStartupRatePerMin(prisma),
+  ]);
+
   for (const sess of sortedStopped) {
+    const w = getPaceTaskTimeBoundsForExtraWorkSession({
+      userId: sess.userId,
+      elapsedSecBeforeLunch: sess.elapsedSecBeforeLunch ?? 0,
+      pointsOverride: sess.pointsOverride,
+      stoppedAt: sess.stoppedAt,
+      startedAt: sess.startedAt,
+      lunchStartedAt: sess.lunchStartedAt,
+      lunchEndsAt: sess.lunchEndsAt,
+    });
+    const batch = w
+      ? {
+          tasks: sliceExtraWorkPaceTasksForWindow(monthPaceTasks, w.tMin, w.tMax),
+          startupRatePerMin,
+        }
+      : undefined;
     const pts = await computeExtraWorkPointsForSession(
       prisma,
       {
@@ -109,7 +168,8 @@ export async function computeMonthExtraWorkSummary(
         lunchStartedAt: sess.lunchStartedAt,
         lunchEndsAt: sess.lunchEndsAt,
       },
-      extraWorkByUser
+      extraWorkByUser,
+      batch
     );
     extraWorkByUser.set(sess.userId, (extraWorkByUser.get(sess.userId) ?? 0) + pts);
     if (sess.stoppedAt && sess.stoppedAt >= startDate && sess.stoppedAt <= endDate) {
@@ -119,6 +179,21 @@ export async function computeMonthExtraWorkSummary(
 
   for (const sess of activeSessions) {
     const currentElapsedSec = computeExtraWorkElapsedSecNow(sess as any, now);
+    const w = getPaceTaskTimeBoundsForExtraWorkSession({
+      userId: sess.userId,
+      elapsedSecBeforeLunch: currentElapsedSec,
+      pointsOverride: sess.pointsOverride,
+      stoppedAt: now,
+      startedAt: sess.startedAt,
+      lunchStartedAt: sess.lunchStartedAt,
+      lunchEndsAt: sess.lunchEndsAt,
+    });
+    const batch = w
+      ? {
+          tasks: sliceExtraWorkPaceTasksForWindow(monthPaceTasks, w.tMin, w.tMax),
+          startupRatePerMin,
+        }
+      : undefined;
     const pts = await computeExtraWorkPointsForSession(
       prisma,
       {
@@ -130,7 +205,8 @@ export async function computeMonthExtraWorkSummary(
         lunchEndsAt: sess.lunchEndsAt,
         pointsOverride: sess.pointsOverride,
       },
-      extraWorkByUser
+      extraWorkByUser,
+      batch
     );
     extraWorkByUser.set(sess.userId, (extraWorkByUser.get(sess.userId) ?? 0) + pts);
     pointsByUser.set(sess.userId, (pointsByUser.get(sess.userId) ?? 0) + pts);

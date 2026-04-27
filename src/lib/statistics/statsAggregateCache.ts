@@ -38,6 +38,12 @@ type Entry = { data: AggregateSnapshotResult; freshUntil: number; computedAtMs: 
 const memory = new Map<string, Entry>();
 const refreshing = new Set<string>();
 
+/** In-memory only; for tests or после ручного правки БД, чтобы не тянуть устаревший снимок до TTL. */
+export function clearAggregateSnapshotMemory(): void {
+  memory.clear();
+  refreshing.clear();
+}
+
 const CACHE_DIR = path.join(process.cwd(), '.cache');
 const CACHE_FILE = path.join(CACHE_DIR, 'stats-aggregate.json');
 

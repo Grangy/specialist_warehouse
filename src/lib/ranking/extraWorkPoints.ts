@@ -480,7 +480,7 @@ export async function getUsefulnessPctMap(
 
 /** Фиксированная ставка (баллов/мин) для 09:00–09:15 из SystemSettings (мемо 60 с — сотни вызовов за aggregateRankings). */
 let startupRatePerMinMemo: { value: number; until: number } | null = null;
-async function getStartupRatePerMin(prisma: PrismaLike): Promise<number> {
+export async function getStartupRatePerMin(prisma: PrismaLike): Promise<number> {
   const now = Date.now();
   if (startupRatePerMinMemo && now < startupRatePerMinMemo.until) {
     return startupRatePerMinMemo.value;
@@ -676,6 +676,118 @@ export type ExtraWorkSessionForPoints = {
 /** Защита от битых данных и чрезмерного числа итераций в цикле. */
 const MAX_ELAPSED_SEC_EXTRA_WORK_SESSION = 14 * 24 * 60 * 60;
 
+/** Предзагруженные task_statistics+shipment_tasks для pace/весов (сорт. по effectiveTs). */
+export type ExtraWorkPaceTaskRow = { userId: string; effectiveTs: number; orderPoints: number };
+
+export function sliceExtraWorkPaceTasksForWindow(
+  sorted: ExtraWorkPaceTaskRow[],
+  tasksMinTs: number,
+  tasksMaxTs: number
+): ExtraWorkPaceTaskRow[] {
+  if (sorted.length === 0) return [];
+  let lo = 0;
+  let hi = sorted.length - 1;
+  while (lo < sorted.length && sorted[lo].effectiveTs < tasksMinTs) lo++;
+  while (hi >= lo && sorted[hi].effectiveTs > tasksMaxTs) hi--;
+  if (lo > hi) return [];
+  return sorted.slice(lo, hi + 1);
+}
+
+/**
+ * Тайм-окно для pace (как в computeExtraWorkPointsForSession) или null, если динамический pace не используется.
+ * Для агрегата месячных сессий — чтобы один раз загрузить taskStatistics за весь span.
+ */
+export function getPaceTaskTimeBoundsForExtraWorkSession(
+  session: ExtraWorkSessionForPoints
+): { tMin: number; tMax: number } | null {
+  const ov = session.pointsOverride;
+  if (ov != null && Number.isFinite(ov) && ov >= 0) return null;
+
+  const stoppedAt = session.stoppedAt ?? new Date();
+  const rawElapsed = Math.max(0, session.elapsedSecBeforeLunch ?? 0);
+  const elapsedWorkSec = Number.isFinite(rawElapsed)
+    ? Math.min(rawElapsed, MAX_ELAPSED_SEC_EXTRA_WORK_SESSION)
+    : 0;
+
+  const hasLunchWindow =
+    !!session.lunchStartedAt &&
+    !!session.lunchEndsAt &&
+    session.lunchEndsAt.getTime() > session.lunchStartedAt.getTime();
+
+  let startedAt: Date;
+  let wallSec: number;
+
+  if (hasLunchWindow && session.startedAt) {
+    startedAt = new Date(session.startedAt);
+    wallSec = Math.min(
+      Math.max(0, Math.floor((stoppedAt.getTime() - startedAt.getTime()) / 1000)),
+      MAX_ELAPSED_SEC_EXTRA_WORK_SESSION
+    );
+  } else if (elapsedWorkSec > 0) {
+    startedAt = new Date(stoppedAt.getTime() - elapsedWorkSec * 1000);
+    wallSec = elapsedWorkSec;
+  } else {
+    return null;
+  }
+
+  if (wallSec <= 0) return null;
+
+  const earliestMonthStartTs = getMonthStartMoscowUTC(startedAt).getTime();
+  const tasksMinTs = Math.min(startedAt.getTime() - FIFTEEN_MIN_MS, earliestMonthStartTs);
+  const tasksMaxTs = stoppedAt.getTime();
+  return { tMin: tasksMinTs, tMax: tasksMaxTs };
+}
+
+export type ExtraWorkSessionPointsBatch = {
+  tasks: ExtraWorkPaceTaskRow[];
+  startupRatePerMin: number;
+};
+
+/**
+ * Одна выборка task_statistics+shipment_tasks за [minDate, maxDate] — для батчевого месяца.
+ */
+export async function prefetchExtraWorkPaceTasks(
+  prisma: PrismaLike,
+  minDate: Date,
+  maxDate: Date
+): Promise<ExtraWorkPaceTaskRow[]> {
+  const rows = await prisma.$queryRaw<
+    Array<{
+      userId: string;
+      roleType: string;
+      orderPoints: number | null;
+      completedAt: string | null;
+      confirmedAt: string | null;
+    }>
+  >`
+    SELECT
+      ts.user_id AS "userId",
+      ts.role_type AS "roleType",
+      ts.order_points AS "orderPoints",
+      st.completed_at AS "completedAt",
+      st.confirmed_at AS "confirmedAt"
+    FROM task_statistics ts
+    JOIN shipment_tasks st ON st.id = ts.task_id
+    WHERE
+      (ts.role_type = 'collector' AND st.completed_at BETWEEN ${minDate} AND ${maxDate})
+      OR
+      (ts.role_type IN ('checker','dictator') AND st.confirmed_at BETWEEN ${minDate} AND ${maxDate})
+  `;
+
+  return rows
+    .map((r) => {
+      const orderPoints = Number(r.orderPoints ?? 0) || 0;
+      const effectiveTs =
+        r.roleType === 'collector'
+          ? (r.completedAt ? new Date(r.completedAt).getTime() : NaN)
+          : (r.confirmedAt ? new Date(r.confirmedAt).getTime() : NaN);
+      if (!Number.isFinite(effectiveTs)) return null;
+      return { userId: r.userId, effectiveTs, orderPoints };
+    })
+    .filter((x): x is ExtraWorkPaceTaskRow => x !== null)
+    .sort((a, b) => a.effectiveTs - b.effectiveTs);
+}
+
 /**
  * Баллы за одну сессию по новой формуле.
  * Учитывает split 09:00–09:15 (фикс.) и после (динамика).
@@ -694,7 +806,8 @@ function isInsidePersonalLunchUtc(
 export async function computeExtraWorkPointsForSession(
   prisma: PrismaLike,
   session: ExtraWorkSessionForPoints,
-  _extraWorkByUser?: Map<string, number>
+  _extraWorkByUser?: Map<string, number>,
+  batch?: ExtraWorkSessionPointsBatch
 ): Promise<number> {
   const ov = session.pointsOverride;
   if (ov != null && Number.isFinite(ov) && ov >= 0) {
@@ -735,53 +848,20 @@ export async function computeExtraWorkPointsForSession(
 
   if (wallSec <= 0) return 0;
 
-  const startupRate = await getStartupRatePerMin(prisma);
-
   // One-shot prefetch: вместо DB-запросов "на каждый момент" внутри
   // getExtraWorkPointsPerMinute считаем pace/weights в памяти.
-  type PrefetchedTask = { userId: string; effectiveTs: number; orderPoints: number };
+  const startupRate = batch
+    ? batch.startupRatePerMin
+    : await getStartupRatePerMin(prisma);
 
-  const earliestMonthStartTs = getMonthStartMoscowUTC(startedAt).getTime();
-  const tasksMinTs = Math.min(startedAt.getTime() - FIFTEEN_MIN_MS, earliestMonthStartTs);
-  const tasksMaxTs = stoppedAt.getTime();
-  const minDate = new Date(tasksMinTs);
-  const maxDate = new Date(tasksMaxTs);
-
-  const rows = await prisma.$queryRaw<
-    Array<{
-      userId: string;
-      roleType: string;
-      orderPoints: number | null;
-      completedAt: string | null;
-      confirmedAt: string | null;
-    }>
-  >`
-    SELECT
-      ts.user_id AS "userId",
-      ts.role_type AS "roleType",
-      ts.order_points AS "orderPoints",
-      st.completed_at AS "completedAt",
-      st.confirmed_at AS "confirmedAt"
-    FROM task_statistics ts
-    JOIN shipment_tasks st ON st.id = ts.task_id
-    WHERE
-      (ts.role_type = 'collector' AND st.completed_at BETWEEN ${minDate} AND ${maxDate})
-      OR
-      (ts.role_type IN ('checker','dictator') AND st.confirmed_at BETWEEN ${minDate} AND ${maxDate})
-  `;
-
-  const tasks: PrefetchedTask[] = rows
-    .map((r) => {
-      const orderPoints = Number(r.orderPoints ?? 0) || 0;
-      const effectiveTs =
-        r.roleType === 'collector'
-          ? (r.completedAt ? new Date(r.completedAt).getTime() : NaN)
-          : (r.confirmedAt ? new Date(r.confirmedAt).getTime() : NaN);
-      if (!Number.isFinite(effectiveTs)) return null;
-      return { userId: r.userId, effectiveTs, orderPoints };
-    })
-    .filter((x): x is PrefetchedTask => x !== null)
-    .sort((a, b) => a.effectiveTs - b.effectiveTs);
+  const tasks: ExtraWorkPaceTaskRow[] = batch
+    ? batch.tasks
+    : await (async () => {
+        const earliestMonthStartTs = getMonthStartMoscowUTC(startedAt).getTime();
+        const tMin = Math.min(startedAt.getTime() - FIFTEEN_MIN_MS, earliestMonthStartTs);
+        const tMax = stoppedAt.getTime();
+        return prefetchExtraWorkPaceTasks(prisma, new Date(tMin), new Date(tMax));
+      })();
 
   // Sliding windows in memory:
   //  - pace window: [momentTs - 15m, momentTs] (inclusive)
