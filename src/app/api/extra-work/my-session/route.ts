@@ -72,7 +72,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (!session) return NextResponse.json(null);
+    if (!session) {
+      const body = null;
+      const etag = `W/\"${crypto.createHash('sha1').update('null').digest('hex')}\"`;
+      sessionCache.set(user.id, { expiresAt: Date.now() + SESSION_CACHE_TTL_MS, etag, body });
+      if (ifNoneMatch && ifNoneMatch === etag) {
+        return new NextResponse(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'private, max-age=0, must-revalidate' } });
+      }
+      return NextResponse.json(body, { headers: { ETag: etag, 'Cache-Control': 'private, max-age=0, must-revalidate' } });
+    }
 
     const cacheKey = session.userId;
     let ratePerHour: number;
