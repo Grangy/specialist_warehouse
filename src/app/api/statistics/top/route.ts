@@ -155,7 +155,15 @@ export async function GET(request: NextRequest) {
 
     const nocache = searchParams.get('nocache') === '1' || searchParams.get('nocache') === 'true';
     if (nocache) {
-      const { body } = await recomputeTopAndCache(period, warehouseFilter, { forceAggregateCompute: true });
+      /**
+       * Важно: `nocache=1` должен обходить только in-memory кэш top (TOP_CACHE_TTL),
+       * но НЕ форсировать legacy compute aggregateRankings, иначе под нагрузкой
+       * это превращается в ~секунды CPU/SQLite на каждый запрос и легко «кладёт» сервер.
+       *
+       * Для принудительного тяжёлого пересчёта используйте debug-режим/отдельные админские инструменты,
+       * но публичный `nocache=1` остаётся безопасным.
+       */
+      const { body } = await recomputeTopAndCache(period, warehouseFilter);
       const etag = computeWeakEtag(JSON.stringify(body));
       const inm = request.headers.get('if-none-match');
       if (inm && inm === etag) {
