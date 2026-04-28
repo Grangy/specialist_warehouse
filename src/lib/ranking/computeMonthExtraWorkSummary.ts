@@ -50,8 +50,8 @@ export async function computeMonthExtraWorkSummary(
   const [stoppedSessions, manualAdjustmentsSetting, now] = await Promise.all([
     prisma.extraWorkSession.findMany({
       where: {
-        status: 'stopped',
-        stoppedAt: { gte: startDate, lte: endDate },
+        // robustness: если stoppedAt задан, считаем сессию завершённой даже при неверном status
+        stoppedAt: { not: null, gte: startDate, lte: endDate },
       },
       select: {
         userId: true,

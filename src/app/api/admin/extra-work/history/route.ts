@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
 
     const sessions = await prisma.extraWorkSession.findMany({
       where: {
-        status: 'stopped',
-        stoppedAt: { gte: startDate, lte: endDate },
+        // robustness: если stoppedAt задан, считаем сессию завершённой даже при неверном status
+        stoppedAt: { not: null, gte: startDate, lte: endDate },
       },
       select: {
         id: true,

@@ -40,7 +40,8 @@ export async function buildExtraWorkAdminCacheKey(
 ): Promise<string> {
   const [nStop, activeIds, maxU] = await Promise.all([
     prisma.extraWorkSession.count({
-      where: { status: 'stopped', stoppedAt: { gte: monthStart, lte: monthEnd } },
+      // robustness: считаем завершёнными по stoppedAt, даже если status разъехался
+      where: { stoppedAt: { gte: monthStart, lte: monthEnd } },
     }),
     prisma.extraWorkSession.findMany({
       where: { status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },

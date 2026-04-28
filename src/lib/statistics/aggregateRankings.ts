@@ -164,8 +164,8 @@ export async function aggregateRankings(
     }),
     prisma.extraWorkSession.findMany({
       where: {
-        status: 'stopped',
-        stoppedAt: { gte: monthStart, lte: monthEnd },
+        // robustness: если stoppedAt задан, считаем сессию завершённой даже при неверном status
+        stoppedAt: { not: null, gte: monthStart, lte: monthEnd },
       },
       select: {
         userId: true,

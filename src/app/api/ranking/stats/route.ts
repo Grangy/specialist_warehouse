@@ -303,16 +303,16 @@ export async function GET(request: NextRequest) {
       prisma.extraWorkSession.findMany({
         where: {
           userId: user.id,
-          status: 'stopped',
-          stoppedAt: { gte: today, lte: todayEnd },
+          // robustness: если stoppedAt задан, считаем сессию завершённой даже при неверном status
+          stoppedAt: { not: null, gte: today, lte: todayEnd },
         },
         select: extraWorkSelect,
       }),
       prisma.extraWorkSession.findMany({
         where: {
           userId: user.id,
-          status: 'stopped',
-          stoppedAt: { gte: monthStart, lte: monthEnd },
+          // robustness: если stoppedAt задан, считаем сессию завершённой даже при неверном status
+          stoppedAt: { not: null, gte: monthStart, lte: monthEnd },
         },
         select: extraWorkSelect,
       }),

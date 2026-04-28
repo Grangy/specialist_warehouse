@@ -18,6 +18,8 @@
 import './loadEnv';
 
 import { recomputeAndPersistAggregateSnapshot, SNAPSHOT_WARM_KEYS, type StatsPeriod } from '../src/lib/statistics/statsAggregateCache';
+import { prisma } from '../src/lib/prisma';
+import { healExtraWorkStoppedInvariant } from '../src/lib/extraWorkIntegrity';
 
 type WarmKey = (typeof SNAPSHOT_WARM_KEYS)[number];
 
@@ -42,6 +44,10 @@ async function recomputeOne(k: WarmKey): Promise<void> {
   const wh = k.warehouse;
   const label = `${period}${wh ? `:${wh}` : ''}`;
   const t0 = Date.now();
+  // Перед пересчётом снапшотов: чинит редкий, но критичный кейс
+  // stoppedAt != null, а status != 'stopped' (иначе сессия не попадёт в агрегаты).
+  const healed = await healExtraWorkStoppedInvariant(prisma as any);
+  if (healed > 0) console.log(`[stats-worker] healed stopped invariant: ${healed}`);
   await recomputeAndPersistAggregateSnapshot(period, wh);
   const ms = Date.now() - t0;
   console.log(`[stats-worker] recompute ${label} OK ${ms}ms`);

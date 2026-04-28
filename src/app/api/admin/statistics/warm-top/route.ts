@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/middleware';
 import { recomputeAndPersistAggregateSnapshot } from '@/lib/statistics/statsAggregateCache';
 import { recomputeTopAndCache, type TopPeriod } from '@/lib/statistics/topResponseCache';
+import { prisma } from '@/lib/prisma';
+import { healExtraWorkStoppedInvariant } from '@/lib/extraWorkIntegrity';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -48,6 +50,11 @@ export async function POST(request: NextRequest) {
 
     const results: Array<{ period: TopPeriod; ms: number }> = [];
     const tAll0 = Date.now();
+
+    // Перед тяжёлым пересчётом: чинит "stoppedAt есть, status не stopped",
+    // чтобы доп.работа гарантированно попала в агрегаты.
+    const healed = await healExtraWorkStoppedInvariant(prisma as any);
+
     for (const p of periods) {
       const t0 = Date.now();
       // Тяжёлый пересчёт aggregateRankings + сохранение в stats_snapshots
@@ -61,6 +68,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       warehouse: warehouseFilter ?? null,
       totalMs: Date.now() - tAll0,
+      healedExtraWorkStopped: healed || 0,
       results,
       note: 'Это админский триггер обновления. Публичный nocache=1 не форсит тяжёлый пересчёт.',
     });
