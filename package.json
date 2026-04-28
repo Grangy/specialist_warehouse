@@ -99,6 +99,7 @@
     "test:benchmark-api-latency": "tsx scripts/benchmark-api-latency.ts --self-test",
     "audit:http-latency": "npm run benchmark:api-latency",
     "warm:statistics": "tsx scripts/warm-statistics-endpoints.ts",
+    "worker:stats-snapshots": "tsx scripts/worker-stats-snapshots.ts",
     "ssh:sklad3-key": "./scripts/ssh-copy-id-shared-to-sklad3.sh"
   },
   "dependencies": {
