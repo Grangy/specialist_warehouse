@@ -10,6 +10,8 @@
  * Примеры:
  *   npx tsx --env-file=.env scripts/audit-extra-work-day-msk.ts 2026-04-27
  *   npx tsx --env-file=.env scripts/audit-extra-work-day-msk.ts 2026-04-27 --name "Станислав"
+ *   npx tsx --env-file=.env scripts/audit-extra-work-day-msk.ts 2026-04-27 --apply-stuck-stopped
+ *   npx tsx --env-file=.env scripts/audit-extra-work-day-msk.ts 2026-04-27 --apply-fix-elapsed
  */
 
 import './loadEnv';
@@ -33,6 +35,10 @@ function parseNameFilter(): string | null {
   const i = process.argv.findIndex((a) => a === '--name');
   if (i !== -1 && process.argv[i + 1]) return String(process.argv[i + 1]);
   return null;
+}
+
+function hasFlag(name: string): boolean {
+  return process.argv.includes(name);
 }
 
 function moscowYmd(utc: Date): string {
@@ -61,11 +67,15 @@ function fmtSec(sec: number): string {
 async function main() {
   const dateStr = parseDateArg();
   const nameFilter = parseNameFilter();
+  const applyStuckStopped = hasFlag('--apply-stuck-stopped');
+  const applyFixElapsed = hasFlag('--apply-fix-elapsed');
   const { startDate, endDate } = getStatisticsDateRangeForDate(dateStr);
 
   console.log(`\n=== Аудит доп.работы за ${dateStr} (МСК) ===`);
   console.log(`UTC диапазон суток: ${startDate.toISOString()} — ${endDate.toISOString()}`);
   if (nameFilter) console.log(`Фильтр по имени: contains("${nameFilter}")`);
+  if (applyStuckStopped) console.log('FIX: apply stuck sessions -> status=stopped (if stoppedAt exists)');
+  if (applyFixElapsed) console.log('FIX: align elapsedSecBeforeLunch with timeline for stopped sessions');
   console.log('');
 
   const users = await prisma.user.findMany({
@@ -107,9 +117,30 @@ async function main() {
 
     let sumPts = 0;
     for (const s of list) {
+      // Optional fix #1: если stoppedAt уже есть, но статус не stopped — такая сессия не попадает в агрегаты.
+      if (applyStuckStopped && s.stoppedAt && s.status !== 'stopped') {
+        await prisma.extraWorkSession.update({
+          where: { id: s.id },
+          data: { status: 'stopped' },
+        });
+        s.status = 'stopped';
+      }
+
       const stoppedAt = s.stoppedAt ?? null;
       const elapsedStored = Math.max(0, s.elapsedSecBeforeLunch ?? 0);
       const elapsedTimeline = computeStoppedExtraWorkWorkedSec(s) ?? null;
+
+      // Optional fix #2: для stopped-сессий выравниваем elapsed по таймлайну (если сильно разъехалось).
+      if (applyFixElapsed && s.status === 'stopped' && stoppedAt && elapsedTimeline != null) {
+        if (Math.abs(elapsedTimeline - elapsedStored) > 120) {
+          await prisma.extraWorkSession.update({
+            where: { id: s.id },
+            data: { elapsedSecBeforeLunch: elapsedTimeline },
+          });
+          s.elapsedSecBeforeLunch = elapsedTimeline;
+        }
+      }
+
       const elapsedNowAtDayEnd =
         s.status !== 'stopped' || !stoppedAt
           ? computeExtraWorkElapsedSecNow(
