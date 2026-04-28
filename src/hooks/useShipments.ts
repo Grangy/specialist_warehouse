@@ -8,6 +8,22 @@ import { useToast } from './useToast';
 import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 import { formatErrorForLog } from '@/lib/formatErrorForLog';
 
+const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+function mskYmd(d: Date): string {
+  const t = new Date(d.getTime() + MSK_OFFSET_MS);
+  const y = t.getUTCFullYear();
+  const m = String(t.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(t.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function isTodayMsk(isoLike: unknown): boolean {
+  if (!isoLike || typeof isoLike !== 'string') return false;
+  const d = new Date(isoLike);
+  if (Number.isNaN(d.getTime())) return false;
+  return mskYmd(d) === mskYmd(new Date());
+}
+
 export function useShipments(options?: { showOnlyToday?: boolean }) {
   const showOnlyToday = options?.showOnlyToday ?? false;
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -174,11 +190,11 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
   // Для проверяльщика/админа/склад 3: фильтр «только сегодня» — только заказы из активных по регионам
   const displayShipments = useMemo(() => {
     if (!showOnlyToday) return shipments;
-    // ВАЖНО: роль warehouse_3 должна видеть сборки всегда.
-    // `collector_visible` — это признак «видно сборщику по активным регионам/ключевым словам»,
-    // и он может стать false, если временные регионы сняты/изменены (часто после рабочего дня).
-    // Для склада 3 этот фильтр не применяем.
-    if (userRole === 'warehouse_3') return shipments;
+    // Для warehouse_3 "сегодня" = задачи, созданные сегодня по Москве.
+    // `collector_visible` отражает видимость для сборщика по регионам и не соответствует "сегодня".
+    if (userRole === 'warehouse_3') {
+      return shipments.filter((s) => isTodayMsk((s as any).created_at));
+    }
     return shipments.filter((s) => s.collector_visible === true);
   }, [shipments, showOnlyToday, userRole]);
 
