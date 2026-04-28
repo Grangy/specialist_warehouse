@@ -174,8 +174,13 @@ export function useShipments(options?: { showOnlyToday?: boolean }) {
   // Для проверяльщика/админа/склад 3: фильтр «только сегодня» — только заказы из активных по регионам
   const displayShipments = useMemo(() => {
     if (!showOnlyToday) return shipments;
+    // ВАЖНО: роль warehouse_3 должна видеть сборки всегда.
+    // `collector_visible` — это признак «видно сборщику по активным регионам/ключевым словам»,
+    // и он может стать false, если временные регионы сняты/изменены (часто после рабочего дня).
+    // Для склада 3 этот фильтр не применяем.
+    if (userRole === 'warehouse_3') return shipments;
     return shipments.filter((s) => s.collector_visible === true);
-  }, [shipments, showOnlyToday]);
+  }, [shipments, showOnlyToday, userRole]);
 
   const filteredShipments = useMemo(() => {
     // Для режима ожидания группируем задания по shipment_id
