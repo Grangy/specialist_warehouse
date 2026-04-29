@@ -18,10 +18,17 @@ import dotenv from 'dotenv';
 import { uploadBackupToYandex, trimYandexBackups } from './yandex-upload';
 import { backupSqliteToFile } from './sqlite-backup';
 
-/** Локально и на Яндексе: 20 тридцатиминутных, 10 пятичасовых */
-const KEEP_30M = 20;
+/** Локально и на Яндексе: 20 тридцатиминутных, 10 пятичасовых (по `.json` снимкам) */
+const KEEP_30M_JSON_YANDEX = 20;
 const KEEP_5H = 10;
 const KEEP_MAIN = 10; // корневая backups/ — backup_*.json и backup_info_*.txt
+
+// Для дифференциальной схемы (ring) WAL для SQLite:
+// 1 full (consisistent dev.db) + 29 диффов (копии dev.db-wal/dev.db-shm).
+// Диффы не являются инкрементальными — это слепки WAL/SHM на моменты времени,
+// что даёт восстановление "на тот момент", если восстанавливать полную пару (full+wal).
+const WAL_RING_SLOTS_30M = 30; // slotInRing = 0..29, 0 => full, остальные => wal/shm
+const KEEP_30M_DB_RING = WAL_RING_SLOTS_30M; // храним полный `.db` и дифы по WAL ровно весь ring
 
 let projectRoot: string;
 
@@ -84,6 +91,50 @@ const prisma = new PrismaClient({
   datasources: { db: { url: finalDatabaseUrl } },
   log: ['error', 'warn'],
 });
+
+type WalRingState = {
+  slotInRing: number; // 0..WAL_RING_SLOTS_30M-1; 0 => full slot
+  fullTsBase?: string; // tsBase последнего full
+  updatedAtMs: number;
+};
+
+function clampInt(n: unknown, min: number, max: number, fallback: number): number {
+  const x = typeof n === 'number' ? n : Number(n);
+  if (!Number.isFinite(x)) return fallback;
+  const xi = Math.trunc(x);
+  return Math.max(min, Math.min(max, xi));
+}
+
+function walRingStatePathFor(backupDir30mAbs: string): string {
+  // Важно: имя не должно заканчиваться на `.json`, чтобы не удалялось trimBackups(..., '', '.json')
+  return path.join(backupDir30mAbs, 'wal_ring_state.txt');
+}
+
+function loadWalRingState(backupDir30mAbs: string): WalRingState {
+  const sp = walRingStatePathFor(backupDir30mAbs);
+  try {
+    if (!fs.existsSync(sp)) {
+      return { slotInRing: 0, updatedAtMs: Date.now() };
+    }
+    const raw = fs.readFileSync(sp, 'utf-8').trim();
+    if (!raw) return { slotInRing: 0, updatedAtMs: Date.now() };
+    const parsed = JSON.parse(raw) as Partial<WalRingState>;
+    return {
+      slotInRing: clampInt(parsed.slotInRing, 0, WAL_RING_SLOTS_30M - 1, 0),
+      fullTsBase: typeof parsed.fullTsBase === 'string' ? parsed.fullTsBase : undefined,
+      updatedAtMs: typeof parsed.updatedAtMs === 'number' ? parsed.updatedAtMs : Date.now(),
+    };
+  } catch (e) {
+    console.warn('⚠ Не удалось загрузить wal ring state, стартуем заново:', e);
+    return { slotInRing: 0, updatedAtMs: Date.now() };
+  }
+}
+
+function saveWalRingState(backupDir30mAbs: string, s: WalRingState): void {
+  const sp = walRingStatePathFor(backupDir30mAbs);
+  ensureDir(backupDir30mAbs);
+  fs.writeFileSync(sp, JSON.stringify(s, null, 0), 'utf-8');
+}
 
 interface BackupData {
   timestamp: string;
@@ -199,7 +250,7 @@ function timestampFilename(): string {
   return ts + '.json';
 }
 
-async function runBackup(last5hBackupAt: number): Promise<number> {
+async function runBackup(last5hBackupAt: number, walRingState: WalRingState): Promise<{ newLast5h: number; walRingState: WalRingState }> {
   const now = Date.now();
   const data = await createBackupData();
   const ts = timestampFilename();
@@ -220,17 +271,44 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
   console.log(`[${new Date().toISOString()}] 30m бэкап: ${ts} (${sizeMb} MB)`);
 
   const tsBase = ts.replace(/\.json$/, '');
-  if (fs.existsSync(dbFilePath)) {
-    const path30mDb = path.join(backupDir30m, `${tsBase}.db`);
-    await backupSqliteToFile(prisma, dbFilePath, path30mDb);
-    const dbMb = (fs.statSync(path30mDb).size / 1024 / 1024).toFixed(2);
-    console.log(`  + .db: ${tsBase}.db (${dbMb} MB)`);
-    const uploaded30db = await uploadBackupToYandex(projectRoot, path30mDb, `30m/${tsBase}.db`);
-    if (uploaded30db) {
-      console.log(`  → Яндекс.Диск backups_warehouse/30m/${tsBase}.db`);
-    }
+
+  if (!fs.existsSync(dbFilePath)) {
+    console.warn(`  ⚠ Файл БД не найден: ${dbFilePath} — .db не копируется`);
   } else {
-    console.warn(`  ⚠ Файл БД не найден: ${dbFilePath} — .db не копируется и не загружается в Яндекс`);
+    const isFullSlot = walRingState.slotInRing === 0;
+
+    if (isFullSlot) {
+      // full slot: принудительно консистентим БД через TRUNCATE checkpoint,
+      // затем копируем dev.db как полный снапшот.
+      // (VACUUM INTO тоже консистентен, но нам важно обнулить WAL к началу ring.)
+      await prisma.$queryRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE)');
+      const path30mDb = path.join(backupDir30m, `${tsBase}.db`);
+      fs.copyFileSync(dbFilePath, path30mDb);
+      const dbMb = (fs.statSync(path30mDb).size / 1024 / 1024).toFixed(2);
+      console.log(`  + FULL .db: ${tsBase}.db (${dbMb} MB)`);
+      const uploaded30db = await uploadBackupToYandex(projectRoot, path30mDb, `30m/${tsBase}.db`);
+      if (uploaded30db) console.log(`  → Яндекс.Диск backups_warehouse/30m/${tsBase}.db`);
+    } else {
+      // diff slot: сохраняем только wal/shm слепком на момент бэкапа.
+      const sourceWal = `${dbFilePath}-wal`;
+      const sourceShm = `${dbFilePath}-shm`;
+      const destWal = path.join(backupDir30m, `${tsBase}.db-wal`);
+      const destShm = path.join(backupDir30m, `${tsBase}.db-shm`);
+
+      if (fs.existsSync(sourceWal)) {
+        fs.copyFileSync(sourceWal, destWal);
+        console.log(`  + DIFF wal: ${path.basename(destWal)}`);
+      } else {
+        console.warn(`  ⚠ Нет WAL файла: ${sourceWal}`);
+      }
+      if (fs.existsSync(sourceShm)) {
+        fs.copyFileSync(sourceShm, destShm);
+        console.log(`  + DIFF shm: ${path.basename(destShm)}`);
+      } else {
+        console.warn(`  ⚠ Нет SHM файла: ${sourceShm}`);
+      }
+      // в Яндекс не грузим (trimYandexBackups сейчас знает только .json/.db)
+    }
   }
 
   const uploaded30 = await uploadBackupToYandex(projectRoot, path30m, `30m/${ts}`);
@@ -238,12 +316,14 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
     console.log(`  → Яндекс.Диск backups_warehouse/30m/${ts}`);
   }
 
-  const removed30 = trimBackups(backupDir30m, KEEP_30M, '', '.json');
-  const removed30db = trimBackups(backupDir30m, KEEP_30M, '', '.db');
-  if (removed30 > 0 || removed30db > 0) {
-    console.log(`  Удалено старых 30m (локально): json=${removed30}, db=${removed30db}`);
+  const removed30 = trimBackups(backupDir30m, KEEP_30M_JSON_YANDEX, '', '.json');
+  const removed30db = trimBackups(backupDir30m, KEEP_30M_DB_RING, '', '.db');
+  const removed30wal = trimBackups(backupDir30m, KEEP_30M_DB_RING, '', '.db-wal');
+  const removed30shm = trimBackups(backupDir30m, KEEP_30M_DB_RING, '', '.db-shm');
+  if (removed30 > 0 || removed30db > 0 || removed30wal > 0 || removed30shm > 0) {
+    console.log(`  Удалено старых 30m (локально): json=${removed30}, db=${removed30db}, wal=${removed30wal}, shm=${removed30shm}`);
   }
-  const yandex30 = await trimYandexBackups(projectRoot, '30m', KEEP_30M);
+  const yandex30 = await trimYandexBackups(projectRoot, '30m', KEEP_30M_JSON_YANDEX);
   if (yandex30.deleted > 0) {
     console.log(`  Удалено старых 30m на Яндексе: ${yandex30.deleted} файлов`);
   }
@@ -278,13 +358,25 @@ async function runBackup(last5hBackupAt: number): Promise<number> {
     newLast5h = now;
   }
 
-  return newLast5h;
+  // Advance ring state
+  const nextSlot = walRingState.slotInRing + 1;
+  walRingState = {
+    slotInRing: nextSlot >= WAL_RING_SLOTS_30M ? 0 : nextSlot,
+    fullTsBase: walRingState.slotInRing === 0 ? tsBase : walRingState.fullTsBase,
+    updatedAtMs: Date.now(),
+  };
+  saveWalRingState(backupDir30m, walRingState);
+
+  return { newLast5h, walRingState };
 }
 
 async function main() {
   const intervalMin = INTERVAL_30_MIN_MS / 60_000;
   console.log('Бэкапы БД по расписанию');
-  console.log(`  - каждые ${intervalMin} мин → backups/30m/ и Яндекс backups_warehouse/30m/ (хранить 20) [BACKUP_INTERVAL_MINUTES=${intervalMin}]`);
+  console.log(
+    `  - каждые ${intervalMin} мин → backups/30m/ и Яндекс backups_warehouse/30m/ (хранить json=20) ` +
+      `(db: ring full+wal-shm хранить 30) [BACKUP_INTERVAL_MINUTES=${intervalMin}]`
+  );
   console.log('  - каждые 5 ч   → backups/5h/   и Яндекс backups_warehouse/5h/   (хранить 10)');
   console.log('  - backups/    → backup_*.json и backup_info_*.txt (хранить по 10)');
   console.log('  Остановка: Ctrl+C\n');
@@ -293,11 +385,15 @@ async function main() {
   const backupDir30m = path.join(projectRoot, 'backups', '30m');
   const backupDir5h = path.join(projectRoot, 'backups', '5h');
 
+  const walRingState = loadWalRingState(backupDir30m);
+
   const removedMainJson = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_', '.json');
   const removedMainTxt = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_info_', '.txt');
   const removedMainDb = trimBackups(backupDirRoot, KEEP_MAIN, 'backup_', '.db');
-  const removed30start = trimBackups(backupDir30m, KEEP_30M, '', '.json');
-  const removed30dbStart = trimBackups(backupDir30m, KEEP_30M, '', '.db');
+  const removed30start = trimBackups(backupDir30m, KEEP_30M_JSON_YANDEX, '', '.json');
+  const removed30dbStart = trimBackups(backupDir30m, KEEP_30M_DB_RING, '', '.db');
+  const removed30walStart = trimBackups(backupDir30m, KEEP_30M_DB_RING, '', '.db-wal');
+  const removed30shmStart = trimBackups(backupDir30m, KEEP_30M_DB_RING, '', '.db-shm');
   const removed5start = trimBackups(backupDir5h, KEEP_5H, '', '.json');
   const removed5dbStart = trimBackups(backupDir5h, KEEP_5H, '', '.db');
 
@@ -305,17 +401,20 @@ async function main() {
     console.log(`При старте удалено лишних (локально): backups/ .json=${removedMainJson}, .txt=${removedMainTxt}, .db=${removedMainDb}; 30m json=${removed30start} db=${removed30dbStart}; 5h json=${removed5start} db=${removed5dbStart}\n`);
   }
 
-  const yandex30Start = await trimYandexBackups(projectRoot, '30m', KEEP_30M);
+  const yandex30Start = await trimYandexBackups(projectRoot, '30m', KEEP_30M_JSON_YANDEX);
   const yandex5Start = await trimYandexBackups(projectRoot, '5h', KEEP_5H);
   if (yandex30Start.deleted > 0 || yandex5Start.deleted > 0) {
     console.log(`При старте удалено лишних на Яндексе: 30m=${yandex30Start.deleted}, 5h=${yandex5Start.deleted}\n`);
   }
 
   let last5hBackupAt = 0;
+  let currentWalRingState: WalRingState = walRingState;
 
   const tick = async () => {
     try {
-      last5hBackupAt = await runBackup(last5hBackupAt);
+      const res = await runBackup(last5hBackupAt, currentWalRingState);
+      last5hBackupAt = res.newLast5h;
+      currentWalRingState = res.walRingState;
     } catch (e) {
       console.error('Ошибка бэкапа:', e);
     }
