@@ -290,6 +290,10 @@ async function runBackup(last5hBackupAt: number, walRingState: WalRingState): Pr
       if (uploaded30db) console.log(`  → Яндекс.Диск backups_warehouse/30m/${tsBase}.db`);
     } else {
       // diff slot: сохраняем только wal/shm слепком на момент бэкапа.
+      // Чтобы повысить шанс консистентного слепка, делаем PASSIVE checkpoint без TRUNCATE.
+      // (WAL продолжит накапливаться, но больше страниц "закрепляется" в основной БД.)
+      await prisma.$queryRawUnsafe('PRAGMA wal_checkpoint(PASSIVE)');
+
       const sourceWal = `${dbFilePath}-wal`;
       const sourceShm = `${dbFilePath}-shm`;
       const destWal = path.join(backupDir30m, `${tsBase}.db-wal`);
