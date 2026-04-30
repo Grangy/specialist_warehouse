@@ -573,7 +573,7 @@ export default function ExtraWorkTab() {
               })}
               {hiddenData.length > 0 && (
                 <>
-                  <tr className="hidden">
+                  <tr>
                     <td colSpan={8} className="py-0">
                       <button
                         type="button"
@@ -595,7 +595,7 @@ export default function ExtraWorkTab() {
                       const sess = d.activeSession ?? activeSessions.find((s) => s.userId === d.userId);
                       const isActive = !!sess && sess.status !== 'stopped';
                       return (
-                        <tr key={d.userId} className="hidden border-b border-slate-700/50 bg-slate-800/30">
+                        <tr key={d.userId} className="border-b border-slate-700/50 bg-slate-800/30">
                           <td className="py-3 pr-4 font-medium text-slate-400">{d.userName}</td>
                           <td className="py-3 pr-4 text-slate-500">
                             {(d.ratePerHour ?? 0).toFixed(2)}
