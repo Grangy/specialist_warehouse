@@ -96,6 +96,11 @@ export async function POST(request: NextRequest) {
           errorCount = Math.min(errorCount, maxErrors);
         }
       }
+      // Бизнес-правило: ошибка считается по позиции, а не по количеству.
+      // Если по позиции есть расхождение (любое >0), фиксируем ровно 1.
+      if (status === 'done' && errorCount !== null && errorCount > 0) {
+        errorCount = 1;
+      }
       const comment =
         typeof item.comment === 'string' ? item.comment.trim() || null : null;
 

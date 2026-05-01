@@ -4,6 +4,13 @@ import { requireAuth } from '@/lib/middleware';
 
 export const dynamic = 'force-dynamic';
 
+function normalizePositionErrorCount(source: string | null | undefined, errorCount: number | null | undefined): number {
+  const raw = errorCount ?? 0;
+  if (raw <= 0) return 0;
+  // Для ошибок, найденных при проверке, считаем по позиции: любая разница = 1 ошибка.
+  return source === 'checker' ? 1 : raw;
+}
+
 /**
  * GET /api/admin/collector-errors
  * Список вызовов кладовщика (ошибки сборщиков) с фильтрами.
@@ -83,6 +90,8 @@ export async function GET(request: NextRequest) {
       const shipment = c.task?.shipment;
       const cc = c as { shipmentConfirmedAt?: Date | null; checkerErrorCount?: number | null; source?: string };
       const confirmedDate = cc.shipmentConfirmedAt ?? shipment?.confirmedAt;
+      const source = cc.source ?? 'checker';
+      const normalizedErrorCount = normalizePositionErrorCount(source, c.errorCount);
       return {
         id: c.id,
         taskId: c.taskId,
@@ -97,9 +106,9 @@ export async function GET(request: NextRequest) {
         checkerName: c.checker?.name ?? '',
         calledAt: c.calledAt.toISOString(),
         status: c.status,
-        errorCount: c.errorCount,
+        errorCount: normalizedErrorCount,
         checkerErrorCount: cc.checkerErrorCount ?? null,
-        source: cc.source ?? 'checker',
+        source,
         comment: c.comment,
         confirmedAt: c.confirmedAt?.toISOString() ?? null,
         shipmentConfirmedAt: confirmedDate?.toISOString() ?? null,
@@ -109,9 +118,9 @@ export async function GET(request: NextRequest) {
     // Статистика: общее кол-во ошибок сборщиков и проверяльщиков, топ ошибающихся
     const statsCalls = await prisma.collectorCall.findMany({
       where,
-      select: { collectorId: true, checkerId: true, errorCount: true, checkerErrorCount: true },
+      select: { collectorId: true, checkerId: true, errorCount: true, checkerErrorCount: true, source: true },
     });
-    const totalErrors = statsCalls.reduce((s, c) => s + (c.errorCount ?? 0), 0);
+    const totalErrors = statsCalls.reduce((s, c) => s + normalizePositionErrorCount(c.source, c.errorCount), 0);
     const totalCheckerErrors = statsCalls.reduce((s, c) => s + ((c as { checkerErrorCount?: number }).checkerErrorCount ?? 0), 0);
     const byCollector = new Map<string, { errorCount: number; callsCount: number }>();
     const byChecker = new Map<string, { errorCount: number; callsCount: number }>();
@@ -119,10 +128,10 @@ export async function GET(request: NextRequest) {
       const cc = c as { checkerErrorCount?: number };
       const ex = byCollector.get(c.collectorId);
       if (ex) {
-        ex.errorCount += c.errorCount ?? 0;
+        ex.errorCount += normalizePositionErrorCount(c.source, c.errorCount);
         ex.callsCount += 1;
       } else {
-        byCollector.set(c.collectorId, { errorCount: c.errorCount ?? 0, callsCount: 1 });
+        byCollector.set(c.collectorId, { errorCount: normalizePositionErrorCount(c.source, c.errorCount), callsCount: 1 });
       }
       const checkerErr = cc.checkerErrorCount ?? 0;
       if (checkerErr > 0) {

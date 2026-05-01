@@ -178,7 +178,9 @@ export async function POST(
         },
       });
 
-      // Штрафы за ошибки при «Отправить в офис»: 1 ошибка = сборщик −1
+      // Баллы за ошибки при «Отправить в офис» (source=checker):
+      // - сборщик: −1 за ошибочную позицию
+      // - проверяльщик: +1 за найденную ошибочную позицию
       const allTaskIds = (await prisma.shipmentTask.findMany({
         where: { shipmentId: task.shipmentId },
         select: { id: true },
@@ -193,8 +195,10 @@ export async function POST(
       });
       const today = new Date();
       for (const call of callsWithErrors) {
-        const errCount = call.errorCount ?? 1;
-        await addErrorPenalty(call.collectorId, -1 * errCount, today);
+        const hasPositionError = (call.errorCount ?? 0) > 0;
+        if (!hasPositionError) continue;
+        await addErrorPenalty(call.collectorId, -1, today);
+        await addErrorPenalty(call.checkerId, 1, today);
       }
 
       // Отправляем событие об обновлении заказа через SSE

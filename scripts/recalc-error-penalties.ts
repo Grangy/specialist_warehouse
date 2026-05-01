@@ -1,9 +1,10 @@
 /**
  * Пересчёт error_penalty_adjustments по данным CollectorCall.
- * Новая схема: 1 ошибка = сборщик −1, проверяльщик +1.
+ * Схема:
+ * - source='checker': ошибочная ПОЗИЦИЯ (errorCount>0) => сборщик −1, проверяльщик +1
  *
- * Обрабатывает только source='checker' (ошибки при проверке).
- * source='admin' — не пересчитывается (adminId не хранится в CollectorCall).
+ * Важно: считаем по позициям, а не по количеству товара.
+ * source='admin' здесь не пересчитывается (adminId не хранится в CollectorCall).
  *
  * Запуск: npx tsx scripts/recalc-error-penalties.ts
  *         npm run recalc:error-penalties
@@ -33,9 +34,9 @@ function toDateStr(d: Date): string {
 
 async function main() {
   console.log('\n=== Пересчёт error_penalty_adjustments ===\n');
-  console.log('Схема: 1 ошибка = сборщик −1, проверяльщик +1');
-  console.log('Обрабатываются только source=checker (ошибки при проверке).');
-  console.log('⚠️  source=admin (ошибки из админки) — не пересчитываются, будут удалены.\n');
+  console.log('Схема: source=checker: позиция => сборщик −1, проверяльщик +1');
+  console.log('Считаем по позициям (errorCount>0), не по количеству.');
+  console.log('source=admin не пересчитывается этим скриптом.\n');
 
   const calls = await prisma.collectorCall.findMany({
     where: {
@@ -52,12 +53,14 @@ async function main() {
     },
   });
 
-  console.log(`Найдено CollectorCall (checker, errorCount>0): ${calls.length}\n`);
+  console.log(`Найдено CollectorCall (checker, status=done, errorCount>0): ${calls.length}\n`);
 
   const adj: Record<string, Array<{ points: number; date: string }>> = {};
 
   for (const call of calls) {
-    const errCount = call.errorCount ?? 1;
+    // Позиционный учет: любой errorCount > 0 считаем как 1 ошибочную позицию.
+    const errCount = (call.errorCount ?? 0) > 0 ? 1 : 0;
+    if (errCount === 0) continue;
     const date = call.task?.shipment?.confirmedAt ?? call.confirmedAt ?? new Date();
     const dateStr = toDateStr(date instanceof Date ? date : new Date(date));
 
