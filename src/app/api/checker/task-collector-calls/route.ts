@@ -14,6 +14,21 @@ export async function GET(request: NextRequest) {
     if (authResult instanceof NextResponse) {
       return authResult;
     }
+    const { user: checker } = authResult;
+    const activeExtraWork = await prisma.extraWorkSession.findFirst({
+      where: {
+        userId: checker.id,
+        status: { in: ['running', 'lunch', 'lunch_scheduled'] },
+        stoppedAt: null,
+      },
+      select: { id: true },
+    });
+    if (activeExtraWork) {
+      return NextResponse.json(
+        { error: 'Дополнительная работа активна. Остановите таймер.' },
+        { status: 403 }
+      );
+    }
 
     const taskId = request.nextUrl.searchParams.get('taskId');
     if (!taskId || typeof taskId !== 'string') {

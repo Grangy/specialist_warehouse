@@ -17,6 +17,20 @@ export async function POST(request: NextRequest) {
       return authResult;
     }
     const { user: checker } = authResult;
+    const activeExtraWork = await prisma.extraWorkSession.findFirst({
+      where: {
+        userId: checker.id,
+        status: { in: ['running', 'lunch', 'lunch_scheduled'] },
+        stoppedAt: null,
+      },
+      select: { id: true },
+    });
+    if (activeExtraWork) {
+      return NextResponse.json(
+        { error: 'Дополнительная работа активна. Остановите таймер.' },
+        { status: 403 }
+      );
+    }
 
     const body = await request.json().catch(() => ({}));
     const calls = Array.isArray(body.calls) ? body.calls : [];
