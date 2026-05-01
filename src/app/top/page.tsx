@@ -152,12 +152,14 @@ export default function TopPage() {
   const [expandedLoading, setExpandedLoading] = useState(false);
   const expandTargetRef = useRef<string | null>(null);
   const [showPointsHelp, setShowPointsHelp] = useState(false);
+  const [showMethodology, setShowMethodology] = useState(false);
   const [showErrorsBreakdown, setShowErrorsBreakdown] = useState(false);
   const [expandedErrorRow, setExpandedErrorRow] = useState<number | null>(null);
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
   const lastEtagRef = useRef<string | null>(null);
   const lastPayloadRef = useRef<any | null>(null);
+  const lastQueryRef = useRef<string>('');
 
   const getLastMonths = useCallback((count: number) => {
     const out: string[] = [];
@@ -240,9 +242,15 @@ export default function TopPage() {
           ? `&rangeStart=${encodeURIComponent(selectedOption.rangeStart)}&rangeEnd=${encodeURIComponent(selectedOption.rangeEnd)}`
           : '';
       const ctrl = new AbortController();
-      const timeoutMs = 15_000;
+      const timeoutMs = period === 'month' ? 35_000 : 15_000;
       const t = setTimeout(() => ctrl.abort(), timeoutMs);
       const url = `/api/statistics/top?period=${period}${archivePart}${rangePart}${nocachePart}`;
+      if (lastQueryRef.current !== url) {
+        // Новый режим/диапазон — не используем ETag от старого запроса.
+        lastEtagRef.current = null;
+        lastPayloadRef.current = null;
+        lastQueryRef.current = url;
+      }
       const res = await fetch(url, {
         cache: 'no-store',
         signal: ctrl.signal,
@@ -384,17 +392,17 @@ export default function TopPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6 opacity-0 animate-top-title-in" style={{ animationFillMode: 'forwards' }}>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+        <div className="flex items-center justify-between mb-4 opacity-0 animate-top-title-in" style={{ animationFillMode: 'forwards' }}>
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
             <Trophy className="w-8 h-8 text-yellow-400 drop-shadow-[0_0_8px_rgba(234,179,8,0.4)]" />
             Общий топ
           </h1>
           <Link
             href="/"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-slate-500 text-slate-300 hover:text-slate-100 transition-all duration-200 text-sm font-medium"
+            className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-slate-500 text-slate-300 hover:text-slate-100 transition-all duration-200 text-sm font-medium"
           >
             <ArrowLeft className="w-4 h-4" />
-            Панель отгрузки
+            <span className="hidden sm:inline">Панель отгрузки</span>
           </Link>
         </div>
 
@@ -402,13 +410,13 @@ export default function TopPage() {
           className="flex flex-col gap-3 mb-6 opacity-0 animate-top-card-stagger"
           style={{ animationDelay: '0.2s', animationFillMode: 'forwards' }}
         >
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {(['today', 'week', 'month'] as const).map((p) => (
               <button
                 key={p}
                 type="button"
                 onClick={() => setPeriod(p)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
                   period === p
                     ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
                     : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:text-slate-200 hover:border-slate-600'
@@ -417,7 +425,9 @@ export default function TopPage() {
                 {PERIOD_LABELS[p]}
               </button>
             ))}
-            {period === 'month' && (
+          </div>
+          {period === 'month' && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <>
                 <select
                   value={monthArchive}
@@ -459,20 +469,29 @@ export default function TopPage() {
                   </select>
                 )}
               </>
-            )}
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setShowMethodology((v) => !v)}
+              className="px-3 py-1.5 rounded-lg text-xs bg-slate-800/70 border border-slate-700 text-slate-300 hover:text-slate-100"
+            >
+              {showMethodology ? 'Скрыть детали' : 'Показать детали'}
+            </button>
             <button
               type="button"
               onClick={() => load(false, true)}
               disabled={isLoading}
-              className={`ml-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${
                 isLoading
                   ? 'bg-slate-800/40 text-slate-500 border-slate-700 cursor-not-allowed'
                   : 'bg-slate-800/80 text-slate-200 border-slate-600 hover:bg-slate-700/80 hover:text-slate-100'
               }`}
               title="Принудительно обновить данные с сервера (nocache=1)"
             >
-              <RefreshCw className="w-4 h-4 inline-block mr-2 align-[-2px]" />
-              Обновить сейчас
+              <RefreshCw className="w-4 h-4 inline-block sm:mr-2 align-[-2px]" />
+              <span className="hidden sm:inline">Обновить сейчас</span>
             </button>
           </div>
           {date && (
@@ -485,12 +504,15 @@ export default function TopPage() {
               </span>
             </div>
           )}
+          {showMethodology && (
           <div className="flex items-start gap-2 text-slate-500 text-xs leading-snug rounded-lg bg-slate-800/40 border border-slate-700/50 px-3 py-2">
             <Clock className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" aria-hidden />
             <span>
               Данные грузятся прогрессивно: считаем только выбранный период/диапазон, без тяжелой массовой подгрузки архива.
             </span>
           </div>
+          )}
+          {showMethodology && (
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs text-slate-500">
               Места по баллам (сборка + проверка + диктовка + доп.работа)
@@ -504,6 +526,8 @@ export default function TopPage() {
               Как считаются баллы
             </button>
           </div>
+          )}
+          {showMethodology && (
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500">
             <span><span className="text-blue-400">Сборка</span> поз.×1 (С1) / ×2 (С2-3)</span>
             <span><span className="text-purple-400">Проверка</span> сам 0.78 / с диктовщ. 0.39</span>
@@ -514,6 +538,7 @@ export default function TopPage() {
               {baselineUserName && `(100%=${baselineUserName})`}
             </span>
           </div>
+          )}
           {(totalCollectorErrors > 0 || totalCheckerErrors > 0 || topErrorsMerged.length > 0) && (
             <div className="bg-slate-800/60 rounded-lg border border-slate-700/50 p-3 mt-2">
               <button

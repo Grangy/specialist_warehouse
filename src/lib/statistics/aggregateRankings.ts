@@ -80,9 +80,11 @@ export async function aggregateRankings(
       : dateOverride
         ? getStatisticsDateRangeForDate(dateOverride)
         : getStatisticsDateRange(period);
-  const { startDate: monthStart, endDate: monthEnd } = monthOverride
-    ? getStatisticsMonthRangeForMonth(monthOverride)
-    : getStatisticsDateRange('month');
+  const { startDate: monthStart, endDate: monthEnd } = customRange
+    ? customRange
+    : monthOverride
+      ? getStatisticsMonthRangeForMonth(monthOverride)
+      : getStatisticsDateRange('month');
 
   const taskWhere = {
     ...(warehouseFilter && { warehouse: warehouseFilter }),
