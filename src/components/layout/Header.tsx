@@ -11,6 +11,7 @@ import { SettingsModal } from '@/components/modals/SettingsModal';
 import { ChatModal } from '@/components/chat/ChatModal';
 import { useChatNewMessagesBadge } from '@/components/chat/useChatNewMessagesBadge';
 import { getRandomNotificationSound } from '@/lib/notificationSounds';
+import { useToast } from '@/hooks/useToast';
 
 interface HeaderProps {
   newCount: number;
@@ -116,6 +117,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const toastAudioRef = useRef<HTMLAudioElement | null>(null);
   const [mentionToastPreview, setMentionToastPreview] = useState<{ from: string; text: string } | null>(null);
   const router = useRouter();
+  const { showSuccess, showError, showWarning } = useToast();
 
   useEffect(() => {
     loadUser();
@@ -310,7 +312,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const handleRequestExtraWork = async () => {
     const text = extraWorkRequestText.trim();
     if (text.length < 5) {
-      alert('Кратко опишите, что будете делать (минимум 5 символов).');
+      showWarning('Кратко опишите, что будете делать (минимум 5 символов).', 3500);
       return;
     }
     setExtraWorkRequestSending(true);
@@ -323,9 +325,9 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Не удалось отправить запрос.');
       setExtraWorkRequestText('');
-      alert('Запрос на доп. работу отправлен Дмитрию Палычу.');
+      showSuccess('Запрос отправлен Дмитрию Палычу', 2800);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Ошибка отправки запроса');
+      showError(e instanceof Error ? e.message : 'Ошибка отправки запроса', 4000);
     } finally {
       setExtraWorkRequestSending(false);
     }
