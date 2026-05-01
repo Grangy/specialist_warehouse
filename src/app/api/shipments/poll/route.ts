@@ -7,7 +7,7 @@ import crypto from 'crypto';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const ROLES_WITH_MESSAGES = ['collector', 'checker', 'warehouse_3'] as const;
+const ROLES_WITH_MESSAGES = ['admin', 'collector', 'checker', 'warehouse_3'] as const;
 
 /**
  * Очень частый endpoint (poll). Делаем:

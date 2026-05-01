@@ -10,6 +10,7 @@ import { ExtraWorkBanner } from '@/components/ExtraWorkBanner';
 import { ExtraWorkPopup } from '@/components/ExtraWorkPopup';
 import { ExtraWorkSessionEffects } from '@/components/ExtraWorkSessionEffects';
 import { ExtraWorkLayout } from '@/components/ExtraWorkLayout';
+import { GlobalAdminMessagePopupHost } from '@/components/GlobalAdminMessagePopupHost';
 import '@/styles/globals.css';
 
 export const metadata: Metadata = {
@@ -56,6 +57,7 @@ export default function RootLayout({
               <ShipmentsPollingProvider>
                 <UserSettingsProvider>
                   {children}
+                  <GlobalAdminMessagePopupHost />
                   <ExtraWorkPopup />
                   <ExtraWorkBanner />
                   <ToastContainer />

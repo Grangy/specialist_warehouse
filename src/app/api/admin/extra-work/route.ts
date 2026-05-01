@@ -48,6 +48,7 @@ import {
   peekExtraWorkAdminCache,
   setExtraWorkAdminCache,
 } from '@/lib/extraWorkAdminResponseCache';
+import { loadExtraWorkRequests } from '@/lib/extraWorkRequests';
 
 export async function GET(request: NextRequest) {
   try {
@@ -375,6 +376,10 @@ export async function GET(request: NextRequest) {
       return a.extraWorkHours - b.extraWorkHours;
     });
 
+    const pendingRequests = (await loadExtraWorkRequests(prisma))
+      .filter((r) => r.status === 'pending')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
     const body = {
       entries: resultWithActive,
       hiddenUserIds: [...hiddenUserIds],
@@ -383,6 +388,7 @@ export async function GET(request: NextRequest) {
       weekdayCoefficients: weekdayCoefficients,
       coeffPeriodStart: coeffPeriod.start.toISOString().slice(0, 10),
       coeffPeriodEnd: coeffPeriod.end.toISOString().slice(0, 10),
+      pendingRequests,
     };
     setExtraWorkAdminCache(cacheKey, body);
     return NextResponse.json(body);

@@ -15,7 +15,6 @@ import { OrderCompletedModal } from '@/components/modals/OrderCompletedModal';
 import { SendToOfficeModal } from '@/components/modals/SendToOfficeModal';
 import { WarehouseSelectModal } from '@/components/modals/WarehouseSelectModal';
 import { CollectionCompletedModal } from '@/components/modals/CollectionCompletedModal';
-import { AdminMessagePopup } from '@/components/AdminMessagePopup';
 import { DictatorSelectModal } from '@/components/modals/DictatorSelectModal';
 import { AdminActionConfirmModal } from '@/components/modals/AdminActionConfirmModal';
 import { useShipments } from '@/hooks/useShipments';
@@ -26,8 +25,6 @@ import { useToast } from '@/hooks/useToast';
 import { useShipmentsPolling } from '@/contexts/ShipmentsPollingContext';
 import { useUserSettings } from '@/contexts/UserSettingsContext';
 import type { Shipment } from '@/types';
-
-const ROLES_WITH_ADMIN_MESSAGES = ['collector', 'checker', 'warehouse_3'] as const;
 
 export default function Home() {
   const router = useRouter();
@@ -84,18 +81,6 @@ export default function Home() {
   } = useShipments({ showOnlyToday });
 
   const polling = useShipmentsPolling();
-  const showAdminMessagePopup =
-    userInfo &&
-    ROLES_WITH_ADMIN_MESSAGES.includes(userInfo.role as (typeof ROLES_WITH_ADMIN_MESSAGES)[number]) &&
-    polling?.lastPollResult?.pendingMessage;
-
-  const handleDismissAdminMessage = useCallback(async () => {
-    try {
-      await fetch('/api/notifications/dismiss', { method: 'POST', credentials: 'include' });
-    } finally {
-      polling?.clearPendingMessage();
-    }
-  }, [polling]);
 
   // Проверяем, нужно ли показать модальное окно выбора склада
   useEffect(() => {
@@ -619,12 +604,6 @@ export default function Home() {
         taskNumber={completedCollectionData?.taskNumber}
         totalTasks={completedCollectionData?.totalTasks}
       />
-      {showAdminMessagePopup && polling?.lastPollResult?.pendingMessage && (
-        <AdminMessagePopup
-          message={polling.lastPollResult.pendingMessage}
-          onAccept={handleDismissAdminMessage}
-        />
-      )}
       <DictatorSelectModal
         isOpen={showDictatorRequiredModal}
         required

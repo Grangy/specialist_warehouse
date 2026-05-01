@@ -48,6 +48,15 @@ interface ExtraWorkEntry {
   };
 }
 
+interface ExtraWorkRequest {
+  id: string;
+  requesterId: string;
+  requesterName: string;
+  requestedTask: string;
+  createdAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
 const EXTRA_WORK_COLOR = '#f59e0b';
 
 function formatHours(h: number): string {
@@ -84,6 +93,8 @@ export default function ExtraWorkTab() {
   const [showFormulaHelp, setShowFormulaHelp] = useState(false);
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
   const [showCurrentIndicators, setShowCurrentIndicators] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState<ExtraWorkRequest[]>([]);
+  const [decisionRequestId, setDecisionRequestId] = useState<string | null>(null);
 
   // Ручное начисление доп. баллов (отдельный раздел)
   const [manualAdjustUserId, setManualAdjustUserId] = useState<string | null>(null);
@@ -104,6 +115,7 @@ export default function ExtraWorkTab() {
       setData(json.entries ?? json);
       setActiveSessions(json.activeSessions ?? []);
       setHiddenUserIds(new Set(json.hiddenUserIds ?? []));
+      setPendingRequests(json.pendingRequests ?? []);
       if (json.coeffPeriodStart && json.coeffPeriodEnd) {
         setCoeffPeriod({ start: json.coeffPeriodStart, end: json.coeffPeriodEnd });
       }
@@ -163,6 +175,24 @@ export default function ExtraWorkTab() {
       alert(e instanceof Error ? e.message : 'Ошибка');
     } finally {
       setAssigningUserId(null);
+    }
+  };
+
+  const handleRequestDecision = async (requestId: string, decision: 'approve' | 'reject') => {
+    setDecisionRequestId(requestId);
+    try {
+      const res = await fetch('/api/admin/extra-work/request-decision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, decision }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Ошибка обработки запроса');
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Ошибка');
+    } finally {
+      setDecisionRequestId(null);
     }
   };
 
@@ -425,6 +455,44 @@ export default function ExtraWorkTab() {
 
       {subTab === 'management' && (
       <>
+      {canAssign && pendingRequests.length > 0 && (
+        <div className="bg-slate-800/50 rounded-xl p-6 border border-teal-600/40">
+          <h3 className="text-lg font-bold text-slate-100 mb-1">Запросы на доп. работу</h3>
+          <p className="text-sm text-slate-400 mb-4">После подтверждения автоматически запускается доп. работа пользователю.</p>
+          <div className="space-y-3">
+            {pendingRequests.map((r) => (
+              <div key={r.id} className="rounded-lg border border-slate-700/70 bg-slate-900/40 p-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">{r.requesterName}</div>
+                    <div className="text-xs text-slate-500">{new Date(r.createdAt).toLocaleString('ru-RU')}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleRequestDecision(r.id, 'reject')}
+                      disabled={decisionRequestId === r.id}
+                      className="px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-100 text-xs disabled:opacity-50"
+                    >
+                      Отклонить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleRequestDecision(r.id, 'approve')}
+                      disabled={decisionRequestId === r.id}
+                      className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold disabled:opacity-50"
+                    >
+                      Подтвердить
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 text-sm text-slate-300 whitespace-pre-wrap">{r.requestedTask}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Вертикальная столбиковая диаграмма */}
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
             <h3 className="text-lg font-bold text-slate-100 mb-4">Часы доп. работы за неделю</h3>

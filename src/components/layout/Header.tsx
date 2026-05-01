@@ -106,6 +106,8 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const [showProfile, setShowProfile] = useState(false);
   const [profilePosition, setProfilePosition] = useState({ top: 80, right: 16, width: 420 });
   const [showSettings, setShowSettings] = useState(false);
+  const [extraWorkRequestText, setExtraWorkRequestText] = useState('');
+  const [extraWorkRequestSending, setExtraWorkRequestSending] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const { count: newMessagesCount, markSeenNow } = useChatNewMessagesBadge(isChatOpen, user?.id ?? null);
   const [mentionToastOpen, setMentionToastOpen] = useState(false);
@@ -302,6 +304,30 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
       router.refresh();
     } catch (error) {
       console.error('Ошибка выхода:', error);
+    }
+  };
+
+  const handleRequestExtraWork = async () => {
+    const text = extraWorkRequestText.trim();
+    if (text.length < 5) {
+      alert('Кратко опишите, что будете делать (минимум 5 символов).');
+      return;
+    }
+    setExtraWorkRequestSending(true);
+    try {
+      const res = await fetch('/api/extra-work/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestedTask: text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Не удалось отправить запрос.');
+      setExtraWorkRequestText('');
+      alert('Запрос на доп. работу отправлен Дмитрию Палычу.');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Ошибка отправки запроса');
+    } finally {
+      setExtraWorkRequestSending(false);
     }
   };
 
@@ -563,6 +589,27 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                           <Bell className="w-4 h-4" />
                           <span className="text-sm font-medium">Чат</span>
                         </button>
+
+                        {/* Запрос на доп.работу */}
+                        <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 p-3 space-y-2">
+                          <div className="text-sm font-medium text-teal-200">Запросить доп. работу</div>
+                          <textarea
+                            value={extraWorkRequestText}
+                            onChange={(e) => setExtraWorkRequestText(e.target.value)}
+                            rows={2}
+                            placeholder="Что будете делать в доп. работе..."
+                            className="w-full resize-y min-h-[56px] rounded-md bg-slate-800/90 border border-slate-600/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleRequestExtraWork}
+                            disabled={extraWorkRequestSending}
+                            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm font-medium disabled:opacity-60"
+                          >
+                            <Briefcase className="w-4 h-4" />
+                            {extraWorkRequestSending ? 'Отправляем...' : 'Запросить доп. работу'}
+                          </button>
+                        </div>
 
                         {/* Достижения (если есть) */}
                         {rankingStats?.daily?.achievements && rankingStats.daily.achievements.length > 0 && (

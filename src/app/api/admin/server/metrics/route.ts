@@ -20,8 +20,15 @@ function bytes(n: number): number {
 function diskUsageRoot(): { totalBytes: number; freeBytes: number; usedBytes: number } | null {
   try {
     // Node.js supports statfsSync
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const s: any = (fs as any).statfsSync?.('/') ?? null;
+    const statfsHost = fs as unknown as {
+      statfsSync?: (path: string) => {
+        bsize?: number;
+        frsize?: number;
+        blocks?: number;
+        bfree?: number;
+      };
+    };
+    const s = statfsHost.statfsSync?.('/') ?? null;
     if (!s) return null;
     const bsize = Number(s.bsize ?? s.frsize ?? 0);
     const blocks = Number(s.blocks ?? 0);
