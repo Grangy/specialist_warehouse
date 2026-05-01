@@ -7,6 +7,14 @@ import UserStatsModal from '@/components/admin/UserStatsModal';
 import { PointsHelpModal } from '@/components/PointsHelpModal';
 
 type Period = 'today' | 'week' | 'month';
+type MonthViewMode = 'month' | 'weeks' | 'days';
+
+interface MonthRangeOption {
+  value: string;
+  label: string;
+  rangeStart: string;
+  rangeEnd: string;
+}
 
 interface RankingEntry {
   userId: string;
@@ -104,6 +112,26 @@ const PERIOD_HINTS: Record<Period, string> = {
   month: 'с начала месяца',
 };
 
+const MONTH_VIEW_LABELS: Record<MonthViewMode, string> = {
+  month: 'Итог месяца',
+  weeks: 'Недели',
+  days: 'Дни',
+};
+
+function parseMonthValue(monthStr: string): { year: number; monthIndex: number } | null {
+  const m = monthStr.match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  return { year: Number(m[1]), monthIndex: Number(m[2]) - 1 };
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function toYmd(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
 export default function TopPage() {
   const [list, setList] = useState<RankingEntry[]>([]);
   const [date, setDate] = useState<string>('');
@@ -112,6 +140,8 @@ export default function TopPage() {
   const [totalCheckerErrors, setTotalCheckerErrors] = useState(0);
   const [period, setPeriod] = useState<Period>('today');
   const [monthArchive, setMonthArchive] = useState<string>(''); // YYYY-MM, empty = current month
+  const [monthViewMode, setMonthViewMode] = useState<MonthViewMode>('month');
+  const [monthRange, setMonthRange] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -141,6 +171,60 @@ export default function TopPage() {
     return out;
   }, []);
 
+  const currentMonthValue = useCallback(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+  }, []);
+
+  const activeMonthValue = monthArchive || currentMonthValue();
+
+  const monthRangeOptions = useCallback((monthStr: string, mode: MonthViewMode): MonthRangeOption[] => {
+    const parsed = parseMonthValue(monthStr);
+    if (!parsed || mode === 'month') return [];
+    const { year, monthIndex } = parsed;
+    const monthStart = new Date(year, monthIndex, 1);
+    const monthEnd = new Date(year, monthIndex + 1, 0);
+    const now = new Date();
+    const capEnd =
+      now.getFullYear() === year && now.getMonth() === monthIndex
+        ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        : monthEnd;
+    const finalEnd = capEnd < monthStart ? monthStart : capEnd;
+    if (mode === 'days') {
+      const out: MonthRangeOption[] = [];
+      for (let day = 1; day <= finalEnd.getDate(); day++) {
+        const d = new Date(year, monthIndex, day);
+        const ymd = toYmd(d);
+        out.push({
+          value: ymd,
+          label: d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', weekday: 'short' }),
+          rangeStart: ymd,
+          rangeEnd: ymd,
+        });
+      }
+      return out.reverse();
+    }
+    const out: MonthRangeOption[] = [];
+    let cursor = new Date(year, monthIndex, 1);
+    while (cursor <= finalEnd) {
+      const weekStart = new Date(cursor);
+      const weekEnd = new Date(cursor);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      if (weekEnd > finalEnd) weekEnd.setTime(finalEnd.getTime());
+      const startYmd = toYmd(weekStart);
+      const endYmd = toYmd(weekEnd);
+      out.push({
+        value: `${startYmd}_${endYmd}`,
+        label: `${weekStart.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} - ${weekEnd.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}`,
+        rangeStart: startYmd,
+        rangeEnd: endYmd,
+      });
+      cursor = new Date(weekEnd);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return out.reverse();
+  }, []);
+
   const load = useCallback(async (silent = false, forceReload = false) => {
     if (!silent) {
       setIsLoading(true);
@@ -149,10 +233,16 @@ export default function TopPage() {
     try {
       const nocachePart = forceReload ? '&nocache=1' : '';
       const archivePart = period === 'month' && monthArchive ? `&month=${encodeURIComponent(monthArchive)}` : '';
+      const activeOptions = monthRangeOptions(activeMonthValue, monthViewMode);
+      const selectedOption = activeOptions.find((o) => o.value === monthRange) ?? activeOptions[0];
+      const rangePart =
+        period === 'month' && monthViewMode !== 'month' && selectedOption
+          ? `&rangeStart=${encodeURIComponent(selectedOption.rangeStart)}&rangeEnd=${encodeURIComponent(selectedOption.rangeEnd)}`
+          : '';
       const ctrl = new AbortController();
       const timeoutMs = 15_000;
       const t = setTimeout(() => ctrl.abort(), timeoutMs);
-      const url = `/api/statistics/top?period=${period}${archivePart}${nocachePart}`;
+      const url = `/api/statistics/top?period=${period}${archivePart}${rangePart}${nocachePart}`;
       const res = await fetch(url, {
         cache: 'no-store',
         signal: ctrl.signal,
@@ -209,7 +299,7 @@ export default function TopPage() {
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, [monthArchive, period]);
+  }, [monthArchive, period, monthViewMode, monthRange, monthRangeOptions, activeMonthValue]);
 
   useEffect(() => {
     const refreshMs = period === 'today' ? 3 * 60 * 1000 : period === 'week' ? 10 * 60 * 1000 : 20 * 60 * 1000;
@@ -219,6 +309,17 @@ export default function TopPage() {
     const id = setInterval(() => load(true), refreshMs);
     return () => clearInterval(id);
   }, [load, period]);
+
+  useEffect(() => {
+    if (period !== 'month' || monthViewMode === 'month') return;
+    const options = monthRangeOptions(activeMonthValue, monthViewMode);
+    if (!options.length) {
+      if (monthRange) setMonthRange('');
+      return;
+    }
+    const exists = options.some((o) => o.value === monthRange);
+    if (!exists) setMonthRange(options[0].value);
+  }, [period, monthViewMode, activeMonthValue, monthRange, monthRangeOptions]);
 
   const formatPointsNum = (p: number) => Math.round(p * 100) / 100;
   const formatDate = (d: string) => {
@@ -317,19 +418,47 @@ export default function TopPage() {
               </button>
             ))}
             {period === 'month' && (
-              <select
-                value={monthArchive}
-                onChange={(e) => setMonthArchive(e.target.value)}
-                className="ml-1 px-3 py-2 rounded-lg text-sm font-medium border bg-slate-800/80 text-slate-200 border-slate-600 hover:bg-slate-700/80"
-                title="Архив итогов месяцев"
-              >
-                <option value="">Текущий месяц</option>
-                {getLastMonths(18).map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={monthArchive}
+                  onChange={(e) => setMonthArchive(e.target.value)}
+                  className="ml-1 px-3 py-2 rounded-lg text-sm font-medium border bg-slate-800/80 text-slate-200 border-slate-600 hover:bg-slate-700/80"
+                  title="Текущий или прошлый месяц"
+                >
+                  <option value="">Текущий месяц</option>
+                  {getLastMonths(2).slice(1).map((m) => (
+                    <option key={m} value={m}>
+                      Прошлый месяц ({m})
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={monthViewMode}
+                  onChange={(e) => setMonthViewMode(e.target.value as MonthViewMode)}
+                  className="px-3 py-2 rounded-lg text-sm font-medium border bg-slate-800/80 text-slate-200 border-slate-600 hover:bg-slate-700/80"
+                  title="Режим просмотра по месяцу"
+                >
+                  {(Object.keys(MONTH_VIEW_LABELS) as MonthViewMode[]).map((mode) => (
+                    <option key={mode} value={mode}>
+                      {MONTH_VIEW_LABELS[mode]}
+                    </option>
+                  ))}
+                </select>
+                {monthViewMode !== 'month' && (
+                  <select
+                    value={monthRange}
+                    onChange={(e) => setMonthRange(e.target.value)}
+                    className="px-3 py-2 rounded-lg text-sm font-medium border bg-slate-800/80 text-slate-200 border-slate-600 hover:bg-slate-700/80"
+                    title={monthViewMode === 'weeks' ? 'Диапазон недели' : 'День'}
+                  >
+                    {monthRangeOptions(activeMonthValue, monthViewMode).map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </>
             )}
             <button
               type="button"
@@ -349,12 +478,18 @@ export default function TopPage() {
           {date && (
             <div className="flex items-center gap-2 text-slate-400 text-sm">
               <Calendar className="w-4 h-4" />
-              <span>{PERIOD_LABELS[period]} ({PERIOD_HINTS[period]}) · {formatDate(date)}</span>
+              <span>
+                {period === 'month' && monthViewMode !== 'month'
+                  ? `${MONTH_VIEW_LABELS[monthViewMode]} · ${formatDate(date)}`
+                  : `${PERIOD_LABELS[period]} (${PERIOD_HINTS[period]}) · ${formatDate(date)}`}
+              </span>
             </div>
           )}
           <div className="flex items-start gap-2 text-slate-500 text-xs leading-snug rounded-lg bg-slate-800/40 border border-slate-700/50 px-3 py-2">
             <Clock className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" aria-hidden />
-            <span>Обновление данных на сервере — не чаще чем раз в 15 минут (может отображаться предыдущий снимок).</span>
+            <span>
+              Данные грузятся прогрессивно: считаем только выбранный период/диапазон, без тяжелой массовой подгрузки архива.
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs text-slate-500">
@@ -833,7 +968,7 @@ export default function TopPage() {
           userId={selectedUserId}
           userName={selectedUserName}
           period={period}
-          month={period === 'month' ? monthArchive : undefined}
+          month={period === 'month' ? (monthArchive || undefined) : undefined}
           usePublicApi={true}
           onClose={() => {
             setSelectedUserId(null);

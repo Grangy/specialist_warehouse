@@ -62,7 +62,8 @@ export async function aggregateRankings(
   period: 'today' | 'week' | 'month',
   warehouseFilter?: string,
   dateOverride?: string,
-  monthOverride?: string
+  monthOverride?: string,
+  customRange?: { startDate: Date; endDate: Date }
 ): Promise<{
   allRankings: RankingEntry[];
   errorsByCollector: Map<string, number>;
@@ -72,11 +73,13 @@ export async function aggregateRankings(
 }> {
   clearEfficiencyWeightsSessionCache();
   clearWarehousePaceSessionCache();
-  const { startDate, endDate } = monthOverride
-    ? getStatisticsMonthRangeForMonth(monthOverride)
-    : dateOverride
-      ? getStatisticsDateRangeForDate(dateOverride)
-      : getStatisticsDateRange(period);
+  const { startDate, endDate } = customRange
+    ? customRange
+    : monthOverride
+      ? getStatisticsMonthRangeForMonth(monthOverride)
+      : dateOverride
+        ? getStatisticsDateRangeForDate(dateOverride)
+        : getStatisticsDateRange(period);
   const { startDate: monthStart, endDate: monthEnd } = monthOverride
     ? getStatisticsMonthRangeForMonth(monthOverride)
     : getStatisticsDateRange('month');

@@ -19,6 +19,7 @@ import {
 import { checkRateLimit, getClientIdentifier } from '@/lib/security/rateLimiter';
 import { aggregateRankings } from '@/lib/statistics/aggregateRankings';
 import { getAnimalLevel } from '@/lib/ranking/levels';
+import { getStatisticsDateRangeForDate } from '@/lib/utils/moscowDate';
 
 function computeWeakEtag(input: string): string {
   const hash = crypto.createHash('sha1').update(input).digest('hex');
@@ -29,6 +30,12 @@ function parseArchiveMonth(v: string | null): string | null {
   if (!v) return null;
   const m = v.trim().match(/^(\d{4})-(\d{2})$/);
   return m ? `${m[1]}-${m[2]}` : null;
+}
+
+function parseYmd(v: string | null): string | null {
+  if (!v) return null;
+  const m = v.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
 export const dynamic = 'force-dynamic';
@@ -57,6 +64,9 @@ export async function GET(request: NextRequest) {
       periodParam === 'week' || periodParam === 'month' ? periodParam : 'today';
     const warehouseFilter = searchParams.get('warehouse') || undefined;
     const archiveMonth = period === 'month' ? parseArchiveMonth(searchParams.get('month')) : null;
+    const rangeStartYmd = parseYmd(searchParams.get('rangeStart'));
+    const rangeEndYmd = parseYmd(searchParams.get('rangeEnd'));
+    const hasCustomRange = period === 'month' && !!rangeStartYmd && !!rangeEndYmd;
 
     const debug = searchParams.get('debug') === '1' || searchParams.get('debug') === 'true';
     if (debug) {
@@ -96,13 +106,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Archive month mode: bypass top cache, compute exact month snapshot.
-    if (archiveMonth) {
+    // Archive month mode or custom month range mode: bypass top cache, compute exact snapshot.
+    if (archiveMonth || hasCustomRange) {
+      const rangeStart = hasCustomRange ? getStatisticsDateRangeForDate(rangeStartYmd!).startDate : null;
+      const rangeEnd = hasCustomRange ? getStatisticsDateRangeForDate(rangeEndYmd!).endDate : null;
+      const customRange =
+        rangeStart && rangeEnd && rangeStart <= rangeEnd
+          ? { startDate: rangeStart, endDate: rangeEnd }
+          : undefined;
       const { allRankings: rawList, errorsByCollector, errorsByChecker, baselineUserName } = await aggregateRankings(
         'month',
         warehouseFilter,
         undefined,
-        archiveMonth
+        archiveMonth ?? undefined,
+        customRange
       );
       const allRankings = rawList.map((e) => ({ ...e }));
 
@@ -143,13 +160,21 @@ export async function GET(request: NextRequest) {
           all: allRankings,
           period,
           month: archiveMonth,
-          date: `${archiveMonth}-01`,
+          rangeStart: hasCustomRange ? rangeStartYmd : undefined,
+          rangeEnd: hasCustomRange ? rangeEndYmd : undefined,
+          date: hasCustomRange ? rangeStartYmd : `${archiveMonth}-01`,
           totalCollectorErrors,
           totalCheckerErrors,
           topErrorsMerged,
           baselineUserName,
         },
-        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'X-Top-Archive-Month': archiveMonth } }
+        {
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            ...(archiveMonth ? { 'X-Top-Archive-Month': archiveMonth } : {}),
+            ...(hasCustomRange ? { 'X-Top-Custom-Range': `${rangeStartYmd}:${rangeEndYmd}` } : {}),
+          },
+        }
       );
     }
 
