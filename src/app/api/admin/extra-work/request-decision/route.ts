@@ -31,13 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (decision === 'reject') {
-      requests[idx] = {
-        ...item,
-        status: 'rejected',
-        handledAt: new Date().toISOString(),
-        handledById: user.id,
-        handledByName: user.name,
-      };
+      requests.splice(idx, 1);
       await saveExtraWorkRequests(prisma, requests);
       return NextResponse.json({ success: true });
     }

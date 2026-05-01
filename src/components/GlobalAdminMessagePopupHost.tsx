@@ -6,6 +6,11 @@ import { AdminMessagePopup } from '@/components/AdminMessagePopup';
 
 export function GlobalAdminMessagePopupHost() {
   const polling = useShipmentsPolling();
+  const pendingMessage = polling?.lastPollResult?.pendingMessage;
+  const requestId =
+    pendingMessage?.action?.kind === 'extra_work_request'
+      ? pendingMessage.action.requestId
+      : null;
 
   useEffect(() => {
     if (!polling) return;
@@ -15,15 +20,39 @@ export function GlobalAdminMessagePopupHost() {
     return unsub;
   }, [polling]);
 
-  if (!polling?.lastPollResult?.pendingMessage) return null;
+  if (!pendingMessage) return null;
 
   return (
     <AdminMessagePopup
-      message={polling.lastPollResult.pendingMessage}
+      message={pendingMessage}
       onAccept={async () => {
         await fetch('/api/notifications/dismiss', { method: 'POST', credentials: 'include' });
         polling.clearPendingMessage();
       }}
+      onApproveRequest={requestId ? async () => {
+        const res = await fetch('/api/admin/extra-work/request-decision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ requestId, decision: 'approve' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Не удалось подтвердить запрос.');
+        await fetch('/api/notifications/dismiss', { method: 'POST', credentials: 'include' });
+        polling.clearPendingMessage();
+      } : undefined}
+      onRejectRequest={requestId ? async () => {
+        const res = await fetch('/api/admin/extra-work/request-decision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ requestId, decision: 'reject' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Не удалось отклонить запрос.');
+        await fetch('/api/notifications/dismiss', { method: 'POST', credentials: 'include' });
+        polling.clearPendingMessage();
+      } : undefined}
     />
   );
 }

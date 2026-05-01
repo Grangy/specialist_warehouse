@@ -74,6 +74,10 @@ export async function POST(request: NextRequest) {
       type: 'admin',
       fromName: user.name,
       text: `Запрос доп. работы от ${user.name}: ${requestedTask}`,
+      action: {
+        kind: 'extra_work_request',
+        requestId: item.id,
+      },
     });
 
     return NextResponse.json({ success: true, requestId: item.id });

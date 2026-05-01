@@ -15,6 +15,7 @@ import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, Ch
 import ExtraWorkHistoryTab from './ExtraWorkHistoryTab';
 import { ExtraWorkCurrentIndicatorsModal } from './ExtraWorkCurrentIndicatorsModal';
 import { EXTRA_WORK_WEIGHT_FLOOR } from '@/lib/extraWorkPublicConstants';
+import { useToast } from '@/hooks/useToast';
 
 interface ActiveSession {
   id: string;
@@ -74,6 +75,7 @@ const MIN_HOURS_CHART = 1 / 60;
 type SubTab = 'management' | 'history';
 
 export default function ExtraWorkTab() {
+  const { showSuccess, showError } = useToast();
   const [subTab, setSubTab] = useState<SubTab>('management');
   const [data, setData] = useState<ExtraWorkEntry[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
@@ -189,8 +191,9 @@ export default function ExtraWorkTab() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Ошибка обработки запроса');
       await load();
+      showSuccess(decision === 'approve' ? 'Запрос подтвержден' : 'Запрос отклонен', 2200);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Ошибка');
+      showError(e instanceof Error ? e.message : 'Ошибка', 3500);
     } finally {
       setDecisionRequestId(null);
     }

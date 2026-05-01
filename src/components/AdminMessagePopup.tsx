@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MessageCircle, Check } from 'lucide-react';
+import { MessageCircle, Check, X } from 'lucide-react';
 import type { PendingMessagePayload } from '@/contexts/ShipmentsPollingContext';
 import { getRandomNotificationSound } from '@/lib/notificationSounds';
+import { useToast } from '@/hooks/useToast';
 
 const SOS_HEADER = 'Подойдите к столу';
 
@@ -12,10 +13,14 @@ interface AdminMessagePopupProps {
   message: PendingMessagePayload;
   /** Отметить сообщение принятым (API + сброс). Вызывается только по кнопке «Принял». */
   onAccept: () => void | Promise<void>;
+  onApproveRequest?: () => void | Promise<void>;
+  onRejectRequest?: () => void | Promise<void>;
 }
 
-export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps) {
+export function AdminMessagePopup({ message, onAccept, onApproveRequest, onRejectRequest }: AdminMessagePopupProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { showSuccess, showError } = useToast();
 
   const stopSound = useCallback(() => {
     if (audioRef.current) {
@@ -33,6 +38,7 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
 
   const soundUrl = useMemo(() => getRandomNotificationSound(), []);
   const isSos = message.type === 'sos';
+  const isExtraWorkRequest = message.action?.kind === 'extra_work_request';
   useEffect(() => {
     const audio = new Audio(soundUrl);
     audio.loop = true;
@@ -51,10 +57,38 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
     };
   }, [soundUrl]);
 
+  const handleApproveRequest = useCallback(async () => {
+    if (!onApproveRequest || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await Promise.resolve(onApproveRequest());
+      stopSound();
+      showSuccess('Дополнительная работа запущена', 2500);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Ошибка обработки запроса', 3500);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [isSubmitting, onApproveRequest, showError, showSuccess, stopSound]);
+
+  const handleRejectRequest = useCallback(async () => {
+    if (!onRejectRequest || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await Promise.resolve(onRejectRequest());
+      stopSound();
+      showSuccess('Запрос на доп. работу отклонен', 2500);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Ошибка обработки запроса', 3500);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [isSubmitting, onRejectRequest, showError, showSuccess, stopSound]);
+
   const popup = (
     <div
       className="fixed inset-0 flex items-center justify-center p-4 animate-[fadeIn_0.25s_ease-out]"
-      style={{ zIndex: 999999 }}
+      style={{ zIndex: 2147483647 }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="admin-message-title"
@@ -82,6 +116,8 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
               <p id="admin-message-title" className="text-center text-xs font-semibold uppercase tracking-wider mb-2">
                 {isSos ? (
                   <span className="text-red-500">{SOS_HEADER}</span>
+                ) : isExtraWorkRequest ? (
+                  <span className="text-teal-300">Запрос на дополнительную работу</span>
                 ) : (
                   <span className="text-amber-400/90">Сообщение от администратора</span>
                 )}
@@ -97,23 +133,57 @@ export function AdminMessagePopup({ message, onAccept }: AdminMessagePopupProps)
                 <span className="font-semibold text-red-500">{SOS_HEADER}.</span>{' '}
                 {message.text.replace(/\s*Подойдите к столу\.?\s*/gi, ' ').replace(/\s+/g, ' ').trim()}
               </p>
+            ) : isExtraWorkRequest ? (
+              <p className="text-slate-100 text-base md:text-lg leading-relaxed whitespace-pre-wrap">
+                {message.text}
+              </p>
             ) : (
               <p className="text-slate-100 text-base md:text-lg leading-relaxed whitespace-pre-wrap">
                 {message.text}
               </p>
             )}
           </div>
-          <p className="mt-3 text-center text-xs text-slate-500">
-            Закрыть можно только нажав «Принял». Сообщение будет показываться при каждом входе в приложение до подтверждения.
-          </p>
-          <button
-            type="button"
-            onClick={() => void handleAccept()}
-            className="mt-4 w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-500/20 hover:shadow-green-500/40 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] animate-pulse-slow"
-          >
-            {isSos ? <span className="text-lg" aria-hidden>🐵</span> : <Check className="w-5 h-5" />}
-            Принял
-          </button>
+          {isExtraWorkRequest ? (
+            <>
+              <p className="mt-3 text-center text-xs text-slate-500">
+                Выберите действие по запросу: принять и сразу запустить доп. работу или отказать и удалить запрос.
+              </p>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => void handleRejectRequest()}
+                  className="py-3 px-4 rounded-xl bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  <X className="w-5 h-5" />
+                  Отменить
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => void handleApproveRequest()}
+                  className="py-3 px-4 rounded-xl bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-500/20 disabled:opacity-60"
+                >
+                  <Check className="w-5 h-5" />
+                  {isSubmitting ? 'Обработка...' : 'Принял'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mt-3 text-center text-xs text-slate-500">
+                Закрыть можно только нажав «Принял». Сообщение будет показываться при каждом входе в приложение до подтверждения.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleAccept()}
+                className="mt-4 w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold flex items-center justify-center gap-2 shadow-lg shadow-green-500/20 hover:shadow-green-500/40 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] animate-pulse-slow"
+              >
+                {isSos ? <span className="text-lg" aria-hidden>🐵</span> : <Check className="w-5 h-5" />}
+                Принял
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

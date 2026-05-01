@@ -5,11 +5,11 @@ import React, { createContext, useCallback, useRef, useState, useMemo, useEffect
 const POLL_URL = '/api/shipments/poll';
 
 /** Базовый интервал опроса (мс) — прогресс сборки/проверки у других пользователей */
-const POLL_INTERVAL_MS = 25_000;
+const POLL_INTERVAL_MS = 3_000;
 /** Максимальный интервал при backoff (мс) */
-const POLL_INTERVAL_MAX_MS = 120_000;
+const POLL_INTERVAL_MAX_MS = 7_000;
 /** После скольких ответов "нет изменений" подряд увеличивать интервал */
-const BACKOFF_AFTER_NO_UPDATES = 3;
+const BACKOFF_AFTER_NO_UPDATES = 8;
 /** Слияние вызовов подписчиков при hasUpdates (меньше дублей GET /api/shipments) */
 const NOTIFY_DEBOUNCE_MS = 400;
 
@@ -22,6 +22,10 @@ export interface PendingMessagePayload {
   soundUrl?: string;
   /** sos = подзыв сборщика во время проверки (СОС) */
   type?: 'sos' | 'admin';
+  action?: {
+    kind: 'extra_work_request';
+    requestId: string;
+  };
 }
 
 export interface LastPollResult {

@@ -16,6 +16,10 @@ export interface PendingMessage {
   soundUrl?: string;
   /** sos = подзыв сборщика при проверке (СОС), admin = сообщение от админа / ошибка сборки */
   type?: 'sos' | 'admin';
+  action?: {
+    kind: 'extra_work_request';
+    requestId: string;
+  };
 }
 
 const pendingByUserId = new Map<string, PendingMessage>();
@@ -26,7 +30,16 @@ function generateId(): string {
 
 export function setPendingMessage(
   userId: string,
-  payload: { text: string; fromName: string; soundUrl?: string; type?: 'sos' | 'admin' }
+  payload: {
+    text: string;
+    fromName: string;
+    soundUrl?: string;
+    type?: 'sos' | 'admin';
+    action?: {
+      kind: 'extra_work_request';
+      requestId: string;
+    };
+  }
 ): PendingMessage {
   const msg: PendingMessage = {
     id: generateId(),
@@ -35,6 +48,7 @@ export function setPendingMessage(
     sentAt: new Date(),
     soundUrl: payload.soundUrl,
     type: payload.type,
+    action: payload.action,
   };
   pendingByUserId.set(userId, msg);
   return msg;

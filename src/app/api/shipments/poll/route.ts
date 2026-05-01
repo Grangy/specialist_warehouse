@@ -74,6 +74,7 @@ export async function GET(request: NextRequest) {
           sentAt: msg.sentAt.toISOString(),
           ...(msg.soundUrl != null && { soundUrl: msg.soundUrl }),
           ...(msg.type != null && { type: msg.type }),
+          ...(msg.action != null && { action: msg.action }),
         };
       }
     }
@@ -100,6 +101,7 @@ export async function GET(request: NextRequest) {
           sentAt: msg.sentAt.toISOString(),
           ...(msg.soundUrl != null && { soundUrl: msg.soundUrl }),
           ...(msg.type != null && { type: msg.type }),
+          ...(msg.action != null && { action: msg.action }),
         };
       }
     }
@@ -163,6 +165,7 @@ export async function GET(request: NextRequest) {
         sentAt: msg.sentAt.toISOString(),
         ...(msg.soundUrl != null && { soundUrl: msg.soundUrl }),
         ...(msg.type != null && { type: msg.type }),
+        ...(msg.action != null && { action: msg.action }),
       };
     }
   }
