@@ -116,9 +116,14 @@ export async function buildErrorPenaltyAdjustments(
   }
 
   if (orphanCount > 0 && !orphanAdminId) {
+    const admins = await prisma.user.findMany({
+      where: { role: 'admin' },
+      select: { login: true, name: true },
+    });
     console.warn(
-      `⚠️ ${orphanCount} admin-ошибок без registeredById — баллы админу не начислены. Укажите --orphan-admin-login=LOGIN для ретро-начисления.`
+      `⚠️ ${orphanCount} admin-ошибок без registeredById — баллы админу не начислены. Укажите --orphan-admin-login=LOGIN`
     );
+    console.warn(`   Админы в БД: ${admins.map((a) => `${a.login} (${a.name})`).join(', ')}`);
   }
 
   return adj;
