@@ -63,6 +63,7 @@
     "fix:extra-work-april-2026-sessions": "tsx scripts/fix-extra-work-sessions-april-2026.ts",
     "recalc:extra-work-manual": "tsx scripts/recalc-extra-work-manual.ts",
     "recalc:error-penalties": "tsx scripts/recalc-error-penalties.ts",
+    "restore:error-penalties-month": "tsx scripts/restore-error-penalties-month-keep-today.ts",
     "audit:vitaly": "tsx scripts/audit-vitaly-extra-work.ts",
     "report:workload-weekday": "tsx scripts/report-workload-by-weekday.ts",
     "recalc:extra-work": "tsx scripts/recalculate-extra-work-verify.ts",
