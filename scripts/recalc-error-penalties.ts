@@ -1,10 +1,11 @@
 /**
  * Пересчёт error_penalty_adjustments по данным CollectorCall.
  * Схема:
- * - source='checker': позиция с errorCount>0 => сборщик −1/−5 (новенький/остальные), проверяльщик +5
+ * - source='checker': позиция с errorCount>0 => сборщик −1/−5, проверяльщик +5
+ * - source='admin' (checkerErrorCount>0): сборщик −1/−5, проверяльщик −10
+ *   (баллы админу +11/+15 в CollectorCall не хранятся — не пересчитываются)
  *
- * Важно: считаем по позициям, а не по количеству товара.
- * source='admin' здесь не пересчитывается (adminId не хранится в CollectorCall).
+ * Считаем по позициям (errorCount>0 / checkerErrorCount>0), не по количеству.
  *
  * Запуск: npx tsx scripts/recalc-error-penalties.ts
  *         npm run recalc:error-penalties
@@ -17,6 +18,7 @@ import { getErrorPenaltiesMapForPeriod } from '../src/lib/ranking/errorPenalties
 import { isCollectorNewbie } from '../src/lib/ranking/isNewbie';
 import {
   CHECKER_BONUS_COLLECTOR_ERROR,
+  CHECKER_PENALTY_ADMIN_FOUND,
   COLLECTOR_ERROR_NEWBIE,
   COLLECTOR_ERROR_REGULAR,
 } from '../src/lib/ranking/errorPointRates';
@@ -40,9 +42,8 @@ function toDateStr(d: Date): string {
 
 async function main() {
   console.log('\n=== Пересчёт error_penalty_adjustments ===\n');
-  console.log('Схема: source=checker: сборщик −1/−5, проверяльщик +5');
-  console.log('Считаем по позициям (errorCount>0), не по количеству.');
-  console.log('source=admin не пересчитывается этим скриптом.\n');
+  console.log('Схема: checker → сборщик −1/−5, проверяльщик +5');
+  console.log('        admin → сборщик −1/−5, проверяльщик −10 (без баллов админа)\n');
 
   const calls = await prisma.collectorCall.findMany({
     where: {
@@ -80,6 +81,39 @@ async function main() {
 
     if (!adj[checkId]) adj[checkId] = [];
     adj[checkId].push({ points: CHECKER_BONUS_COLLECTOR_ERROR * errCount, date: dateStr });
+  }
+
+  const adminCalls = await prisma.collectorCall.findMany({
+    where: {
+      status: 'done',
+      source: 'admin',
+      checkerErrorCount: { gt: 0 },
+    },
+    include: {
+      task: {
+        include: {
+          shipment: { select: { confirmedAt: true } },
+        },
+      },
+    },
+  });
+
+  console.log(`Найдено CollectorCall (admin, checkerErrorCount>0): ${adminCalls.length}\n`);
+
+  for (const call of adminCalls) {
+    const errCount = (call.checkerErrorCount ?? 0) > 0 ? 1 : 0;
+    if (errCount === 0) continue;
+    const date = call.task?.shipment?.confirmedAt ?? call.confirmedAt ?? new Date();
+    const dateStr = toDateStr(date instanceof Date ? date : new Date(date));
+    const collPenalty = (await isCollectorNewbie(call.collectorId))
+      ? COLLECTOR_ERROR_NEWBIE
+      : COLLECTOR_ERROR_REGULAR;
+
+    if (!adj[call.collectorId]) adj[call.collectorId] = [];
+    adj[call.collectorId].push({ points: collPenalty * errCount, date: dateStr });
+
+    if (!adj[call.checkerId]) adj[call.checkerId] = [];
+    adj[call.checkerId].push({ points: CHECKER_PENALTY_ADMIN_FOUND * errCount, date: dateStr });
   }
 
   const setting = await prisma.systemSettings.findUnique({
