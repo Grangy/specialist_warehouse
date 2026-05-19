@@ -4,7 +4,7 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client';
-import { getMoscowDateString } from '@/lib/utils/moscowDate';
+import { getMoscowDateString, getStatisticsDateRange } from '@/lib/utils/moscowDate';
 import { isCollectorNewbie } from '@/lib/ranking/isNewbie';
 import {
   ADMIN_BONUS_CHECKER_ERROR_NEWBIE,
@@ -29,9 +29,16 @@ function penaltyDateStr(confirmedAt: Date | null | undefined, calledAt: Date): s
 }
 
 export type BuildErrorPenaltyOptions = {
-  /** Для старых admin-вызовов без registeredById — начислить +11/+15 этому админу */
+  /** Для admin-вызовов без registeredById за сегодня (МСК) — +11/+15 этому админу */
   orphanAdminUserId?: string | null;
 };
+
+function isConfirmedTodayMsk(confirmedAt: Date | null | undefined, calledAt: Date): boolean {
+  const dt = confirmedAt ?? calledAt;
+  const { startDate, endDate } = getStatisticsDateRange('today');
+  const t = dt instanceof Date ? dt.getTime() : new Date(dt).getTime();
+  return t >= startDate.getTime() && t <= endDate.getTime();
+}
 
 export async function buildErrorPenaltyAdjustments(
   prisma: PrismaClient,
@@ -104,7 +111,9 @@ export async function buildErrorPenaltyAdjustments(
     pushAdj(adj, call.collectorId, collPenalty * errCount, dateStr);
     pushAdj(adj, call.checkerId, CHECKER_PENALTY_ADMIN_FOUND * errCount, dateStr);
 
-    const adminId = call.registeredById ?? orphanAdminId;
+    const adminId =
+      call.registeredById ??
+      (orphanAdminId && isConfirmedTodayMsk(call.confirmedAt, call.calledAt) ? orphanAdminId : null);
     if (adminId) {
       const adminBonus = (await isCollectorNewbie(call.collectorId))
         ? ADMIN_BONUS_CHECKER_ERROR_NEWBIE
@@ -115,14 +124,21 @@ export async function buildErrorPenaltyAdjustments(
     }
   }
 
-  if (orphanCount > 0 && !orphanAdminId) {
+  if (orphanCount > 0) {
     const admins = await prisma.user.findMany({
       where: { role: 'admin' },
       select: { login: true, name: true },
     });
-    console.warn(
-      `⚠️ ${orphanCount} admin-ошибок без registeredById — баллы админу не начислены. Укажите --orphan-admin-login=LOGIN`
-    );
+    if (!orphanAdminId) {
+      console.warn(
+        `⚠️ ${orphanCount} старых admin-ошибок без registeredById — баллы админу не восстановлены (только новые с registeredById).`
+      );
+      console.warn(`   Для сегодня: --orphan-admin-login=LOGIN`);
+    } else {
+      console.warn(
+        `ℹ️ ${orphanCount} старых admin-ошибок без registeredById — без ретро-бонуса; сегодняшние — через --orphan-admin-login.`
+      );
+    }
     console.warn(`   Админы в БД: ${admins.map((a) => `${a.login} (${a.name})`).join(', ')}`);
   }
 
