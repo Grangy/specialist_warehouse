@@ -345,13 +345,6 @@ export async function aggregateRankings(
     });
     for (const u of missingUsers) ensureAgg(u);
   }
-  for (const [uid, delta] of errorPenaltiesMap) {
-    const agg = allMap.get(uid);
-    if (agg) {
-      agg.points = Math.max(0, agg.points + delta);
-    }
-  }
-
   for (const stat of collectorTaskStats) {
     const agg = ensureAgg(stat.user);
     const pts = stat.orderPoints || 0;
@@ -396,6 +389,14 @@ export async function aggregateRankings(
     agg.dictatorPoints += pts;
     agg.totalPickTimeSec += stat.pickTimeSec || 0;
     if (stat.efficiencyClamped != null) agg.efficiencies.push(stat.efficiencyClamped);
+  }
+
+  // Штрафы за ошибки — после всех начислений (сборка, проверка, доп.работа)
+  for (const [uid, delta] of errorPenaltiesMap) {
+    const agg = allMap.get(uid);
+    if (agg) {
+      agg.points = Math.max(0, agg.points + delta);
+    }
   }
 
   const collectorIds = [...allMap.values()].filter((a) => a.role === 'collector').map((a) => a.userId);
