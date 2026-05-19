@@ -42,6 +42,7 @@ model User {
   monthlyStats   MonthlyStats[]
   collectorCallsReceived CollectorCall[] @relation("CollectorCallsAsCollector")
   collectorCallsMade      CollectorCall[] @relation("CollectorCallsAsChecker")
+  collectorCallsRegistered CollectorCall[] @relation("CollectorCallsRegisteredBy")
   userSettings  UserSettings?
   extraWorkSessionsAsWorker ExtraWorkSession[] @relation("ExtraWorkSessionWorker")
   extraWorkSessionsAsAssigner ExtraWorkSession[] @relation("ExtraWorkSessionAssigner")
@@ -209,10 +210,12 @@ model CollectorCall {
   confirmedAt         DateTime? @map("confirmed_at") // когда проверяльщик подтвердил ошибки
   source              String    @default("checker") // checker | admin
   shipmentConfirmedAt DateTime? @map("shipment_confirmed_at") // дата заказа для «ошибка со сборки от DD.MM.YYYY»
+  registeredById      String?   @map("registered_by_id") // админ, нажавший «Ошибка сборки»
 
-  task      ShipmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  collector User         @relation("CollectorCallsAsCollector", fields: [collectorId], references: [id], onDelete: Cascade)
-  checker   User         @relation("CollectorCallsAsChecker", fields: [checkerId], references: [id], onDelete: Cascade)
+  task         ShipmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  collector    User         @relation("CollectorCallsAsCollector", fields: [collectorId], references: [id], onDelete: Cascade)
+  checker      User         @relation("CollectorCallsAsChecker", fields: [checkerId], references: [id], onDelete: Cascade)
+  registeredBy User?        @relation("CollectorCallsRegisteredBy", fields: [registeredById], references: [id], onDelete: SetNull)
 
   @@map("collector_calls")
 }

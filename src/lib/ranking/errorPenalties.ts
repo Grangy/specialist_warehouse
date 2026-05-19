@@ -5,6 +5,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
+import { getMoscowDateString } from '@/lib/utils/moscowDate';
 
 type AdjustmentEntry = { points: number; date: string };
 type AdjustmentsValue = Record<string, AdjustmentEntry[]>;
@@ -73,18 +74,11 @@ export function getErrorPenaltiesMapForPeriod(
   return result;
 }
 
-function toDateStr(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 /**
  * Добавить штраф пользователю. Сохраняет в system_settings.
  */
 export async function addErrorPenalty(userId: string, points: number, date?: Date): Promise<void> {
-  const dateStr = date ? toDateStr(date) : toDateStr(new Date());
+  const dateStr = getMoscowDateString(date ?? new Date());
   const row = await prisma.systemSettings.findUnique({
     where: { key: 'error_penalty_adjustments' },
   });

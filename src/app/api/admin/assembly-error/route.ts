@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
         confirmedAt: new Date(),
         source: 'admin',
         shipmentConfirmedAt: orderDate,
+        registeredById: admin.id,
       },
     });
 
