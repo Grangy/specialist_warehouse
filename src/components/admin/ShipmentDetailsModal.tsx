@@ -266,7 +266,13 @@ export default function ShipmentDetailsModal({ shipmentId, onClose, canReassign 
   };
 
   const handleAssemblyError = async (taskId: string, lineIndex: number, lineName: string) => {
-    if (!details || !window.confirm(`Зафиксировать ошибку сборки по позиции «${lineName}»? Сборщику −1 балл, проверяльщику −5 баллов, админ +6.`)) return;
+    if (
+      !details ||
+      !window.confirm(
+        `Зафиксировать ошибку проверки по позиции «${lineName}»? Сборщик −1/−5 (новенький/остальные), проверяльщик −10, админ +11/+15.`
+      )
+    )
+      return;
     setAssemblyErrorLoading({ taskId, lineIndex });
     try {
       const res = await fetch('/api/admin/assembly-error', {
@@ -552,7 +558,7 @@ export default function ShipmentDetailsModal({ shipmentId, onClose, canReassign 
                                                   onClick={() => handleAssemblyError(task.id, lineIdx, line.name)}
                                                   disabled={!!assemblyErrorLoading}
                                                   className="inline-flex items-center gap-1 px-2 py-1 bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 rounded text-xs font-medium border border-amber-500/50 disabled:opacity-50"
-                                                  title="Зафиксировать ошибку: сборщику −1, проверяльщику −5, админ +6"
+                                                  title="Ошибка проверки: сборщик −1/−5, проверяльщик −10, админ +11/+15"
                                                 >
                                                   {assemblyErrorLoading?.taskId === task.id && assemblyErrorLoading?.lineIndex === lineIdx ? (
                                                     <Loader2 className="w-3 h-3 animate-spin shrink-0" />

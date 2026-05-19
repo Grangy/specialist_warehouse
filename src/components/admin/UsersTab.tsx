@@ -346,7 +346,7 @@ export default function UsersTab() {
                     />
                     <span className="text-slate-300 text-sm font-medium">Новенький</span>
                   </label>
-                  <span className="text-xs text-slate-500">(сниженные штрафы за ошибки: −1/+1 вместо −3/+3)</span>
+                  <span className="text-xs text-slate-500">(ошибка сборки: −1 балл вместо −5)</span>
                 </div>
               )}
             </div>

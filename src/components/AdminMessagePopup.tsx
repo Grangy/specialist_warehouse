@@ -7,7 +7,7 @@ import type { PendingMessagePayload } from '@/contexts/ShipmentsPollingContext';
 import { getRandomNotificationSound } from '@/lib/notificationSounds';
 import { useToast } from '@/hooks/useToast';
 
-const SOS_HEADER = 'Подойдите к столу';
+const SOS_HEADER = 'Ошибка сборки';
 
 interface AdminMessagePopupProps {
   message: PendingMessagePayload;
@@ -130,7 +130,6 @@ export function AdminMessagePopup({ message, onAccept, onApproveRequest, onRejec
           <div className="mt-4 p-4 rounded-xl bg-slate-800/80 border border-slate-700/50 min-h-[100px]">
             {isSos ? (
               <p className="text-slate-100 text-base md:text-lg leading-relaxed whitespace-pre-wrap">
-                <span className="font-semibold text-red-500">{SOS_HEADER}.</span>{' '}
                 {message.text.replace(/\s*Подойдите к столу\.?\s*/gi, ' ').replace(/\s+/g, ' ').trim()}
               </p>
             ) : isExtraWorkRequest ? (

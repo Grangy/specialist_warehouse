@@ -10,7 +10,8 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { setPendingMessage } from '@/lib/adminMessages';
 import { touchSync } from '@/lib/syncTouch';
-import { addErrorPenalty } from '@/lib/ranking/errorPenalties';
+import { applyAdminCheckerErrorPenalties } from '@/lib/ranking/errorPointRates';
+import { isCollectorNewbie } from '@/lib/ranking/isNewbie';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,11 +90,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 1 ошибка: сборщик −1, проверяльщик −5, админ +6 (нашёл ошибку проверки)
     const today = new Date();
-    await addErrorPenalty(task.collectorId, -1, today);
-    await addErrorPenalty(task.checkerId, -5, today);
-    await addErrorPenalty(admin.id, 6, today);
+    await applyAdminCheckerErrorPenalties(task.collectorId, task.checkerId, admin.id, today);
+    const newbie = await isCollectorNewbie(task.collectorId);
 
     const msgText = dateStr
       ? `⚠️ Ошибка со сборки от ${dateStr}\n\nЗаказ ${num}, позиция: ${productName}\n\nАдминистратор зафиксировал ошибку.`
@@ -113,7 +112,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       callId: call.id,
-      message: `Ошибка зафиксирована: сборщику +1 ошибка (−1 балл), проверяльщику +1 ошибка (−5 баллов).`,
+      message: newbie
+        ? 'Ошибка зафиксирована: сборщик −1, проверяльщик −10, админ +11.'
+        : 'Ошибка зафиксирована: сборщик −5, проверяльщик −10, админ +15.',
     });
   } catch (error) {
     console.error('[API admin/assembly-error]', error);

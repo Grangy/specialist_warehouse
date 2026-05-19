@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       const productName = line?.shipmentLine?.name ?? `Позиция ${lineIndex + 1}`;
       const shipmentNumber = task.shipment?.number ?? 'N/A';
       const customerName = task.shipment?.customerName ?? 'Не указан';
-      const messageText = `🐵 Ошибка. Заказ ${shipmentNumber}, клиент: ${customerName}. Неверно: ${productName}. Подойдите к столу.`;
+      const messageText = `🐵 Ошибка сборки. Заказ ${shipmentNumber}, клиент: ${customerName}. Неверно: ${productName}.`;
       setPendingMessage(task.collectorId, {
         text: messageText,
         fromName: checker.name,
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     const productName = line?.shipmentLine?.name ?? `Позиция ${lineIndex + 1}`;
     const shipmentNumber = task.shipment?.number ?? 'N/A';
     const customerName = task.shipment?.customerName ?? 'Не указан';
-    const messageText = `🐵 Ошибка. Заказ ${shipmentNumber}, клиент: ${customerName}. Неверно: ${productName}. Подойдите к столу.`;
+    const messageText = `🐵 Ошибка сборки. Заказ ${shipmentNumber}, клиент: ${customerName}. Неверно: ${productName}.`;
 
     await prisma.collectorCall.create({
       data: {

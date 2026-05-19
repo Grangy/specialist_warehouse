@@ -397,7 +397,7 @@ export default function StatisticsTab({ warehouseScope }: StatisticsTabProps = {
               </div>
               <div className="text-sm text-slate-400">Неделя / Месяц</div>
               <div className="mt-3 pt-3 border-t border-slate-700/50 text-xs text-slate-400">
-                За каждую зафиксированную ошибку проверяльщика: +2 балла. Начисляется тому админу, кто нажал «Ошибка сборки» в админке (под залогиненным аккаунтом).
+                За ошибку проверяльщика (кнопка в заказе): админ +11 (новенький сборщик) или +15 (остальные). Начисляется тому админу, кто зафиксировал ошибку.
               </div>
             </div>
           )}

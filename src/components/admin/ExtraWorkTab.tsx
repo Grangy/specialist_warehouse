@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight, History, HelpCircle, SlidersHorizontal } from 'lucide-react';
+import { Briefcase, RefreshCw, Clock, Play, Square, EyeOff, Eye, ChevronDown, ChevronRight, History, HelpCircle, SlidersHorizontal, MessageCircle } from 'lucide-react';
 import ExtraWorkHistoryTab from './ExtraWorkHistoryTab';
 import { ExtraWorkCurrentIndicatorsModal } from './ExtraWorkCurrentIndicatorsModal';
 import { EXTRA_WORK_WEIGHT_FLOOR } from '@/lib/extraWorkPublicConstants';
@@ -80,6 +80,10 @@ export default function ExtraWorkTab() {
   const [data, setData] = useState<ExtraWorkEntry[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
   const [canAssign, setCanAssign] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showSendMessageModal, setShowSendMessageModal] = useState<{ userId: string; userName: string } | null>(null);
+  const [sendMessageText, setSendMessageText] = useState('');
+  const [sendMessageSubmitting, setSendMessageSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hiddenSectionOpen, setHiddenSectionOpen] = useState(false);
@@ -135,6 +139,7 @@ export default function ExtraWorkTab() {
           name.includes('j-skar') ||
           (name.includes('дмитрий') && name.includes('палыч'));
         setCanAssign(!!canAssignUser);
+        setIsAdmin(user?.role === 'admin');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
@@ -232,6 +237,32 @@ export default function ExtraWorkTab() {
       alert(e instanceof Error ? e.message : 'Ошибка');
     } finally {
       setManualAdjustSubmitting(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!showSendMessageModal) return;
+    const text = sendMessageText.trim();
+    if (!text) {
+      showError('Введите текст сообщения', 2500);
+      return;
+    }
+    setSendMessageSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: showSendMessageModal.userId, text }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Ошибка отправки');
+      setShowSendMessageModal(null);
+      setSendMessageText('');
+      showSuccess(d.message || 'Сообщение отправлено', 2500);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : 'Ошибка', 3500);
+    } finally {
+      setSendMessageSubmitting(false);
     }
   };
 
@@ -614,6 +645,19 @@ export default function ExtraWorkTab() {
                             Назначить
                           </button>
                         )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowSendMessageModal({ userId: d.userId, userName: d.userName });
+                              setSendMessageText('');
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-600/90 hover:bg-amber-500 text-white text-xs font-medium"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            Отправить сообщение
+                          </button>
+                        )}
                         {isActive && sess && (
                           <>
                             {(sess.status === 'lunch' || sess.status === 'lunch_scheduled') && (
@@ -724,6 +768,19 @@ export default function ExtraWorkTab() {
                                 >
                                   <Play className="w-3.5 h-3.5" />
                                   Назначить
+                                </button>
+                              )}
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowSendMessageModal({ userId: d.userId, userName: d.userName });
+                                    setSendMessageText('');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-600/90 hover:bg-amber-500 text-white text-xs font-medium"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  Отправить сообщение
                                 </button>
                               )}
                               {isActive && sess && (
@@ -849,6 +906,47 @@ export default function ExtraWorkTab() {
           }
           isSubmitting={!!assigningUserId}
         />
+      )}
+
+      {showSendMessageModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70"
+          onClick={() => !sendMessageSubmitting && setShowSendMessageModal(null)}
+        >
+          <div
+            className="bg-slate-800 border border-slate-600 rounded-xl p-6 max-w-md w-full shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-slate-100 mb-1">Отправить сообщение</h3>
+            <p className="text-sm text-slate-400 mb-4">{showSendMessageModal.userName}</p>
+            <textarea
+              value={sendMessageText}
+              onChange={(e) => setSendMessageText(e.target.value)}
+              placeholder="Текст сообщения…"
+              rows={4}
+              className="w-full px-3 py-2 rounded-lg bg-slate-700 border border-slate-600 text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-amber-500/50 resize-none mb-4"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={sendMessageSubmitting}
+                onClick={() => setShowSendMessageModal(null)}
+                className="flex-1 px-4 py-2 rounded-lg bg-slate-600 hover:bg-slate-500 text-slate-200 disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={sendMessageSubmitting}
+                onClick={() => void handleSendMessage()}
+                className="flex-1 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <MessageCircle className="w-4 h-4" />
+                {sendMessageSubmitting ? 'Отправка…' : 'Отправить'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

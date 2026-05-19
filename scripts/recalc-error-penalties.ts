@@ -1,7 +1,7 @@
 /**
  * Пересчёт error_penalty_adjustments по данным CollectorCall.
  * Схема:
- * - source='checker': ошибочная ПОЗИЦИЯ (errorCount>0) => сборщик −1, проверяльщик +1
+ * - source='checker': позиция с errorCount>0 => сборщик −1/−5 (новенький/остальные), проверяльщик +5
  *
  * Важно: считаем по позициям, а не по количеству товара.
  * source='admin' здесь не пересчитывается (adminId не хранится в CollectorCall).
@@ -14,6 +14,12 @@ import 'dotenv/config';
 import path from 'path';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { getErrorPenaltiesMapForPeriod } from '../src/lib/ranking/errorPenalties';
+import { isCollectorNewbie } from '../src/lib/ranking/isNewbie';
+import {
+  CHECKER_BONUS_COLLECTOR_ERROR,
+  COLLECTOR_ERROR_NEWBIE,
+  COLLECTOR_ERROR_REGULAR,
+} from '../src/lib/ranking/errorPointRates';
 
 const databaseUrl = process.env.DATABASE_URL;
 let finalDatabaseUrl = databaseUrl;
@@ -34,7 +40,7 @@ function toDateStr(d: Date): string {
 
 async function main() {
   console.log('\n=== Пересчёт error_penalty_adjustments ===\n');
-  console.log('Схема: source=checker: позиция => сборщик −1, проверяльщик +1');
+  console.log('Схема: source=checker: сборщик −1/−5, проверяльщик +5');
   console.log('Считаем по позициям (errorCount>0), не по количеству.');
   console.log('source=admin не пересчитывается этим скриптом.\n');
 
@@ -67,11 +73,13 @@ async function main() {
     const collId = call.collectorId;
     const checkId = call.checkerId;
 
+    const collPenalty = (await isCollectorNewbie(collId)) ? COLLECTOR_ERROR_NEWBIE : COLLECTOR_ERROR_REGULAR;
+
     if (!adj[collId]) adj[collId] = [];
-    adj[collId].push({ points: -1 * errCount, date: dateStr });
+    adj[collId].push({ points: collPenalty * errCount, date: dateStr });
 
     if (!adj[checkId]) adj[checkId] = [];
-    adj[checkId].push({ points: 1 * errCount, date: dateStr });
+    adj[checkId].push({ points: CHECKER_BONUS_COLLECTOR_ERROR * errCount, date: dateStr });
   }
 
   const setting = await prisma.systemSettings.findUnique({

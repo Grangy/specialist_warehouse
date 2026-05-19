@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { areAllTasksConfirmed } from '@/lib/shipmentTasks';
 import { updateCheckerStats } from '@/lib/ranking/updateStats';
-import { addErrorPenalty } from '@/lib/ranking/errorPenalties';
+import { applyCheckerFoundCollectorErrorPenalties } from '@/lib/ranking/errorPointRates';
 
 export const dynamic = 'force-dynamic';
 
@@ -179,8 +179,7 @@ export async function POST(
       });
 
       // Баллы за ошибки при «Отправить в офис» (source=checker):
-      // - сборщик: −1 за ошибочную позицию
-      // - проверяльщик: +1 за найденную ошибочную позицию
+      // сборщик −1/−5 (новенький/остальные), проверяльщик +5 за позицию
       const allTaskIds = (await prisma.shipmentTask.findMany({
         where: { shipmentId: task.shipmentId },
         select: { id: true },
@@ -197,8 +196,7 @@ export async function POST(
       for (const call of callsWithErrors) {
         const hasPositionError = (call.errorCount ?? 0) > 0;
         if (!hasPositionError) continue;
-        await addErrorPenalty(call.collectorId, -1, today);
-        await addErrorPenalty(call.checkerId, 1, today);
+        await applyCheckerFoundCollectorErrorPenalties(call.collectorId, call.checkerId, today);
       }
 
       // Отправляем событие об обновлении заказа через SSE
