@@ -1,18 +1,28 @@
 /**
- * Пересчёт error_penalty_adjustments по CollectorCall.
- * Даты — день фиксации ошибки (МСК), не дата заказа.
+ * Пересчёт error_penalty_adjustments.
+ *
+ * По умолчанию — ТОЛЬКО сегодня (МСК): старые дни в adj не трогаем.
  *
  * Запуск:
  *   npx tsx scripts/recalc-error-penalties.ts
- *   npx tsx scripts/recalc-error-penalties.ts --orphan-admin-login=admin
+ *   npx tsx scripts/recalc-error-penalties.ts --backfill-today-admin-login=J-SkaR
  *   npx tsx scripts/recalc-error-penalties.ts --audit-today
+ *   npx tsx scripts/recalc-error-penalties.ts --full   # весь период (осторожно!)
  */
 
 import 'dotenv/config';
 import path from 'path';
 import { PrismaClient } from '../src/generated/prisma/client';
-import { getErrorPenaltiesMapForPeriod, getErrorPenaltyForPeriod } from '../src/lib/ranking/errorPenalties';
-import { buildErrorPenaltyAdjustments } from '../src/lib/ranking/buildErrorPenaltyAdjustments';
+import {
+  getErrorPenaltiesMapForPeriod,
+  getErrorPenaltyForPeriod,
+  mergeErrorPenaltiesReplaceDate,
+  parseErrorPenaltyAdjustments,
+} from '../src/lib/ranking/errorPenalties';
+import {
+  buildErrorPenaltyAdjustmentsAll,
+  buildErrorPenaltyAdjustmentsForRange,
+} from '../src/lib/ranking/buildErrorPenaltyAdjustments';
 import { getStatisticsDateRange, getMoscowDateString } from '../src/lib/utils/moscowDate';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -33,32 +43,70 @@ function parseArg(name: string): string | null {
   return null;
 }
 
+async function backfillTodayAdminRegistrar(login: string, range: { startDate: Date; endDate: Date }) {
+  const adminUser = await prisma.user.findFirst({
+    where: { login, role: 'admin' },
+    select: { id: true, name: true },
+  });
+  if (!adminUser) {
+    console.error(`Админ login="${login}" (role=admin) не найден`);
+    process.exit(1);
+  }
+  const updated = await prisma.collectorCall.updateMany({
+    where: {
+      source: 'admin',
+      registeredById: null,
+      OR: [
+        { confirmedAt: { gte: range.startDate, lte: range.endDate } },
+        {
+          confirmedAt: null,
+          calledAt: { gte: range.startDate, lte: range.endDate },
+        },
+      ],
+    },
+    data: { registeredById: adminUser.id },
+  });
+  console.log(`backfill registeredById: ${login} (${adminUser.name}) — обновлено вызовов: ${updated.count}\n`);
+}
+
 async function main() {
-  const orphanLogin = parseArg('orphan-admin-login');
+  const fullRebuild = process.argv.includes('--full');
   const auditToday = process.argv.includes('--audit-today');
-  let orphanAdminUserId: string | null = null;
-  if (orphanLogin) {
-    const u = await prisma.user.findFirst({ where: { login: orphanLogin }, select: { id: true, name: true } });
-    if (!u) {
-      console.error(`Пользователь login="${orphanLogin}" не найден`);
-      process.exit(1);
-    }
-    orphanAdminUserId = u.id;
-    console.log(`orphan-admin: ${orphanLogin} (${u.name})\n`);
+  const backfillLogin = parseArg('backfill-today-admin-login');
+
+  const todayRange = getStatisticsDateRange('today');
+  const todayStr = getMoscowDateString();
+
+  if (backfillLogin) {
+    await backfillTodayAdminRegistrar(backfillLogin, todayRange);
   }
 
   console.log('\n=== Пересчёт error_penalty_adjustments ===\n');
-  console.log('checker: сборщик −1/−5, проверяльщик +5 (дата = confirmedAt СОС)');
-  console.log('admin: сборщик −1/−5, проверяльщик −10, админ +11/+15 (дата = клик в админке)\n');
-
-  const adj = await buildErrorPenaltyAdjustments(prisma, { orphanAdminUserId });
+  if (fullRebuild) {
+    console.log('Режим: --full (все даты, перезапись всего adj)\n');
+  } else {
+    console.log(`Режим: только сегодня (${todayStr}, МСК), остальные дни сохраняются\n`);
+  }
+  console.log('checker: сборщик −1/−5, проверяльщик +5');
+  console.log('admin: сборщик −1/−5, проверяльщик −10, +11/+15 тому админу, кто нажал (registeredById)\n');
 
   const setting = await prisma.systemSettings.findUnique({
     where: { key: 'error_penalty_adjustments' },
   });
-  const oldRaw = setting?.value ?? null;
-  const oldMap = oldRaw ? getErrorPenaltiesMapForPeriod(oldRaw, new Date(0), new Date(9999, 11, 31)) : new Map();
-  const oldTotal = [...oldMap.values()].reduce((a, b) => a + b, 0);
+  const existing = parseErrorPenaltyAdjustments(setting?.value ?? null);
+
+  const patch = fullRebuild
+    ? await buildErrorPenaltyAdjustmentsAll(prisma)
+    : await buildErrorPenaltyAdjustmentsForRange(prisma, todayRange);
+
+  const adj = fullRebuild ? patch : mergeErrorPenaltiesReplaceDate(existing, patch, todayStr);
+
+  const oldMap = setting?.value
+    ? getErrorPenaltiesMapForPeriod(setting.value, todayRange.startDate, todayRange.endDate)
+    : new Map();
+  const newMap = getErrorPenaltiesMapForPeriod(JSON.stringify(adj), todayRange.startDate, todayRange.endDate);
+  const oldTodayTotal = [...oldMap.values()].reduce((a, b) => a + b, 0);
+  const newTodayTotal = [...newMap.values()].reduce((a, b) => a + b, 0);
 
   await prisma.systemSettings.upsert({
     where: { key: 'error_penalty_adjustments' },
@@ -66,52 +114,55 @@ async function main() {
     update: { value: JSON.stringify(adj) },
   });
 
-  const newMap = getErrorPenaltiesMapForPeriod(JSON.stringify(adj), new Date(0), new Date(9999, 11, 31));
-  const newTotal = [...newMap.values()].reduce((a, b) => a + b, 0);
-
-  console.log('До пересчёта (сумма по всем):', oldTotal.toFixed(2));
-  console.log('После пересчёта (сумма по всем):', newTotal.toFixed(2));
-  console.log('Пользователей в adj:', Object.keys(adj).length);
+  console.log(`Сегодня (${todayStr}) до: ${oldTodayTotal.toFixed(2)} → после: ${newTodayTotal.toFixed(2)}`);
+  console.log('Пользователей в adj (всего):', Object.keys(adj).length);
 
   if (auditToday) {
-    const { startDate, endDate } = getStatisticsDateRange('today');
-    const todayStr = getMoscowDateString();
     console.log(`\n--- Аудит за сегодня (${todayStr}, МСК) ---\n`);
     const users = await prisma.user.findMany({
       where: {
         OR: [
           { name: { contains: 'Сергей' } },
           { name: { contains: 'Станислав' } },
+          { name: { contains: 'Дмитрий' } },
+          { name: { contains: 'Палыч' } },
+          { login: 'J-SkaR' },
           { role: 'admin' },
         ],
       },
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true, role: true, login: true },
     });
     const raw = JSON.stringify(adj);
     for (const u of users) {
-      const p = getErrorPenaltyForPeriod(raw, u.id, startDate, endDate);
+      const p = getErrorPenaltyForPeriod(raw, u.id, todayRange.startDate, todayRange.endDate);
       if (Math.abs(p) >= 0.01) {
-        console.log(`  ${u.name} (${u.role}): ${p >= 0 ? '+' : ''}${p}`);
+        console.log(`  ${u.name} (${u.login}, ${u.role}): ${p >= 0 ? '+' : ''}${p}`);
       }
     }
     const todayCalls = await prisma.collectorCall.findMany({
       where: {
         status: 'done',
-        confirmedAt: { gte: startDate, lte: endDate },
+        OR: [
+          { confirmedAt: { gte: todayRange.startDate, lte: todayRange.endDate } },
+          {
+            confirmedAt: null,
+            calledAt: { gte: todayRange.startDate, lte: todayRange.endDate },
+          },
+        ],
       },
       include: {
         collector: { select: { name: true } },
         checker: { select: { name: true } },
-        registeredBy: { select: { name: true } },
+        registeredBy: { select: { name: true, login: true } },
       },
       orderBy: { confirmedAt: 'asc' },
     });
-    console.log(`\nВызовов с confirmedAt сегодня: ${todayCalls.length}`);
+    console.log(`\nВызовов за сегодня: ${todayCalls.length}`);
     for (const c of todayCalls) {
       if ((c.errorCount ?? 0) <= 0 && (c.checkerErrorCount ?? 0) <= 0) continue;
       console.log(
         `  ${c.source} | сб:${c.collector.name} пр:${c.checker.name}` +
-          (c.registeredBy ? ` адм:${c.registeredBy.name}` : '') +
+          (c.registeredBy ? ` адм:${c.registeredBy.name} (${c.registeredBy.login})` : ' адм:—') +
           ` err=${c.errorCount ?? 0} chkErr=${c.checkerErrorCount ?? 0}`
       );
     }

@@ -10,7 +10,7 @@ import { getMoscowDateString } from '@/lib/utils/moscowDate';
 type AdjustmentEntry = { points: number; date: string };
 type AdjustmentsValue = Record<string, AdjustmentEntry[]>;
 
-function parseAdjustments(raw: string | null): AdjustmentsValue {
+export function parseErrorPenaltyAdjustments(raw: string | null): AdjustmentsValue {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);
@@ -52,7 +52,7 @@ export function getErrorPenaltyForPeriod(
   startDate: Date,
   endDate: Date
 ): number {
-  const adj = parseAdjustments(raw);
+  const adj = parseErrorPenaltyAdjustments(raw);
   const list = adj[userId] ?? [];
   return list.reduce((sum, e) => (dateInRange(e.date, startDate, endDate) ? sum + e.points : sum), 0);
 }
@@ -65,7 +65,7 @@ export function getErrorPenaltiesMapForPeriod(
   startDate: Date,
   endDate: Date
 ): Map<string, number> {
-  const adj = parseAdjustments(raw);
+  const adj = parseErrorPenaltyAdjustments(raw);
   const result = new Map<string, number>();
   for (const [uid, list] of Object.entries(adj)) {
     const sum = list.reduce((s, e) => (dateInRange(e.date, startDate, endDate) ? s + e.points : s), 0);
@@ -77,12 +77,32 @@ export function getErrorPenaltiesMapForPeriod(
 /**
  * Добавить штраф пользователю. Сохраняет в system_settings.
  */
+/**
+ * Заменить записи за один календарный день (МСК, YYYY-MM-DD), остальные дни сохранить.
+ */
+export function mergeErrorPenaltiesReplaceDate(
+  existing: AdjustmentsValue,
+  patch: AdjustmentsValue,
+  dateStr: string
+): AdjustmentsValue {
+  const result: AdjustmentsValue = {};
+  for (const [uid, list] of Object.entries(existing)) {
+    const kept = list.filter((e) => e.date !== dateStr);
+    if (kept.length) result[uid] = kept;
+  }
+  for (const [uid, list] of Object.entries(patch)) {
+    if (!result[uid]) result[uid] = [];
+    result[uid].push(...list);
+  }
+  return result;
+}
+
 export async function addErrorPenalty(userId: string, points: number, date?: Date): Promise<void> {
   const dateStr = getMoscowDateString(date ?? new Date());
   const row = await prisma.systemSettings.findUnique({
     where: { key: 'error_penalty_adjustments' },
   });
-  const adj = parseAdjustments(row?.value ?? null);
+  const adj = parseErrorPenaltyAdjustments(row?.value ?? null);
   const list = adj[userId] ?? [];
   list.push({ points, date: dateStr });
   adj[userId] = list;

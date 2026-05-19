@@ -1,10 +1,10 @@
 /**
- * Полный пересчёт error_penalty_adjustments из CollectorCall.
- * Даты — календарный день по Москве в момент фиксации ошибки (confirmedAt / calledAt).
+ * Построение error_penalty_adjustments из CollectorCall.
+ * Даты — календарный день по Москве в момент фиксации (confirmedAt / calledAt).
  */
 
 import type { PrismaClient } from '@/generated/prisma/client';
-import { getMoscowDateString, getStatisticsDateRange } from '@/lib/utils/moscowDate';
+import { getMoscowDateString } from '@/lib/utils/moscowDate';
 import { isCollectorNewbie } from '@/lib/ranking/isNewbie';
 import {
   ADMIN_BONUS_CHECKER_ERROR_NEWBIE,
@@ -17,6 +17,11 @@ import {
 
 export type ErrorPenaltyAdjustments = Record<string, Array<{ points: number; date: string }>>;
 
+export type ErrorPenaltyDateRange = {
+  startDate: Date;
+  endDate: Date;
+};
+
 function pushAdj(adj: ErrorPenaltyAdjustments, userId: string, points: number, dateStr: string): void {
   if (!points) return;
   if (!adj[userId]) adj[userId] = [];
@@ -28,37 +33,44 @@ function penaltyDateStr(confirmedAt: Date | null | undefined, calledAt: Date): s
   return getMoscowDateString(dt instanceof Date ? dt : new Date(dt));
 }
 
-export type BuildErrorPenaltyOptions = {
-  /** Для admin-вызовов без registeredById за сегодня (МСК) — +11/+15 этому админу */
-  orphanAdminUserId?: string | null;
-};
-
-function isConfirmedTodayMsk(confirmedAt: Date | null | undefined, calledAt: Date): boolean {
+function confirmedInRange(
+  confirmedAt: Date | null | undefined,
+  calledAt: Date,
+  range: ErrorPenaltyDateRange
+): boolean {
   const dt = confirmedAt ?? calledAt;
-  const { startDate, endDate } = getStatisticsDateRange('today');
-  const t = dt instanceof Date ? dt.getTime() : new Date(dt).getTime();
-  return t >= startDate.getTime() && t <= endDate.getTime();
+  const t = (dt instanceof Date ? dt : new Date(dt)).getTime();
+  return t >= range.startDate.getTime() && t <= range.endDate.getTime();
 }
 
-export async function buildErrorPenaltyAdjustments(
+const callTimeFilter = (range: ErrorPenaltyDateRange) => ({
+  OR: [
+    { confirmedAt: { gte: range.startDate, lte: range.endDate } },
+    {
+      confirmedAt: null,
+      calledAt: { gte: range.startDate, lte: range.endDate },
+    },
+  ],
+});
+
+/**
+ * Баллы за ошибки только за указанный период (по времени фиксации).
+ * Админу +11/+15 — только если в CollectorCall есть registeredById (кто нажал в админке).
+ */
+export async function buildErrorPenaltyAdjustmentsForRange(
   prisma: PrismaClient,
-  options: BuildErrorPenaltyOptions = {}
+  range: ErrorPenaltyDateRange
 ): Promise<ErrorPenaltyAdjustments> {
   const adj: ErrorPenaltyAdjustments = {};
-  let orphanAdminId = options.orphanAdminUserId ?? null;
-  if (!orphanAdminId) {
-    const admins = await prisma.user.findMany({
-      where: { role: 'admin' },
-      select: { id: true },
-    });
-    if (admins.length === 1) orphanAdminId = admins[0].id;
-  }
 
   const checkerCalls = await prisma.collectorCall.findMany({
     where: {
-      status: 'done',
-      source: 'checker',
-      errorCount: { gt: 0 },
+      AND: [
+        { status: 'done' },
+        { source: 'checker' },
+        { errorCount: { gt: 0 } },
+        callTimeFilter(range),
+      ],
     },
     select: {
       collectorId: true,
@@ -70,6 +82,7 @@ export async function buildErrorPenaltyAdjustments(
   });
 
   for (const call of checkerCalls) {
+    if (!confirmedInRange(call.confirmedAt, call.calledAt, range)) continue;
     const errCount = (call.errorCount ?? 0) > 0 ? 1 : 0;
     if (errCount === 0) continue;
     const dateStr = penaltyDateStr(call.confirmedAt, call.calledAt);
@@ -82,12 +95,14 @@ export async function buildErrorPenaltyAdjustments(
 
   const adminCalls = await prisma.collectorCall.findMany({
     where: {
-      status: 'done',
-      source: 'admin',
-      OR: [{ checkerErrorCount: { gt: 0 } }, { errorCount: { gt: 0 } }],
+      AND: [
+        { status: 'done' },
+        { source: 'admin' },
+        { OR: [{ checkerErrorCount: { gt: 0 } }, { errorCount: { gt: 0 } }] },
+        callTimeFilter(range),
+      ],
     },
     select: {
-      id: true,
       collectorId: true,
       checkerId: true,
       errorCount: true,
@@ -95,12 +110,12 @@ export async function buildErrorPenaltyAdjustments(
       confirmedAt: true,
       calledAt: true,
       registeredById: true,
+      registeredBy: { select: { role: true, login: true, name: true } },
     },
   });
 
-  let orphanCount = 0;
-
   for (const call of adminCalls) {
+    if (!confirmedInRange(call.confirmedAt, call.calledAt, range)) continue;
     const errCount =
       (call.checkerErrorCount ?? 0) > 0 || (call.errorCount ?? 0) > 0 ? 1 : 0;
     if (errCount === 0) continue;
@@ -111,36 +126,30 @@ export async function buildErrorPenaltyAdjustments(
     pushAdj(adj, call.collectorId, collPenalty * errCount, dateStr);
     pushAdj(adj, call.checkerId, CHECKER_PENALTY_ADMIN_FOUND * errCount, dateStr);
 
-    const adminId =
-      call.registeredById ??
-      (orphanAdminId && isConfirmedTodayMsk(call.confirmedAt, call.calledAt) ? orphanAdminId : null);
-    if (adminId) {
+    const adminId = call.registeredById;
+    if (adminId && call.registeredBy?.role === 'admin') {
       const adminBonus = (await isCollectorNewbie(call.collectorId))
         ? ADMIN_BONUS_CHECKER_ERROR_NEWBIE
         : ADMIN_BONUS_CHECKER_ERROR_REGULAR;
       pushAdj(adj, adminId, adminBonus * errCount, dateStr);
-    } else {
-      orphanCount++;
-    }
-  }
-
-  if (orphanCount > 0) {
-    const admins = await prisma.user.findMany({
-      where: { role: 'admin' },
-      select: { login: true, name: true },
-    });
-    if (!orphanAdminId) {
+    } else if (adminId && call.registeredBy?.role !== 'admin') {
       console.warn(
-        `⚠️ ${orphanCount} старых admin-ошибок без registeredById — баллы админу не восстановлены (только новые с registeredById).`
+        `⚠️ registeredById не admin (${call.registeredBy?.login ?? adminId}) — бонус админу не начислен`
       );
-      console.warn(`   Для сегодня: --orphan-admin-login=LOGIN`);
-    } else {
-      console.warn(
-        `ℹ️ ${orphanCount} старых admin-ошибок без registeredById — без ретро-бонуса; сегодняшние — через --orphan-admin-login.`
-      );
+    } else if (!adminId) {
+      console.warn(`⚠️ admin-вызов без registeredById (${dateStr}) — укажите --backfill-today-admin-login`);
     }
-    console.warn(`   Админы в БД: ${admins.map((a) => `${a.login} (${a.name})`).join(', ')}`);
   }
 
   return adj;
+}
+
+/** Полный пересчёт всех дат (только с флагом --full). */
+export async function buildErrorPenaltyAdjustmentsAll(
+  prisma: PrismaClient
+): Promise<ErrorPenaltyAdjustments> {
+  return buildErrorPenaltyAdjustmentsForRange(prisma, {
+    startDate: new Date(0),
+    endDate: new Date(9999, 11, 31, 23, 59, 59, 999),
+  });
 }
