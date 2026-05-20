@@ -710,7 +710,7 @@ export default function UserStatsModal({ userId, userName, period, month, usePub
                     За какие сборки ошибки
                   </h3>
                   <p className="text-xs text-slate-400 mb-3">
-                    Ошибки сборки: сборщик −1/−5, проверяльщик +5. Ошибки проверки (админ): проверяльщик −10, админ +11/+15.
+                    Ошибки сборки: сборщик −1 / проверяльщик +1 (новенький), −5 / +5 (остальные). Ошибки проверки (админ): проверяльщик −10, админ +11/+15.
                   </p>
                   {(data.errorDetails?.length ?? 0) === 0 ? (
                     <div className="text-center py-8 text-slate-400">Нет данных за период</div>

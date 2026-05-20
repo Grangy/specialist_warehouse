@@ -87,7 +87,7 @@ async function main() {
   } else {
     console.log(`Режим: только сегодня (${todayStr}, МСК), остальные дни сохраняются\n`);
   }
-  console.log('checker: сборщик −1/−5, проверяльщик +5');
+  console.log('checker: сборщик −1/−5, проверяльщик +1/+5 (новенький/остальные)');
   console.log('admin: сборщик −1/−5, проверяльщик −10, +11/+15 тому админу, кто нажал (registeredById)\n');
 
   const setting = await prisma.systemSettings.findUnique({

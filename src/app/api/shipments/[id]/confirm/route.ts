@@ -179,7 +179,7 @@ export async function POST(
       });
 
       // Баллы за ошибки при «Отправить в офис» (source=checker):
-      // сборщик −1/−5 (новенький/остальные), проверяльщик +5 за позицию
+      // сборщик −1/−5, проверяльщик +1/+5 (новенький/остальные сборщик)
       const allTaskIds = (await prisma.shipmentTask.findMany({
         where: { shipmentId: task.shipmentId },
         select: { id: true },

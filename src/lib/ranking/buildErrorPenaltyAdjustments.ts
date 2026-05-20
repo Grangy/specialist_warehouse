@@ -9,7 +9,8 @@ import { isCollectorNewbie } from '@/lib/ranking/isNewbie';
 import {
   ADMIN_BONUS_CHECKER_ERROR_NEWBIE,
   ADMIN_BONUS_CHECKER_ERROR_REGULAR,
-  CHECKER_BONUS_COLLECTOR_ERROR,
+  CHECKER_BONUS_COLLECTOR_ERROR_NEWBIE,
+  CHECKER_BONUS_COLLECTOR_ERROR_REGULAR,
   CHECKER_PENALTY_ADMIN_FOUND,
   COLLECTOR_ERROR_NEWBIE,
   COLLECTOR_ERROR_REGULAR,
@@ -90,7 +91,10 @@ export async function buildErrorPenaltyAdjustmentsForRange(
       ? COLLECTOR_ERROR_NEWBIE
       : COLLECTOR_ERROR_REGULAR;
     pushAdj(adj, call.collectorId, collPenalty * errCount, dateStr);
-    pushAdj(adj, call.checkerId, CHECKER_BONUS_COLLECTOR_ERROR * errCount, dateStr);
+    const checkerBonus = (await isCollectorNewbie(call.collectorId))
+      ? CHECKER_BONUS_COLLECTOR_ERROR_NEWBIE
+      : CHECKER_BONUS_COLLECTOR_ERROR_REGULAR;
+    pushAdj(adj, call.checkerId, checkerBonus * errCount, dateStr);
   }
 
   const adminCalls = await prisma.collectorCall.findMany({
