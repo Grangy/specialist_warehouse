@@ -245,6 +245,15 @@ export function ShipmentCard({
           <div className="text-sm text-slate-300">
             Проверено {shipment.lines.filter(line => line.confirmed === true).length} / {shipment.lines.length} позиций
           </div>
+          {shipment.checker_name && (
+            <div className="mt-2 flex items-center gap-2 pt-2 border-t border-yellow-700/25">
+              <User className="w-4 h-4 text-purple-400 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-slate-400">Проверяет сейчас</div>
+                <div className="text-sm font-semibold text-purple-300 truncate">{shipment.checker_name}</div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

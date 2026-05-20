@@ -1206,6 +1206,8 @@ export async function GET(request: NextRequest) {
           pinned_at: shipment.pinnedAt ? shipment.pinnedAt.toISOString() : null, // Заказ поднят админом
           collector_name: task.collectorName || null,
           collector_id: task.collectorId || null,
+          checker_name: task.checkerName || null,
+          checker_id: task.checkerId || null,
           started_at: task.startedAt ? task.startedAt.toISOString() : null,
           dropped_by_collector_id: task.droppedByCollectorId || null,
           dropped_by_collector_name: task.droppedByCollectorName || null,
