@@ -68,6 +68,7 @@
     "report:workload-weekday": "tsx scripts/report-workload-by-weekday.ts",
     "recalc:extra-work": "tsx scripts/recalculate-extra-work-verify.ts",
     "audit:art": "tsx scripts/audit-art-in-db.ts",
+    "audit:auto-process": "tsx scripts/audit-auto-process-customers.ts",
     "audit:db": "tsx scripts/audit-db-what-happened.ts",
     "audit:db-load": "tsx scripts/audit-db-load.ts",
     "audit:full": "tsx scripts/audit-performance-full.ts",

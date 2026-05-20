@@ -9,6 +9,7 @@ import { detectWarehouseFromLocation } from '@/lib/warehouseDetector';
 import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscowDate';
 import { normalizeRegion, commentHasPriorityKeywords } from '@/lib/utils/helpers';
 import { append1cLog } from '@/lib/1cLog';
+import { shouldAutoProcessShipmentFrom1c } from '@/lib/autoProcessCustomers';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,14 +21,6 @@ const IDLE_WITH_PROGRESS_MS = 15 * 60 * 1000;
 function computeWeakEtag(input: string): string {
   const hash = crypto.createHash('sha1').update(input).digest('hex');
   return `W/"${hash}"`;
-}
-
-function isWholesaleCustomer(customerName: string): boolean {
-  const normalized = String(customerName || '')
-    .toUpperCase()
-    .replace(/Ё/g, 'Е')
-    .trim();
-  return normalized.includes('ОПТОВИК');
 }
 
 // Функция для проверки авторизации через заголовки, тело запроса или cookies
@@ -272,7 +265,7 @@ export async function POST(request: NextRequest) {
     });
 
     let shipment: Awaited<ReturnType<typeof prisma.shipment.create>> & { lines: any[]; tasks: any[] };
-    const wholesaleAutoProcess = isWholesaleCustomer(customerName);
+    const wholesaleAutoProcess = await shouldAutoProcessShipmentFrom1c(prisma, customerName);
 
     if (existing) {
       // Заказ с таким номером есть и не активный (удалён или уже processed) — обновляем данными из 1С, склад по location
@@ -452,7 +445,7 @@ export async function POST(request: NextRequest) {
     if (wholesaleAutoProcess) {
       const now = new Date();
 
-      // Для заявок от ОПТОВИК автоматически считаем, что сборка+проверка завершены:
+      // Для клиентов из автопроведения (ОПТОВИК + список в админке) — сразу processed:
       // проставляем фактические количества = плановым qty и переводим заказ сразу в processed.
       for (const task of createdTasks) {
         await prisma.shipmentTask.update({
@@ -514,11 +507,11 @@ export async function POST(request: NextRequest) {
         type: 'shipments-post',
         direction: 'out',
         endpoint: 'POST /api/shipments',
-        summary: `Автообработка ОПТОВИК: заказ ${number} переведён в processed и готов к отдаче в 1С`,
+        summary: `Автопроведение: заказ ${number} переведён в processed и готов к отдаче в 1С`,
         details: {
           number,
           shipmentId: shipment.id,
-          action: 'wholesale_auto_processed',
+          action: 'auto_process_shipment',
           tasksCount: createdTasks.length,
         },
       });
@@ -544,7 +537,7 @@ export async function POST(request: NextRequest) {
       type: 'shipments-post',
       direction: 'out',
       endpoint: 'POST /api/shipments',
-      summary: `Заказ ${number} принят: ${existing ? 'обновлён' : 'создан'}, заданий ${createdTasks.length}${wholesaleAutoProcess ? ', автообработка ОПТОВИК' : ''}`,
+      summary: `Заказ ${number} принят: ${existing ? 'обновлён' : 'создан'}, заданий ${createdTasks.length}${wholesaleAutoProcess ? ', автопроведение' : ''}`,
       details: {
         number,
         action: existing ? 'updated' : 'created',
@@ -558,7 +551,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         message: wholesaleAutoProcess
-          ? `Заказ ОПТОВИК автоматически обработан и готов к выгрузке в 1С`
+          ? `Заказ автоматически обработан (автопроведение) и готов к выгрузке в 1С`
           : `Заказ успешно создан и разбит на ${createdTasks.length} заданий`,
         shipment: {
           id: shipment.id,

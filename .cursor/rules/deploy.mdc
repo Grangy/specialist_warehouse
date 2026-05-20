@@ -9,7 +9,7 @@ alwaysApply: true
 
 1. Выполни `git add -A && git commit -m "..." && git push` (если есть изменения)
 2. Запусти `./scripts/deploy-remote.sh` — скрипт подключится к `SERVER_HOST` (по умолчанию **77.222.52.31**) и выполнит: git pull, миграции, build, pm2 restart (без npm install)
-3. Сервер **sklad3** (91.215.60.44): `./scripts/deploy-sklad3.sh` — обёртка с `SERVER_HOST=91.215.60.44` и `DEPLOY_PATH` по умолчанию `~/specialist_warehouse` (переопредели при другом пути)
+3. Сервер **sklad3** (91.215.60.44): `./scripts/deploy-sklad3.sh` — `SERVER_HOST=91.215.60.44`, `SERVER_USER=grangy`, `DEPLOY_PATH=/home/grangy/specialist_warehouse` (см. `scripts/ssh-copy-id-shared-to-sklad3.sh`)
 4. После рестарта pm2: `npx tsx scripts/warm-statistics-endpoints.ts` (прогрев `/api/statistics/top`)
 
 Ключ SSH: `~/.ssh/shared_server_key`
