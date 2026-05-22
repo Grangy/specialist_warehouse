@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, createSession } from '@/lib/auth';
 import { cookies } from 'next/headers';
-import { checkRateLimit, getClientIdentifier } from '@/lib/security/rateLimiter';
 import { validateLogin, validatePassword } from '@/lib/security/inputValidator';
 import { logSecurityEvent } from '@/lib/security/securityLogger';
 
@@ -12,32 +11,6 @@ export async function POST(request: NextRequest) {
   try {
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
     const userAgent = request.headers.get('user-agent') || 'unknown';
-
-    // Rate limiting для логина (защита от брута)
-    const clientId = getClientIdentifier(request);
-    const rateLimit = checkRateLimit(clientId, 'login');
-    if (!rateLimit.allowed) {
-      logSecurityEvent('rate_limit_exceeded', {
-        ip,
-        userAgent,
-        details: `Login attempts exceeded for ${clientId}`,
-      });
-      return NextResponse.json(
-        {
-          error: 'Слишком много попыток входа. Попробуйте позже.',
-          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000),
-        },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
-            'X-RateLimit-Limit': '5',
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': String(rateLimit.resetTime),
-          },
-        }
-      );
-    }
 
     const { login, password } = await request.json();
 

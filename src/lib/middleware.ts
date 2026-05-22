@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser, UserRole, verifyPassword } from './auth';
 import { prisma } from './prisma';
-import { checkRateLimit, getClientIdentifier } from './security/rateLimiter';
+import { checkRateLimit, getClientIdentifier, LOGIN_RATE_LIMIT_ENABLED } from './security/rateLimiter';
 import { validateLogin, validatePassword } from './security/inputValidator';
 import { logSecurityEvent } from './security/securityLogger';
 
@@ -103,25 +103,26 @@ export async function authenticateRequest(
   
   // Если нашли credentials, проверяем их
   if (login && password) {
-    // Rate limiting для аутентификации через заголовки/body (защита от брута по API)
-    const clientId = getClientIdentifier(request);
-    const rateLimit = checkRateLimit(`${clientId}:auth`, 'api');
-    if (!rateLimit.allowed) {
-      const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
-      logSecurityEvent('rate_limit_exceeded', {
-        ip,
-        login,
-        details: 'Authentication rate limit exceeded',
-      });
-      return NextResponse.json(
-        { error: 'Слишком много запросов. Попробуйте позже.' },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
-          },
-        }
-      );
+    if (LOGIN_RATE_LIMIT_ENABLED) {
+      const clientId = getClientIdentifier(request);
+      const rateLimit = checkRateLimit(`${clientId}:auth`, 'api');
+      if (!rateLimit.allowed) {
+        const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+        logSecurityEvent('rate_limit_exceeded', {
+          ip,
+          login,
+          details: 'Authentication rate limit exceeded',
+        });
+        return NextResponse.json(
+          { error: 'Слишком много запросов. Попробуйте позже.' },
+          {
+            status: 429,
+            headers: {
+              'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
+            },
+          }
+        );
+      }
     }
 
     const user = await prisma.user.findUnique({

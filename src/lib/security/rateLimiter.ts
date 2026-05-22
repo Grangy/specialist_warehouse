@@ -2,6 +2,9 @@
  * Rate Limiter для защиты от brute force атак
  */
 
+/** Лимит попыток входа по IP — временно выключен (NAT: блокировал всех, не одного логин). */
+export const LOGIN_RATE_LIMIT_ENABLED = false;
+
 interface RateLimitEntry {
   count: number;
   resetTime: number;
@@ -45,6 +48,15 @@ export function checkRateLimit(
 ): { allowed: boolean; remaining: number; resetTime: number } {
   const config = RATE_LIMIT_CONFIG[type];
   const now = Date.now();
+
+  if (type === 'login' && !LOGIN_RATE_LIMIT_ENABLED) {
+    return {
+      allowed: true,
+      remaining: config.maxAttempts,
+      resetTime: now + config.windowMs,
+    };
+  }
+
   const key = `${type}:${identifier}`;
 
   let entry = rateLimitStore.get(key);
