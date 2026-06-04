@@ -46,18 +46,32 @@ export function ExtraWorkSessionEffects() {
   }, [session, session?.id, session?.status, session?.lunchEndsAt, refetchSession]);
 
   useEffect(() => {
-    if (!session || session.status === 'lunch' || !session.durationMinutes) return;
-    const baseSec = session.elapsedSecBeforeLunch ?? 0;
-    const segStart = session.postLunchStartedAt
-      ? new Date(session.postLunchStartedAt).getTime()
-      : new Date(session.startedAt).getTime();
-    const currentElapsedSec =
-      session.status === 'running'
-        ? baseSec + Math.max(0, (Date.now() - segStart) / 1000)
-        : baseSec;
-    const endAt = Date.now() + Math.max(0, session.durationMinutes * 60 - currentElapsedSec) * 1000;
+    if (!session || session.completionType !== 'timer' || !session.durationMinutes) return;
+    if (session.status === 'lunch') return;
+
+    const limitSec = session.durationMinutes * 60;
+
+    const getElapsedSec = () => {
+      const anchor =
+        typeof session.elapsedSecNow === 'number' ? Math.max(0, session.elapsedSecNow) : null;
+      const syncedAtMs = session.pointsSyncedAt ? new Date(session.pointsSyncedAt).getTime() : Date.now();
+      if (anchor != null && (session.status === 'running' || session.status === 'lunch_scheduled')) {
+        return anchor + Math.max(0, (Date.now() - syncedAtMs) / 1000);
+      }
+      if (anchor != null) return anchor;
+
+      const baseSec = session.elapsedSecBeforeLunch ?? 0;
+      const segStart = session.postLunchStartedAt
+        ? new Date(session.postLunchStartedAt).getTime()
+        : new Date(session.startedAt).getTime();
+      if (session.status === 'running' || session.status === 'lunch_scheduled') {
+        return baseSec + Math.max(0, (Date.now() - segStart) / 1000);
+      }
+      return baseSec;
+    };
+
     const check = () => {
-      if (Date.now() >= endAt) {
+      if (getElapsedSec() >= limitSec) {
         fetch('/api/admin/extra-work/stop', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -67,9 +81,22 @@ export function ExtraWorkSessionEffects() {
         });
       }
     };
-    const id = setInterval(check, 10000);
+    check();
+    const id = setInterval(check, 5000);
     return () => clearInterval(id);
-  }, [session, session?.id, session?.status, session?.startedAt, session?.durationMinutes, refetchSession]);
+  }, [
+    session,
+    session?.id,
+    session?.status,
+    session?.completionType,
+    session?.startedAt,
+    session?.durationMinutes,
+    session?.elapsedSecNow,
+    session?.pointsSyncedAt,
+    session?.postLunchStartedAt,
+    session?.elapsedSecBeforeLunch,
+    refetchSession,
+  ]);
 
   return null;
 }

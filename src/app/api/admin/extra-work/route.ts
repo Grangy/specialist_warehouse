@@ -43,6 +43,7 @@ export interface ExtraWorkEntry {
 
 import { canAccessExtraWorkByUser } from '@/lib/extraWorkAccess';
 import { autoStopExtraWorkAt18 } from '@/lib/extraWorkAutoStop';
+import { autoStopExtraWorkTimerSessions } from '@/lib/extraWorkTimerAutoStop';
 import {
   buildExtraWorkAdminCacheKey,
   peekExtraWorkAdminCache,
@@ -53,6 +54,7 @@ import { loadExtraWorkRequests } from '@/lib/extraWorkRequests';
 export async function GET(request: NextRequest) {
   try {
     void autoStopExtraWorkAt18().catch((e) => console.error('[extra-work] autoStopExtraWorkAt18', e));
+    void autoStopExtraWorkTimerSessions().catch((e) => console.error('[extra-work] autoStopExtraWorkTimer', e));
 
     const authResult = await requireAuth(request, ['admin', 'checker']);
     if (authResult instanceof NextResponse) {

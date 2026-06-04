@@ -5,6 +5,7 @@ import { getMoscowHour } from '@/lib/utils/moscowDate';
 import { computeExtraWorkPointsForSession, getExtraWorkRatePerHour } from '@/lib/ranking/extraWorkPoints';
 import { getWeekdayCoefficientForDate } from '@/lib/ranking/weekdayCoefficients';
 import { autoStopExtraWorkAt18 } from '@/lib/extraWorkAutoStop';
+import { autoStopExtraWorkTimerSessions } from '@/lib/extraWorkTimerAutoStop';
 import { syncExtraWorkSessionLunchState } from '@/lib/extraWorkLunch';
 import { computeExtraWorkElapsedSecNow, maybeHealElapsedSecBeforeLunch } from '@/lib/extraWorkElapsed';
 import crypto from 'crypto';
@@ -21,6 +22,8 @@ const sessionCache = new Map<string, { expiresAt: number; etag: string; body: an
 
 let lastAutoStopExtraWorkAt = 0;
 const AUTOSTOP_MIN_INTERVAL_MS = 45_000;
+let lastTimerAutoStopAt = 0;
+const TIMER_AUTOSTOP_MIN_INTERVAL_MS = 10_000;
 
 async function maybeAutoStopExtraWorkAt18(): Promise<void> {
   if (getMoscowHour(new Date()) < 18) return;
@@ -30,10 +33,18 @@ async function maybeAutoStopExtraWorkAt18(): Promise<void> {
   await autoStopExtraWorkAt18();
 }
 
+async function maybeAutoStopExtraWorkTimer(): Promise<void> {
+  const now = Date.now();
+  if (now - lastTimerAutoStopAt < TIMER_AUTOSTOP_MIN_INTERVAL_MS) return;
+  lastTimerAutoStopAt = now;
+  await autoStopExtraWorkTimerSessions();
+}
+
 /** Активная сессия доп.работы текущего пользователя (для попапа «Стоп») */
 export async function GET(request: NextRequest) {
   try {
     await maybeAutoStopExtraWorkAt18();
+    await maybeAutoStopExtraWorkTimer();
 
     const authResult = await requireAuth(request);
     if (authResult instanceof NextResponse) return authResult;
