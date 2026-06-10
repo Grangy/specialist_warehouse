@@ -207,8 +207,9 @@ model CollectorCall {
   errorCount          Int?      @map("error_count") // ошибки сборщика (1 при source=admin)
   checkerErrorCount   Int?      @map("checker_error_count") // ошибки проверяльщика (1 при source=admin «за проверку»)
   comment             String?   // комментарий при подтверждении или «за проверку: {наименование}»
-  confirmedAt         DateTime? @map("confirmed_at") // когда проверяльщик подтвердил ошибки
-  source              String    @default("checker") // checker | admin
+  confirmedAt             DateTime? @map("confirmed_at") // когда проверяльщик подтвердил ошибки
+  errorPenaltiesAppliedAt DateTime? @map("error_penalties_applied_at") // когда начислены баллы за ошибку сборщика (checker)
+  source                  String    @default("checker") // checker | admin
   shipmentConfirmedAt DateTime? @map("shipment_confirmed_at") // дата заказа для «ошибка со сборки от DD.MM.YYYY»
   registeredById      String?   @map("registered_by_id") // админ, нажавший «Ошибка сборки»
 

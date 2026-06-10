@@ -40,6 +40,41 @@ export async function applyCheckerFoundCollectorErrorPenalties(
   await addErrorPenalty(checkerId, checkerBonus, date);
 }
 
+/**
+ * Начислить баллы за ошибку сборщика (source=checker) один раз на вызов.
+ * Используется в confirm-errors и при «Отправить в офис» (admin confirmAll).
+ */
+export async function applyCheckerCallErrorPenaltiesIfNeeded(
+  callId: string,
+  date?: Date
+): Promise<boolean> {
+  const { prisma } = await import('@/lib/prisma');
+  const call = await prisma.collectorCall.findUnique({
+    where: { id: callId },
+    select: {
+      id: true,
+      collectorId: true,
+      checkerId: true,
+      status: true,
+      source: true,
+      errorCount: true,
+      errorPenaltiesAppliedAt: true,
+    },
+  });
+  if (!call) return false;
+  if (call.errorPenaltiesAppliedAt) return false;
+  if (call.status !== 'done' || call.source !== 'checker') return false;
+  if ((call.errorCount ?? 0) <= 0) return false;
+
+  const penaltyDate = date ?? new Date();
+  await applyCheckerFoundCollectorErrorPenalties(call.collectorId, call.checkerId, penaltyDate);
+  await prisma.collectorCall.update({
+    where: { id: callId },
+    data: { errorPenaltiesAppliedAt: penaltyDate },
+  });
+  return true;
+}
+
 /** Ошибка проверяльщика, зафиксированная админом («Ошибка сборки» в админке). */
 export async function applyAdminCheckerErrorPenalties(
   collectorId: string,

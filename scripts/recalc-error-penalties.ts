@@ -7,6 +7,7 @@
  *   npx tsx scripts/recalc-error-penalties.ts
  *   npx tsx scripts/recalc-error-penalties.ts --backfill-today-admin-login=J-SkaR
  *   npx tsx scripts/recalc-error-penalties.ts --audit-today
+ *   npx tsx scripts/recalc-error-penalties.ts --days=7
  *   npx tsx scripts/recalc-error-penalties.ts --full   # весь период (осторожно!)
  */
 
@@ -23,7 +24,7 @@ import {
   buildErrorPenaltyAdjustmentsAll,
   buildErrorPenaltyAdjustmentsForRange,
 } from '../src/lib/ranking/buildErrorPenaltyAdjustments';
-import { getStatisticsDateRange, getMoscowDateString } from '../src/lib/utils/moscowDate';
+import { getStatisticsDateRange, getStatisticsDateRangeForDate, getMoscowDateString } from '../src/lib/utils/moscowDate';
 
 const databaseUrl = process.env.DATABASE_URL;
 let finalDatabaseUrl = databaseUrl;
@@ -69,10 +70,34 @@ async function backfillTodayAdminRegistrar(login: string, range: { startDate: Da
   console.log(`backfill registeredById: ${login} (${adminUser.name}) — обновлено вызовов: ${updated.count}\n`);
 }
 
+function parseDaysArg(): number | null {
+  const raw = parseArg('days');
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 366) {
+    console.error('--days должно быть целым числом от 1 до 366');
+    process.exit(1);
+  }
+  return n;
+}
+
+function listMoscowDateStringsInclusive(endDateStr: string, days: number): string[] {
+  const [y, m, d] = endDateStr.split('-').map(Number);
+  const end = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  const dates: string[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const dt = new Date(end);
+    dt.setUTCDate(dt.getUTCDate() - i);
+    dates.push(getMoscowDateString(dt));
+  }
+  return dates;
+}
+
 async function main() {
   const fullRebuild = process.argv.includes('--full');
   const auditToday = process.argv.includes('--audit-today');
   const backfillLogin = parseArg('backfill-today-admin-login');
+  const daysArg = parseDaysArg();
 
   const todayRange = getStatisticsDateRange('today');
   const todayStr = getMoscowDateString();
@@ -84,6 +109,8 @@ async function main() {
   console.log('\n=== Пересчёт error_penalty_adjustments ===\n');
   if (fullRebuild) {
     console.log('Режим: --full (все даты, перезапись всего adj)\n');
+  } else if (daysArg) {
+    console.log(`Режим: последние ${daysArg} дней (МСК), остальные дни сохраняются\n`);
   } else {
     console.log(`Режим: только сегодня (${todayStr}, МСК), остальные дни сохраняются\n`);
   }
@@ -95,11 +122,22 @@ async function main() {
   });
   const existing = parseErrorPenaltyAdjustments(setting?.value ?? null);
 
-  const patch = fullRebuild
-    ? await buildErrorPenaltyAdjustmentsAll(prisma)
-    : await buildErrorPenaltyAdjustmentsForRange(prisma, todayRange);
-
-  const adj = fullRebuild ? patch : mergeErrorPenaltiesReplaceDate(existing, patch, todayStr);
+  let adj = existing;
+  if (fullRebuild) {
+    adj = await buildErrorPenaltyAdjustmentsAll(prisma);
+  } else if (daysArg) {
+    const dateStrings = listMoscowDateStringsInclusive(todayStr, daysArg);
+    for (const dateStr of dateStrings) {
+      const range = getStatisticsDateRangeForDate(dateStr);
+      const patch = await buildErrorPenaltyAdjustmentsForRange(prisma, range);
+      adj = mergeErrorPenaltiesReplaceDate(adj, patch, dateStr);
+      console.log(`  ${dateStr}: пересчитано`);
+    }
+    console.log('');
+  } else {
+    const patch = await buildErrorPenaltyAdjustmentsForRange(prisma, todayRange);
+    adj = mergeErrorPenaltiesReplaceDate(existing, patch, todayStr);
+  }
 
   const oldMap = setting?.value
     ? getErrorPenaltiesMapForPeriod(setting.value, todayRange.startDate, todayRange.endDate)

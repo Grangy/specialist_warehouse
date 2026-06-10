@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { applyCheckerCallErrorPenaltiesIfNeeded } from '@/lib/ranking/errorPointRates';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,6 +114,10 @@ export async function POST(request: NextRequest) {
           confirmedAt: now,
         },
       });
+
+      if (status === 'done' && (errorCount ?? 0) > 0) {
+        await applyCheckerCallErrorPenaltiesIfNeeded(callId, now);
+      }
     }
 
     return NextResponse.json({ success: true });
