@@ -14,9 +14,13 @@ interface SwipeButtonProps {
   textId: string;
   /** Компактный режим: в 2 раза уже (для проверки в минималистичном режиме) */
   compact?: boolean;
+  /** Короткая подпись на дорожке (например «Склад 3») */
+  hintText?: string;
+  tone?: 'green' | 'amber';
 }
 
 const COMPACT_MIN_WIDTH = 25;
+const HINT_MIN_WIDTH = 28;
 
 export function SwipeButton({
   onConfirm,
@@ -28,8 +32,19 @@ export function SwipeButton({
   sliderId,
   textId,
   compact = false,
+  hintText,
+  tone = 'green',
 }: SwipeButtonProps) {
-  const minSliderWidth = compact ? COMPACT_MIN_WIDTH : SWIPE_MIN_WIDTH;
+  const hintMode = !!hintText;
+  const minSliderWidth = hintMode ? HINT_MIN_WIDTH : compact ? COMPACT_MIN_WIDTH : SWIPE_MIN_WIDTH;
+  const sliderToneClass =
+    tone === 'amber'
+      ? 'bg-gradient-to-r from-amber-600 to-amber-500'
+      : 'bg-gradient-to-r from-green-600 to-green-500';
+
+  const resetHintHtml = hintText
+    ? `<span class="text-[11px] font-semibold whitespace-nowrap">${hintText}</span>`
+    : `<span class="${compact ? 'text-lg' : 'text-2xl'}">→</span>`;
   const [isConfirmed, setIsConfirmed] = useState(false);
   const isDraggingRef = useRef(false);
   const handlersRef = useRef<{
@@ -70,7 +85,7 @@ export function SwipeButton({
 
     const updateSlider = () => {
       const trackWidth = track.offsetWidth;
-      const minW = compact ? COMPACT_MIN_WIDTH : SWIPE_MIN_WIDTH;
+      const minW = hintMode ? HINT_MIN_WIDTH : compact ? COMPACT_MIN_WIDTH : SWIPE_MIN_WIDTH;
       const maxWidth = trackWidth - minW;
       const deltaX = currentX - startX;
       const newWidth = Math.min(Math.max(minW + deltaX, minW), trackWidth);
@@ -103,7 +118,7 @@ export function SwipeButton({
         hasConfirmed = false;
         setIsConfirmed(false);
         track.parentElement?.classList.remove('completed-collect');
-        text.innerHTML = '<span class="text-2xl">→</span>';
+        text.innerHTML = resetHintHtml;
         text.style.color = '';
       }
     };
@@ -142,7 +157,7 @@ export function SwipeButton({
       track.parentElement?.classList.remove('swiping-collect');
 
       if (!hasConfirmed) {
-        const minW = compact ? COMPACT_MIN_WIDTH : SWIPE_MIN_WIDTH;
+        const minW = hintMode ? HINT_MIN_WIDTH : compact ? COMPACT_MIN_WIDTH : SWIPE_MIN_WIDTH;
         slider.style.width = `${minW}px`;
         text.style.left = `${minW}px`;
         startX = 0;
@@ -187,16 +202,23 @@ export function SwipeButton({
       document.removeEventListener('mousemove', mouseMoveHandler);
       document.removeEventListener('mouseup', mouseUpHandler);
     };
-  }, [disabled, isConfirmed, trackId, sliderId, textId, label, confirmedLabel, onConfirm, compact]);
+  }, [disabled, isConfirmed, trackId, sliderId, textId, label, confirmedLabel, onConfirm, compact, hintMode, resetHintHtml]);
 
   return (
     <div
       className={`relative overflow-hidden rounded-lg ${className}`}
-      style={{ minWidth: compact ? '60px' : '120px', maxWidth: compact ? '60px' : undefined }}
+      style={
+        hintMode
+          ? { minWidth: '100px', maxWidth: '110px' }
+          : { minWidth: compact ? '60px' : '120px', maxWidth: compact ? '60px' : undefined }
+      }
+      title={hintText ? `Свайп: ${hintText}` : undefined}
     >
       <div
         id={trackId}
-        className={`swipe-collect-track relative w-full bg-slate-700/90 rounded-lg overflow-hidden border-2 border-slate-600/50 shadow-lg ${compact ? 'h-[26px]' : 'h-[52px]'}`}
+        className={`swipe-collect-track relative w-full bg-slate-700/90 rounded-lg overflow-hidden border-2 border-slate-600/50 shadow-lg ${
+          hintMode ? 'h-[28px]' : compact ? 'h-[26px]' : 'h-[52px]'
+        }`}
         style={{ 
           touchAction: 'pan-x', 
           cursor: disabled ? 'not-allowed' : 'grab', 
@@ -211,7 +233,7 @@ export function SwipeButton({
       >
         <div
           id={sliderId}
-          className="swipe-collect-slider absolute left-0 top-0 h-full bg-gradient-to-r from-green-600 to-green-500 flex items-center justify-center transition-none z-20 shadow-lg"
+          className={`swipe-collect-slider absolute left-0 top-0 h-full ${sliderToneClass} flex items-center justify-center transition-none z-20 shadow-lg`}
           style={{ width: `${minSliderWidth}px`, minWidth: `${minSliderWidth}px` }}
         >
           <svg className={`${compact ? 'w-4 h-4' : 'w-6 h-6'} text-white drop-shadow-lg`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
@@ -220,10 +242,16 @@ export function SwipeButton({
         </div>
         <div
           id={textId}
-          className={`swipe-collect-text absolute inset-0 flex items-center justify-center text-slate-200 font-bold pointer-events-none z-10 ${compact ? 'px-1 text-lg' : 'px-4 text-sm'}`}
+          className={`swipe-collect-text absolute inset-0 flex items-center justify-center text-slate-200 font-bold pointer-events-none z-10 ${
+            hintMode ? 'px-1 text-[11px]' : compact ? 'px-1 text-lg' : 'px-4 text-sm'
+          }`}
           style={{ left: `${minSliderWidth}px` }}
         >
-          <span className={compact ? 'text-lg' : 'text-2xl'}>→</span>
+          {hintText ? (
+            <span className="text-[11px] font-semibold whitespace-nowrap">{hintText}</span>
+          ) : (
+            <span className={compact ? 'text-lg' : 'text-2xl'}>→</span>
+          )}
         </div>
       </div>
     </div>

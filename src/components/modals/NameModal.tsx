@@ -205,14 +205,16 @@ export function NameModal({
               <span>Место</span>
               {lineIndex !== undefined && onUpdateLocation && (
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleSetWarehouse3Location}
-                    className="px-2.5 py-1 bg-amber-600/90 hover:bg-amber-500 text-white text-xs font-semibold rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 whitespace-nowrap"
-                    title={`Установить место «${WAREHOUSE_3_LOCATION}»`}
-                  >
-                    Склад 3
-                  </button>
+                  <SwipeButton
+                    trackId={`swipe-wh3-track-${lineIndex}`}
+                    sliderId={`swipe-wh3-slider-${lineIndex}`}
+                    textId={`swipe-wh3-text-${lineIndex}`}
+                    onConfirm={handleSetWarehouse3Location}
+                    confirmedLabel="✓"
+                    hintText="Склад 3"
+                    tone="amber"
+                    className="flex-shrink-0"
+                  />
                   <button
                     type="button"
                     onClick={() => setIsEditingLocation(true)}
