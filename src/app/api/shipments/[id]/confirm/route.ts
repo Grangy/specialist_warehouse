@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/middleware';
 import { areAllTasksConfirmed } from '@/lib/shipmentTasks';
 import { updateCheckerStats } from '@/lib/ranking/updateStats';
 import { applyCheckerCallErrorPenaltiesIfNeeded } from '@/lib/ranking/errorPointRates';
+import { getExtraWorkShipmentBlockResponse } from '@/lib/extraWorkShipmentGuards';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,17 +19,6 @@ export async function POST(
       return authResult;
     }
     const { user } = authResult;
-
-    // Блокировка при доп.работе (таймер)
-    const activeExtraWork = await prisma.extraWorkSession.findFirst({
-      where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
-    });
-    if (activeExtraWork) {
-      return NextResponse.json(
-        { error: 'Дополнительная работа активна. Остановите таймер.' },
-        { status: 403 }
-      );
-    }
 
     // Подтверждать могут админ, проверяльщик и склад 3
     if (user.role !== 'admin' && user.role !== 'checker' && user.role !== 'warehouse_3') {
@@ -83,6 +73,14 @@ export async function POST(
       return NextResponse.json(
         { error: 'Задание не находится в статусе ожидания подтверждения' },
         { status: 400 }
+      );
+    }
+
+    const extraWorkBlock = await getExtraWorkShipmentBlockResponse(prisma, user, task, 'verify');
+    if (extraWorkBlock) {
+      return NextResponse.json(
+        { error: extraWorkBlock.error, code: extraWorkBlock.code },
+        { status: 403 }
       );
     }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { applyCheckerCallErrorPenaltiesIfNeeded } from '@/lib/ranking/errorPointRates';
+import { getExtraWorkShipmentBlockResponse } from '@/lib/extraWorkShipmentGuards';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,20 +19,6 @@ export async function POST(request: NextRequest) {
       return authResult;
     }
     const { user: checker } = authResult;
-    const activeExtraWork = await prisma.extraWorkSession.findFirst({
-      where: {
-        userId: checker.id,
-        status: { in: ['running', 'lunch', 'lunch_scheduled'] },
-        stoppedAt: null,
-      },
-      select: { id: true },
-    });
-    if (activeExtraWork) {
-      return NextResponse.json(
-        { error: 'Дополнительная работа активна. Остановите таймер.' },
-        { status: 403 }
-      );
-    }
 
     const body = await request.json().catch(() => ({}));
     const calls = Array.isArray(body.calls) ? body.calls : [];
@@ -41,6 +28,38 @@ export async function POST(request: NextRequest) {
         { error: 'Укажите хотя бы один вызов для подтверждения.' },
         { status: 400 }
       );
+    }
+
+    const firstCallId = typeof calls[0]?.callId === 'string' ? calls[0].callId.trim() : '';
+    if (firstCallId) {
+      const firstCall = await prisma.collectorCall.findUnique({
+        where: { id: firstCallId },
+        select: {
+          task: {
+            select: {
+              collectorId: true,
+              checkerId: true,
+              checkerStartedAt: true,
+              status: true,
+              lines: { select: { confirmed: true, confirmedQty: true } },
+            },
+          },
+        },
+      });
+      if (firstCall?.task) {
+        const extraWorkBlock = await getExtraWorkShipmentBlockResponse(
+          prisma,
+          checker,
+          firstCall.task,
+          'verify'
+        );
+        if (extraWorkBlock) {
+          return NextResponse.json(
+            { error: extraWorkBlock.error, code: extraWorkBlock.code },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     const now = new Date();

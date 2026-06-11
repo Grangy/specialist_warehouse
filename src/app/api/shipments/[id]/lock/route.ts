@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { emitShipmentEvent } from '@/lib/sseEvents';
 import { touchSync } from '@/lib/syncTouch';
+import { getExtraWorkShipmentBlockResponse } from '@/lib/extraWorkShipmentGuards';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,17 +35,7 @@ export async function POST(
       // body optional
     }
 
-    // Блокировка при доп.работе (таймер идёт): пользователь не может брать сборку
-    const activeExtraWork = await prisma.extraWorkSession.findFirst({
-      where: { userId: user.id, status: { in: ['running', 'lunch', 'lunch_scheduled'] }, stoppedAt: null },
-    });
-    if (activeExtraWork) {
-      return NextResponse.json(
-        { error: 'Дополнительная работа активна. Остановите таймер, чтобы взять заказ.', code: 'EXTRA_WORK_ACTIVE' },
-        { status: 403 }
-      );
-    }
-
+    // Блокировка при доп.работе: можно только дособрать свою заявку («На руках»)
     const task = await prisma.shipmentTask.findUnique({
       where: { id },
       include: { locks: true },
@@ -52,6 +43,14 @@ export async function POST(
 
     if (!task) {
       return NextResponse.json({ error: 'Задание не найдено' }, { status: 404 });
+    }
+
+    const extraWorkBlock = await getExtraWorkShipmentBlockResponse(prisma, user, task, 'lock');
+    if (extraWorkBlock) {
+      return NextResponse.json(
+        { error: extraWorkBlock.error, code: extraWorkBlock.code },
+        { status: 403 }
+      );
     }
 
     const isAdmin = user.role === 'admin';

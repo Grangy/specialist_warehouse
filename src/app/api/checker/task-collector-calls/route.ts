@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
+import { getExtraWorkShipmentBlockResponse } from '@/lib/extraWorkShipmentGuards';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,26 +16,34 @@ export async function GET(request: NextRequest) {
       return authResult;
     }
     const { user: checker } = authResult;
-    const activeExtraWork = await prisma.extraWorkSession.findFirst({
-      where: {
-        userId: checker.id,
-        status: { in: ['running', 'lunch', 'lunch_scheduled'] },
-        stoppedAt: null,
-      },
-      select: { id: true },
-    });
-    if (activeExtraWork) {
-      return NextResponse.json(
-        { error: 'Дополнительная работа активна. Остановите таймер.' },
-        { status: 403 }
-      );
-    }
 
     const taskId = request.nextUrl.searchParams.get('taskId');
     if (!taskId || typeof taskId !== 'string') {
       return NextResponse.json(
         { error: 'Укажите taskId.' },
         { status: 400 }
+      );
+    }
+
+    const task = await prisma.shipmentTask.findUnique({
+      where: { id: taskId },
+      select: {
+        collectorId: true,
+        checkerId: true,
+        checkerStartedAt: true,
+        status: true,
+        lines: { select: { confirmed: true, confirmedQty: true } },
+      },
+    });
+    if (!task) {
+      return NextResponse.json({ error: 'Задание не найдено.' }, { status: 404 });
+    }
+
+    const extraWorkBlock = await getExtraWorkShipmentBlockResponse(prisma, checker, task, 'verify');
+    if (extraWorkBlock) {
+      return NextResponse.json(
+        { error: extraWorkBlock.error, code: extraWorkBlock.code },
+        { status: 403 }
       );
     }
 

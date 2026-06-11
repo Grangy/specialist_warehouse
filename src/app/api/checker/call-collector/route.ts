@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/middleware';
 import { setPendingMessage } from '@/lib/adminMessages';
+import { getExtraWorkShipmentBlockResponse } from '@/lib/extraWorkShipmentGuards';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,20 +20,6 @@ export async function POST(request: NextRequest) {
       return authResult;
     }
     const { user: checker } = authResult;
-    const activeExtraWork = await prisma.extraWorkSession.findFirst({
-      where: {
-        userId: checker.id,
-        status: { in: ['running', 'lunch', 'lunch_scheduled'] },
-        stoppedAt: null,
-      },
-      select: { id: true },
-    });
-    if (activeExtraWork) {
-      return NextResponse.json(
-        { error: 'Дополнительная работа активна. Остановите таймер.' },
-        { status: 403 }
-      );
-    }
 
     const body = await request.json().catch(() => ({}));
     const taskId = typeof body.taskId === 'string' ? body.taskId.trim() : '';
@@ -51,6 +38,10 @@ export async function POST(request: NextRequest) {
         lines: {
           orderBy: { id: 'asc' },
           select: {
+            qty: true,
+            collectedQty: true,
+            confirmedQty: true,
+            confirmed: true,
             shipmentLineId: true,
             shipmentLine: { select: { name: true } },
           },
@@ -63,6 +54,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Задание не найдено.' },
         { status: 404 }
+      );
+    }
+
+    const extraWorkBlock = await getExtraWorkShipmentBlockResponse(
+      prisma,
+      checker,
+      {
+        collectorId: task.collectorId,
+        checkerId: task.checkerId,
+        checkerStartedAt: task.checkerStartedAt,
+        status: task.status,
+        lines: task.lines,
+      },
+      'verify'
+    );
+    if (extraWorkBlock) {
+      return NextResponse.json(
+        { error: extraWorkBlock.error, code: extraWorkBlock.code },
+        { status: 403 }
       );
     }
 
