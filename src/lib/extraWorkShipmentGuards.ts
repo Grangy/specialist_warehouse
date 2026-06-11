@@ -4,6 +4,8 @@
  * — Проверяльщик: новую проверку взять нельзя; текущую — можно завершить.
  */
 
+import { prisma } from '@/lib/prisma';
+
 export const ACTIVE_EXTRA_WORK_STATUSES = ['running', 'lunch', 'lunch_scheduled'] as const;
 
 export type TaskForExtraWorkGuard = {
@@ -76,27 +78,16 @@ export function extraWorkShipmentBlockMessage(
   }
 }
 
-type PrismaLike = {
-  extraWorkSession: {
-    findFirst: (args: {
-      where: {
-        userId: string;
-        status: { in: readonly string[] };
-        stoppedAt: null;
-      };
-      select: { id: true };
-    }) => Promise<{ id: string } | null>;
-  };
-};
+type PrismaLike = typeof prisma;
 
 /** Проверка доп. работы для API-маршрутов. null = разрешено. */
 export async function getExtraWorkShipmentBlockResponse(
-  prisma: PrismaLike,
+  prismaClient: PrismaLike,
   user: { id: string; role: string },
   task: TaskForExtraWorkGuard,
   action: ExtraWorkShipmentAction
 ): Promise<{ error: string; code: string } | null> {
-  const activeExtraWork = await prisma.extraWorkSession.findFirst({
+  const activeExtraWork = await prismaClient.extraWorkSession.findFirst({
     where: {
       userId: user.id,
       status: { in: [...ACTIVE_EXTRA_WORK_STATUSES] },
