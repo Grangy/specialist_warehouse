@@ -12,6 +12,33 @@ import { SWIPE_MIN_WIDTH } from '@/lib/utils/constants';
 import type { Shipment, CollectChecklistState } from '@/types';
 import { sanitizeShipmentComment } from '@/lib/shipmentComment';
 
+const WAREHOUSE_3_LOCATION = 'Склад 3';
+
+function Warehouse3LocationButton({
+  lineIndex,
+  onUpdateLocation,
+  className = 'px-2 py-1 bg-amber-600/90 hover:bg-amber-500 text-white text-[10px] font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95 flex-shrink-0',
+}: {
+  lineIndex: number;
+  onUpdateLocation?: (lineIndex: number, location: string) => void;
+  className?: string;
+}) {
+  if (!onUpdateLocation) return null;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onUpdateLocation(lineIndex, WAREHOUSE_3_LOCATION);
+      }}
+      className={className}
+      title={`Установить место «${WAREHOUSE_3_LOCATION}»`}
+    >
+      Склад 3
+    </button>
+  );
+}
+
 interface CollectModalProps {
   currentShipment: Shipment | null;
   checklistState: Record<number, CollectChecklistState>;
@@ -592,6 +619,11 @@ export function CollectModal({
                         >
                           Ред.
                         </button>
+                        <Warehouse3LocationButton
+                          lineIndex={index}
+                          onUpdateLocation={onUpdateLocation}
+                          className="flex-1 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded transition-colors py-1"
+                        />
                         {!isCollected && (
                           userSettings.collectPositionConfirm === 'double-click' ? (
                             <DoubleTapButton
@@ -890,6 +922,7 @@ export function CollectModal({
                             >
                               Ред.
                             </button>
+                            <Warehouse3LocationButton lineIndex={index} onUpdateLocation={onUpdateLocation} />
                             {!isCollected && (
                               userSettings.collectPositionConfirm === 'double-click' ? (
                                 <DoubleTapButton
@@ -953,14 +986,15 @@ export function CollectModal({
                           <div className="text-[10px] text-yellow-500 mt-1">Недостаток: {line.qty - state.collectedQty} {line.uom || 'шт'}</div>
                         )}
                       </td>
-                      <td className="px-2 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle" style={{ width: '160px', minWidth: '160px', maxWidth: '160px' }}>
-                        <div className="flex items-center justify-end gap-1.5 flex-shrink-0">
+                      <td className="px-2 py-3 text-center border-b border-slate-700/50 hidden md:table-cell align-middle" style={{ width: '200px', minWidth: '200px', maxWidth: '200px' }}>
+                        <div className="flex items-center justify-end gap-1.5 flex-shrink-0 flex-wrap">
                           <button
                             onClick={() => onStartEditQty(index)}
                             className="px-2.5 py-1 bg-blue-600/90 hover:bg-blue-500 text-white text-[10px] font-semibold rounded-md transition-all duration-200 whitespace-nowrap shadow-md hover:shadow-lg hover:scale-105 active:scale-95 flex-shrink-0"
                           >
                             Ред.
                           </button>
+                          <Warehouse3LocationButton lineIndex={index} onUpdateLocation={onUpdateLocation} />
 {!isCollected && (
                                                             userSettings.collectPositionConfirm === 'double-click' ? (
                                                               <DoubleTapButton
