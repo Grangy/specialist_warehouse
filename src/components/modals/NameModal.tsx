@@ -7,6 +7,8 @@ import { DoubleTapButton } from '@/components/ui/DoubleTapButton';
 import { useUserSettings } from '@/contexts/UserSettingsContext';
 import type { CollectChecklistState, ConfirmChecklistState } from '@/types';
 
+const WAREHOUSE_3_LOCATION = 'Склад 3';
+
 interface NameModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -148,6 +150,11 @@ export function NameModal({
     setLocalLocation(location); // Восстанавливаем исходное значение
   };
 
+  const handleSetWarehouse3Location = () => {
+    setIsEditingLocation(false);
+    handleUpdateLocation(WAREHOUSE_3_LOCATION);
+  };
+
   const handleConfirm = async () => {
     if (onUpdateCollected && lineIndex !== undefined) {
       // Сначала обновляем состояние
@@ -194,18 +201,29 @@ export function NameModal({
             </div>
           )}
           <div className="min-w-0">
-            <div className="text-sm md:text-base text-slate-400 mb-1 md:mb-3 flex items-center justify-between">
+            <div className="text-sm md:text-base text-slate-400 mb-1 md:mb-3 flex items-center justify-between gap-2">
               <span>Место</span>
               {lineIndex !== undefined && onUpdateLocation && (
-                <button
-                  onClick={() => setIsEditingLocation(true)}
-                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Изменить
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleSetWarehouse3Location}
+                    className="px-2.5 py-1 bg-amber-600/90 hover:bg-amber-500 text-white text-xs font-semibold rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 whitespace-nowrap"
+                    title={`Установить место «${WAREHOUSE_3_LOCATION}»`}
+                  >
+                    Склад 3
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingLocation(true)}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Изменить
+                  </button>
+                </div>
               )}
             </div>
             {isEditingLocation ? (
