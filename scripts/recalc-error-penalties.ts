@@ -25,6 +25,11 @@ import {
   buildErrorPenaltyAdjustmentsForRange,
 } from '../src/lib/ranking/buildErrorPenaltyAdjustments';
 import { getStatisticsDateRange, getStatisticsDateRangeForDate, getMoscowDateString } from '../src/lib/utils/moscowDate';
+import {
+  CHECKER_BONUS_COLLECTOR_ERROR_REGULAR,
+  CHECKER_PENALTY_ADMIN_FOUND,
+  COLLECTOR_ERROR_REGULAR,
+} from '../src/lib/ranking/errorPointRates';
 
 const databaseUrl = process.env.DATABASE_URL;
 let finalDatabaseUrl = databaseUrl;
@@ -96,8 +101,9 @@ function listMoscowDateStringsInclusive(endDateStr: string, days: number): strin
 async function main() {
   const fullRebuild = process.argv.includes('--full');
   const auditToday = process.argv.includes('--audit-today');
+  const monthRebuild = process.argv.includes('--month');
   const backfillLogin = parseArg('backfill-today-admin-login');
-  const daysArg = parseDaysArg();
+  const daysArg = monthRebuild ? null : parseDaysArg();
 
   const todayRange = getStatisticsDateRange('today');
   const todayStr = getMoscowDateString();
@@ -109,13 +115,17 @@ async function main() {
   console.log('\n=== Пересчёт error_penalty_adjustments ===\n');
   if (fullRebuild) {
     console.log('Режим: --full (все даты, перезапись всего adj)\n');
+  } else if (monthRebuild) {
+    const monthRange = getStatisticsDateRange('month');
+    const monthStartStr = getMoscowDateString(monthRange.startDate);
+    console.log(`Режим: текущий месяц с ${monthStartStr} (МСК), остальные дни сохраняются\n`);
   } else if (daysArg) {
     console.log(`Режим: последние ${daysArg} дней (МСК), остальные дни сохраняются\n`);
   } else {
     console.log(`Режим: только сегодня (${todayStr}, МСК), остальные дни сохраняются\n`);
   }
   console.log('checker: сборщик −1/−5, проверяльщик +1/+5 (новенький/остальные)');
-  console.log('admin: сборщик −1/−5, проверяльщик −10, +11/+15 тому админу, кто нажал (registeredById)\n');
+  console.log('admin: сборщик −1/−5, проверяльщик −5, +11/+15 тому админу, кто нажал (registeredById)\n');
 
   const setting = await prisma.systemSettings.findUnique({
     where: { key: 'error_penalty_adjustments' },
@@ -125,6 +135,18 @@ async function main() {
   let adj = existing;
   if (fullRebuild) {
     adj = await buildErrorPenaltyAdjustmentsAll(prisma);
+  } else if (monthRebuild) {
+    const monthRange = getStatisticsDateRange('month');
+    const monthStartStr = getMoscowDateString(monthRange.startDate);
+    const dayCount = Number(todayStr.split('-')[2]) - Number(monthStartStr.split('-')[2]) + 1;
+    const dateStrings = listMoscowDateStringsInclusive(todayStr, dayCount);
+    for (const dateStr of dateStrings) {
+      const range = getStatisticsDateRangeForDate(dateStr);
+      const patch = await buildErrorPenaltyAdjustmentsForRange(prisma, range);
+      adj = mergeErrorPenaltiesReplaceDate(adj, patch, dateStr);
+      console.log(`  ${dateStr}: пересчитано`);
+    }
+    console.log('');
   } else if (daysArg) {
     const dateStrings = listMoscowDateStringsInclusive(todayStr, daysArg);
     for (const dateStr of dateStrings) {
@@ -164,6 +186,7 @@ async function main() {
           { name: { contains: 'Станислав' } },
           { name: { contains: 'Дмитрий' } },
           { name: { contains: 'Палыч' } },
+          { name: { contains: 'Албан' } },
           { login: 'J-SkaR' },
           { role: 'admin' },
         ],

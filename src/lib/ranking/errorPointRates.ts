@@ -2,7 +2,7 @@
  * Баллы за ошибки сборки / проверки.
  * Новенький сборщик: сборщик −1, проверяльщик +1 за найденную ошибку сборки.
  * Остальные: сборщик −5, проверяльщик +5.
- * Ошибка проверяльщика (фиксирует админ): сборщик −1/−5, проверяльщик −10, админ +11/+15.
+ * Ошибка проверяльщика (фиксирует админ): сборщик −1/−5, проверяльщик −5, админ +11/+15.
  */
 
 import { addErrorPenalty } from '@/lib/ranking/errorPenalties';
@@ -14,7 +14,7 @@ export const CHECKER_BONUS_COLLECTOR_ERROR_NEWBIE = 1;
 export const CHECKER_BONUS_COLLECTOR_ERROR_REGULAR = 5;
 /** @deprecated Используйте CHECKER_BONUS_COLLECTOR_ERROR_REGULAR или getCheckerFoundCollectorBonus */
 export const CHECKER_BONUS_COLLECTOR_ERROR = CHECKER_BONUS_COLLECTOR_ERROR_REGULAR;
-export const CHECKER_PENALTY_ADMIN_FOUND = -10;
+export const CHECKER_PENALTY_ADMIN_FOUND = -5;
 export const ADMIN_BONUS_CHECKER_ERROR_NEWBIE = 11;
 export const ADMIN_BONUS_CHECKER_ERROR_REGULAR = 15;
 

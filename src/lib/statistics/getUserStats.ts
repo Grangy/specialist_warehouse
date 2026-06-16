@@ -17,6 +17,11 @@ import { computeExtraWorkPointsForSession } from '@/lib/ranking/extraWorkPoints'
 import { computeExtraWorkElapsedSecNow } from '@/lib/extraWorkElapsed';
 import { getManualAdjustmentForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltyForPeriod } from '@/lib/ranking/errorPenalties';
+import {
+  CHECKER_BONUS_COLLECTOR_ERROR_REGULAR,
+  CHECKER_PENALTY_ADMIN_FOUND,
+  COLLECTOR_ERROR_REGULAR,
+} from '@/lib/ranking/errorPointRates';
 import { getUserStatsCacheKey } from '@/lib/statistics/userStatsCacheKey';
 
 export { getUserStatsCacheKey } from '@/lib/statistics/userStatsCacheKey';
@@ -374,25 +379,31 @@ async function getUserStatsUncached(
   const errorDetails: Array<{ shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number }> =
     errorCallsForDetails
       .map((c) => {
-        const isChecker = c.checkerId === user.id;
-        if (isChecker) {
-          const cnt = c.checkerErrorCount ?? 0;
-          if (cnt <= 0) return null;
+        if (c.collectorId === user.id && (c.errorCount ?? 0) > 0) {
+          return {
+            shipmentNumber: c.task?.shipment?.number ?? '?',
+            role: 'collector' as const,
+            points: COLLECTOR_ERROR_REGULAR,
+            errorCount: 1,
+          };
+        }
+        if (c.checkerId === user.id && c.source === 'checker' && (c.errorCount ?? 0) > 0) {
           return {
             shipmentNumber: c.task?.shipment?.number ?? '?',
             role: 'checker' as const,
-            points: -5 * cnt,
-            errorCount: cnt,
+            points: CHECKER_BONUS_COLLECTOR_ERROR_REGULAR,
+            errorCount: 1,
           };
         }
-        const cnt = c.errorCount ?? 0;
-        if (cnt <= 0) return null;
-        return {
-          shipmentNumber: c.task?.shipment?.number ?? '?',
-          role: 'collector' as const,
-          points: -1 * cnt,
-          errorCount: cnt,
-        };
+        if (c.checkerId === user.id && c.source === 'admin' && (c.checkerErrorCount ?? 0) > 0) {
+          return {
+            shipmentNumber: c.task?.shipment?.number ?? '?',
+            role: 'checker' as const,
+            points: CHECKER_PENALTY_ADMIN_FOUND,
+            errorCount: 1,
+          };
+        }
+        return null;
       })
       .filter((x): x is { shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number } => x != null);
 
