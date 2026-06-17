@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       text: patternsToDisplayText(patterns),
       builtinOptovik: true,
       hint:
-        'Одна строка — одна подстрока поиска в имени клиента (без учёта регистра). Встроенно всегда: «ОПТОВИК».',
+        'Одна строка — одно имя клиента (точное совпадение, без учёта регистра, Ё→Е). Встроенно всегда: подстрока «ОПТОВИК» в имени.',
     });
   } catch (e) {
     console.error('[admin/auto-process-customers GET]', e);

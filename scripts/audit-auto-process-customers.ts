@@ -8,6 +8,7 @@ import path from 'path';
 import { PrismaClient } from '../src/generated/prisma/client';
 import {
   AUTO_PROCESS_CUSTOMER_PATTERNS_KEY,
+  customerMatchesAdminPattern,
   getAdminAutoProcessPatternsNormalized,
   matchesBuiltinOptovik,
   parsePatternsFromSettingsRaw,
@@ -36,13 +37,13 @@ async function main() {
   if (patterns.length > 30) console.log(`  … ещё ${patterns.length - 30}`);
 
   const norm = await getAdminAutoProcessPatternsNormalized(prisma);
-  console.log('\nНормализовано для поиска:', norm.length, 'подстрок');
+  console.log('\nНормализовано для сравнения:', norm.length, 'имён (точное совпадение)');
 
   const samples = ['ООО ОПТОВИК', 'розничный клиент', ...patterns.slice(0, 3)];
   console.log('\nПримеры (встроенный ОПТОВИК + первые паттерны):');
   for (const s of samples) {
     const o = matchesBuiltinOptovik(s);
-    const m = norm.some((p) => s.toUpperCase().replace(/Ё/g, 'Е').includes(p));
+    const m = customerMatchesAdminPattern(s, norm);
     console.log(`  «${s}» → ОПТОВИК:${o ? 'да' : 'нет'}, список:${m ? 'да' : 'нет'} → автопроведение:${o || m ? 'да' : 'нет'}`);
   }
 

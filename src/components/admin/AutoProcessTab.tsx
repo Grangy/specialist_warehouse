@@ -107,13 +107,13 @@ export default function AutoProcessTab() {
           </p>
           <p className="text-sm text-amber-200/80 mt-2">
             Всегда включено: если в имени клиента есть подстрока <strong>ОПТОВИК</strong> (как раньше).
-            Ниже — дополнительные подстроки: по одной на строку (поиск без учёта регистра, Ё→Е).
+            Ниже — дополнительные клиенты: по одному полному имени на строку (точное совпадение, без учёта регистра, Ё→Е).
           </p>
         </div>
       </div>
 
       <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">
-        <label className="block text-sm font-medium text-slate-300 mb-2">Дополнительные клиенты (подстроки в имени)</label>
+        <label className="block text-sm font-medium text-slate-300 mb-2">Дополнительные клиенты (точное совпадение имени)</label>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}

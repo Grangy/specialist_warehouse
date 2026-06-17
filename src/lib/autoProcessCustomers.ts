@@ -1,7 +1,7 @@
 /**
  * Автопроведение заказов при приёме из 1С (POST /api/shipments):
  * — встроенно: подстрока «ОПТОВИК» в имени клиента (как раньше);
- * — дополнительно: список подстрок из system_settings `auto_process_customer_patterns`.
+ * — дополнительно: список имён из system_settings `auto_process_customer_patterns` (точное совпадение строки).
  */
 
 import type { PrismaClient } from '@/generated/prisma/client';
@@ -72,7 +72,7 @@ export function customerMatchesAdminPattern(customerName: string, patternsNorm: 
   const n = normalizeCustomerNameForMatch(customerName);
   for (const pat of patternsNorm) {
     if (!pat) continue;
-    if (n.includes(pat)) return true;
+    if (n === pat) return true;
   }
   return false;
 }
@@ -100,7 +100,7 @@ export async function shouldAutoProcessShipmentFrom1c(
   return customerMatchesAdminPattern(customerName, patterns);
 }
 
-/** Для dry-run: какие подстроки сработали (без встроенного ОПТОВИК в списке — он отдельно) */
+/** Для dry-run: какие строки списка совпали (точное совпадение; ОПТОВИК — отдельно) */
 export function explainAutoProcessMatch(
   customerName: string,
   patternsNorm: string[]
@@ -110,7 +110,7 @@ export function explainAutoProcessMatch(
   const matchedPatterns: string[] = [];
   for (let i = 0; i < patternsNorm.length; i++) {
     const pat = patternsNorm[i];
-    if (pat && n.includes(pat)) matchedPatterns.push(pat);
+    if (pat && n === pat) matchedPatterns.push(pat);
   }
   const matched = viaOptovik || matchedPatterns.length > 0;
   return { matched, viaOptovik, matchedPatterns };
