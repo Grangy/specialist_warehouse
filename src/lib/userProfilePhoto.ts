@@ -32,3 +32,28 @@ export function pickProfilePhotoUrl(settings: string | null | undefined, userId:
   const v = typeof updatedAt === 'number' ? updatedAt : '';
   return `/api/users/profile-photo/${userId}${v ? `?v=${v}` : ''}`;
 }
+
+type RankingWithPhoto = { userId: string; profilePhotoUrl?: string | null };
+
+/** Актуальные фото профиля поверх кэшированных снимков топа (today/week/month). */
+export async function enrichRankingsWithProfilePhotos<T extends RankingWithPhoto>(
+  rankings: T[],
+  loadSettings: (userIds: string[]) => Promise<Array<{ userId: string; settings: string | null }>>
+): Promise<T[]> {
+  if (rankings.length === 0) return rankings;
+  const rows = await loadSettings(rankings.map((r) => r.userId));
+  if (rows.length === 0) return rankings;
+
+  const urlByUser = new Map<string, string>();
+  for (const row of rows) {
+    const url = pickProfilePhotoUrl(row.settings, row.userId);
+    if (url) urlByUser.set(row.userId, url);
+  }
+  if (urlByUser.size === 0) return rankings;
+
+  return rankings.map((r) => {
+    const url = urlByUser.get(r.userId);
+    if (!url || r.profilePhotoUrl === url) return r;
+    return { ...r, profilePhotoUrl: url };
+  });
+}

@@ -15,6 +15,8 @@ import {
   statsSnapshotCacheKey,
   saveStatsSnapshotToDb,
 } from '@/lib/statistics/statsSnapshotStore';
+import { enrichRankingsWithProfilePhotos } from '@/lib/userProfilePhoto';
+import { prisma } from '@/lib/prisma';
 
 export const AGGREGATE_CACHE_TTL_MS = 60_000;
 
@@ -130,6 +132,21 @@ function cloneSnapshot(data: AggregateSnapshotResult): AggregateSnapshotResult {
   return structuredClone(data);
 }
 
+async function enrichSnapshotProfilePhotos(data: AggregateSnapshotResult): Promise<AggregateSnapshotResult> {
+  const allRankings = await enrichRankingsWithProfilePhotos(data.allRankings, async (userIds) =>
+    prisma.userSettings.findMany({
+      where: { userId: { in: userIds } },
+      select: { userId: true, settings: true },
+    })
+  );
+  if (allRankings === data.allRankings) return data;
+  return { ...data, allRankings };
+}
+
+async function cloneSnapshotWithProfilePhotos(data: AggregateSnapshotResult): Promise<AggregateSnapshotResult> {
+  return enrichSnapshotProfilePhotos(cloneSnapshot(data));
+}
+
 function emptySnapshot(): AggregateSnapshotResult {
   return {
     allRankings: [],
@@ -200,11 +217,11 @@ export async function getAggregateSnapshot(
   const hit = memory.get(key);
 
   if (hit && now < hit.freshUntil) {
-    return { data: cloneSnapshot(hit.data), freshness: 'fresh' };
+    return { data: await cloneSnapshotWithProfilePhotos(hit.data), freshness: 'fresh' };
   }
   if (hit) {
     scheduleRefresh(key);
-    return { data: cloneSnapshot(hit.data), freshness: 'stale' };
+    return { data: await cloneSnapshotWithProfilePhotos(hit.data), freshness: 'stale' };
   }
 
   const fromDb = await loadStatsSnapshotFromDb(key);
@@ -213,7 +230,7 @@ export async function getAggregateSnapshot(
     memory.set(key, { data: fromDb.data, freshUntil: now + AGGREGATE_CACHE_TTL_MS, computedAtMs });
     const ageMs = now - fromDb.computedAt.getTime();
     const freshness: AggregateFreshness = ageMs < AGGREGATE_CACHE_TTL_MS ? 'fresh' : 'stale';
-    return { data: cloneSnapshot(fromDb.data), freshness };
+    return { data: await cloneSnapshotWithProfilePhotos(fromDb.data), freshness };
   }
 
   try {
@@ -223,7 +240,7 @@ export async function getAggregateSnapshot(
     if (ser) {
       const data = deserializeEntry(ser);
       memory.set(key, { data, freshUntil: now + AGGREGATE_CACHE_TTL_MS, computedAtMs: parsed.savedAt ?? now });
-      return { data: cloneSnapshot(data), freshness: 'stale' };
+      return { data: await cloneSnapshotWithProfilePhotos(data), freshness: 'stale' };
     }
   } catch {
     /* no file */
@@ -235,10 +252,10 @@ export async function getAggregateSnapshot(
     if (!after) {
       throw new Error('[statsAggregateCache] computeAndStore did not populate memory');
     }
-    return { data: cloneSnapshot(after.data), freshness: 'cold' };
+    return { data: await cloneSnapshotWithProfilePhotos(after.data), freshness: 'cold' };
   }
 
-  return { data: cloneSnapshot(emptySnapshot()), freshness: 'cold' };
+  return { data: await cloneSnapshotWithProfilePhotos(emptySnapshot()), freshness: 'cold' };
 }
 
 export type AggregateSnapshotDebug = {
@@ -298,7 +315,7 @@ export async function getAggregateSnapshotWithDebug(
     if (!after) throw new Error('[statsAggregateCache] force compute did not populate memory');
 
     return {
-      data: cloneSnapshot(after.data),
+      data: await cloneSnapshotWithProfilePhotos(after.data),
       debug: {
         freshness: 'cold',
         source: 'compute',
@@ -321,9 +338,8 @@ export async function getAggregateSnapshotWithDebug(
   })();
 
   if (hit && now < hit.freshUntil) {
-    const data = cloneSnapshot(hit.data);
     return {
-      data,
+      data: await cloneSnapshotWithProfilePhotos(hit.data),
       debug: {
         freshness: 'fresh',
         source: 'memoryFresh',
@@ -334,9 +350,8 @@ export async function getAggregateSnapshotWithDebug(
 
   if (hit) {
     scheduleRefresh(key);
-    const data = cloneSnapshot(hit.data);
     return {
-      data,
+      data: await cloneSnapshotWithProfilePhotos(hit.data),
       debug: {
         freshness: 'stale',
         source: 'memoryStale',
@@ -354,7 +369,7 @@ export async function getAggregateSnapshotWithDebug(
     const ageMs = now - fromDb.computedAt.getTime();
     const freshness: AggregateFreshness = ageMs < AGGREGATE_CACHE_TTL_MS ? 'fresh' : 'stale';
     return {
-      data: cloneSnapshot(fromDb.data),
+      data: await cloneSnapshotWithProfilePhotos(fromDb.data),
       debug: {
         freshness,
         source: 'db',
@@ -373,7 +388,7 @@ export async function getAggregateSnapshotWithDebug(
       const data = deserializeEntry(ser);
       memory.set(key, { data, freshUntil: now + AGGREGATE_CACHE_TTL_MS, computedAtMs: parsed.savedAt ?? now });
       return {
-        data: cloneSnapshot(data),
+        data: await cloneSnapshotWithProfilePhotos(data),
         debug: {
           freshness: 'stale',
           source: 'disk',
@@ -395,7 +410,7 @@ export async function getAggregateSnapshotWithDebug(
     const after = memory.get(key);
     if (!after) throw new Error('[statsAggregateCache] computeAndStore did not populate memory');
     return {
-      data: cloneSnapshot(after.data),
+      data: await cloneSnapshotWithProfilePhotos(after.data),
       debug: {
         freshness: 'cold',
         source: 'compute',
@@ -405,7 +420,7 @@ export async function getAggregateSnapshotWithDebug(
   }
 
   return {
-    data: cloneSnapshot(emptySnapshot()),
+    data: await cloneSnapshotWithProfilePhotos(emptySnapshot()),
     debug: {
       freshness: 'cold',
       source: 'empty',
