@@ -8,6 +8,8 @@ import { getAchievementName, getAchievementEmoji } from '@/lib/ranking/achieveme
 import { DictatorSelector } from './DictatorSelector';
 import { useExtraWork } from '@/contexts/ExtraWorkContext';
 import { SettingsModal } from '@/components/modals/SettingsModal';
+import { ProfilePhotoAvatar } from '@/components/ui/ProfilePhotoAvatar';
+import { useUserSettings } from '@/contexts/UserSettingsContext';
 import { ChatModal } from '@/components/chat/ChatModal';
 import { useChatNewMessagesBadge } from '@/components/chat/useChatNewMessagesBadge';
 import { getRandomNotificationSound } from '@/lib/notificationSounds';
@@ -118,6 +120,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const [mentionToastPreview, setMentionToastPreview] = useState<{ from: string; text: string } | null>(null);
   const router = useRouter();
   const { showSuccess, showError, showWarning } = useToast();
+  const { settings: userSettings } = useUserSettings();
 
   useEffect(() => {
     loadUser();
@@ -549,9 +552,16 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                       {/* Заголовок профиля */}
                       <div className="border-b border-slate-700/50 pb-3 mb-4 pr-10">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg flex-shrink-0">
-                            <UserIcon className="w-5 h-5 text-white" />
-                          </div>
+                          <ProfilePhotoAvatar
+                            url={userSettings.profilePhotoUrl}
+                            name={user.name}
+                            className="w-10 h-10 shadow-lg"
+                            fallback={
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                                <UserIcon className="w-5 h-5 text-white" />
+                              </div>
+                            }
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-bold text-slate-100 truncate">{user.name}</div>
                             <div className="text-xs text-slate-400">{roleLabels[user.role]}</div>
@@ -707,7 +717,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
         </div>
       </div>
     </header>
-    <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} userRole={user?.role} />
+    <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} userRole={user?.role} userName={user?.name} />
     <ChatModal
       isOpen={isChatOpen}
       onClose={() => {

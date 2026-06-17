@@ -13,6 +13,7 @@ import {
 import { computeExtraWorkElapsedSecNow } from '@/lib/extraWorkElapsed';
 import { getManualAdjustmentsMapForPeriod } from '@/lib/ranking/manualAdjustments';
 import { getErrorPenaltiesMapForPeriod } from '@/lib/ranking/errorPenalties';
+import { pickProfilePhotoUrl } from '@/lib/userProfilePhoto';
 
 export interface RankingEntry {
   userId: string;
@@ -40,6 +41,8 @@ export interface RankingEntry {
   workHours: number;
   /** Полезность в % относительно эталона (Эрнес=100). null если эталон не задан */
   usefulnessPct: number | null;
+  /** URL фото профиля для топа */
+  profilePhotoUrl?: string | null;
 }
 
 type UserAgg = {
@@ -392,19 +395,25 @@ export async function aggregateRankings(
   }
 
   const collectorIds = [...allMap.values()].filter((a) => a.role === 'collector').map((a) => a.userId);
-  const userSettingsRows = collectorIds.length > 0
+  const allUserIds = [...allMap.keys()];
+  const userSettingsRows = allUserIds.length > 0
     ? await prisma.userSettings.findMany({
-        where: { userId: { in: collectorIds } },
+        where: { userId: { in: allUserIds } },
         select: { userId: true, settings: true },
       })
     : [];
   const isNewbieByUser = new Map<string, boolean>();
+  const profilePhotoUrlByUser = new Map<string, string>();
   for (const row of userSettingsRows) {
-    try {
-      const parsed = JSON.parse(row.settings || '{}') as Record<string, unknown>;
-      isNewbieByUser.set(row.userId, parsed.isNewbie === true);
-    } catch {
-      // ignore
+    const photoUrl = pickProfilePhotoUrl(row.settings, row.userId);
+    if (photoUrl) profilePhotoUrlByUser.set(row.userId, photoUrl);
+    if (collectorIds.includes(row.userId)) {
+      try {
+        const parsed = JSON.parse(row.settings || '{}') as Record<string, unknown>;
+        isNewbieByUser.set(row.userId, parsed.isNewbie === true);
+      } catch {
+        // ignore
+      }
     }
   }
 
@@ -442,6 +451,7 @@ export async function aggregateRankings(
       efficiency: agg.efficiencies.length > 0 ? agg.efficiencies.reduce((a, b) => a + b, 0) / agg.efficiencies.length : null,
       workHours: Math.round((agg.totalPickTimeSec / 3600) * 100) / 100,
       usefulnessPct,
+      profilePhotoUrl: profilePhotoUrlByUser.get(agg.userId) ?? null,
     });
   }
 

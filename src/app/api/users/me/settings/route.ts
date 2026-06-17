@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import type { UserCollectSettings } from '@/types';
+import { pickProfilePhotoUrl } from '@/lib/userProfilePhoto';
 
 const DEFAULT: UserCollectSettings = {
   collectPositionConfirm: 'swipe',
@@ -45,7 +46,10 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json(settings);
+    return NextResponse.json({
+      ...settings,
+      profilePhotoUrl: pickProfilePhotoUrl(row?.settings ?? null, user.id),
+    });
   } catch (error) {
     console.error('Ошибка при получении настроек:', error);
     return NextResponse.json(
@@ -90,6 +94,10 @@ export async function POST(request: NextRequest) {
       try {
         const parsed = JSON.parse(existing.settings) as Record<string, unknown>;
         if (parsed.extraWorkLunchSlot !== undefined) merged.extraWorkLunchSlot = parsed.extraWorkLunchSlot;
+        if (parsed.avatarEmoji !== undefined) merged.avatarEmoji = parsed.avatarEmoji;
+        if (parsed.profilePhotoRelPath !== undefined) merged.profilePhotoRelPath = parsed.profilePhotoRelPath;
+        if (parsed.profilePhotoMime !== undefined) merged.profilePhotoMime = parsed.profilePhotoMime;
+        if (parsed.profilePhotoUpdatedAt !== undefined) merged.profilePhotoUpdatedAt = parsed.profilePhotoUpdatedAt;
         if (user.role !== 'admin' && parsed.adminShowCollectionButtons !== undefined) {
           merged.adminShowCollectionButtons = parsed.adminShowCollectionButtons;
         }
@@ -109,7 +117,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(settings);
+    return NextResponse.json({
+      ...settings,
+      profilePhotoUrl: pickProfilePhotoUrl(finalSettings, user.id),
+    });
   } catch (error) {
     console.error('Ошибка при сохранении настроек:', error);
     return NextResponse.json(

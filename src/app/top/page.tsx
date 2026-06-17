@@ -5,6 +5,7 @@ import { Trophy, RefreshCw, Calendar, Clock, HelpCircle, AlertTriangle, Package,
 import Link from 'next/link';
 import UserStatsModal from '@/components/admin/UserStatsModal';
 import { PointsHelpModal } from '@/components/PointsHelpModal';
+import { ProfilePhotoAvatar } from '@/components/ui/ProfilePhotoAvatar';
 
 type Period = 'today' | 'week' | 'month';
 type MonthViewMode = 'month' | 'weeks' | 'days';
@@ -42,6 +43,7 @@ interface RankingEntry {
   uph: number | null;
   efficiency: number | null;
   usefulnessPct?: number | null;
+  profilePhotoUrl?: string | null;
 }
 
 const APRIL_FOOLS_ENABLED = false;
@@ -731,21 +733,52 @@ export default function TopPage() {
                   >
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div
-                        className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
-                          index <= 2 ? getBadgeAnimation(index) : ''
-                        } ${
-                          index === 0
-                            ? 'bg-yellow-500 text-yellow-900'
-                            : index === 1
-                              ? 'bg-slate-400 text-slate-900'
-                              : index === 2
-                                ? 'bg-orange-500 text-orange-900'
-                                : 'bg-slate-700 text-slate-300'
-                        }`}
-                        style={index <= 2 ? { animationDelay: index === 0 ? '0.25s' : index === 1 ? '0.4s' : '0.55s', animationFillMode: 'forwards' } : undefined}
-                      >
-                        {index + 1}
+                      <div className="relative flex-shrink-0">
+                        <ProfilePhotoAvatar
+                          url={user.profilePhotoUrl}
+                          name={user.userName}
+                          className="w-9 h-9"
+                          fallback={
+                            <div
+                              className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm ${
+                                index <= 2 ? getBadgeAnimation(index) : ''
+                              } ${
+                                index === 0
+                                  ? 'bg-yellow-500 text-yellow-900'
+                                  : index === 1
+                                    ? 'bg-slate-400 text-slate-900'
+                                    : index === 2
+                                      ? 'bg-orange-500 text-orange-900'
+                                      : 'bg-slate-700 text-slate-300'
+                              }`}
+                              style={
+                                index <= 2
+                                  ? {
+                                      animationDelay: index === 0 ? '0.25s' : index === 1 ? '0.4s' : '0.55s',
+                                      animationFillMode: 'forwards',
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {index + 1}
+                            </div>
+                          }
+                        />
+                        {user.profilePhotoUrl && (
+                          <span
+                            className={`absolute -bottom-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold border border-slate-900 ${
+                              index === 0
+                                ? 'bg-yellow-500 text-yellow-900'
+                                : index === 1
+                                  ? 'bg-slate-400 text-slate-900'
+                                  : index === 2
+                                    ? 'bg-orange-500 text-orange-900'
+                                    : 'bg-slate-700 text-slate-200'
+                            }`}
+                          >
+                            {index + 1}
+                          </span>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">

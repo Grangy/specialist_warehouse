@@ -9,11 +9,23 @@ const DEFAULT: UserCollectSettings = {
   confirmPositionConfirm: 'swipe',
 };
 
+function parseSettingsResponse(data: Record<string, unknown>): UserCollectSettings {
+  return {
+    collectPositionConfirm: data.collectPositionConfirm === 'double-click' ? 'double-click' : DEFAULT.collectPositionConfirm,
+    collectOverallConfirm: data.collectOverallConfirm === 'double-click' ? 'double-click' : DEFAULT.collectOverallConfirm,
+    adminShowCollectionButtons: data.adminShowCollectionButtons === true,
+    confirmPositionConfirm: data.confirmPositionConfirm === 'double-click' ? 'double-click' : DEFAULT.confirmPositionConfirm,
+    profilePhotoUrl: typeof data.profilePhotoUrl === 'string' ? data.profilePhotoUrl : null,
+  };
+}
+
 interface UserSettingsContextValue {
   settings: UserCollectSettings;
   isLoading: boolean;
   isSaving: boolean;
   updateSettings: (partial: Partial<UserCollectSettings>) => void;
+  reloadSettings: () => Promise<void>;
+  setProfilePhotoUrl: (url: string | null) => void;
 }
 
 const UserSettingsContext = createContext<UserSettingsContextValue | null>(null);
@@ -32,12 +44,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       const res = await fetch('/api/users/me/settings', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
-        const next = {
-          collectPositionConfirm: data.collectPositionConfirm ?? DEFAULT.collectPositionConfirm,
-          collectOverallConfirm: data.collectOverallConfirm ?? DEFAULT.collectOverallConfirm,
-          adminShowCollectionButtons: data.adminShowCollectionButtons === true,
-          confirmPositionConfirm: data.confirmPositionConfirm ?? DEFAULT.confirmPositionConfirm,
-        };
+        const next = parseSettingsResponse(data);
         setSettings(next);
         settingsRef.current = next;
       }
@@ -51,6 +58,12 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  const setProfilePhotoUrl = useCallback((url: string | null) => {
+    const next = { ...settingsRef.current, profilePhotoUrl: url };
+    setSettings(next);
+    settingsRef.current = next;
+  }, []);
 
   const updateSettings = useCallback((partial: Partial<UserCollectSettings>) => {
     const next = { ...DEFAULT, ...settingsRef.current, ...partial };
@@ -69,12 +82,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && mySaveId === saveIdRef.current) {
-          const server = {
-            collectPositionConfirm: data.collectPositionConfirm ?? DEFAULT.collectPositionConfirm,
-            collectOverallConfirm: data.collectOverallConfirm ?? DEFAULT.collectOverallConfirm,
-            adminShowCollectionButtons: data.adminShowCollectionButtons === true,
-            confirmPositionConfirm: data.confirmPositionConfirm ?? DEFAULT.confirmPositionConfirm,
-          };
+          const server = parseSettingsResponse(data);
           setSettings(server);
           settingsRef.current = server;
         }
@@ -93,7 +101,9 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
   }, [loadSettings]);
 
   return (
-    <UserSettingsContext.Provider value={{ settings, isLoading, isSaving, updateSettings }}>
+    <UserSettingsContext.Provider
+      value={{ settings, isLoading, isSaving, updateSettings, reloadSettings: loadSettings, setProfilePhotoUrl }}
+    >
       {children}
     </UserSettingsContext.Provider>
   );
@@ -101,5 +111,14 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
 
 export function useUserSettings() {
   const ctx = useContext(UserSettingsContext);
-  return ctx ?? { settings: DEFAULT, isLoading: false, isSaving: false, updateSettings: () => {} };
+  return (
+    ctx ?? {
+      settings: DEFAULT,
+      isLoading: false,
+      isSaving: false,
+      updateSettings: () => {},
+      reloadSettings: async () => {},
+      setProfilePhotoUrl: () => {},
+    }
+  );
 }

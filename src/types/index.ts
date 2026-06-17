@@ -142,6 +142,8 @@ export interface UserCollectSettings {
   adminShowCollectionButtons?: boolean;
   /** Для checker/warehouse_3/admin: подтверждение позиции при проверке — свайп или двойной клик */
   confirmPositionConfirm?: CollectConfirmMode;
+  /** URL фото профиля (только чтение, из GET /api/users/me/settings) */
+  profilePhotoUrl?: string | null;
 }
 
 export const DEFAULT_USER_COLLECT_SETTINGS: UserCollectSettings = {
