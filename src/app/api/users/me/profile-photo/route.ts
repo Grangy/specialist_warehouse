@@ -3,12 +3,15 @@ import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getSessionUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import {
+  optimizeProfilePhotoInput,
+  removeProfilePhotoCache,
+} from '@/lib/profilePhotoImage';
 import { clearAggregateSnapshotMemory } from '@/lib/statistics/statsAggregateCache';
 import { clearTopCache } from '@/lib/statistics/topResponseCache';
 import {
   PROFILE_PHOTO_ALLOWED_MIME,
   PROFILE_PHOTO_MAX_BYTES,
-  extByProfilePhotoMime,
   isSafeProfilePhotoRelPath,
   pickProfilePhotoUrl,
   safeParseUserSettings,
@@ -26,14 +29,16 @@ async function upsertProfilePhotoSettings(userId: string, merged: Record<string,
   });
 }
 
-async function removeOldPhotoFile(parsed: Record<string, unknown>) {
+async function removeOldPhotoFile(parsed: Record<string, unknown>, userId: string) {
   const oldRel = parsed.profilePhotoRelPath;
-  if (typeof oldRel !== 'string' || !isSafeProfilePhotoRelPath(oldRel)) return;
-  try {
-    await unlink(path.join(process.cwd(), oldRel));
-  } catch {
-    // ignore missing file
+  if (typeof oldRel === 'string' && isSafeProfilePhotoRelPath(oldRel)) {
+    try {
+      await unlink(path.join(process.cwd(), oldRel));
+    } catch {
+      // ignore missing file
+    }
   }
+  await removeProfilePhotoCache(userId);
 }
 
 function invalidateRankingCaches() {
@@ -41,7 +46,7 @@ function invalidateRankingCaches() {
   clearAggregateSnapshotMemory();
 }
 
-/** POST — загрузить фото профиля (до 3 МБ, jpg/png/webp). */
+/** POST — загрузить фото профиля (до 3 МБ, jpg/png/webp). Сохраняется как WebP до 512px. */
 export async function POST(request: NextRequest) {
   try {
     const user = await getSessionUser();
@@ -63,18 +68,18 @@ export async function POST(request: NextRequest) {
 
     const existing = await prisma.userSettings.findUnique({ where: { userId: user.id } });
     const parsed = safeParseUserSettings(existing?.settings);
-    await removeOldPhotoFile(parsed);
+    await removeOldPhotoFile(parsed, user.id);
 
-    const ext = extByProfilePhotoMime(file.type);
-    const relPath = path.join('uploads', 'profile', `${user.id}.${ext}`).replaceAll('\\', '/');
+    const optimized = await optimizeProfilePhotoInput(Buffer.from(await file.arrayBuffer()));
+    const relPath = path.join('uploads', 'profile', `${user.id}.webp`).replaceAll('\\', '/');
     const absPath = path.join(process.cwd(), relPath);
     await mkdir(path.dirname(absPath), { recursive: true });
-    await writeFile(absPath, Buffer.from(await file.arrayBuffer()));
+    await writeFile(absPath, optimized);
 
     const merged = {
       ...parsed,
       profilePhotoRelPath: relPath,
-      profilePhotoMime: file.type,
+      profilePhotoMime: 'image/webp',
       profilePhotoUpdatedAt: Date.now(),
     };
     await upsertProfilePhotoSettings(user.id, merged);
@@ -100,7 +105,7 @@ export async function DELETE() {
 
     const existing = await prisma.userSettings.findUnique({ where: { userId: user.id } });
     const parsed = safeParseUserSettings(existing?.settings);
-    await removeOldPhotoFile(parsed);
+    await removeOldPhotoFile(parsed, user.id);
 
     const merged = { ...parsed };
     delete merged.profilePhotoRelPath;

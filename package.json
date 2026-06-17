@@ -118,7 +118,8 @@
     "prisma": "^6.19.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^3.5.1"
+    "recharts": "^3.5.1",
+    "sharp": "^0.35.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

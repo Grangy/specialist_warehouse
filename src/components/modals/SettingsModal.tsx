@@ -122,6 +122,7 @@ export function SettingsModal({ isOpen, onClose, userRole, userName }: SettingsM
               url={settings.profilePhotoUrl}
               name={userName ?? 'Профиль'}
               className="w-16 h-16 ring-2 ring-slate-600"
+              loading="eager"
               fallback={
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xl font-bold ring-2 ring-slate-600">
                   {(userName ?? '?').trim().charAt(0).toUpperCase()}
