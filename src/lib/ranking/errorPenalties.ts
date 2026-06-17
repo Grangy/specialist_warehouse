@@ -74,6 +74,74 @@ export function getErrorPenaltiesMapForPeriod(
   return result;
 }
 
+/** Сумма штрафов пользователя по календарным дням (МСК) в периоде. */
+export function getErrorPenaltiesByDateForUser(
+  raw: string | null,
+  userId: string,
+  startDate: Date,
+  endDate: Date
+): Map<string, number> {
+  const map = new Map<string, number>();
+  const list = parseErrorPenaltyAdjustments(raw)[userId] ?? [];
+  for (const e of list) {
+    if (!dateInRange(e.date, startDate, endDate)) continue;
+    map.set(e.date, (map.get(e.date) ?? 0) + e.points);
+  }
+  return map;
+}
+
+export function listMoscowDateStringsBetween(startDate: Date, endDate: Date): string[] {
+  const startStr = getMoscowDateString(startDate);
+  const endStr = getMoscowDateString(endDate);
+  const [sy, sm, sd] = startStr.split('-').map(Number);
+  const [ey, em, ed] = endStr.split('-').map(Number);
+  const cur = new Date(Date.UTC(sy, sm - 1, sd, 12, 0, 0));
+  const end = new Date(Date.UTC(ey, em - 1, ed, 12, 0, 0));
+  const out: string[] = [];
+  while (cur.getTime() <= end.getTime()) {
+    out.push(getMoscowDateString(cur));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
+export type DailyErrorPenaltyRollupRow = {
+  date: string;
+  workPoints: number;
+  errorPenaltyDay: number;
+  errorPenaltyCarryIn: number;
+  dayPointsEffective: number;
+};
+
+/**
+ * Минус за ошибки в день без работы остаётся на этом дне и переносится на следующий,
+ * пока не будет «погашен» положительными баллами.
+ */
+export function computeErrorPenaltyDailyRollup(
+  startDate: Date,
+  endDate: Date,
+  workByDate: Map<string, number>,
+  errorByDate: Map<string, number>
+): DailyErrorPenaltyRollupRow[] {
+  const rows: DailyErrorPenaltyRollupRow[] = [];
+  let carry = 0;
+  for (const date of listMoscowDateStringsBetween(startDate, endDate)) {
+    const workPoints = workByDate.get(date) ?? 0;
+    const errorPenaltyDay = errorByDate.get(date) ?? 0;
+    const errorPenaltyCarryIn = carry;
+    const dayPointsEffective = workPoints + errorPenaltyDay + errorPenaltyCarryIn;
+    rows.push({
+      date,
+      workPoints,
+      errorPenaltyDay,
+      errorPenaltyCarryIn,
+      dayPointsEffective,
+    });
+    carry = dayPointsEffective < 0 ? dayPointsEffective : 0;
+  }
+  return rows;
+}
+
 /**
  * Добавить штраф пользователю. Сохраняет в system_settings.
  */

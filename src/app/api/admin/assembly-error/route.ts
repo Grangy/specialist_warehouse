@@ -114,8 +114,8 @@ export async function POST(request: NextRequest) {
       success: true,
       callId: call.id,
       message: newbie
-        ? 'Ошибка зафиксирована: сборщик −1, проверяльщик −5, админ +11.'
-        : 'Ошибка зафиксирована: сборщик −5, проверяльщик −5, админ +15.',
+        ? 'Ошибка зафиксирована: сборщик −1, проверяльщик −10, админ +11.'
+        : 'Ошибка зафиксирована: сборщик −5, проверяльщик −10, админ +15.',
     });
   } catch (error) {
     console.error('[API admin/assembly-error]', error);

@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
       ) => {
         const basePoints =
           view === 'collector' ? (e.collectorPoints + e.dictatorPoints) : e.checkerPoints;
-        const points = Math.max(0, basePoints + e.extraWorkPoints + e.errorPenalty);
+        const points = basePoints + e.extraWorkPoints + e.errorPenalty;
         return {
           points,
           dictatorPoints: view === 'collector' ? e.dictatorPoints : 0,
@@ -427,8 +427,8 @@ export async function GET(request: NextRequest) {
     const manualDeltaMonth = getManualAdjustmentForPeriod(manualAdjustmentsSetting?.value ?? null, user.id, monthStartMsk, monthEndMsk);
     const errorPenaltyToday = getErrorPenaltyForPeriod(errorPenaltiesSetting?.value ?? null, user.id, todayStart, todayEndMsk);
     const errorPenaltyMonth = getErrorPenaltyForPeriod(errorPenaltiesSetting?.value ?? null, user.id, monthStartMsk, monthEndMsk);
-    const dailyExtraWorkPointsWithManual = Math.max(0, dailyExtraWorkPoints + manualDeltaToday + errorPenaltyToday);
-    const monthlyExtraWorkPointsWithManual = Math.max(0, monthlyExtraWorkPoints + manualDeltaMonth + errorPenaltyMonth);
+    const dailyExtraWorkPointsWithManual = dailyExtraWorkPoints + manualDeltaToday + errorPenaltyToday;
+    const monthlyExtraWorkPointsWithManual = monthlyExtraWorkPoints + manualDeltaMonth + errorPenaltyMonth;
 
     // Рассчитываем статистику за сегодня (только для роли пользователя)
     let dailyCollector = null;

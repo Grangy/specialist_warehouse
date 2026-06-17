@@ -7,6 +7,7 @@
  *   npx tsx scripts/recalc-error-penalties.ts
  *   npx tsx scripts/recalc-error-penalties.ts --backfill-today-admin-login=J-SkaR
  *   npx tsx scripts/recalc-error-penalties.ts --audit-today
+ *   npx tsx scripts/recalc-error-penalties.ts --week
  *   npx tsx scripts/recalc-error-penalties.ts --days=7
  *   npx tsx scripts/recalc-error-penalties.ts --full   # весь период (осторожно!)
  */
@@ -102,8 +103,9 @@ async function main() {
   const fullRebuild = process.argv.includes('--full');
   const auditToday = process.argv.includes('--audit-today');
   const monthRebuild = process.argv.includes('--month');
+  const weekRebuild = process.argv.includes('--week');
   const backfillLogin = parseArg('backfill-today-admin-login');
-  const daysArg = monthRebuild ? null : parseDaysArg();
+  const daysArg = monthRebuild || weekRebuild ? null : parseDaysArg();
 
   const todayRange = getStatisticsDateRange('today');
   const todayStr = getMoscowDateString();
@@ -119,13 +121,15 @@ async function main() {
     const monthRange = getStatisticsDateRange('month');
     const monthStartStr = getMoscowDateString(monthRange.startDate);
     console.log(`Режим: текущий месяц с ${monthStartStr} (МСК), остальные дни сохраняются\n`);
+  } else if (weekRebuild) {
+    console.log('Режим: последние 7 дней (МСК), остальные дни сохраняются\n');
   } else if (daysArg) {
     console.log(`Режим: последние ${daysArg} дней (МСК), остальные дни сохраняются\n`);
   } else {
     console.log(`Режим: только сегодня (${todayStr}, МСК), остальные дни сохраняются\n`);
   }
   console.log('checker: сборщик −1/−5, проверяльщик +1/+5 (новенький/остальные)');
-  console.log('admin: сборщик −1/−5, проверяльщик −5, +11/+15 тому админу, кто нажал (registeredById)\n');
+  console.log(`admin: сборщик −1/−5, проверяльщик ${CHECKER_PENALTY_ADMIN_FOUND}, +11/+15 тому админу, кто нажал (registeredById)\n`);
 
   const setting = await prisma.systemSettings.findUnique({
     where: { key: 'error_penalty_adjustments' },
@@ -140,6 +144,15 @@ async function main() {
     const monthStartStr = getMoscowDateString(monthRange.startDate);
     const dayCount = Number(todayStr.split('-')[2]) - Number(monthStartStr.split('-')[2]) + 1;
     const dateStrings = listMoscowDateStringsInclusive(todayStr, dayCount);
+    for (const dateStr of dateStrings) {
+      const range = getStatisticsDateRangeForDate(dateStr);
+      const patch = await buildErrorPenaltyAdjustmentsForRange(prisma, range);
+      adj = mergeErrorPenaltiesReplaceDate(adj, patch, dateStr);
+      console.log(`  ${dateStr}: пересчитано`);
+    }
+    console.log('');
+  } else if (weekRebuild) {
+    const dateStrings = listMoscowDateStringsInclusive(todayStr, 7);
     for (const dateStr of dateStrings) {
       const range = getStatisticsDateRangeForDate(dateStr);
       const patch = await buildErrorPenaltyAdjustmentsForRange(prisma, range);

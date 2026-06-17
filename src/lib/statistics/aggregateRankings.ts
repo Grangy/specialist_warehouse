@@ -391,14 +391,6 @@ export async function aggregateRankings(
     if (stat.efficiencyClamped != null) agg.efficiencies.push(stat.efficiencyClamped);
   }
 
-  // Штрафы за ошибки — после всех начислений (сборка, проверка, доп.работа)
-  for (const [uid, delta] of errorPenaltiesMap) {
-    const agg = allMap.get(uid);
-    if (agg) {
-      agg.points = Math.max(0, agg.points + delta);
-    }
-  }
-
   const collectorIds = [...allMap.values()].filter((a) => a.role === 'collector').map((a) => a.userId);
   const userSettingsRows = collectorIds.length > 0
     ? await prisma.userSettings.findMany({
@@ -416,14 +408,17 @@ export async function aggregateRankings(
     }
   }
 
-  const topAgg = [...allMap.values()].sort((a, b) => b.points - a.points)[0];
-  const baselinePts = topAgg?.points ?? 0;
+  const topAgg = [...allMap.values()]
+    .map((agg) => ({ agg, total: agg.points + (errorPenaltiesMap.get(agg.userId) ?? 0) }))
+    .sort((a, b) => b.total - a.total)[0]?.agg;
+  const baselinePts = topAgg ? topAgg.points + (errorPenaltiesMap.get(topAgg.userId) ?? 0) : 0;
   const baselineUserName = topAgg?.userName ?? null;
   const allRankings: RankingEntry[] = [];
   for (const agg of allMap.values()) {
     const errPen = errorPenaltiesMap.get(agg.userId) ?? 0;
+    const totalPoints = agg.points + errPen;
     const usefulnessPct =
-      baselinePts > 0 ? Math.round((agg.points / baselinePts) * 1000) / 10 : null;
+      baselinePts > 0 ? Math.round((totalPoints / baselinePts) * 1000) / 10 : null;
     allRankings.push({
       userId: agg.userId,
       userName: agg.userName,
@@ -432,7 +427,7 @@ export async function aggregateRankings(
       positions: agg.positions,
       units: agg.units,
       orders: agg.orders.size,
-      points: agg.points,
+      points: totalPoints,
       collectorPoints: agg.collectorPoints,
       checkerPoints: agg.checkerPoints,
       dictatorPoints: agg.dictatorPoints,

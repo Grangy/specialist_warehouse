@@ -16,7 +16,7 @@ import { getPointsRates } from '@/lib/ranking/getPointsRates';
 import { computeExtraWorkPointsForSession } from '@/lib/ranking/extraWorkPoints';
 import { computeExtraWorkElapsedSecNow } from '@/lib/extraWorkElapsed';
 import { getManualAdjustmentForPeriod } from '@/lib/ranking/manualAdjustments';
-import { getErrorPenaltyForPeriod } from '@/lib/ranking/errorPenalties';
+import { getErrorPenaltyForPeriod, computeErrorPenaltyDailyRollup, getErrorPenaltiesByDateForUser } from '@/lib/ranking/errorPenalties';
 import {
   CHECKER_BONUS_COLLECTOR_ERROR_REGULAR,
   CHECKER_PENALTY_ADMIN_FOUND,
@@ -267,6 +267,7 @@ async function getUserStatsUncached(
 
   let extraWorkPoints = 0;
   let errorPenalty = 0;
+  let errorPenaltiesRaw: string | null = null;
   if (dateRange) {
     const [stoppedSessions, activeSessions, manualSetting, errorPenaltiesSetting] = await Promise.all([
       prisma.extraWorkSession.findMany({
@@ -330,6 +331,7 @@ async function getUserStatsUncached(
       extraWorkPoints = Math.max(0, extraWorkPoints + delta);
     }
     if (dateRange && errorPenaltiesSetting?.value) {
+      errorPenaltiesRaw = errorPenaltiesSetting.value;
       errorPenalty = getErrorPenaltyForPeriod(errorPenaltiesSetting.value, user.id, dateRange.startDate, dateRange.endDate);
     }
   }
@@ -406,6 +408,80 @@ async function getUserStatsUncached(
         return null;
       })
       .filter((x): x is { shipmentNumber: string; role: 'checker' | 'collector'; points: number; errorCount: number } => x != null);
+
+  const dailyStatsEnriched = (() => {
+    if (!dateRange || !errorPenaltiesRaw) {
+      return dailyStats.map((stat) => ({
+        date: getMoscowDateString(stat.date),
+        positions: stat.positions,
+        units: stat.units,
+        orders: stat.orders,
+        dayPoints: stat.dayPoints,
+        workPoints: stat.dayPoints,
+        errorPenaltyDay: 0,
+        errorPenaltyCarryIn: 0,
+        dailyRank: stat.dailyRank,
+        avgPph: stat.dayPph,
+        avgUph: stat.dayUph,
+      }));
+    }
+
+    const workByDate = new Map<string, number>();
+    const metaByDate = new Map<
+      string,
+      { positions: number; units: number; orders: number; dailyRank: number | null; avgPph: number | null; avgUph: number | null }
+    >();
+    for (const stat of dailyStats) {
+      const dateStr = getMoscowDateString(stat.date);
+      workByDate.set(dateStr, stat.dayPoints);
+      metaByDate.set(dateStr, {
+        positions: stat.positions,
+        units: stat.units,
+        orders: stat.orders,
+        dailyRank: stat.dailyRank,
+        avgPph: stat.dayPph,
+        avgUph: stat.dayUph,
+      });
+    }
+
+    const errorByDate = getErrorPenaltiesByDateForUser(
+      errorPenaltiesRaw,
+      user.id,
+      dateRange.startDate,
+      dateRange.endDate
+    );
+    const rollup = computeErrorPenaltyDailyRollup(
+      dateRange.startDate,
+      dateRange.endDate,
+      workByDate,
+      errorByDate
+    );
+
+    return rollup
+      .filter(
+        (row) =>
+          row.workPoints !== 0 ||
+          row.errorPenaltyDay !== 0 ||
+          row.errorPenaltyCarryIn !== 0
+      )
+      .map((row) => {
+        const meta = metaByDate.get(row.date);
+        return {
+          date: row.date,
+          positions: meta?.positions ?? 0,
+          units: meta?.units ?? 0,
+          orders: meta?.orders ?? 0,
+          dayPoints: row.dayPointsEffective,
+          workPoints: row.workPoints,
+          errorPenaltyDay: row.errorPenaltyDay,
+          errorPenaltyCarryIn: row.errorPenaltyCarryIn,
+          dailyRank: meta?.dailyRank ?? null,
+          avgPph: meta?.avgPph ?? null,
+          avgUph: meta?.avgUph ?? null,
+        };
+      })
+      .reverse();
+  })();
 
   return {
     period: dateOverride ? null : (period ?? null),
@@ -534,18 +610,7 @@ async function getUserStatsUncached(
         };
       }),
     },
-    dailyStats: dailyStats.map((stat) => ({
-      // stat.date в БД хранится как "начало московского дня в UTC" (часто 21:00Z предыдущего дня),
-      // поэтому ISO(UTC) дата визуально выглядит как "выходной день работал".
-      date: getMoscowDateString(stat.date),
-      positions: stat.positions,
-      units: stat.units,
-      orders: stat.orders,
-      dayPoints: stat.dayPoints,
-      dailyRank: stat.dailyRank,
-      avgPph: stat.dayPph,
-      avgUph: stat.dayUph,
-    })),
+    dailyStats: dailyStatsEnriched,
     monthlyStats: monthlyStats.map((stat) => ({
       year: stat.year,
       month: stat.month,
