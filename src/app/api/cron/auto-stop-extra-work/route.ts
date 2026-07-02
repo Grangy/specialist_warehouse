@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { computeExtraWorkElapsedSecNow } from '@/lib/extraWorkElapsed';
 import { getMoscowHour } from '@/lib/utils/moscowDate';
 
 export const dynamic = 'force-dynamic';
@@ -51,17 +52,21 @@ async function handle(request: NextRequest) {
     const wouldStop: Array<{ id: string; userName: string; elapsedSec: number }> = [];
 
     for (const session of activeSessions) {
-      let totalElapsedSec = session.elapsedSecBeforeLunch ?? 0;
-      if (session.status === 'running' || session.status === 'lunch_scheduled') {
-        const segStart = (session as { postLunchStartedAt?: Date | null }).postLunchStartedAt ?? session.startedAt;
-        const addSec = (now.getTime() - new Date(segStart).getTime()) / 1000;
-        totalElapsedSec += Math.max(0, addSec);
-      } else if (session.status === 'lunch' && session.lunchStartedAt) {
-        totalElapsedSec += Math.max(0, (session.lunchStartedAt.getTime() - session.startedAt.getTime()) / 1000);
-      }
-
-      const finalElapsed = Math.max(0, totalElapsedSec); // Никогда не сохраняем отрицательные значения
-      wouldStop.push({ id: session.id, userName: session.user?.name ?? '—', elapsedSec: Math.round(finalElapsed) });
+      const finalElapsed = Math.round(
+        computeExtraWorkElapsedSecNow(
+          {
+            id: session.id,
+            userId: session.userId,
+            status: session.status,
+            startedAt: session.startedAt,
+            elapsedSecBeforeLunch: session.elapsedSecBeforeLunch ?? 0,
+            postLunchStartedAt: session.postLunchStartedAt ?? null,
+            lunchStartedAt: session.lunchStartedAt ?? null,
+          },
+          now
+        )
+      );
+      wouldStop.push({ id: session.id, userName: session.user?.name ?? '—', elapsedSec: finalElapsed });
 
       if (!dryRun) {
         await prisma.extraWorkSession.update({

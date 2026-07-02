@@ -6,6 +6,8 @@
 import { getAnimalLevel } from '@/lib/ranking/levels';
 import { getMoscowDateString } from '@/lib/utils/moscowDate';
 import { getAggregateSnapshot, getAggregateSnapshotWithDebug } from '@/lib/statistics/statsAggregateCache';
+import { enrichRankingsWithProfilePhotos } from '@/lib/userProfilePhoto';
+import { prisma } from '@/lib/prisma';
 
 export const TOP_CACHE_TTL_MS = 75_000;
 
@@ -182,6 +184,19 @@ export async function warmTopCacheDefaults(): Promise<void> {
   }
 }
 
+async function refreshTopBodyProfilePhotos(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const all = body.all as Array<{ userId: string; profilePhotoUrl?: string | null }> | undefined;
+  if (!all?.length) return body;
+  const enriched = await enrichRankingsWithProfilePhotos(all, async (userIds) =>
+    prisma.userSettings.findMany({
+      where: { userId: { in: userIds } },
+      select: { userId: true, settings: true },
+    })
+  );
+  if (enriched === all) return body;
+  return { ...body, all: enriched };
+}
+
 export async function getTopCachedOrCompute(
   period: TopPeriod,
   warehouseFilter?: string
@@ -189,7 +204,7 @@ export async function getTopCachedOrCompute(
   const ck = topCacheKey(period, warehouseFilter);
   const hit = cache.get(ck);
   if (hit && hit.expiresAt > Date.now()) {
-    return { body: hit.body, xTopCache: 'HIT' };
+    return { body: await refreshTopBodyProfilePhotos(hit.body), xTopCache: 'HIT' };
   }
   const body = await buildTopPayload(period, warehouseFilter);
   setCached(period, warehouseFilter, body);
@@ -204,7 +219,7 @@ export async function getTopCachedOrComputeWithDebug(
   const hit = cache.get(ck);
   if (hit && hit.expiresAt > Date.now()) {
     return {
-      body: hit.body,
+      body: await refreshTopBodyProfilePhotos(hit.body),
       xTopCache: 'HIT',
       debug: {
         xTopCache: 'HIT',

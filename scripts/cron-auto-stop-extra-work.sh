@@ -3,8 +3,10 @@
 # Моментально останавливает все активные сессии (running/lunch/lunch_scheduled)
 # и фиксирует elapsedSecBeforeLunch для расчёта баллов.
 #
-# Добавьте в crontab (18:00 МСК = 15:00 UTC):
-#   0 15 * * * cd /var/www/specialist_warehouse && ./scripts/cron-auto-stop-extra-work.sh
+# Добавьте в crontab:
+#   Сервер в UTC:     0 15 * * *  (18:00 МСК)
+#   Сервер в MSK:     0 18 * * *  (18:00 МСК)
+#   cd /path/to/specialist_warehouse && ./scripts/cron-auto-stop-extra-work.sh >> logs/cron-auto-stop-extra-work.log 2>&1
 #
 # Тест без изменений (dry run):
 #   ./scripts/cron-auto-stop-extra-work.sh dry

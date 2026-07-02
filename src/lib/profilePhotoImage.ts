@@ -25,8 +25,16 @@ export function parseProfilePhotoWidth(raw: string | null): number | null {
   return n;
 }
 
-export function profilePhotoCacheRelPath(userId: string, width: number, version: number): string {
-  return path.join('uploads', 'profile', 'cache', `${userId}-w${width}-${version}.webp`).replaceAll('\\', '/');
+export function profilePhotoCacheRelPath(
+  userId: string,
+  width: number,
+  version: number,
+  sourceMtimeMs: number
+): string {
+  const mtimeKey = Math.floor(sourceMtimeMs);
+  return path
+    .join('uploads', 'profile', 'cache', `${userId}-w${width}-${version}-${mtimeKey}.webp`)
+    .replaceAll('\\', '/');
 }
 
 export async function readProfilePhotoVariant(
@@ -35,10 +43,8 @@ export async function readProfilePhotoVariant(
   cacheAbsPath: string
 ): Promise<Buffer> {
   try {
-    const [srcStat, cacheStat] = await Promise.all([stat(absSourcePath), stat(cacheAbsPath)]);
-    if (cacheStat.mtimeMs >= srcStat.mtimeMs) {
-      return readFile(cacheAbsPath);
-    }
+    await stat(cacheAbsPath);
+    return readFile(cacheAbsPath);
   } catch {
     // cache miss
   }

@@ -44,7 +44,8 @@ export async function GET(
     }
 
     if (width) {
-      const cacheRel = profilePhotoCacheRelPath(userId, width, version);
+      const srcStat = await stat(absPath);
+      const cacheRel = profilePhotoCacheRelPath(userId, width, version, srcStat.mtimeMs);
       const cacheAbs = path.join(process.cwd(), cacheRel);
       const buffer = await readProfilePhotoVariant(absPath, width, cacheAbs);
       return new NextResponse(new Uint8Array(buffer), {
