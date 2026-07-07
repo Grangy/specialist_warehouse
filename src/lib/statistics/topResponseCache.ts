@@ -179,6 +179,14 @@ export async function warmTopCacheDefaults(): Promise<void> {
         console.error('[topResponseCache] warmTopCacheDefaults', p, e);
       }
     }
+    for (const p of periods) {
+      try {
+        const body = await buildTopPayload(p, 'Склад 3');
+        setCached(p, 'Склад 3', body);
+      } catch (e) {
+        console.error('[topResponseCache] warmTopCacheDefaults warehouse3', p, e);
+      }
+    }
   } finally {
     warming = false;
   }

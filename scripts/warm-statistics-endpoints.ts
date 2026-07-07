@@ -11,11 +11,16 @@ const base = `http://127.0.0.1:${port}`;
 
 async function main() {
   for (const p of ['today', 'week', 'month'] as const) {
-    const url = `${base}/api/statistics/top?period=${p}`;
-    const t0 = performance.now();
-    const r = await fetch(url, { headers: { accept: 'application/json' } });
-    const ms = performance.now() - t0;
-    console.log(`[warm] GET /api/statistics/top?period=${p} -> ${r.status} ${ms.toFixed(0)}ms`);
+    for (const warehouse of [undefined, 'Склад 3'] as const) {
+      const q = warehouse
+        ? `period=${p}&warehouse=${encodeURIComponent(warehouse)}`
+        : `period=${p}`;
+      const url = `${base}/api/statistics/top?${q}`;
+      const t0 = performance.now();
+      const r = await fetch(url, { headers: { accept: 'application/json' } });
+      const ms = performance.now() - t0;
+      console.log(`[warm] GET /api/statistics/top?${q} -> ${r.status} ${ms.toFixed(0)}ms`);
+    }
   }
   console.log('[warm] done');
 }

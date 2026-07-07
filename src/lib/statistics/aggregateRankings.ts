@@ -61,12 +61,18 @@ type UserAgg = {
   efficiencies: number[];
 };
 
+export type AggregateRankingsOptions = {
+  /** Только баллы за сборку на указанном складе (без проверки, диктовки, доп.работы, штрафов). */
+  assemblyOnly?: boolean;
+};
+
 export async function aggregateRankings(
   period: 'today' | 'week' | 'month',
   warehouseFilter?: string,
   dateOverride?: string,
   monthOverride?: string,
-  customRange?: { startDate: Date; endDate: Date }
+  customRange?: { startDate: Date; endDate: Date },
+  options?: AggregateRankingsOptions
 ): Promise<{
   allRankings: RankingEntry[];
   errorsByCollector: Map<string, number>;
@@ -76,6 +82,9 @@ export async function aggregateRankings(
 }> {
   clearEfficiencyWeightsSessionCache();
   clearWarehousePaceSessionCache();
+  const assemblyOnly = !!(options?.assemblyOnly && warehouseFilter);
+  /** При фильтре по складу — только задачи этого склада, без доп.работы и ручных корректировок. */
+  const skipExtraAndManual = assemblyOnly || !!warehouseFilter;
   const { startDate, endDate } = customRange
     ? customRange
     : monthOverride
@@ -276,66 +285,72 @@ export async function aggregateRankings(
   for (const [uid, delta] of manualAdjustmentsMonth) {
     extraWorkByUser.set(uid, (extraWorkByUser.get(uid) ?? 0) + delta);
   }
-  const sortedStoppedMonth = [...extraWorkSessionsMonth].sort(
-    (a, b) => (a.stoppedAt?.getTime() ?? 0) - (b.stoppedAt?.getTime() ?? 0)
-  );
-  for (const sess of sortedStoppedMonth) {
-    const pts = await computeExtraWorkPointsForSession(prisma, {
-      userId: sess.userId,
-      elapsedSecBeforeLunch: sess.elapsedSecBeforeLunch ?? 0,
-      pointsOverride: sess.pointsOverride,
-      stoppedAt: sess.stoppedAt,
-      startedAt: sess.startedAt,
-      lunchStartedAt: sess.lunchStartedAt,
-      lunchEndsAt: sess.lunchEndsAt,
-    }, extraWorkByUser);
-    extraWorkByUser.set(sess.userId, (extraWorkByUser.get(sess.userId) ?? 0) + pts);
-    if (sess.stoppedAt && sess.stoppedAt >= startDate && sess.stoppedAt <= endDate) {
+  if (!skipExtraAndManual) {
+    const sortedStoppedMonth = [...extraWorkSessionsMonth].sort(
+      (a, b) => (a.stoppedAt?.getTime() ?? 0) - (b.stoppedAt?.getTime() ?? 0)
+    );
+    for (const sess of sortedStoppedMonth) {
+      const pts = await computeExtraWorkPointsForSession(prisma, {
+        userId: sess.userId,
+        elapsedSecBeforeLunch: sess.elapsedSecBeforeLunch ?? 0,
+        pointsOverride: sess.pointsOverride,
+        stoppedAt: sess.stoppedAt,
+        startedAt: sess.startedAt,
+        lunchStartedAt: sess.lunchStartedAt,
+        lunchEndsAt: sess.lunchEndsAt,
+      }, extraWorkByUser);
+      extraWorkByUser.set(sess.userId, (extraWorkByUser.get(sess.userId) ?? 0) + pts);
+      if (sess.stoppedAt && sess.stoppedAt >= startDate && sess.stoppedAt <= endDate) {
+        const agg = ensureAgg(sess.user);
+        agg.extraWorkPoints += pts;
+        agg.points += pts;
+      }
+    }
+
+    const now = new Date();
+    for (const sess of activeSessions) {
+      const currentElapsedSec = computeExtraWorkElapsedSecNow(sess as any, now);
+      const pts = await computeExtraWorkPointsForSession(prisma, {
+        userId: sess.userId,
+        elapsedSecBeforeLunch: currentElapsedSec,
+        stoppedAt: now,
+        startedAt: sess.startedAt,
+        lunchStartedAt: sess.lunchStartedAt,
+        lunchEndsAt: sess.lunchEndsAt,
+      }, extraWorkByUser);
       const agg = ensureAgg(sess.user);
       agg.extraWorkPoints += pts;
       agg.points += pts;
     }
-  }
 
-  const now = new Date();
-  for (const sess of activeSessions) {
-    const currentElapsedSec = computeExtraWorkElapsedSecNow(sess as any, now);
-    const pts = await computeExtraWorkPointsForSession(prisma, {
-      userId: sess.userId,
-      elapsedSecBeforeLunch: currentElapsedSec,
-      stoppedAt: now,
-      startedAt: sess.startedAt,
-      lunchStartedAt: sess.lunchStartedAt,
-      lunchEndsAt: sess.lunchEndsAt,
-    }, extraWorkByUser);
-    const agg = ensureAgg(sess.user);
-    agg.extraWorkPoints += pts;
-    agg.points += pts;
-  }
-
-  // Ручные корректировки — добавляем к agg
-  const missingUserIds = [...manualAdjustmentsMap.keys()].filter((uid) => !allMap.has(uid));
-  if (missingUserIds.length > 0) {
-    const missingUsers = await prisma.user.findMany({
-      where: { id: { in: missingUserIds } },
-      select: { id: true, name: true, role: true },
-    });
-    for (const u of missingUsers) ensureAgg(u);
-  }
-  for (const [uid, delta] of manualAdjustmentsMap) {
-    const agg = allMap.get(uid);
-    if (agg) {
-      agg.extraWorkPoints = Math.max(0, agg.extraWorkPoints + delta);
-      agg.points = Math.max(0, agg.points + delta);
+    // Ручные корректировки — добавляем к agg
+    const missingUserIds = [...manualAdjustmentsMap.keys()].filter((uid) => !allMap.has(uid));
+    if (missingUserIds.length > 0) {
+      const missingUsers = await prisma.user.findMany({
+        where: { id: { in: missingUserIds } },
+        select: { id: true, name: true, role: true },
+      });
+      for (const u of missingUsers) ensureAgg(u);
+    }
+    for (const [uid, delta] of manualAdjustmentsMap) {
+      const agg = allMap.get(uid);
+      if (agg) {
+        agg.extraWorkPoints = Math.max(0, agg.extraWorkPoints + delta);
+        agg.points = Math.max(0, agg.points + delta);
+      }
     }
   }
 
-  const errorPenaltiesMap = getErrorPenaltiesMapForPeriod(
+  const errorPenaltiesMap = assemblyOnly
+    ? new Map<string, number>()
+    : getErrorPenaltiesMapForPeriod(
     errorPenaltiesSetting?.value ?? null,
     startDate,
     endDate
   );
-  const errorPenaltiesMonth = getErrorPenaltiesMapForPeriod(
+  const errorPenaltiesMonth = assemblyOnly
+    ? new Map<string, number>()
+    : getErrorPenaltiesMapForPeriod(
     errorPenaltiesSetting?.value ?? null,
     monthStart,
     monthEnd
@@ -360,7 +375,7 @@ export async function aggregateRankings(
     if (stat.efficiencyClamped != null) agg.efficiencies.push(stat.efficiencyClamped);
   }
 
-  for (const stat of checkerTaskStats) {
+  if (!assemblyOnly) for (const stat of checkerTaskStats) {
     const agg = ensureAgg(stat.user);
     const t = stat.task as { checkerId?: string; dictatorId?: string };
     const pts = stat.orderPoints || 0;
@@ -382,7 +397,7 @@ export async function aggregateRankings(
   // checkerCollectorStats убран: те же задачи уже учтены в collectorTaskStats
   // (когда проверяльщик собирает — roleType=collector, collectorId===userId)
 
-  for (const stat of dictatorStatsFiltered) {
+  if (!assemblyOnly) for (const stat of dictatorStatsFiltered) {
     const agg = ensureAgg(stat.user);
     const pts = stat.orderPoints || 0;
     agg.positions += stat.positions;
@@ -424,8 +439,9 @@ export async function aggregateRankings(
   const baselineUserName = topAgg?.userName ?? null;
   const allRankings: RankingEntry[] = [];
   for (const agg of allMap.values()) {
-    const errPen = errorPenaltiesMap.get(agg.userId) ?? 0;
-    const totalPoints = agg.points + errPen;
+    if (assemblyOnly && agg.collectorPoints <= 0) continue;
+    const errPen = assemblyOnly ? 0 : (errorPenaltiesMap.get(agg.userId) ?? 0);
+    const totalPoints = assemblyOnly ? agg.collectorPoints : agg.points + errPen;
     const usefulnessPct =
       baselinePts > 0 ? Math.round((totalPoints / baselinePts) * 1000) / 10 : null;
     allRankings.push({

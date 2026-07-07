@@ -9,6 +9,9 @@ import { ProfilePhotoAvatar } from '@/components/ui/ProfilePhotoAvatar';
 
 type Period = 'today' | 'week' | 'month';
 type MonthViewMode = 'month' | 'weeks' | 'days';
+type TopView = 'all' | 'warehouse3';
+
+const WAREHOUSE_3 = 'Склад 3';
 
 interface MonthRangeOption {
   value: string;
@@ -141,6 +144,7 @@ export default function TopPage() {
   const [totalCollectorErrors, setTotalCollectorErrors] = useState(0);
   const [totalCheckerErrors, setTotalCheckerErrors] = useState(0);
   const [period, setPeriod] = useState<Period>('today');
+  const [topView, setTopView] = useState<TopView>('all');
   const [monthArchive, setMonthArchive] = useState<string>(''); // YYYY-MM, empty = current month
   const [monthViewMode, setMonthViewMode] = useState<MonthViewMode>('month');
   const [monthRange, setMonthRange] = useState<string>('');
@@ -246,7 +250,9 @@ export default function TopPage() {
       const ctrl = new AbortController();
       const timeoutMs = period === 'month' ? 35_000 : 15_000;
       const t = setTimeout(() => ctrl.abort(), timeoutMs);
-      const url = `/api/statistics/top?period=${period}${archivePart}${rangePart}${nocachePart}`;
+      const warehousePart =
+        topView === 'warehouse3' ? `&warehouse=${encodeURIComponent(WAREHOUSE_3)}` : '';
+      const url = `/api/statistics/top?period=${period}${archivePart}${rangePart}${warehousePart}${nocachePart}`;
       if (lastQueryRef.current !== url) {
         // Новый режим/диапазон — не используем ETag от старого запроса.
         lastEtagRef.current = null;
@@ -309,7 +315,7 @@ export default function TopPage() {
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, [monthArchive, period, monthViewMode, monthRange, monthRangeOptions, activeMonthValue]);
+  }, [monthArchive, period, monthViewMode, monthRange, monthRangeOptions, activeMonthValue, topView]);
 
   useEffect(() => {
     const refreshMs = period === 'today' ? 3 * 60 * 1000 : period === 'week' ? 10 * 60 * 1000 : 20 * 60 * 1000;
@@ -332,6 +338,12 @@ export default function TopPage() {
   }, [period, monthViewMode, activeMonthValue, monthRange, monthRangeOptions]);
 
   const formatPointsNum = (p: number) => Math.round(p * 100) / 100;
+  const hasWarehouseTaskPoints = (u: RankingEntry) =>
+    (u.collectorPoints ?? 0) + (u.checkerPoints ?? 0) + (u.dictatorPoints ?? 0) > 0;
+  const displayList =
+    topView === 'warehouse3'
+      ? list.filter(hasWarehouseTaskPoints)
+      : list;
   const formatDate = (d: string) => {
     if (!d) return '';
     const [y, m, day] = d.split('-');
@@ -397,7 +409,7 @@ export default function TopPage() {
         <div className="flex items-center justify-between mb-4 opacity-0 animate-top-title-in" style={{ animationFillMode: 'forwards' }}>
           <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
             <Trophy className="w-8 h-8 text-yellow-400 drop-shadow-[0_0_8px_rgba(234,179,8,0.4)]" />
-            Общий топ
+            {topView === 'warehouse3' ? 'Топ · Склад 3' : 'Общий топ'}
           </h1>
           <Link
             href="/"
@@ -406,6 +418,34 @@ export default function TopPage() {
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline">Панель отгрузки</span>
           </Link>
+        </div>
+
+        <div
+          className="grid grid-cols-2 gap-2 mb-4 opacity-0 animate-top-card-stagger"
+          style={{ animationDelay: '0.1s', animationFillMode: 'forwards' }}
+        >
+          <button
+            type="button"
+            onClick={() => setTopView('all')}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              topView === 'all'
+                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
+                : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:text-slate-200 hover:border-slate-600'
+            }`}
+          >
+            Общий
+          </button>
+          <button
+            type="button"
+            onClick={() => setTopView('warehouse3')}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              topView === 'warehouse3'
+                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
+                : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:text-slate-200 hover:border-slate-600'
+            }`}
+          >
+            Склад 3
+          </button>
         </div>
 
         <div
@@ -514,10 +554,17 @@ export default function TopPage() {
             </span>
           </div>
           )}
+          {date && topView === 'warehouse3' && (
+            <p className="text-cyan-400/80 text-xs">
+              Сборка, проверка и общие баллы — только задания {WAREHOUSE_3} (без доп.работы)
+            </p>
+          )}
           {showMethodology && (
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs text-slate-500">
-              Места по баллам (сборка + проверка + диктовка + доп.работа)
+              {topView === 'warehouse3'
+                ? 'Места по общим баллам за Склад 3 (сборка + проверка + диктовка)'
+                : 'Места по баллам (сборка + проверка + диктовка + доп.работа)'}
             </p>
             <button
               type="button"
@@ -534,11 +581,13 @@ export default function TopPage() {
             <span><span className="text-blue-400">Сборка</span> поз.×1 (С1) / ×2 (С2-3)</span>
             <span><span className="text-purple-400">Проверка</span> сам 0.78 / с диктовщ. 0.39</span>
             <span><span className="text-amber-400">Диктовка</span> 0.36 (С1) / 0.61 (С2-3)</span>
+            {topView !== 'warehouse3' && (
             <span>
               <span className="text-amber-500">Доп.работа</span> темп/15×(вес/∑весов); вес=max(50%, √(baseProd/baseProdTop1)), в окне max/min≤1.6;
               09:00–09:15 — фикс.; начисления только пн–пт 09:00–18:00 и в обед — 0.
               {baselineUserName && `(100%=${baselineUserName})`}
             </span>
+            )}
           </div>
           )}
           {(totalCollectorErrors > 0 || totalCheckerErrors > 0 || topErrorsMerged.length > 0) && (
@@ -683,14 +732,17 @@ export default function TopPage() {
           </div>
         )}
 
-        {!isLoading && !error && list.length === 0 && (
+        {!isLoading && !error && displayList.length === 0 && (
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center text-slate-400 opacity-0 animate-top-card-stagger" style={{ animationFillMode: 'forwards' }}>
             <Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>Пока нет данных за {PERIOD_LABELS[period].toLowerCase()}.</p>
+            <p>
+              Пока нет данных за {PERIOD_LABELS[period].toLowerCase()}
+              {topView === 'warehouse3' ? ' по Склад 3' : ''}.
+            </p>
           </div>
         )}
 
-        {!isLoading && !error && list.length > 0 && (
+        {!isLoading && !error && displayList.length > 0 && (
           <>
             <div className="flex justify-end mb-4">
               <button
@@ -705,7 +757,7 @@ export default function TopPage() {
             </div>
 
             <div className="space-y-3">
-              {list.slice(0, 20).map((user, index) => (
+              {displayList.slice(0, 20).map((user, index) => (
                 <div
                   key={user.userId}
                   className={`rounded-xl border overflow-hidden transition-all opacity-0 ${getCardAnimation(index)} ${
@@ -792,7 +844,11 @@ export default function TopPage() {
                                 : 'bg-green-500/20 text-green-400 border border-green-500/30'
                             }`}
                           >
-                            {user.role === 'collector' ? 'Сборщик' : 'Проверяльщик'}
+                            {user.role === 'collector'
+                              ? 'Сборщик'
+                              : user.role === 'warehouse_3'
+                                ? 'Склад 3'
+                                : 'Проверяльщик'}
                           </span>
                           {user.role === 'collector' && user.isNewbie && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-600/20 text-amber-400 border border-amber-500/40">
@@ -844,7 +900,7 @@ export default function TopPage() {
                         {(user.dictatorPoints ?? 0) > 0 && (
                           <div className="text-xs"><span className="text-amber-400/90">Диктовка</span> {formatPointsNum(user.dictatorPoints ?? 0)}</div>
                         )}
-                        {(user.extraWorkPoints ?? 0) > 0 && (
+                        {(user.extraWorkPoints ?? 0) > 0 && topView !== 'warehouse3' && (
                           <div className="text-xs">
                             <span className="text-amber-500/90">Доп.работа</span> {formatPointsNum(user.extraWorkPoints ?? 0)}
                             {user.usefulnessPct != null && baselineUserName && (
@@ -1014,9 +1070,9 @@ export default function TopPage() {
               ))}
             </div>
 
-            {list.length > 20 && (
+            {displayList.length > 20 && (
               <p className="text-center text-slate-500 text-sm mt-4">
-                Показаны первые 20 из {list.length} участников
+                Показаны первые 20 из {displayList.length} участников
               </p>
             )}
           </>
