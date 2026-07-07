@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Trophy, RefreshCw, Calendar, Clock, HelpCircle, AlertTriangle, Package, CheckCircle, Mic, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import UserStatsModal from '@/components/admin/UserStatsModal';
@@ -137,14 +138,35 @@ function toYmd(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+function parseTopView(raw: string | null): TopView {
+  return raw === 'warehouse3' ? 'warehouse3' : 'all';
+}
+
 export default function TopPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center gap-4">
+          <div className="w-12 h-12 border-4 border-slate-700 border-t-yellow-500 rounded-full animate-spin" />
+          <div className="text-slate-400">Загрузка рейтинга...</div>
+        </div>
+      }
+    >
+      <TopPageContent />
+    </Suspense>
+  );
+}
+
+function TopPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const topView = parseTopView(searchParams.get('view'));
   const [list, setList] = useState<RankingEntry[]>([]);
   const [date, setDate] = useState<string>('');
   const [topErrorsMerged, setTopErrorsMerged] = useState<{ userId: string; userName: string; errors: number; checkerErrors: number; total: number }[]>([]);
   const [totalCollectorErrors, setTotalCollectorErrors] = useState(0);
   const [totalCheckerErrors, setTotalCheckerErrors] = useState(0);
   const [period, setPeriod] = useState<Period>('today');
-  const [topView, setTopView] = useState<TopView>('all');
   const [monthArchive, setMonthArchive] = useState<string>(''); // YYYY-MM, empty = current month
   const [monthViewMode, setMonthViewMode] = useState<MonthViewMode>('month');
   const [monthRange, setMonthRange] = useState<string>('');
@@ -163,9 +185,20 @@ export default function TopPage() {
   const [expandedErrorRow, setExpandedErrorRow] = useState<number | null>(null);
   const [topErrorsExpanded, setTopErrorsExpanded] = useState(false);
   const [baselineUserName, setBaselineUserName] = useState<string | null>(null);
-  const lastEtagRef = useRef<string | null>(null);
-  const lastPayloadRef = useRef<any | null>(null);
-  const lastQueryRef = useRef<string>('');
+  const responseCacheRef = useRef<Map<string, { etag: string | null; payload: Record<string, unknown> }>>(new Map());
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const fetchGenRef = useRef(0);
+
+  const setTopView = useCallback(
+    (view: TopView) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (view === 'warehouse3') params.set('view', 'warehouse3');
+      else params.delete('view');
+      const qs = params.toString();
+      router.replace(qs ? `/top?${qs}` : '/top', { scroll: false });
+    },
+    [router, searchParams]
+  );
 
   const getLastMonths = useCallback((count: number) => {
     const out: string[] = [];
@@ -233,7 +266,28 @@ export default function TopPage() {
     return out.reverse();
   }, []);
 
+  const applyTopPayload = useCallback((data: Record<string, unknown>) => {
+    const rawList: RankingEntry[] = (data.all as RankingEntry[] | undefined) || [];
+    const shouldAprilFools =
+      APRIL_FOOLS_ENABLED &&
+      period === 'today' &&
+      isMoscowAprilFoolsDay() &&
+      !isAprilFoolsOverrideDisabled();
+    setList(shouldAprilFools ? applyAprilFoolsInversion(rawList) : rawList);
+    setDate((data.date as string | undefined) || new Date().toISOString().split('T')[0]);
+    setTopErrorsMerged((data.topErrorsMerged as typeof topErrorsMerged | undefined) || []);
+    setTotalCollectorErrors((data.totalCollectorErrors as number | undefined) ?? 0);
+    setTotalCheckerErrors((data.totalCheckerErrors as number | undefined) ?? 0);
+    setBaselineUserName((data.baselineUserName as string | null | undefined) ?? null);
+    setMounted(true);
+  }, [period]);
+
   const load = useCallback(async (silent = false, forceReload = false) => {
+    const gen = ++fetchGenRef.current;
+    fetchAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    fetchAbortRef.current = ctrl;
+
     if (!silent) {
       setIsLoading(true);
       setError(null);
@@ -247,41 +301,24 @@ export default function TopPage() {
         period === 'month' && monthViewMode !== 'month' && selectedOption
           ? `&rangeStart=${encodeURIComponent(selectedOption.rangeStart)}&rangeEnd=${encodeURIComponent(selectedOption.rangeEnd)}`
           : '';
-      const ctrl = new AbortController();
       const timeoutMs = period === 'month' ? 35_000 : 15_000;
       const t = setTimeout(() => ctrl.abort(), timeoutMs);
       const warehousePart =
         topView === 'warehouse3' ? `&warehouse=${encodeURIComponent(WAREHOUSE_3)}` : '';
       const url = `/api/statistics/top?period=${period}${archivePart}${rangePart}${warehousePart}${nocachePart}`;
-      if (lastQueryRef.current !== url) {
-        // Новый режим/диапазон — не используем ETag от старого запроса.
-        lastEtagRef.current = null;
-        lastPayloadRef.current = null;
-        lastQueryRef.current = url;
-      }
+      const cached = forceReload ? undefined : responseCacheRef.current.get(url);
       const res = await fetch(url, {
         cache: 'no-store',
         signal: ctrl.signal,
         headers: {
-          ...(lastEtagRef.current ? { 'If-None-Match': lastEtagRef.current } : {}),
+          ...(cached?.etag ? { 'If-None-Match': cached.etag } : {}),
         },
       }).finally(() => clearTimeout(t));
 
-      if (res.status === 304 && lastPayloadRef.current) {
-        const data = lastPayloadRef.current;
-        const rawList: RankingEntry[] = data.all || [];
-        const shouldAprilFools =
-          APRIL_FOOLS_ENABLED &&
-          period === 'today' &&
-          isMoscowAprilFoolsDay() &&
-          !isAprilFoolsOverrideDisabled();
-        setList(shouldAprilFools ? applyAprilFoolsInversion(rawList) : rawList);
-        setDate(data.date || new Date().toISOString().split('T')[0]);
-        setTopErrorsMerged(data.topErrorsMerged || []);
-        setTotalCollectorErrors(data.totalCollectorErrors ?? 0);
-        setTotalCheckerErrors(data.totalCheckerErrors ?? 0);
-        setBaselineUserName(data.baselineUserName ?? null);
-        setMounted(true);
+      if (gen !== fetchGenRef.current) return;
+
+      if (res.status === 304 && cached?.payload) {
+        applyTopPayload(cached.payload);
         return;
       }
       if (!res.ok) {
@@ -289,22 +326,12 @@ export default function TopPage() {
         throw new Error(data.error || data.details || `Ошибка ${res.status}`);
       }
       const data = await res.json();
-      lastPayloadRef.current = data;
-      lastEtagRef.current = res.headers.get('etag');
-      const rawList: RankingEntry[] = data.all || [];
-      const shouldAprilFools =
-        APRIL_FOOLS_ENABLED &&
-        period === 'today' &&
-        isMoscowAprilFoolsDay() &&
-        !isAprilFoolsOverrideDisabled();
-      setList(shouldAprilFools ? applyAprilFoolsInversion(rawList) : rawList);
-      setDate(data.date || new Date().toISOString().split('T')[0]);
-      setTopErrorsMerged(data.topErrorsMerged || []);
-      setTotalCollectorErrors(data.totalCollectorErrors ?? 0);
-      setTotalCheckerErrors(data.totalCheckerErrors ?? 0);
-      setBaselineUserName(data.baselineUserName ?? null);
-      setMounted(true);
+      if (gen !== fetchGenRef.current) return;
+      responseCacheRef.current.set(url, { etag: res.headers.get('etag'), payload: data });
+      applyTopPayload(data);
     } catch (e) {
+      if (gen !== fetchGenRef.current) return;
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       if (!silent) {
         setError(e instanceof Error ? e.message : 'Не удалось загрузить рейтинг');
         setList([]);
@@ -313,18 +340,19 @@ export default function TopPage() {
         setTotalCheckerErrors(0);
       }
     } finally {
-      if (!silent) setIsLoading(false);
+      if (gen === fetchGenRef.current && !silent) setIsLoading(false);
     }
-  }, [monthArchive, period, monthViewMode, monthRange, monthRangeOptions, activeMonthValue, topView]);
+  }, [monthArchive, period, monthViewMode, monthRange, monthRangeOptions, activeMonthValue, topView, applyTopPayload]);
 
   useEffect(() => {
     const refreshMs = period === 'today' ? 3 * 60 * 1000 : period === 'week' ? 10 * 60 * 1000 : 20 * 60 * 1000;
-    // По умолчанию показываем кэшированную версию /top (без nocache),
-    // чтобы не перегружать сервер при каждом заходе и автообновлении.
     load();
     const id = setInterval(() => load(true), refreshMs);
-    return () => clearInterval(id);
-  }, [load, period]);
+    return () => {
+      clearInterval(id);
+      fetchAbortRef.current?.abort();
+    };
+  }, [load, period, topView]);
 
   useEffect(() => {
     if (period !== 'month' || monthViewMode === 'month') return;
