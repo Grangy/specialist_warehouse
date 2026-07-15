@@ -212,6 +212,7 @@ export default function UsersTab() {
     collector: 'Сборщик',
     checker: 'Проверка',
     warehouse_3: 'Склад 3',
+    receiver: 'Приёмщик',
   };
 
   if (isLoading) {
@@ -333,6 +334,7 @@ export default function UsersTab() {
                   <option value="collector">Сборщик</option>
                   <option value="checker">Проверка</option>
                   <option value="warehouse_3">Склад 3</option>
+                  <option value="receiver">Приёмщик</option>
                 </select>
               </div>
               {formData.role === 'collector' && (

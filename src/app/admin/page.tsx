@@ -16,7 +16,8 @@ import WarningsTab from '@/components/admin/WarningsTab';
 import PositionsTab from '@/components/admin/PositionsTab';
 import CollectorErrorsTab from '@/components/admin/CollectorErrorsTab';
 import ExtraWorkTab from '@/components/admin/ExtraWorkTab';
-type Tab = 'users' | 'active' | 'shipments' | 'warnings' | 'errors' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus' | 'positions' | 'extraWork' | 'autoProcess';
+import ReceiptsTab from '@/components/admin/ReceiptsTab';
+type Tab = 'users' | 'active' | 'shipments' | 'receipts' | 'warnings' | 'errors' | 'analytics' | 'regions' | 'settings' | 'statistics' | 'minus' | 'positions' | 'extraWork' | 'autoProcess';
 
 type AdminUserRole = 'admin' | 'checker' | 'warehouse_3';
 
@@ -218,6 +219,19 @@ export default function AdminPage() {
           </button>
           {!isCheckerOnly && !isWarehouse3 && (
           <button
+            onClick={() => selectTab('receipts')}
+            className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
+              activeTab === 'receipts'
+                ? 'bg-gradient-to-r from-cyan-600 to-cyan-500 text-white shadow-lg shadow-cyan-500/30 scale-105'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:scale-102'
+            }`}
+          >
+            <Package className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
+            <span className="font-medium text-sm md:text-base whitespace-nowrap">Приёмки</span>
+          </button>
+          )}
+          {!isCheckerOnly && !isWarehouse3 && (
+          <button
             onClick={() => selectTab('warnings')}
             className={`flex-shrink-0 md:w-full text-left px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all duration-200 flex items-center gap-2 md:gap-3 group ${
               activeTab === 'warnings'
@@ -356,6 +370,7 @@ export default function AdminPage() {
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'active' && <ActiveShipmentsTab />}
           {activeTab === 'shipments' && <CompletedShipmentsTab canDelete={userRole === 'admin'} canReassign={userRole === 'admin'} warehouseScope={isWarehouse3 ? 'Склад 3' : undefined} />}
+          {activeTab === 'receipts' && !isCheckerOnly && !isWarehouse3 && <ReceiptsTab />}
           {activeTab === 'warnings' && <WarningsTab onWarningsChange={setWarningsCount} />}
           {activeTab === 'errors' && <CollectorErrorsTab />}
           {activeTab === 'analytics' && <AnalyticsTab />}

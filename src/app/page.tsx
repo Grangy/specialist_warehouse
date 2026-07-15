@@ -49,13 +49,29 @@ export default function Home() {
     // Проверяем авторизацию
     fetch('/api/auth/session')
       .then((res) => res.json())
-      .then((data) => {
+      .then(async (data) => {
         if (!data.user) {
           router.push('/login');
-        } else {
-          setUserInfo(data.user);
-          setIsCheckingAuth(false);
+          return;
         }
+        setUserInfo(data.user);
+        if (data.user.role === 'receiver') {
+          router.replace('/receiving');
+          return;
+        }
+        try {
+          const sRes = await fetch('/api/users/me/settings', { cache: 'no-store' });
+          if (sRes.ok) {
+            const s = await sRes.json();
+            if (s.workMode === 'receiving') {
+              router.replace('/receiving');
+              return;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        setIsCheckingAuth(false);
       })
       .catch(() => {
         router.push('/login');

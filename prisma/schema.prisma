@@ -16,6 +16,7 @@ enum UserRole {
   collector
   checker
   warehouse_3  // Ограниченная админка: только Склад 3 (активные/завершённые/минусы/статистика/позиции/аналитика)
+  receiver     // Приёмщик: только модуль приёмки товара
 }
 
 enum ShipmentStatus {
@@ -48,6 +49,7 @@ model User {
   extraWorkSessionsAsAssigner ExtraWorkSession[] @relation("ExtraWorkSessionAssigner")
   chatMessages  ChatMessage[]     @relation("ChatMessageAuthor")
   chatMentions  ChatMention[]
+  receiptsAsReceiver Receipt[]    @relation("ReceiptReceiver")
 
   @@map("users")
 }
@@ -123,23 +125,53 @@ model Shipment {
 }
 
 model ShipmentLine {
-  id           String             @id @default(cuid())
-  shipmentId   String             @map("shipment_id")
-  sku          String
-  art          String? // Дополнительный артикул от 1С (для отображения)
-  name         String
-  qty          Int
-  uom          String
-  location     String?
-  warehouse    String? // Склад: "Склад 1", "Склад 2", "Склад 3"
-  collectedQty Int?               @map("collected_qty") // Количество собранное сборщиком
-  checked      Boolean            @default(false) // Флаг собранности (для сборки)
-  confirmedQty Int?               @map("confirmed_qty") // Количество подтвержденное проверяльщиком
-  confirmed    Boolean            @default(false) // Флаг подтверждения (для проверки)
-  shipment     Shipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  taskLines    ShipmentTaskLine[]
+  id            String                       @id @default(cuid())
+  shipmentId    String                       @map("shipment_id")
+  sku           String
+  art           String? // Дополнительный артикул от 1С (для отображения)
+  name          String
+  qty           Int
+  uom           String
+  location      String?
+  warehouse     String? // Склад: "Склад 1", "Склад 2", "Склад 3"
+  collectedQty  Int?                         @map("collected_qty") // Количество собранное сборщиком
+  checked       Boolean                      @default(false) // Флаг собранности (для сборки)
+  confirmedQty  Int?                         @map("confirmed_qty") // Количество подтвержденное проверяльщиком
+  confirmed     Boolean                      @default(false) // Флаг подтверждения (для проверки)
+  /** Товар подлежит маркировке «Честный знак»: на каждую единицу (qty) ожидается уникальный код КМ/КИЗ */
+  hasHonestSign Boolean                      @default(false) @map("has_honest_sign")
+  shipment      Shipment                     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  taskLines     ShipmentTaskLine[]
+  honestSignCodes ShipmentLineHonestSignCode[]
 
   @@map("shipment_lines")
+}
+
+/**
+ * Код Честного знака (КИЗ / CIS / DataMatrix) на одну единицу товара в строке заказа.
+ * Для строки с qty=N должно быть N записей (unitIndex = 1..N).
+ * Связь со сборкой (ShipmentTask / ShipmentTaskLine) заполняется после splitShipmentIntoTasks.
+ */
+model ShipmentLineHonestSignCode {
+  id             String   @id @default(cuid())
+  shipmentLineId String   @map("shipment_line_id")
+  /** Уникальный код маркировки (нормализованная строка из 1С) */
+  code           String
+  /** Порядковый номер единицы внутри строки: 1..qty */
+  unitIndex      Int      @map("unit_index")
+  /** Сборка (задание склада), к которой относится строка */
+  taskId         String?  @map("task_id")
+  /** Строка задания сборки */
+  taskLineId     String?  @map("task_line_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  shipmentLine   ShipmentLine @relation(fields: [shipmentLineId], references: [id], onDelete: Cascade)
+
+  @@unique([code])
+  @@unique([shipmentLineId, unitIndex])
+  @@index([shipmentLineId])
+  @@index([taskId])
+  @@index([taskLineId])
+  @@map("shipment_line_honest_sign_codes")
 }
 
 model ShipmentLock {
@@ -548,4 +580,161 @@ model SystemSettings {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
+}
+
+// ===== Модуль «Приёмка товара» (обратный процесс к сборке) =====
+
+enum ReceiptStatus {
+  new
+  awaiting_start
+  in_progress
+  completed
+  completed_with_discrepancies
+  cancelled
+  sync_error
+}
+
+enum ReceiptDiscrepancyType {
+  shortage
+  surplus
+  damage
+  wrong_item
+  missing_marking_code
+  marking_code_mismatch
+  other
+}
+
+enum ReceiptMarkingScanResult {
+  matched
+  not_found
+  wrong_item
+  already_scanned
+  invalid_format
+  missing_in_receipt
+}
+
+model Receipt {
+  id                String        @id @default(cuid())
+  externalId        String        @unique @map("external_id") // ID из 1С — защита от дублей
+  number            String
+  status            ReceiptStatus @default(new)
+  warehouse         String? // Склад 1 / 2 / 3
+  supplierName      String?       @map("supplier_name")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  documentDate      DateTime?     @map("document_date") // Дата документа из 1С
+  startedAt         DateTime?     @map("started_at")
+  completedAt       DateTime?     @map("completed_at")
+  receiverId        String?       @map("receiver_id")
+  plannedItemsCount Int           @default(0) @map("planned_items_count")
+  plannedUnitsCount Int           @default(0) @map("planned_units_count")
+  actualUnitsCount  Int           @default(0) @map("actual_units_count")
+  comment           String        @default("")
+  /** Баллы за приёмку (после завершения) */
+  pointsAwarded     Float?        @map("points_awarded")
+  exportedTo1C      Boolean       @default(false) @map("exported_to_1c")
+  exportedTo1CAt    DateTime?     @map("exported_to_1c_at")
+  lastSentTo1CAt    DateTime?     @map("last_sent_to_1c_at")
+  syncError         String?       @map("sync_error")
+  deleted           Boolean       @default(false)
+  deletedAt         DateTime?     @map("deleted_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  receiver      User?                    @relation("ReceiptReceiver", fields: [receiverId], references: [id], onDelete: SetNull)
+  lines         ReceiptLine[]
+  discrepancies ReceiptDiscrepancy[]
+  auditLogs     ReceiptAuditLog[]
+
+  @@index([status, deleted])
+  @@index([number])
+  @@index([receiverId])
+  @@index([exportedTo1C, status])
+  @@map("receipts")
+}
+
+model ReceiptLine {
+  id                   String  @id @default(cuid())
+  receiptId            String  @map("receipt_id")
+  sku                  String
+  art                  String?
+  barcode              String?
+  name                 String
+  uom                  String  @default("шт")
+  plannedQty           Int     @map("planned_qty")
+  actualQty            Int?    @map("actual_qty")
+  discrepancyQty       Int     @default(0) @map("discrepancy_qty")
+  requiresMarkingScan  Boolean @default(false) @map("requires_marking_scan")
+  checked              Boolean @default(false)
+  lineComment          String? @map("line_comment")
+  sortOrder            Int     @default(0) @map("sort_order")
+
+  receipt          Receipt                        @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  expectedCodes    ReceiptExpectedMarkingCode[]
+  scannedCodes     ReceiptScannedMarkingCode[]
+  discrepancies    ReceiptDiscrepancy[]
+
+  @@index([receiptId])
+  @@index([sku])
+  @@map("receipt_lines")
+}
+
+model ReceiptExpectedMarkingCode {
+  id            String @id @default(cuid())
+  receiptLineId String @map("receipt_line_id")
+  code          String
+  unitIndex     Int    @map("unit_index")
+
+  receiptLine ReceiptLine @relation(fields: [receiptLineId], references: [id], onDelete: Cascade)
+
+  @@unique([code])
+  @@unique([receiptLineId, unitIndex])
+  @@index([receiptLineId])
+  @@map("receipt_expected_marking_codes")
+}
+
+model ReceiptScannedMarkingCode {
+  id            String                   @id @default(cuid())
+  receiptLineId String                   @map("receipt_line_id")
+  code          String
+  result        ReceiptMarkingScanResult
+  scannedById   String?                  @map("scanned_by_id")
+  scannedAt     DateTime                 @default(now()) @map("scanned_at")
+  note          String?
+
+  receiptLine ReceiptLine @relation(fields: [receiptLineId], references: [id], onDelete: Cascade)
+
+  @@index([receiptLineId])
+  @@index([code])
+  @@map("receipt_scanned_marking_codes")
+}
+
+model ReceiptDiscrepancy {
+  id            String                 @id @default(cuid())
+  receiptId     String                 @map("receipt_id")
+  receiptLineId String?                @map("receipt_line_id")
+  type          ReceiptDiscrepancyType
+  qty           Int                    @default(1)
+  comment       String?
+  scannedCode   String?                @map("scanned_code")
+  userId        String?                @map("user_id")
+  createdAt     DateTime               @default(now()) @map("created_at")
+
+  receipt     Receipt      @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  receiptLine ReceiptLine? @relation(fields: [receiptLineId], references: [id], onDelete: SetNull)
+
+  @@index([receiptId])
+  @@map("receipt_discrepancies")
+}
+
+model ReceiptAuditLog {
+  id        String   @id @default(cuid())
+  receiptId String   @map("receipt_id")
+  userId    String?  @map("user_id")
+  action    String // received_from_1c | start | qty_changed | scan | scan_error | discrepancy | complete | sync_1c | sync_error | reassign | cancel
+  details   String? // JSON
+  createdAt DateTime @default(now()) @map("created_at")
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@index([receiptId, createdAt])
+  @@map("receipt_audit_logs")
 }

@@ -94,6 +94,9 @@ export async function GET(request: NextRequest) {
       include: {
         lines: {
           orderBy: { sku: 'asc' },
+          include: {
+            honestSignCodes: { orderBy: { unitIndex: 'asc' } },
+          },
         },
         tasks: {
           include: {
@@ -174,6 +177,9 @@ export async function GET(request: NextRequest) {
             // Используем confirmedQty из заданий, если оно есть
             // ВАЖНО: Используем ?? вместо || чтобы 0 не заменялся на fallback
             const confirmedQty = confirmedQtyByLine[line.id] ?? line.collectedQty ?? line.qty;
+            const hsCodes = [...(line.honestSignCodes ?? [])].sort(
+              (a, b) => a.unitIndex - b.unitIndex
+            );
             return {
               sku: line.sku,
               name: line.name,
@@ -185,6 +191,13 @@ export async function GET(request: NextRequest) {
               location: line.location,
               warehouse: line.warehouse,
               checked: line.checked,
+              has_honest_sign: !!line.hasHonestSign,
+              honest_sign_codes: hsCodes.map((c) => c.code),
+              honest_sign_units: hsCodes.map((c) => ({
+                unit_index: c.unitIndex,
+                code: c.code,
+                task_id: c.taskId ?? null,
+              })),
             };
           }),
           tasks: shipment.tasks.map((t) => ({

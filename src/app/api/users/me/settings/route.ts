@@ -28,7 +28,7 @@ export async function GET() {
     let settings: UserCollectSettings = { ...DEFAULT };
     if (row?.settings) {
       try {
-        const parsed = JSON.parse(row.settings) as Partial<UserCollectSettings>;
+        const parsed = JSON.parse(row.settings) as Partial<UserCollectSettings> & Record<string, unknown>;
         settings = {
           collectPositionConfirm: ['swipe', 'double-click'].includes(parsed.collectPositionConfirm as string)
             ? (parsed.collectPositionConfirm as UserCollectSettings['collectPositionConfirm'])
@@ -40,15 +40,20 @@ export async function GET() {
           confirmPositionConfirm: ['swipe', 'double-click'].includes(parsed.confirmPositionConfirm as string)
             ? (parsed.confirmPositionConfirm as UserCollectSettings['confirmPositionConfirm'])
             : DEFAULT.confirmPositionConfirm,
+          workMode: parsed.workMode === 'receiving' ? 'receiving' : 'shipping',
         };
       } catch {
         // ignore invalid JSON
       }
     }
+    if (user.role === 'receiver') {
+      settings.workMode = 'receiving';
+    }
 
     return NextResponse.json({
       ...settings,
       profilePhotoUrl: pickProfilePhotoUrl(row?.settings ?? null, user.id),
+      role: user.role,
     });
   } catch (error) {
     console.error('Ошибка при получении настроек:', error);
@@ -72,6 +77,8 @@ export async function POST(request: NextRequest) {
     const collectOverallConfirm = body.collectOverallConfirm;
     const adminShowCollectionButtons = user.role === 'admin' && body.adminShowCollectionButtons === true;
     const confirmPositionConfirm = body.confirmPositionConfirm;
+    const workMode =
+      body.workMode === 'receiving' || body.workMode === 'shipping' ? body.workMode : undefined;
 
     const settings: UserCollectSettings = {
       collectPositionConfirm: ['swipe', 'double-click'].includes(collectPositionConfirm)
@@ -98,6 +105,7 @@ export async function POST(request: NextRequest) {
         if (parsed.profilePhotoRelPath !== undefined) merged.profilePhotoRelPath = parsed.profilePhotoRelPath;
         if (parsed.profilePhotoMime !== undefined) merged.profilePhotoMime = parsed.profilePhotoMime;
         if (parsed.profilePhotoUpdatedAt !== undefined) merged.profilePhotoUpdatedAt = parsed.profilePhotoUpdatedAt;
+        if (parsed.workMode !== undefined && workMode === undefined) merged.workMode = parsed.workMode;
         if (user.role !== 'admin' && parsed.adminShowCollectionButtons !== undefined) {
           merged.adminShowCollectionButtons = parsed.adminShowCollectionButtons;
         }
@@ -105,6 +113,9 @@ export async function POST(request: NextRequest) {
         // ignore
       }
     }
+    if (workMode) merged.workMode = workMode;
+    if (user.role === 'receiver') merged.workMode = 'receiving';
+
     const finalSettings = JSON.stringify(merged);
     if (existing) {
       await prisma.userSettings.update({
@@ -119,7 +130,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ...settings,
+      workMode: (merged.workMode as string) || 'shipping',
       profilePhotoUrl: pickProfilePhotoUrl(finalSettings, user.id),
+      role: user.role,
     });
   } catch (error) {
     console.error('Ошибка при сохранении настроек:', error);

@@ -21,7 +21,7 @@ import { backupSqliteToFile } from './sqlite-backup';
 /** Локально и на Яндексе: 20 тридцатиминутных, 10 пятичасовых (по `.json` снимкам) */
 const KEEP_30M_JSON_YANDEX = 20;
 const KEEP_5H = 10;
-const KEEP_MAIN = 10; // корневая backups/ — backup_*.json и backup_info_*.txt
+const KEEP_MAIN = 10; // legacy cleanup of old backup_*.json/backup_info_*.txt in backups/
 
 // Для дифференциальной схемы (ring) WAL для SQLite:
 // 1 full (consisistent dev.db) + 29 диффов (копии dev.db-wal/dev.db-shm).
@@ -136,81 +136,7 @@ function saveWalRingState(backupDir30mAbs: string, s: WalRingState): void {
   fs.writeFileSync(sp, JSON.stringify(s, null, 0), 'utf-8');
 }
 
-interface BackupData {
-  timestamp: string;
-  databaseUrl: string;
-  users: any[];
-  shipments: any[];
-  shipmentLines: any[];
-  shipmentTasks: any[];
-  shipmentTaskLines: any[];
-  shipmentLocks: any[];
-  shipmentTaskLocks: any[];
-  sessions: any[];
-  regionPriorities: any[];
-  taskStatistics: any[];
-  dailyStats: any[];
-  monthlyStats: any[];
-  norms: any[];
-  dailyAchievements: any[];
-  systemSettings: any[];
-}
-
-async function createBackupData(): Promise<BackupData> {
-  const [
-    users,
-    shipments,
-    shipmentLines,
-    shipmentTasks,
-    shipmentTaskLines,
-    shipmentLocks,
-    shipmentTaskLocks,
-    sessions,
-    regionPriorities,
-    taskStatistics,
-    dailyStats,
-    monthlyStats,
-    norms,
-    dailyAchievements,
-    systemSettings,
-  ] = await Promise.all([
-    prisma.user.findMany(),
-    prisma.shipment.findMany(),
-    prisma.shipmentLine.findMany(),
-    prisma.shipmentTask.findMany(),
-    prisma.shipmentTaskLine.findMany(),
-    prisma.shipmentLock.findMany(),
-    prisma.shipmentTaskLock.findMany(),
-    prisma.session.findMany(),
-    prisma.regionPriority.findMany(),
-    prisma.taskStatistics.findMany(),
-    prisma.dailyStats.findMany(),
-    prisma.monthlyStats.findMany(),
-    prisma.norm.findMany(),
-    prisma.dailyAchievement.findMany(),
-    prisma.systemSettings.findMany(),
-  ]);
-
-  return {
-    timestamp: new Date().toISOString(),
-    databaseUrl: process.env.DATABASE_URL || 'unknown',
-    users,
-    shipments,
-    shipmentLines,
-    shipmentTasks,
-    shipmentTaskLines,
-    shipmentLocks,
-    shipmentTaskLocks,
-    sessions,
-    regionPriorities,
-    taskStatistics,
-    dailyStats,
-    monthlyStats,
-    norms,
-    dailyAchievements,
-    systemSettings,
-  };
-}
+// JSON snapshot backup has been retired by request (db-only backups).
 
 function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
@@ -252,7 +178,6 @@ function timestampFilename(): string {
 
 async function runBackup(last5hBackupAt: number, walRingState: WalRingState): Promise<{ newLast5h: number; walRingState: WalRingState }> {
   const now = Date.now();
-  const data = await createBackupData();
   const ts = timestampFilename();
   const backupDirRoot = path.join(projectRoot, 'backups');
   const backupDir30m = path.join(projectRoot, 'backups', '30m');
@@ -265,11 +190,7 @@ async function runBackup(last5hBackupAt: number, walRingState: WalRingState): Pr
   }
 
   ensureDir(backupDir30m);
-  const path30m = path.join(backupDir30m, ts);
-  fs.writeFileSync(path30m, JSON.stringify(data, null, 2), 'utf-8');
-  const sizeMb = (fs.statSync(path30m).size / 1024 / 1024).toFixed(2);
-  console.log(`[${new Date().toISOString()}] 30m бэкап: ${ts} (${sizeMb} MB)`);
-
+  console.log(`[${new Date().toISOString()}] 30m db-бэкап слот=${walRingState.slotInRing + 1}/${WAL_RING_SLOTS_30M}`);
   const tsBase = ts.replace(/\.json$/, '');
 
   if (!fs.existsSync(dbFilePath)) {
@@ -315,11 +236,6 @@ async function runBackup(last5hBackupAt: number, walRingState: WalRingState): Pr
     }
   }
 
-  const uploaded30 = await uploadBackupToYandex(projectRoot, path30m, `30m/${ts}`);
-  if (uploaded30) {
-    console.log(`  → Яндекс.Диск backups_warehouse/30m/${ts}`);
-  }
-
   const removed30 = trimBackups(backupDir30m, KEEP_30M_JSON_YANDEX, '', '.json');
   const removed30db = trimBackups(backupDir30m, KEEP_30M_DB_RING, '', '.db');
   const removed30wal = trimBackups(backupDir30m, KEEP_30M_DB_RING, '', '.db-wal');
@@ -335,9 +251,7 @@ async function runBackup(last5hBackupAt: number, walRingState: WalRingState): Pr
   let newLast5h = last5hBackupAt;
   if (now - last5hBackupAt >= INTERVAL_5H_MS) {
     ensureDir(backupDir5h);
-    const path5h = path.join(backupDir5h, ts);
-    fs.writeFileSync(path5h, JSON.stringify(data, null, 2), 'utf-8');
-    console.log(`  + 5h бэкап: ${ts}`);
+    console.log(`  + 5h db-бэкап: ${tsBase}.db`);
     if (fs.existsSync(dbFilePath)) {
       const path5hDb = path.join(backupDir5h, `${tsBase}.db`);
       await backupSqliteToFile(prisma, dbFilePath, path5hDb);
@@ -345,10 +259,6 @@ async function runBackup(last5hBackupAt: number, walRingState: WalRingState): Pr
       if (uploaded5hDb) {
         console.log(`  → Яндекс.Диск backups_warehouse/5h/${tsBase}.db`);
       }
-    }
-    const uploaded5h = await uploadBackupToYandex(projectRoot, path5h, `5h/${ts}`);
-    if (uploaded5h) {
-      console.log(`  → Яндекс.Диск backups_warehouse/5h/${ts}`);
     }
     const removed5h = trimBackups(backupDir5h, KEEP_5H, '', '.json');
     const removed5hDb = trimBackups(backupDir5h, KEEP_5H, '', '.db');
@@ -378,11 +288,11 @@ async function main() {
   const intervalMin = INTERVAL_30_MIN_MS / 60_000;
   console.log('Бэкапы БД по расписанию');
   console.log(
-    `  - каждые ${intervalMin} мин → backups/30m/ и Яндекс backups_warehouse/30m/ (хранить json=20) ` +
+    `  - каждые ${intervalMin} мин → backups/30m/ и Яндекс backups_warehouse/30m/ (хранить json=20 [legacy cleanup only]) ` +
       `(db: ring full+wal-shm хранить 30) [BACKUP_INTERVAL_MINUTES=${intervalMin}]`
   );
-  console.log('  - каждые 5 ч   → backups/5h/   и Яндекс backups_warehouse/5h/   (хранить 10)');
-  console.log('  - backups/    → backup_*.json и backup_info_*.txt (хранить по 10)');
+  console.log('  - каждые 5 ч   → backups/5h/   и Яндекс backups_warehouse/5h/   (db хранить 10, json не создаём)');
+  console.log('  - backups/    → cleanup старых backup_*.json и backup_info_*.txt (новые не создаём)');
   console.log('  Остановка: Ctrl+C\n');
 
   const backupDirRoot = path.join(projectRoot, 'backups');

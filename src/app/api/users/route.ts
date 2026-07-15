@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['admin', 'collector', 'checker', 'warehouse_3'].includes(role)) {
+    if (!['admin', 'collector', 'checker', 'warehouse_3', 'receiver'].includes(role)) {
       return NextResponse.json(
         { error: 'Неверная роль' },
         { status: 400 }
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
         login,
         password: hashedPassword,
         name,
-        role: role as 'admin' | 'collector' | 'checker' | 'warehouse_3',
+        role: role as 'admin' | 'collector' | 'checker' | 'warehouse_3' | 'receiver',
       },
       select: {
         id: true,

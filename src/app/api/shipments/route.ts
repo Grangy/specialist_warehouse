@@ -10,6 +10,10 @@ import { getMoscowDateString, isBeforeEndOfWorkingDay } from '@/lib/utils/moscow
 import { normalizeRegion, commentHasPriorityKeywords } from '@/lib/utils/helpers';
 import { append1cLog } from '@/lib/1cLog';
 import { shouldAutoProcessShipmentFrom1c } from '@/lib/autoProcessCustomers';
+import {
+  parseHonestSignFrom1cLine,
+  validateHonestSignLine,
+} from '@/lib/honestSign';
 
 export const dynamic = 'force-dynamic';
 
@@ -239,18 +243,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Честный знак: валидация до записи в БД
+    const seenHonestSignCodes = new Set<string>();
+    const honestSignByLine = (lines as any[]).map((line: any, lineIndex: number) => {
+      const parsed = parseHonestSignFrom1cLine(line as Record<string, unknown>);
+      const qty = Number(line.qty) || 0;
+      const err = validateHonestSignLine({
+        lineIndex,
+        sku: String(line.sku || ''),
+        qty,
+        hasHonestSign: parsed.hasHonestSign,
+        codes: parsed.codes,
+        seenCodes: seenHonestSignCodes,
+      });
+      return { ...parsed, error: err };
+    });
+    const honestSignErrors = honestSignByLine
+      .map((x) => x.error)
+      .filter((e): e is NonNullable<typeof e> => !!e);
+    if (honestSignErrors.length > 0) {
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'shipments-post',
+        direction: 'out',
+        endpoint: 'POST /api/shipments',
+        summary: `Заказ ${number} отклонён: ошибки Честного знака (${honestSignErrors.length})`,
+        details: { number, action: 'rejected', reason: 'honest_sign_validation', errors: honestSignErrors },
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Ошибка валидации Честного знака',
+          details: honestSignErrors,
+        },
+        { status: 400 }
+      );
+    }
+
     // ЯВНО убеждаемся, что все позиции создаются с непроверенным статусом
     // Игнорируем любые значения из входящих данных
-    const shipmentLines = lines.map((line: any) => {
+    const shipmentLines = lines.map((line: any, lineIndex: number) => {
       // Автоматически определяем склад по ячейке (location)
       // Если склад передан от 1С, используем его, но все равно проверяем location
       const detectedWarehouse = detectWarehouseFromLocation(
         line.location,
         line.warehouse
       );
-      
+
+      const hs = honestSignByLine[lineIndex];
       // Явно устанавливаем непроверенный статус, игнорируя входящие данные
-      const cleanLine = {
+      const cleanLine: Record<string, unknown> = {
         sku: line.sku || '',
         art: line.art || null, // Дополнительный артикул от 1С
         name: line.name || '',
@@ -260,13 +302,23 @@ export async function POST(request: NextRequest) {
         warehouse: detectedWarehouse,
         collectedQty: null, // ВСЕГДА null для новых заказов
         checked: false, // ВСЕГДА false для новых заказов
+        hasHonestSign: hs.hasHonestSign,
       };
+      if (hs.hasHonestSign && hs.codes.length > 0) {
+        cleanLine.honestSignCodes = {
+          create: hs.codes.map((code, idx) => ({
+            code,
+            unitIndex: idx + 1,
+          })),
+        };
+      }
       return cleanLine;
     });
 
     let shipment: Awaited<ReturnType<typeof prisma.shipment.create>> & { lines: any[]; tasks: any[] };
     const wholesaleAutoProcess = await shouldAutoProcessShipmentFrom1c(prisma, customerName);
 
+    try {
     if (existing) {
       // Заказ с таким номером есть и не активный (удалён или уже processed) — обновляем данными из 1С, склад по location
       await prisma.shipmentTaskLine.deleteMany({
@@ -300,9 +352,12 @@ export async function POST(request: NextRequest) {
           deleted: false,
           deletedAt: null,
           pinnedAt: autoPin ? new Date() : undefined,
-          lines: { create: shipmentLines },
+          lines: { create: shipmentLines as any },
         },
-        include: { lines: true, tasks: true },
+        include: {
+          lines: { include: { honestSignCodes: { orderBy: { unitIndex: 'asc' } } } },
+          tasks: true,
+        },
       });
     } else {
       const commentStr = comment || '';
@@ -320,10 +375,36 @@ export async function POST(request: NextRequest) {
           status: 'new',
           createdAt: new Date(),
           pinnedAt: autoPin ? new Date() : undefined,
-          lines: { create: shipmentLines },
+          lines: { create: shipmentLines as any },
         },
-        include: { lines: true, tasks: true },
+        include: {
+          lines: { include: { honestSignCodes: { orderBy: { unitIndex: 'asc' } } } },
+          tasks: true,
+        },
       });
+    }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isUnique = msg.includes('Unique constraint') || msg.includes('UNIQUE') || (e as { code?: string })?.code === 'P2002';
+      if (isUnique) {
+        append1cLog({
+          ts: new Date().toISOString(),
+          type: 'shipments-post',
+          direction: 'out',
+          endpoint: 'POST /api/shipments',
+          summary: `Заказ ${number} отклонён: дубликат кода Честного знака`,
+          details: { number, action: 'rejected', reason: 'honest_sign_code_unique', message: msg },
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Код Честного знака уже существует в системе (должен быть глобально уникальным)',
+            details: msg,
+          },
+          { status: 409 }
+        );
+      }
+      throw e;
     }
 
     // Отправляем событие о создании нового заказа через SSE
@@ -393,6 +474,20 @@ export async function POST(request: NextRequest) {
       
       if (taskCheckedCount > 0 || taskCollectedCount > 0) {
         console.error(`[API CREATE] Задание ${createdTask.id} создано с проверенными позициями: ${taskCheckedCount}/${taskCollectedCount}`);
+      }
+    }
+
+    // Привязка кодов Честного знака к сборкам (task / taskLine)
+    {
+      const taskLinesForHs = await prisma.shipmentTaskLine.findMany({
+        where: { task: { shipmentId: shipment.id } },
+        select: { id: true, taskId: true, shipmentLineId: true },
+      });
+      for (const tl of taskLinesForHs) {
+        await prisma.shipmentLineHonestSignCode.updateMany({
+          where: { shipmentLineId: tl.shipmentLineId },
+          data: { taskId: tl.taskId, taskLineId: tl.id },
+        });
       }
     }
 
@@ -518,7 +613,10 @@ export async function POST(request: NextRequest) {
 
       shipment = await prisma.shipment.findUniqueOrThrow({
         where: { id: shipment.id },
-        include: { lines: true, tasks: true },
+        include: {
+          lines: { include: { honestSignCodes: { orderBy: { unitIndex: 'asc' } } } },
+          tasks: true,
+        },
       });
       createdTasks = await prisma.shipmentTask.findMany({
         where: { shipmentId: shipment.id },
@@ -567,6 +665,7 @@ export async function POST(request: NextRequest) {
           business_region: shipment.businessRegion,
           tasks_count: createdTasks.length,
           lines: shipment.lines.map((line) => {
+            const hsCodes = (line as { honestSignCodes?: Array<{ code: string }> }).honestSignCodes ?? [];
             const cleanLine = {
               id: line.id,
               sku: line.sku,
@@ -578,6 +677,9 @@ export async function POST(request: NextRequest) {
               warehouse: line.warehouse,
               collected_qty: line.collectedQty || null,
               checked: line.checked === true ? true : false,
+              has_honest_sign: !!(line as { hasHonestSign?: boolean }).hasHonestSign,
+              honest_sign_codes: hsCodes.map((c) => c.code),
+              honest_sign_codes_count: hsCodes.length,
             };
 
             // Для обычного заказа позиции не должны быть собраны при создании.

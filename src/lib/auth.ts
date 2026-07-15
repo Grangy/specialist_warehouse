@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import { randomBytes } from 'crypto';
 
-export type UserRole = 'admin' | 'collector' | 'checker' | 'warehouse_3';
+export type UserRole = 'admin' | 'collector' | 'checker' | 'warehouse_3' | 'receiver';
 
 export interface SessionUser {
   id: string;

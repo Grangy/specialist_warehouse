@@ -14,6 +14,7 @@ import { ChatModal } from '@/components/chat/ChatModal';
 import { useChatNewMessagesBadge } from '@/components/chat/useChatNewMessagesBadge';
 import { getRandomNotificationSound } from '@/lib/notificationSounds';
 import { useToast } from '@/hooks/useToast';
+import { WorkModeSwipeToggle } from '@/components/layout/WorkModeSwipeToggle';
 
 interface HeaderProps {
   newCount: number;
@@ -22,13 +23,15 @@ interface HeaderProps {
   /** Показывать только заказы активных регионов на сегодня (для проверяльщика/админа/склад 3) */
   showOnlyToday?: boolean;
   onToggleShowOnlyToday?: () => void;
+  /** shipping — панель отгрузки; receiving — панель приёмки (тот же хедер) */
+  workMode?: 'shipping' | 'receiving';
 }
 
 interface User {
   id: string;
   login: string;
   name: string;
-  role: 'admin' | 'collector' | 'checker' | 'warehouse_3';
+  role: 'admin' | 'collector' | 'checker' | 'warehouse_3' | 'receiver';
 }
 
 interface RankingStats {
@@ -101,7 +104,7 @@ interface RankingStats {
   } | null;
 }
 
-export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = false, onToggleShowOnlyToday }: HeaderProps) {
+export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = false, onToggleShowOnlyToday, workMode = 'shipping' }: HeaderProps) {
   const { session: extraWorkSession, setPopupOpen } = useExtraWork();
   const [user, setUser] = useState<User | null>(null);
   const [isHidden, setIsHidden] = useState(false);
@@ -120,7 +123,8 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
   const [mentionToastPreview, setMentionToastPreview] = useState<{ from: string; text: string } | null>(null);
   const router = useRouter();
   const { showSuccess, showError, showWarning } = useToast();
-  const { settings: userSettings } = useUserSettings();
+  const { settings: userSettings, updateSettings } = useUserSettings();
+  const [workModeSwitching, setWorkModeSwitching] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -345,6 +349,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
     collector: 'Сборщик',
     checker: 'Проверка',
     warehouse_3: 'Склад 3',
+    receiver: 'Приёмщик',
   };
 
   return (
@@ -429,7 +434,7 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
             <PackageIcon className="w-5 h-5 md:w-6 md:h-6 text-slate-300 flex-shrink-0" />
             <div className="min-w-0 flex-1 md:flex-none">
               <h1 className="text-sm md:text-lg font-semibold text-slate-100 whitespace-nowrap tracking-tight leading-tight">
-                Панель отгрузки
+                {workMode === 'receiving' ? 'Панель приёмки' : 'Панель отгрузки'}
               </h1>
               <p className="text-[9px] md:text-xs text-slate-400 truncate leading-tight">
                 <span className="font-medium text-slate-300">{user.name}</span> <span className="hidden sm:inline text-slate-500">•</span> <span className="hidden sm:inline text-slate-500">{roleLabels[user.role]}</span>
@@ -570,6 +575,21 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
                       </div>
 
                       <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+                        {/* Режим Отгрузки / Приёмка — свайп в профиле */}
+                        {user.role !== 'receiver' && (
+                          <WorkModeSwipeToggle
+                            value={userSettings.workMode ?? workMode ?? 'shipping'}
+                            disabled={workModeSwitching}
+                            onChange={(mode) => {
+                              if (mode === (userSettings.workMode ?? workMode ?? 'shipping')) return;
+                              setWorkModeSwitching(true);
+                              updateSettings({ workMode: mode });
+                              setShowProfile(false);
+                              window.location.href = mode === 'receiving' ? '/receiving' : '/';
+                            }}
+                          />
+                        )}
+
                         {/* Выбор диктовщика (проверяльщики и Склад 3; для Склад 3 можно выбрать себя) */}
                         {(user.role === 'checker' || user.role === 'warehouse_3') && (
                           <DictatorSelector userId={user.id} userRole={user.role} />
@@ -682,28 +702,28 @@ export function Header({ newCount, pendingCount, onRefresh, showOnlyToday = fals
               <ChevronUp className="w-4 h-4" />
             </button>
             
+            {(user.role === 'admin' || user.role === 'checker' || user.role === 'warehouse_3') && workMode === 'shipping' && onToggleShowOnlyToday && (
+              <button
+                onClick={onToggleShowOnlyToday}
+                className={`px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98] border ${
+                  showOnlyToday
+                    ? 'bg-amber-500/20 border-amber-500/60 text-amber-400 hover:bg-amber-500/30'
+                    : 'bg-slate-800/70 hover:bg-slate-700/80 border-slate-600/50 hover:border-slate-500/70 text-slate-200'
+                }`}
+                title={showOnlyToday ? 'Показать все заказы' : 'Только заказы на сегодня (активные регионы)'}
+              >
+                <Calendar className="w-4 h-4" />
+              </button>
+            )}
             {(user.role === 'admin' || user.role === 'checker' || user.role === 'warehouse_3') && (
-              <>
-                <button
-                  onClick={onToggleShowOnlyToday}
-                  className={`px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98] border ${
-                    showOnlyToday
-                      ? 'bg-amber-500/20 border-amber-500/60 text-amber-400 hover:bg-amber-500/30'
-                      : 'bg-slate-800/70 hover:bg-slate-700/80 border-slate-600/50 hover:border-slate-500/70 text-slate-200'
-                  }`}
-                  title={showOnlyToday ? 'Показать все заказы' : 'Только заказы на сегодня (активные регионы)'}
-                >
-                  <Calendar className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => router.push('/admin')}
-                  className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
-                  title={user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка (Склад 3)' : 'Завершенные заказы'}
-                >
-                  <Settings className="w-4 h-4" />
-                  <span className="hidden md:inline text-xs font-medium">{user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка' : 'Заказы'}</span>
-                </button>
-              </>
+              <button
+                onClick={() => router.push('/admin')}
+                className="bg-slate-800/70 hover:bg-slate-700/80 active:bg-slate-600/80 border border-slate-600/50 hover:border-slate-500/70 text-slate-200 px-2.5 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
+                title={user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка (Склад 3)' : 'Завершенные заказы'}
+              >
+                <Settings className="w-4 h-4" />
+                <span className="hidden md:inline text-xs font-medium">{user.role === 'admin' ? 'Админка' : user.role === 'warehouse_3' ? 'Админка' : 'Заказы'}</span>
+              </button>
             )}
             <button
               onClick={onRefresh}

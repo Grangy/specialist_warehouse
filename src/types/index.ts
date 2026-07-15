@@ -14,6 +14,10 @@ export interface ShipmentLine {
   checked?: boolean; // Флаг собранности (для сборки)
   confirmed_qty?: number; // Количество подтвержденное проверяльщиком
   confirmed?: boolean; // Флаг подтверждения (для проверки)
+  /** Товар подлежит маркировке «Честный знак» */
+  has_honest_sign?: boolean;
+  /** Коды КИЗ — по одному на каждую единицу (length === qty) */
+  honest_sign_codes?: string[];
 }
 
 export interface ShipmentTask {
@@ -134,6 +138,7 @@ export interface SwipeState {
 
 // Настройки пользователя для сборщика
 export type CollectConfirmMode = 'swipe' | 'double-click';
+export type WorkMode = 'shipping' | 'receiving';
 
 export interface UserCollectSettings {
   collectPositionConfirm: CollectConfirmMode;
@@ -144,6 +149,13 @@ export interface UserCollectSettings {
   confirmPositionConfirm?: CollectConfirmMode;
   /** URL фото профиля (только чтение, из GET /api/users/me/settings) */
   profilePhotoUrl?: string | null;
+  /**
+   * Рабочий режим UI:
+   * shipping — отгрузки/сборки (по умолчанию);
+   * receiving — модуль приёмки.
+   * Роль receiver всегда работает как receiving.
+   */
+  workMode?: WorkMode;
 }
 
 export const DEFAULT_USER_COLLECT_SETTINGS: UserCollectSettings = {

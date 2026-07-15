@@ -16,6 +16,7 @@ function parseSettingsResponse(data: Record<string, unknown>): UserCollectSettin
     adminShowCollectionButtons: data.adminShowCollectionButtons === true,
     confirmPositionConfirm: data.confirmPositionConfirm === 'double-click' ? 'double-click' : DEFAULT.confirmPositionConfirm,
     profilePhotoUrl: typeof data.profilePhotoUrl === 'string' ? data.profilePhotoUrl : null,
+    workMode: data.workMode === 'receiving' ? 'receiving' : 'shipping',
   };
 }
 
