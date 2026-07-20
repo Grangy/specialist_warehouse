@@ -41,16 +41,47 @@ export function parseHasHonestSign(line: Record<string, unknown>): boolean {
   return false;
 }
 
-/** Нормализация кода КМ: trim, убрать нулевой байт GS (ASCII 29), сжатие пробелов. */
+/** Нормализация кода КМ для хранения и сверки.
+ * DataMatrix с камеры часто содержит FNC1/GS (\\u001d) и криптохвост AI 91/92/93.
+ * 1С обычно отдаёт только 01+21 (GTIN+серийник) без хвоста — срезаем хвост, иначе match падает.
+ */
 export function normalizeHonestSignCode(raw: unknown): string | null {
   if (raw == null) return null;
   let s = String(raw).trim();
   if (!s) return null;
-  // Group Separator (FNC1 / GS) часто встречается в DataMatrix — оставляем как есть, если внутри,
-  // но срезаем ведущие/хвостовые невидимые.
+
+  // Убрать BOM / нулевые байты
+  s = s.replace(/^\uFEFF/, '').replace(/\u0000/g, '');
+
+  // Group Separator (ASCII 29) — граница между полезной нагрузкой и криптохвостом
+  const gsIdx = s.search(/\u001d/);
+  if (gsIdx >= 0) {
+    s = s.slice(0, gsIdx);
+  }
+
+  // Иногда GS уже «съеден», но хвост AI 91/92/93 прилип к серийнику
+  // Пример: ...serial93XXXX  или ...serial91XXXX — срезаем с первого вхождения AI после AI21
+  const cryptoCut = s.search(/(?:91|92|93)[A-Za-z0-9+/=._-]{4,}$/);
+  // Более безопасно: искать \u001d уже сделали; для «слипшегося» 93 после серийника
+  // Режем только если есть явный паттерн после 01...21...
+  const m21 = s.match(/^(01\d{14}21.+?)((?:91|92|93).+)$/);
+  if (m21) {
+    // Не режем, если «91/92/93» — часть серийника (редко). Криптохвост обычно короткий 4+ и в конце.
+    const tail = m21[2];
+    if (/^(91|92|93).{4,}$/.test(tail) && tail.length <= 48) {
+      s = m21[1];
+    }
+  }
+  void cryptoCut;
+
   s = s.replace(/^\u001d+|\u001d+$/g, '').trim();
   if (!s) return null;
   return s;
+}
+
+/** Ключ для сравнения двух КМ (после нормализации). */
+export function honestSignMatchKey(raw: unknown): string | null {
+  return normalizeHonestSignCode(raw);
 }
 
 /**

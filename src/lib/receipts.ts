@@ -3,7 +3,7 @@
  */
 
 import type { prisma as PrismaClient } from '@/lib/prisma';
-import { normalizeHonestSignCode } from '@/lib/honestSign';
+import { honestSignMatchKey, normalizeHonestSignCode } from '@/lib/honestSign';
 
 type PrismaLike = typeof PrismaClient;
 
@@ -137,26 +137,43 @@ export function evaluateMarkingScan(opts: {
   expectedByLineId: Map<string, string[]>;
   alreadyScannedMatched: Set<string>;
 }): ScanEval {
-  const code = normalizeHonestSignCode(opts.rawCode);
+  const code = honestSignMatchKey(opts.rawCode);
   if (!code || code.length < 8) {
     return { result: 'invalid_format', message: 'Неверный формат кода маркировки' };
   }
-  if (opts.alreadyScannedMatched.has(code)) {
+
+  const expectedOnLine = opts.expectedOnLine
+    .map((c) => honestSignMatchKey(c))
+    .filter((c): c is string => !!c);
+  const already = new Set(
+    [...opts.alreadyScannedMatched].map((c) => honestSignMatchKey(c)).filter((c): c is string => !!c)
+  );
+
+  if (already.has(code)) {
     return { result: 'already_scanned', message: 'Этот код уже был отсканирован' };
   }
-  if (opts.expectedOnLine.includes(code)) {
+  if (expectedOnLine.includes(code)) {
     return { result: 'matched', message: 'Код совпал' };
   }
+
+  // Префиксное совпадение: 1С без хвоста, камера с хвостом (после нормализации обычно уже равно)
+  const prefixHit = expectedOnLine.find((exp) => code.startsWith(exp) || exp.startsWith(code));
+  if (prefixHit) {
+    return { result: 'matched', message: 'Код совпал' };
+  }
+
   for (const [otherLineId, codes] of opts.expectedByLineId) {
     if (otherLineId === opts.lineId) continue;
-    if (codes.includes(code)) {
+    const norms = codes.map((c) => honestSignMatchKey(c)).filter((c): c is string => !!c);
+    if (norms.includes(code) || norms.some((exp) => code.startsWith(exp) || exp.startsWith(code))) {
       return { result: 'wrong_item', message: 'Код относится к другому товару в этой приёмке' };
     }
   }
-  // Есть ли вообще в документе
+
   let inReceipt = false;
   for (const codes of opts.expectedByLineId.values()) {
-    if (codes.includes(code)) {
+    const norms = codes.map((c) => honestSignMatchKey(c)).filter((c): c is string => !!c);
+    if (norms.includes(code) || norms.some((exp) => code.startsWith(exp) || exp.startsWith(code))) {
       inReceipt = true;
       break;
     }
