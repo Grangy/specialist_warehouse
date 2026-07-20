@@ -312,6 +312,11 @@ export function ReceiveModal({
       <MarkingScanner
         open={!!scanLineId}
         onClose={() => setScanLineId(null)}
+        subtitle={
+          scanLineId
+            ? receipt.lines.find((l) => l.id === scanLineId)?.name
+            : undefined
+        }
         onScan={(code) => {
           if (!scanLineId) return;
           void onScan(scanLineId, code)
@@ -324,7 +329,7 @@ export function ReceiveModal({
       />
 
       {discForm && (
-        <div className="fixed inset-0 z-[80] bg-black/60 flex items-end sm:items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100040] bg-black/60 flex items-end sm:items-center justify-center p-4">
           <div className="w-full max-w-md rounded-xl bg-slate-900 border border-slate-700 p-4 space-y-3">
             <h3 className="font-semibold text-slate-100">Фиксация расхождения</h3>
             <select
