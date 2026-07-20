@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bluetooth, Camera, CheckCircle2, Keyboard, ScanLine, X, Zap } from 'lucide-react';
 import { useHidBarcodeScanner } from '@/hooks/useHidBarcodeScanner';
+import { looksLikeHonestSignCode } from '@/lib/honestSign';
 
 type ScanPhase = 'init' | 'scanning' | 'success' | 'error' | 'manual' | 'submitting';
 type ScanEngine = 'native' | 'zxing' | 'manual' | 'bluetooth';
@@ -121,6 +122,16 @@ export function MarkingScanner({
     async (raw: string, source: 'camera' | 'manual' | 'bluetooth' = 'camera') => {
       const v = String(raw ?? '');
       if (!v.trim() || busyRef.current || !mountedRef.current) return;
+
+      // Камера иногда «видит» обрывки (EAN и т.п.) — не шлём на сервер
+      if (source === 'camera' && !looksLikeHonestSignCode(v)) {
+        console.info('[MarkingScanner] skip short/non-marking camera read', {
+          length: v.length,
+          preview: v.slice(0, 32),
+        });
+        return;
+      }
+
       const now = Date.now();
       if (v === lastCodeRef.current && now - lastScanAtRef.current < 1800) return;
 
@@ -232,7 +243,7 @@ export function MarkingScanner({
     enabled: open,
     // В оверлее сканера перехватываем всегда (в т.ч. поверх textarea ручного ввода)
     ignoreFocusedInputs: false,
-    minLength: 8,
+    minLength: 18,
     onScan: (code) => {
       void handleCodeRef.current(code, 'bluetooth');
     },

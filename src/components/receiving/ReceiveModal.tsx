@@ -129,7 +129,7 @@ export function ReceiveModal({
   const hid = useHidBarcodeScanner({
     enabled: hidEnabled,
     ignoreFocusedInputs: true,
-    minLength: 8,
+    minLength: 18,
     onScan: (code, meta) => {
       const line = pickMarkingLine();
       if (!line) {

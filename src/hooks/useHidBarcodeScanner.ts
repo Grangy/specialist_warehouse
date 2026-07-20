@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { looksLikeHonestSignCode } from '@/lib/honestSign';
 
 export type HidScanMeta = {
   source: 'bluetooth' | 'hid';
@@ -20,6 +21,16 @@ type Options = {
   onScan: (code: string, meta: HidScanMeta) => void;
 };
 
+const MEDIA_KEYS = new Set([
+  'MediaPlayPause',
+  'MediaStop',
+  'MediaTrackNext',
+  'MediaTrackPrevious',
+  'AudioVolumeUp',
+  'AudioVolumeDown',
+  'AudioVolumeMute',
+]);
+
 /**
  * Ловец HID / Bluetooth-сканера (режим «клавиатура»).
  * Сканер печатает символы очень быстро и завершает Enter/Tab.
@@ -27,8 +38,8 @@ type Options = {
  */
 export function useHidBarcodeScanner({
   enabled = true,
-  minLength = 8,
-  maxCharGapMs = 55,
+  minLength = 18,
+  maxCharGapMs = 45,
   ignoreFocusedInputs = true,
   onScan,
 }: Options) {
@@ -57,12 +68,20 @@ export function useHidBarcodeScanner({
       if (trimmed.length < minLength) return false;
 
       const durationMs = Math.max(0, Date.now() - (started || Date.now()));
-      // Сканер: много символов за короткое время; человек так быстро не печатает КИЗ
-      const avgGap = trimmed.length > 1 ? durationMs / (trimmed.length - 1) : 0;
-      const looksLikeScanner =
-        durationMs <= Math.max(400, trimmed.length * maxCharGapMs) || avgGap <= maxCharGapMs + 15;
+      const avgGap = trimmed.length > 1 ? durationMs / (trimmed.length - 1) : durationMs;
 
-      if (!looksLikeScanner && trimmed.length < 16) return false;
+      // Строго: и быстро, и похоже на КИЗ (иначе ловим обрывки / ручной ввод)
+      const fastEnough =
+        durationMs <= Math.max(600, trimmed.length * maxCharGapMs) && avgGap <= maxCharGapMs + 25;
+      if (!fastEnough) return false;
+      if (!looksLikeHonestSignCode(trimmed)) {
+        console.info('[HidBarcodeScanner] skip non-marking', {
+          length: trimmed.length,
+          durationMs,
+          preview: trimmed.slice(0, 48),
+        });
+        return false;
+      }
 
       setLastSeenAt(Date.now());
       setLastCodePreview(trimmed.length > 40 ? `${trimmed.slice(0, 20)}…${trimmed.slice(-10)}` : trimmed);
@@ -107,6 +126,13 @@ export function useHidBarcodeScanner({
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // Не трогаем медиа-клавиши — иначе iOS/BT может дёргать музыку
+      if (MEDIA_KEYS.has(e.key) || e.key.startsWith('Media') || e.key.startsWith('Audio')) {
+        bufferRef.current = '';
+        burstRef.current = false;
+        setBurstActive(false);
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       if (ignoreFocusedInputs && isEditableTarget(e.target) && !burstRef.current) {
@@ -134,6 +160,9 @@ export function useHidBarcodeScanner({
         return;
       }
 
+      // Пробел без буфера — не перехватываем (play/pause на странице / системе)
+      if (key === ' ' && !bufferRef.current) return;
+
       if (key.length === 1) {
         const now = Date.now();
         if (bufferRef.current && now - lastKeyAtRef.current > maxCharGapMs * 3) {
@@ -144,13 +173,12 @@ export function useHidBarcodeScanner({
         bufferRef.current += key;
         lastKeyAtRef.current = now;
 
-        if (bufferRef.current.length >= 3) {
+        // Перехват только когда уже похоже на поток сканера (длинный быстрый burst)
+        if (bufferRef.current.length >= 8) {
           burstRef.current = true;
           setBurstActive(true);
-          if (!isEditableTarget(e.target) || bufferRef.current.length >= 6) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
+          e.preventDefault();
+          e.stopPropagation();
         }
         return;
       }
