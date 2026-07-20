@@ -44,39 +44,71 @@ export function parseHasHonestSign(line: Record<string, unknown>): boolean {
 /** Нормализация кода КМ для хранения и сверки.
  * DataMatrix с камеры часто содержит FNC1/GS (\\u001d) и криптохвост AI 91/92/93.
  * 1С обычно отдаёт только 01+21 (GTIN+серийник) без хвоста — срезаем хвост, иначе match падает.
+ *
+ * Важно: ведущий GS (FNC1 в начале) нельзя резать как «границу хвоста» — иначе код станет пустым.
  */
 export function normalizeHonestSignCode(raw: unknown): string | null {
   if (raw == null) return null;
   let s = String(raw).trim();
   if (!s) return null;
 
-  // Убрать BOM / нулевые байты
+  // Убрать BOM / нулевые байты / кавычки по краям (часто от ручного ввода)
   s = s.replace(/^\uFEFF/, '').replace(/\u0000/g, '');
+  s = s.replace(/^["']+|["']+$/g, '');
 
-  // Group Separator (ASCII 29) — граница между полезной нагрузкой и криптохвостом
-  const gsIdx = s.search(/\u001d/);
+  // Сначала снять ведущие/хвостовые GS (FNC1), не трогая содержимое
+  s = s.replace(/^\u001d+/, '').replace(/\u001d+$/, '').trim();
+  if (!s) return null;
+
+  // Внутренний GS — граница между полезной нагрузкой (01+21) и криптохвостом (91/92/93)
+  const gsIdx = s.indexOf('\u001d');
   if (gsIdx >= 0) {
     s = s.slice(0, gsIdx);
   }
 
-  // Иногда GS уже «съеден», но хвост AI 91/92/93 прилип к серийнику
-  // Пример: ...serial93XXXX  или ...serial91XXXX — срезаем с первого вхождения AI после AI21
-  const cryptoCut = s.search(/(?:91|92|93)[A-Za-z0-9+/=._-]{4,}$/);
-  // Более безопасно: искать \u001d уже сделали; для «слипшегося» 93 после серийника
-  // Режем только если есть явный паттерн после 01...21...
-  const m21 = s.match(/^(01\d{14}21.+?)((?:91|92|93).+)$/);
-  if (m21) {
-    // Не режем, если «91/92/93» — часть серийника (редко). Криптохвост обычно короткий 4+ и в конце.
-    const tail = m21[2];
-    if (/^(91|92|93).{4,}$/.test(tail) && tail.length <= 48) {
-      s = m21[1];
-    }
+  // Слипшийся хвост без GS: ...serial93XXXX — режем только AI в КОНЦЕ после серийника
+  // Не используем ленивый .+?, чтобы не отрезать середину серийника
+  const glued = s.match(/^(01\d{14}21.{1,32}?)((?:91|92|93)[A-Za-z0-9+/=._-]{4,32})$/);
+  if (glued) {
+    s = glued[1];
   }
-  void cryptoCut;
 
-  s = s.replace(/^\u001d+|\u001d+$/g, '').trim();
+  s = s.trim();
   if (!s) return null;
   return s;
+}
+
+/** Диагностика сырого кода с камеры (для логов). */
+export function describeHonestSignRaw(raw: unknown): {
+  raw: string;
+  raw_length: number;
+  raw_hex_preview: string;
+  char_codes_head: number[];
+  has_gs: boolean;
+  leading_gs: boolean;
+  normalized: string | null;
+  normalized_length: number;
+} {
+  const rawStr = raw == null ? '' : String(raw);
+  const codes: number[] = [];
+  for (let i = 0; i < Math.min(rawStr.length, 48); i++) {
+    codes.push(rawStr.charCodeAt(i));
+  }
+  let hex = '';
+  for (let i = 0; i < Math.min(rawStr.length, 64); i++) {
+    hex += rawStr.charCodeAt(i).toString(16).padStart(2, '0');
+  }
+  const normalized = normalizeHonestSignCode(raw);
+  return {
+    raw: rawStr,
+    raw_length: rawStr.length,
+    raw_hex_preview: hex,
+    char_codes_head: codes,
+    has_gs: rawStr.includes('\u001d'),
+    leading_gs: rawStr.charCodeAt(0) === 0x1d,
+    normalized,
+    normalized_length: normalized?.length ?? 0,
+  };
 }
 
 /** Ключ для сравнения двух КМ (после нормализации). */

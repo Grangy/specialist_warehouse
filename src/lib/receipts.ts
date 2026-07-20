@@ -137,9 +137,17 @@ export function evaluateMarkingScan(opts: {
   expectedByLineId: Map<string, string[]>;
   alreadyScannedMatched: Set<string>;
 }): ScanEval {
-  const code = honestSignMatchKey(opts.rawCode);
+  const rawTrim = String(opts.rawCode ?? '').trim();
+  let code = honestSignMatchKey(opts.rawCode);
+  // Если нормализация «съела» код (ведущий GS и т.п.), но сырой длинный — пробуем сырой
+  if ((!code || code.length < 8) && rawTrim.length >= 8) {
+    code = rawTrim.replace(/^\u001d+/, '').replace(/\u001d.*$/, '').trim() || rawTrim;
+  }
   if (!code || code.length < 8) {
-    return { result: 'invalid_format', message: 'Неверный формат кода маркировки' };
+    return {
+      result: 'invalid_format',
+      message: `Неверный формат кода маркировки (raw_len=${rawTrim.length}, norm=${code ?? 'null'})`,
+    };
   }
 
   const expectedOnLine = opts.expectedOnLine

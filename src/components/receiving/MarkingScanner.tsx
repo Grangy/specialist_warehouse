@@ -13,13 +13,27 @@ export type ScanResult = {
   matched_count?: number;
   expected_count?: number;
   line_complete?: boolean;
+  debug?: {
+    raw_length?: number;
+    normalized?: string | null;
+    leading_gs?: boolean;
+    has_gs?: boolean;
+    raw_preview?: string;
+    hex_preview?: string;
+  };
+};
+
+export type ScanClientMeta = {
+  engine?: string;
+  userAgent?: string;
+  source?: 'camera' | 'manual';
 };
 
 type Props = {
   open: boolean;
   onClose: () => void;
   /** Возвращает результат API; сканер сам решает — продолжать или закрыть */
-  onScan: (code: string) => Promise<ScanResult | void>;
+  onScan: (code: string, meta?: ScanClientMeta) => Promise<ScanResult | void>;
   title?: string;
   subtitle?: string;
   /** Уже совпавших / ожидаемых (для прогресса 1/2) */
@@ -60,7 +74,10 @@ export function MarkingScanner({
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState('Наведите код в рамку');
   const [lastScanned, setLastScanned] = useState<string | null>(null);
+  const [lastRawDebug, setLastRawDebug] = useState<string | null>(null);
   const [progress, setProgress] = useState({ matched: matchedCount, expected: expectedCount });
+  const engineRef = useRef<ScanEngine>('native');
+  engineRef.current = engine;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -100,16 +117,33 @@ export function MarkingScanner({
   }, []);
 
   const handleCode = useCallback(
-    async (raw: string) => {
-      const v = raw.trim();
-      if (!v || busyRef.current || !mountedRef.current) return;
+    async (raw: string, source: 'camera' | 'manual' = 'camera') => {
+      const v = String(raw ?? '');
+      if (!v.trim() || busyRef.current || !mountedRef.current) return;
       const now = Date.now();
       if (v === lastCodeRef.current && now - lastScanAtRef.current < 1800) return;
+
+      // Лог на клиенте — что телефон реально отдал
+      const charCodes: number[] = [];
+      for (let i = 0; i < Math.min(v.length, 40); i++) charCodes.push(v.charCodeAt(i));
+      console.info('[MarkingScanner] raw scan', {
+        length: v.length,
+        preview: v.slice(0, 80),
+        charCodes,
+        hasGs: v.includes('\u001d'),
+        leadingGs: v.charCodeAt(0) === 0x1d,
+        engine: engineRef.current,
+        source,
+      });
+      setLastRawDebug(
+        `len=${v.length} gs=${v.includes('\u001d') ? 1 : 0} leadGS=${v.charCodeAt(0) === 0x1d ? 1 : 0} ` +
+          `codes=[${charCodes.slice(0, 12).join(',')}] «${v.slice(0, 48).replace(/\u001d/g, '¦')}»`
+      );
 
       busyRef.current = true;
       lastCodeRef.current = v;
       lastScanAtRef.current = now;
-      setLastScanned(v.length > 48 ? `${v.slice(0, 24)}…${v.slice(-12)}` : v);
+      setLastScanned(v.length > 48 ? `${v.slice(0, 24)}…${v.slice(-12)}` : v.replace(/\u001d/g, '¦'));
       setPhase('submitting');
       setHint('Сохраняем код…');
       setError(null);
@@ -119,8 +153,22 @@ export function MarkingScanner({
       }
 
       try {
-        const result = (await onScanRef.current(v)) || {};
+        const result =
+          (await onScanRef.current(v, {
+            engine: engineRef.current,
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+            source,
+          })) || {};
         if (!mountedRef.current) return;
+
+        if (result.debug) {
+          setLastRawDebug(
+            (prev) =>
+              `${prev ?? ''}\n` +
+              `server: len=${result.debug?.raw_length} norm=${result.debug?.normalized ?? 'null'} ` +
+              `leadGS=${result.debug?.leading_gs ? 1 : 0}`
+          );
+        }
 
         if (result.success) {
           const matched = result.matched_count ?? progress.matched + 1;
@@ -137,11 +185,9 @@ export function MarkingScanner({
             return;
           }
 
-          // Короткая вспышка успеха → сразу ждём следующий код
           window.setTimeout(() => {
             if (!mountedRef.current) return;
             busyRef.current = false;
-            // разрешаем тот же код только после паузы; следующий — сразу
             lastCodeRef.current = v;
             lastScanAtRef.current = Date.now();
             resumeScanningHint(matched, expected);
@@ -160,7 +206,7 @@ export function MarkingScanner({
           busyRef.current = false;
           resumeScanningHint(progress.matched, progress.expected);
           setError(null);
-        }, 900);
+        }, 1200);
       } catch (e) {
         if (!mountedRef.current) return;
         const msg = e instanceof Error ? e.message : 'Ошибка сохранения';
@@ -209,7 +255,7 @@ export function MarkingScanner({
         try {
           if (!busyRef.current) {
             const codes = await detector.detect(video);
-            if (codes[0]?.rawValue) void handleCodeRef.current(codes[0].rawValue);
+            if (codes[0]?.rawValue) void handleCodeRef.current(codes[0].rawValue, 'camera');
           }
         } catch {
           // frame skip
@@ -237,7 +283,7 @@ export function MarkingScanner({
 
         const controls = await reader.decodeFromVideoElement(video, (result) => {
           if (cancelled() || busyRef.current) return;
-          if (result) void handleCodeRef.current(result.getText());
+          if (result) void handleCodeRef.current(result.getText(), 'camera');
         });
         zxingStopRef.current = () => controls.stop();
         return true;
@@ -384,9 +430,9 @@ export function MarkingScanner({
   };
 
   const submitManual = () => {
-    const v = manual.trim();
-    if (!v || busyRef.current) return;
-    void handleCode(v).then(() => setManual(''));
+    const v = manual;
+    if (!v.trim() || busyRef.current) return;
+    void handleCode(v, 'manual').then(() => setManual(''));
   };
 
   if (!open || !mounted) return null;
@@ -595,6 +641,11 @@ export function MarkingScanner({
 
         {lastScanned && (
           <p className="mt-2 text-center text-xs text-slate-500 font-mono truncate">Последний: {lastScanned}</p>
+        )}
+        {lastRawDebug && (
+          <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-slate-900/80 border border-slate-700 px-2 py-1.5 text-[10px] text-amber-200/90">
+            {lastRawDebug}
+          </pre>
         )}
       </div>
     </div>

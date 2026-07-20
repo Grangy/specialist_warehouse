@@ -54,12 +54,17 @@ interface ReceiveModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSetQty: (lineId: string, qty: number) => Promise<void>;
-  onScan: (lineId: string, code: string) => Promise<{
+  onScan: (
+    lineId: string,
+    code: string,
+    clientMeta?: Record<string, unknown>
+  ) => Promise<{
     success?: boolean;
     message?: string;
     matched_count?: number;
     expected_count?: number;
     line_complete?: boolean;
+    debug?: Record<string, unknown>;
   }>;
   onAddDiscrepancy: (payload: {
     lineId: string;
@@ -333,16 +338,15 @@ export function ReceiveModal({
             ? receipt.lines.find((l) => l.id === scanLineId)?.expected_codes_count ?? 0
             : 0
         }
-        onScan={async (code) => {
+        onScan={async (code, meta) => {
           if (!scanLineId) return { success: false, message: 'Позиция не выбрана' };
           try {
-            const d = await onScan(scanLineId, code);
+            const d = await onScan(scanLineId, code, meta as Record<string, unknown> | undefined);
             if (d?.success) {
               setToast(d.message || 'Код принят');
             } else if (d?.message) {
               setToast(d.message);
             }
-            // Окно не закрываем после 1-го кода — сканер сам закроется при line_complete
             return d;
           } catch (e) {
             const msg = e instanceof Error ? e.message : 'Ошибка скана';

@@ -9,7 +9,8 @@ import {
   getReceiptPointsRates,
   DISCREPANCY_TYPE_LABELS,
 } from '@/lib/receipts';
-import { normalizeHonestSignCode } from '@/lib/honestSign';
+import { normalizeHonestSignCode, describeHonestSignRaw } from '@/lib/honestSign';
+import { append1cLog } from '@/lib/1cLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -200,8 +201,38 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     if (action === 'scan') {
       const lineId = String(body.lineId || body.line_id || '');
       const rawCode = String(body.code || '');
+      const clientMeta =
+        body.clientMeta && typeof body.clientMeta === 'object'
+          ? (body.clientMeta as Record<string, unknown>)
+          : body.client_meta && typeof body.client_meta === 'object'
+            ? (body.client_meta as Record<string, unknown>)
+            : {};
+      const rawDesc = describeHonestSignRaw(rawCode);
+
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'marking-scan',
+        direction: 'in',
+        endpoint: `PATCH /api/receipts/${id}`,
+        summary: `Скан ЧЗ receipt=${receipt.number} line=${lineId.slice(0, 8)}… raw_len=${rawDesc.raw_length}`,
+        details: {
+          receipt_id: id,
+          receipt_number: receipt.number,
+          line_id: lineId,
+          user_id: user.id,
+          user_login: user.login,
+          ...rawDesc,
+          // raw целиком для аудита (может быть длинным)
+          raw_full: rawDesc.raw,
+          client_meta: clientMeta,
+        },
+      });
+
       if (!lineId || !rawCode) {
-        return NextResponse.json({ error: 'Нужны lineId и code' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'Нужны lineId и code', debug: rawDesc },
+          { status: 400 }
+        );
       }
       if (receipt.status !== 'in_progress' && receipt.status !== 'awaiting_start') {
         return NextResponse.json({ error: 'Приёмка не в работе' }, { status: 409 });
@@ -248,7 +279,33 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
         receiptId: id,
         userId: user.id,
         action: evalResult.result === 'matched' ? 'scan' : 'scan_error',
-        details: { lineId, code: code.slice(0, 64), result: evalResult.result },
+        details: {
+          lineId,
+          result: evalResult.result,
+          message: evalResult.message,
+          raw_length: rawDesc.raw_length,
+          raw_hex_preview: rawDesc.raw_hex_preview,
+          leading_gs: rawDesc.leading_gs,
+          has_gs: rawDesc.has_gs,
+          normalized: rawDesc.normalized,
+          code_saved: code.slice(0, 96),
+          client_meta: clientMeta,
+        },
+      });
+
+      append1cLog({
+        ts: new Date().toISOString(),
+        type: 'marking-scan',
+        direction: 'out',
+        endpoint: `PATCH /api/receipts/${id}`,
+        summary: `Скан результат=${evalResult.result} number=${receipt.number}`,
+        details: {
+          receipt_id: id,
+          result: evalResult.result,
+          message: evalResult.message,
+          normalized: rawDesc.normalized,
+          raw_length: rawDesc.raw_length,
+        },
       });
 
       const expectedCount = line.expectedCodes.length || line.plannedQty;
@@ -274,6 +331,14 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
         matched_count: matchedCount,
         expected_count: expectedCount,
         line_complete: matchedCount >= expectedCount && expectedCount > 0,
+        debug: {
+          raw_length: rawDesc.raw_length,
+          normalized: rawDesc.normalized,
+          leading_gs: rawDesc.leading_gs,
+          has_gs: rawDesc.has_gs,
+          raw_preview: rawDesc.raw.slice(0, 80),
+          hex_preview: rawDesc.raw_hex_preview.slice(0, 64),
+        },
       });
     }
 
