@@ -251,16 +251,18 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
         details: { lineId, code: code.slice(0, 64), result: evalResult.result },
       });
 
+      const expectedCount = line.expectedCodes.length || line.plannedQty;
+      let matchedCount = line.scannedCodes.filter((c) => c.result === 'matched').length;
+
       // Авто-увеличение actual при успешном скане
       if (evalResult.result === 'matched') {
-        const matchedNow =
-          line.scannedCodes.filter((c) => c.result === 'matched').length + 1;
+        matchedCount += 1;
         await prisma.receiptLine.update({
           where: { id: lineId },
           data: {
-            actualQty: matchedNow,
-            discrepancyQty: matchedNow - line.plannedQty,
-            checked: matchedNow >= line.plannedQty,
+            actualQty: matchedCount,
+            discrepancyQty: matchedCount - line.plannedQty,
+            checked: matchedCount >= line.plannedQty,
           },
         });
       }
@@ -269,6 +271,9 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
         success: evalResult.result === 'matched',
         result: evalResult.result,
         message: evalResult.message,
+        matched_count: matchedCount,
+        expected_count: expectedCount,
+        line_complete: matchedCount >= expectedCount && expectedCount > 0,
       });
     }
 

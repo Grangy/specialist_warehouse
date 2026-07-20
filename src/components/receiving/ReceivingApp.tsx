@@ -213,13 +213,12 @@ export function ReceivingApp({
           }
         }}
         onScan={async (lineId, code) => {
-          if (!activeId) return { success: false };
-          setBusy(true);
-          try {
-            return await patch(activeId, 'scan', { lineId, code });
-          } finally {
-            setBusy(false);
+          if (!activeId) return { success: false, message: 'Нет активной приёмки' };
+          // Если документ ещё не начат — стартуем перед первым сканом
+          if (detail?.status === 'awaiting_start' || detail?.status === 'new') {
+            await patch(activeId, 'start');
           }
+          return await patch(activeId, 'scan', { lineId, code });
         }}
         onAddDiscrepancy={async (payload) => {
           if (!activeId) return;

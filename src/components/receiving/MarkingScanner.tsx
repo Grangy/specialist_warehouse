@@ -4,23 +4,34 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, CheckCircle2, Keyboard, ScanLine, X, Zap } from 'lucide-react';
 
-type ScanPhase = 'init' | 'scanning' | 'success' | 'manual';
+type ScanPhase = 'init' | 'scanning' | 'success' | 'error' | 'manual' | 'submitting';
 type ScanEngine = 'native' | 'zxing' | 'manual';
+
+export type ScanResult = {
+  success?: boolean;
+  message?: string;
+  matched_count?: number;
+  expected_count?: number;
+  line_complete?: boolean;
+};
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  onScan: (code: string) => void;
+  /** Возвращает результат API; сканер сам решает — продолжать или закрыть */
+  onScan: (code: string) => Promise<ScanResult | void>;
   title?: string;
-  /** Подзаголовок — например название позиции */
   subtitle?: string;
+  /** Уже совпавших / ожидаемых (для прогресса 1/2) */
+  matchedCount?: number;
+  expectedCount?: number;
 };
 
 const SCANNER_Z = 100_050;
 
 /**
- * Полноэкранный сканер ЧЗ: камера (BarcodeDetector → ZXing fallback) + ручной ввод.
- * Рендер через portal поверх ReceiveModal (z-index модалки ~10000).
+ * Полноэкранный сканер ЧЗ: камера (BarcodeDetector → ZXing) + ручной ввод.
+ * После успешного скана остаётся открытым для следующего кода, пока line не заполнена.
  */
 export function MarkingScanner({
   open,
@@ -28,6 +39,8 @@ export function MarkingScanner({
   onScan,
   title = 'Сканирование Честного знака',
   subtitle,
+  matchedCount = 0,
+  expectedCount = 0,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -35,7 +48,10 @@ export function MarkingScanner({
   const zxingStopRef = useRef<(() => void) | null>(null);
   const lastCodeRef = useRef<string>('');
   const lastScanAtRef = useRef(0);
+  const busyRef = useRef(false);
   const mountedRef = useRef(false);
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
 
   const [mounted, setMounted] = useState(false);
   const [phase, setPhase] = useState<ScanPhase>('init');
@@ -44,6 +60,7 @@ export function MarkingScanner({
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState('Наведите код в рамку');
   const [lastScanned, setLastScanned] = useState<string | null>(null);
+  const [progress, setProgress] = useState({ matched: matchedCount, expected: expectedCount });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -53,39 +70,115 @@ export function MarkingScanner({
     };
   }, []);
 
-  const stopCamera = useCallback(() => {
+  useEffect(() => {
+    setProgress({ matched: matchedCount, expected: expectedCount });
+  }, [matchedCount, expectedCount]);
+
+  const stopLoop = useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
     zxingStopRef.current?.();
     zxingStopRef.current = null;
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    stopLoop();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+  }, [stopLoop]);
+
+  const resumeScanningHint = useCallback((matched: number, expected: number) => {
+    if (expected > 0) {
+      setHint(`Считано ${matched} из ${expected}. Следующий код…`);
+    } else {
+      setHint('Наведите следующий код в рамку');
+    }
+    setPhase('scanning');
   }, []);
 
   const handleCode = useCallback(
-    (raw: string) => {
+    async (raw: string) => {
       const v = raw.trim();
-      if (!v) return;
+      if (!v || busyRef.current || !mountedRef.current) return;
       const now = Date.now();
-      if (v === lastCodeRef.current && now - lastScanAtRef.current < 2500) return;
+      if (v === lastCodeRef.current && now - lastScanAtRef.current < 1800) return;
+
+      busyRef.current = true;
       lastCodeRef.current = v;
       lastScanAtRef.current = now;
       setLastScanned(v.length > 48 ? `${v.slice(0, 24)}…${v.slice(-12)}` : v);
-      setPhase('success');
-      setHint('Код считан');
+      setPhase('submitting');
+      setHint('Сохраняем код…');
+      setError(null);
+
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(80);
+        navigator.vibrate(60);
       }
-      window.setTimeout(() => {
+
+      try {
+        const result = (await onScanRef.current(v)) || {};
         if (!mountedRef.current) return;
-        onScan(v);
-      }, 520);
+
+        if (result.success) {
+          const matched = result.matched_count ?? progress.matched + 1;
+          const expected = result.expected_count ?? progress.expected;
+          setProgress({ matched, expected });
+          setPhase('success');
+          setHint(result.message || 'Код принят');
+
+          if (result.line_complete || (expected > 0 && matched >= expected)) {
+            setHint(expected > 0 ? `Готово: ${matched}/${expected}` : 'Все коды считаны');
+            window.setTimeout(() => {
+              if (mountedRef.current) onClose();
+            }, 700);
+            return;
+          }
+
+          // Короткая вспышка успеха → сразу ждём следующий код
+          window.setTimeout(() => {
+            if (!mountedRef.current) return;
+            busyRef.current = false;
+            // разрешаем тот же код только после паузы; следующий — сразу
+            lastCodeRef.current = v;
+            lastScanAtRef.current = Date.now();
+            resumeScanningHint(matched, expected);
+          }, 450);
+          return;
+        }
+
+        setPhase('error');
+        setHint(result.message || 'Код не принят');
+        setError(result.message || 'Код не принят');
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([40, 40, 40]);
+        }
+        window.setTimeout(() => {
+          if (!mountedRef.current) return;
+          busyRef.current = false;
+          resumeScanningHint(progress.matched, progress.expected);
+          setError(null);
+        }, 900);
+      } catch (e) {
+        if (!mountedRef.current) return;
+        const msg = e instanceof Error ? e.message : 'Ошибка сохранения';
+        setPhase('error');
+        setError(msg);
+        setHint(msg);
+        window.setTimeout(() => {
+          if (!mountedRef.current) return;
+          busyRef.current = false;
+          resumeScanningHint(progress.matched, progress.expected);
+        }, 1200);
+      }
     },
-    [onScan]
+    [onClose, progress.expected, progress.matched, resumeScanningHint]
   );
+
+  const handleCodeRef = useRef(handleCode);
+  handleCodeRef.current = handleCode;
 
   const startNativeDetector = useCallback(
     async (video: HTMLVideoElement, cancelled: () => boolean) => {
@@ -105,13 +198,19 @@ export function MarkingScanner({
 
       setEngine('native');
       setPhase('scanning');
-      setHint('Сканирование…');
+      setHint(
+        expectedCount > 0
+          ? `Сканируйте коды: ${matchedCount}/${expectedCount}`
+          : 'Сканирование…'
+      );
 
       const tick = async () => {
         if (cancelled()) return;
         try {
-          const codes = await detector.detect(video);
-          if (codes[0]?.rawValue) handleCode(codes[0].rawValue);
+          if (!busyRef.current) {
+            const codes = await detector.detect(video);
+            if (codes[0]?.rawValue) void handleCodeRef.current(codes[0].rawValue);
+          }
         } catch {
           // frame skip
         }
@@ -120,7 +219,7 @@ export function MarkingScanner({
       rafRef.current = requestAnimationFrame(() => void tick());
       return true;
     },
-    [handleCode]
+    [expectedCount, matchedCount]
   );
 
   const startZxingOnVideo = useCallback(
@@ -130,12 +229,15 @@ export function MarkingScanner({
         const reader = new BrowserMultiFormatReader();
         setEngine('zxing');
         setPhase('scanning');
-        setHint('Сканирование (универсальный режим)…');
+        setHint(
+          expectedCount > 0
+            ? `Сканируйте коды: ${matchedCount}/${expectedCount}`
+            : 'Сканирование (универсальный режим)…'
+        );
 
-        const controls = await reader.decodeFromVideoElement(video, (result, err) => {
-          if (cancelled()) return;
-          if (result) handleCode(result.getText());
-          void err;
+        const controls = await reader.decodeFromVideoElement(video, (result) => {
+          if (cancelled() || busyRef.current) return;
+          if (result) void handleCodeRef.current(result.getText());
         });
         zxingStopRef.current = () => controls.stop();
         return true;
@@ -143,11 +245,12 @@ export function MarkingScanner({
         return false;
       }
     },
-    [handleCode]
+    [expectedCount, matchedCount]
   );
 
   const startCamera = useCallback(async () => {
     stopCamera();
+    busyRef.current = false;
     setError(null);
     setPhase('init');
     setEngine('native');
@@ -156,7 +259,7 @@ export function MarkingScanner({
     if (!('mediaDevices' in navigator) || !navigator.mediaDevices?.getUserMedia) {
       setEngine('manual');
       setPhase('manual');
-      setError('Камера недоступна в этом браузере — введите код вручную');
+      setError('Камера недоступна — введите код вручную');
       return;
     }
 
@@ -180,7 +283,6 @@ export function MarkingScanner({
 
       streamRef.current = stream;
 
-      // Ждём появления <video> (portal / первый кадр)
       let video = videoRef.current;
       for (let i = 0; i < 20 && !video; i++) {
         await new Promise((r) => setTimeout(r, 50));
@@ -207,11 +309,7 @@ export function MarkingScanner({
       const nativeOk = await startNativeDetector(video, isCancelled);
       if (nativeOk && !isCancelled()) return;
 
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-
+      stopLoop();
       if (isCancelled()) return;
 
       const zxingOk = await startZxingOnVideo(video, isCancelled);
@@ -232,9 +330,9 @@ export function MarkingScanner({
     return () => {
       cancelled = true;
     };
-  }, [startNativeDetector, startZxingOnVideo, stopCamera]);
+  }, [startNativeDetector, startZxingOnVideo, stopCamera, stopLoop]);
 
-  // Камеру стартуем только после portal-mount (иначе videoRef ещё null)
+  // Старт камеры только при open/mounted — без зависимости от onScan (ref)
   useEffect(() => {
     if (!open || !mounted) {
       if (!open) stopCamera();
@@ -242,14 +340,15 @@ export function MarkingScanner({
     }
     lastCodeRef.current = '';
     lastScanAtRef.current = 0;
+    busyRef.current = false;
     setManual('');
     setError(null);
     setLastScanned(null);
+    setProgress({ matched: matchedCount, expected: expectedCount });
     setPhase('init');
 
     let cancelled = false;
     const boot = async () => {
-      // Даём React отрисовать <video> в portal
       await new Promise((r) => requestAnimationFrame(() => r(null)));
       if (cancelled) return;
       await startCamera();
@@ -260,7 +359,8 @@ export function MarkingScanner({
       cancelled = true;
       stopCamera();
     };
-  }, [open, mounted, startCamera, stopCamera]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- намеренно не тянем startCamera/onScan
+  }, [open, mounted, stopCamera]);
 
   useEffect(() => {
     if (!open) return;
@@ -285,15 +385,15 @@ export function MarkingScanner({
 
   const submitManual = () => {
     const v = manual.trim();
-    if (!v) return;
-    handleCode(v);
-    setManual('');
+    if (!v || busyRef.current) return;
+    void handleCode(v).then(() => setManual(''));
   };
 
   if (!open || !mounted) return null;
 
   const engineLabel =
     engine === 'native' ? 'BarcodeDetector' : engine === 'zxing' ? 'ZXing' : 'Ручной ввод';
+  const showProgress = progress.expected > 0;
 
   const content = (
     <div
@@ -303,7 +403,6 @@ export function MarkingScanner({
       aria-modal="true"
       aria-label={title}
     >
-      {/* Global styles — portal вне styled-jsx scope */}
       <style>{`
         @keyframes scannerOverlayIn {
           from { opacity: 0; transform: translateY(12px); }
@@ -333,14 +432,18 @@ export function MarkingScanner({
         .success-ripple { animation: ripple 0.7s ease-out forwards; }
       `}</style>
 
-      {/* Шапка */}
-      <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2 safe-area-top">
+      <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <ScanLine className="w-5 h-5 text-cyan-400 shrink-0" />
             <h2 className="font-bold text-base sm:text-lg truncate">{title}</h2>
           </div>
           {subtitle && <p className="text-xs sm:text-sm text-slate-400 mt-1 line-clamp-2">{subtitle}</p>}
+          {showProgress && (
+            <p className="mt-2 text-sm font-semibold text-cyan-300">
+              Коды: {progress.matched} / {progress.expected}
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -352,7 +455,19 @@ export function MarkingScanner({
         </button>
       </div>
 
-      {/* Переключатель режимов */}
+      {showProgress && (
+        <div className="px-4 pb-2">
+          <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+            <div
+              className="h-full bg-cyan-500 transition-all duration-300"
+              style={{
+                width: `${Math.min(100, (progress.matched / Math.max(1, progress.expected)) * 100)}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-2 px-4 py-2">
         <button
           type="button"
@@ -378,7 +493,6 @@ export function MarkingScanner({
         </button>
       </div>
 
-      {/* Область камеры / ручной ввод */}
       <div className="flex-1 flex flex-col min-h-0 px-4 pb-4">
         {phase !== 'manual' ? (
           <div className="relative flex-1 min-h-[280px] rounded-2xl overflow-hidden bg-black border border-slate-700/80 shadow-2xl">
@@ -389,20 +503,15 @@ export function MarkingScanner({
               muted
               autoPlay
             />
-
-            {/* Затемнение по краям */}
             <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70 pointer-events-none" />
 
-            {/* Рамка сканирования */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-6 sm:p-10">
               <div className="relative w-full max-w-sm aspect-square max-h-[min(72vw,320px)]">
-                {/* Углы */}
                 <span className="scan-bracket absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-cyan-400 rounded-tl-lg" />
                 <span className="scan-bracket absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-cyan-400 rounded-tr-lg" />
                 <span className="scan-bracket absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-cyan-400 rounded-bl-lg" />
                 <span className="scan-bracket absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-cyan-400 rounded-br-lg" />
 
-                {/* Движущаяся линия */}
                 {phase === 'scanning' && (
                   <div
                     className="scan-line absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_12px_2px_rgba(34,211,238,0.8)]"
@@ -410,27 +519,32 @@ export function MarkingScanner({
                   />
                 )}
 
-                {/* Успех */}
                 {phase === 'success' && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-emerald-500/25 backdrop-blur-[2px]">
                     <div className="relative success-pop">
                       <span className="absolute inset-0 m-auto w-20 h-20 rounded-full bg-emerald-400/40 success-ripple" />
                       <CheckCircle2 className="w-16 h-16 text-emerald-400 drop-shadow-lg relative z-10" />
                     </div>
-                    <p className="mt-3 text-sm font-semibold text-emerald-100 success-pop">Код принят</p>
+                    <p className="mt-3 text-sm font-semibold text-emerald-100 success-pop">
+                      {showProgress ? `${progress.matched}/${progress.expected}` : 'Код принят'}
+                    </p>
                   </div>
                 )}
 
-                {/* Инициализация */}
-                {phase === 'init' && (
+                {(phase === 'init' || phase === 'submitting') && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="w-10 h-10 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
+                  </div>
+                )}
+
+                {phase === 'error' && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-red-900/30">
+                    <p className="text-sm font-semibold text-red-200 px-4 text-center">{hint}</p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Подсказка снизу */}
             <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/90 to-transparent">
               <p className="text-center text-sm text-cyan-100 font-medium">{hint}</p>
               <p className="text-center text-[11px] text-slate-400 mt-1 flex items-center justify-center gap-1">
@@ -442,6 +556,11 @@ export function MarkingScanner({
         ) : (
           <div className="flex-1 flex flex-col justify-center gap-4 max-w-lg mx-auto w-full">
             <label className="text-sm text-slate-400">Код маркировки (КИЗ / DataMatrix)</label>
+            {showProgress && (
+              <p className="text-sm text-cyan-300 font-semibold">
+                Уже: {progress.matched} / {progress.expected}
+              </p>
+            )}
             <textarea
               value={manual}
               onChange={(e) => setManual(e.target.value)}
@@ -459,7 +578,7 @@ export function MarkingScanner({
             />
             <button
               type="button"
-              disabled={!manual.trim()}
+              disabled={!manual.trim() || busyRef.current}
               onClick={submitManual}
               className="w-full py-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all"
             >
@@ -468,14 +587,14 @@ export function MarkingScanner({
           </div>
         )}
 
-        {error && (
+        {error && phase !== 'error' && (
           <p className="mt-3 text-center text-amber-300 text-sm bg-amber-950/40 border border-amber-700/40 rounded-lg px-3 py-2">
             {error}
           </p>
         )}
 
-        {lastScanned && phase === 'success' && (
-          <p className="mt-2 text-center text-xs text-slate-500 font-mono truncate">{lastScanned}</p>
+        {lastScanned && (
+          <p className="mt-2 text-center text-xs text-slate-500 font-mono truncate">Последний: {lastScanned}</p>
         )}
       </div>
     </div>

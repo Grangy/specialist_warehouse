@@ -54,7 +54,13 @@ interface ReceiveModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSetQty: (lineId: string, qty: number) => Promise<void>;
-  onScan: (lineId: string, code: string) => Promise<{ success?: boolean; message?: string }>;
+  onScan: (lineId: string, code: string) => Promise<{
+    success?: boolean;
+    message?: string;
+    matched_count?: number;
+    expected_count?: number;
+    line_complete?: boolean;
+  }>;
   onAddDiscrepancy: (payload: {
     lineId: string;
     type: string;
@@ -317,14 +323,32 @@ export function ReceiveModal({
             ? receipt.lines.find((l) => l.id === scanLineId)?.name
             : undefined
         }
-        onScan={(code) => {
-          if (!scanLineId) return;
-          void onScan(scanLineId, code)
-            .then((d) => {
-              setToast(d?.message || (d?.success ? 'Код принят' : 'Ошибка скана'));
-              if (d?.success) setScanLineId(null);
-            })
-            .catch((e) => setToast(e instanceof Error ? e.message : 'Ошибка'));
+        matchedCount={
+          scanLineId
+            ? receipt.lines.find((l) => l.id === scanLineId)?.matched_codes_count ?? 0
+            : 0
+        }
+        expectedCount={
+          scanLineId
+            ? receipt.lines.find((l) => l.id === scanLineId)?.expected_codes_count ?? 0
+            : 0
+        }
+        onScan={async (code) => {
+          if (!scanLineId) return { success: false, message: 'Позиция не выбрана' };
+          try {
+            const d = await onScan(scanLineId, code);
+            if (d?.success) {
+              setToast(d.message || 'Код принят');
+            } else if (d?.message) {
+              setToast(d.message);
+            }
+            // Окно не закрываем после 1-го кода — сканер сам закроется при line_complete
+            return d;
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Ошибка скана';
+            setToast(msg);
+            throw e;
+          }
         }}
       />
 
