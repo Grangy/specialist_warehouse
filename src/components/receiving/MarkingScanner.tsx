@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Camera, CheckCircle2, Keyboard, ScanLine, X, Zap } from 'lucide-react';
+import { Bluetooth, Camera, CheckCircle2, Keyboard, ScanLine, X, Zap } from 'lucide-react';
+import { useHidBarcodeScanner } from '@/hooks/useHidBarcodeScanner';
 
 type ScanPhase = 'init' | 'scanning' | 'success' | 'error' | 'manual' | 'submitting';
-type ScanEngine = 'native' | 'zxing' | 'manual';
+type ScanEngine = 'native' | 'zxing' | 'manual' | 'bluetooth';
 
 export type ScanResult = {
   success?: boolean;
@@ -26,7 +27,7 @@ export type ScanResult = {
 export type ScanClientMeta = {
   engine?: string;
   userAgent?: string;
-  source?: 'camera' | 'manual';
+  source?: 'camera' | 'manual' | 'bluetooth';
 };
 
 type Props = {
@@ -117,7 +118,7 @@ export function MarkingScanner({
   }, []);
 
   const handleCode = useCallback(
-    async (raw: string, source: 'camera' | 'manual' = 'camera') => {
+    async (raw: string, source: 'camera' | 'manual' | 'bluetooth' = 'camera') => {
       const v = String(raw ?? '');
       if (!v.trim() || busyRef.current || !mountedRef.current) return;
       const now = Date.now();
@@ -143,6 +144,7 @@ export function MarkingScanner({
       busyRef.current = true;
       lastCodeRef.current = v;
       lastScanAtRef.current = now;
+      if (source === 'bluetooth') setEngine('bluetooth');
       setLastScanned(v.length > 48 ? `${v.slice(0, 24)}…${v.slice(-12)}` : v.replace(/\u001d/g, '¦'));
       setPhase('submitting');
       setHint('Сохраняем код…');
@@ -155,7 +157,7 @@ export function MarkingScanner({
       try {
         const result =
           (await onScanRef.current(v, {
-            engine: engineRef.current,
+            engine: source === 'bluetooth' ? 'bluetooth' : engineRef.current,
             userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
             source,
           })) || {};
@@ -225,6 +227,16 @@ export function MarkingScanner({
 
   const handleCodeRef = useRef(handleCode);
   handleCodeRef.current = handleCode;
+
+  const hid = useHidBarcodeScanner({
+    enabled: open,
+    // В оверлее сканера перехватываем всегда (в т.ч. поверх textarea ручного ввода)
+    ignoreFocusedInputs: false,
+    minLength: 8,
+    onScan: (code) => {
+      void handleCodeRef.current(code, 'bluetooth');
+    },
+  });
 
   const startNativeDetector = useCallback(
     async (video: HTMLVideoElement, cancelled: () => boolean) => {
@@ -438,7 +450,13 @@ export function MarkingScanner({
   if (!open || !mounted) return null;
 
   const engineLabel =
-    engine === 'native' ? 'BarcodeDetector' : engine === 'zxing' ? 'ZXing' : 'Ручной ввод';
+    engine === 'native'
+      ? 'BarcodeDetector'
+      : engine === 'zxing'
+        ? 'ZXing'
+        : engine === 'bluetooth'
+          ? 'Bluetooth/HID'
+          : 'Ручной ввод';
   const showProgress = progress.expected > 0;
 
   const content = (
@@ -488,6 +506,16 @@ export function MarkingScanner({
           {showProgress && (
             <p className="mt-2 text-sm font-semibold text-cyan-300">
               Коды: {progress.matched} / {progress.expected}
+            </p>
+          )}
+          {hid.listening && (
+            <p
+              className={`mt-1.5 inline-flex items-center gap-1.5 text-[11px] ${
+                hid.recentlyActive ? 'text-emerald-300' : 'text-slate-400'
+              }`}
+            >
+              <Bluetooth className={`w-3 h-3 ${hid.burstActive ? 'animate-pulse' : ''}`} />
+              {hid.connectedHint}
             </p>
           )}
         </div>
@@ -608,9 +636,10 @@ export function MarkingScanner({
               </p>
             )}
             <textarea
+              data-hid-catch="1"
               value={manual}
               onChange={(e) => setManual(e.target.value)}
-              placeholder="Вставьте или введите код…"
+              placeholder="Вставьте код или сканируйте Bluetooth-сканером…"
               rows={3}
               className="w-full px-4 py-3 rounded-xl bg-slate-900 border-2 border-slate-600 focus:border-cyan-500 text-white text-sm font-mono resize-none outline-none transition-colors"
               autoFocus

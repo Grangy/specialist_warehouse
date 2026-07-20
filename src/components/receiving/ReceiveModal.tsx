@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  Bluetooth,
   CheckCircle2,
   ScanLine,
   AlertTriangle,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { MarkingScanner } from '@/components/receiving/MarkingScanner';
+import { useHidBarcodeScanner } from '@/hooks/useHidBarcodeScanner';
 
 export type ReceiptDetail = {
   id: string;
@@ -99,10 +101,60 @@ export function ReceiveModal({
   const [toast, setToast] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [starting, setStarting] = useState(false);
+  const hidBusyRef = useRef(false);
+  const receiptRef = useRef(receipt);
+  receiptRef.current = receipt;
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
 
   useEffect(() => {
     if (receipt?.id) setLocalQty({});
   }, [receipt?.id]);
+
+  const pickMarkingLine = useCallback(() => {
+    const lines = receiptRef.current?.lines ?? [];
+    return (
+      lines.find(
+        (l) =>
+          l.requires_marking_scan &&
+          !l.checked &&
+          l.matched_codes_count < Math.max(1, l.expected_codes_count)
+      ) ?? lines.find((l) => l.requires_marking_scan && !l.checked) ?? null
+    );
+  }, []);
+
+  const hidEnabled =
+    isOpen && !!receipt && !scanLineId && !discForm && receipt.status === 'in_progress';
+
+  const hid = useHidBarcodeScanner({
+    enabled: hidEnabled,
+    ignoreFocusedInputs: true,
+    minLength: 8,
+    onScan: (code, meta) => {
+      const line = pickMarkingLine();
+      if (!line) {
+        setToast('Нет позиции ЧЗ для скана — откройте «Сканировать»');
+        return;
+      }
+      if (hidBusyRef.current) return;
+      hidBusyRef.current = true;
+      setToast(`Bluetooth → ${line.name.slice(0, 40)}…`);
+      void onScanRef
+        .current(line.id, code, {
+          source: meta.source,
+          engine: 'bluetooth',
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+          durationMs: meta.durationMs,
+        })
+        .then((d) => {
+          setToast(d?.message || (d?.success ? 'Код принят (Bluetooth)' : 'Код не принят'));
+        })
+        .catch((e) => setToast(e instanceof Error ? e.message : 'Ошибка скана'))
+        .finally(() => {
+          hidBusyRef.current = false;
+        });
+    },
+  });
 
   if (!receipt) return null;
 
@@ -180,6 +232,30 @@ export function ReceiveModal({
               {receipt.actual_units_count} / {receipt.planned_units_count} ед. · {receipt.progress_pct}%
             </span>
           </div>
+
+          {hid.listening && receipt.status === 'in_progress' && (
+            <div
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
+                hid.recentlyActive
+                  ? 'border-emerald-600/50 bg-emerald-950/30 text-emerald-200'
+                  : 'border-slate-600 bg-slate-900/60 text-slate-300'
+              }`}
+            >
+              <Bluetooth className={`w-3.5 h-3.5 shrink-0 ${hid.burstActive ? 'animate-pulse' : ''}`} />
+              <span className="min-w-0">
+                {hid.connectedHint}
+                {hid.lastCodePreview ? (
+                  <span className="block font-mono text-[10px] text-slate-500 truncate mt-0.5">
+                    последний: {hid.lastCodePreview}
+                  </span>
+                ) : (
+                  <span className="block text-[10px] text-slate-500 mt-0.5">
+                    Сканер печатает код + Enter — попадёт в первую незакрытую позицию ЧЗ
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
 
           {receipt.comment ? (
             <div className="rounded-lg bg-emerald-600/90 px-3 py-2.5 text-sm text-white border border-emerald-500/40">
